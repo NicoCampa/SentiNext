@@ -1,0 +1,24 @@
+# Node / Next.js
+node_modules/
+.npm/
+.next/
+out/
+dist/
+*.log
+
+# Env & local
+.env
+.env.*
+*.local
+
+# OS cruft
+.DS_Store
+
+# Python (if any)
+__pycache__/
+*.pyc
+.venv/
+
+# App data
+data/*.db
+data/*.sqlite
