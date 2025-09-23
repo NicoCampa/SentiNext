@@ -56,6 +56,16 @@ def init_db() -> None:
             ON review_labels (app_id)
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS classification_progress (
+                app_id INTEGER PRIMARY KEY,
+                total INTEGER NOT NULL,
+                processed INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
         conn.commit()
 
 
@@ -158,3 +168,58 @@ def load_review_labels(app_id: int) -> Dict[str, Dict]:
             "payload": payload,
         }
     return labels
+
+
+def reset_progress(app_id: int, total: int) -> None:
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO classification_progress (app_id, total, processed, updated_at)
+            VALUES (?, ?, 0, ?)
+            ON CONFLICT(app_id) DO UPDATE SET
+                total = excluded.total,
+                processed = excluded.processed,
+                updated_at = excluded.updated_at
+            """,
+            (app_id, int(total), timestamp),
+        )
+        conn.commit()
+
+
+def update_progress(app_id: int, processed: int, total: Optional[int] = None) -> None:
+    timestamp = int(time.time())
+    query = """
+        UPDATE classification_progress
+        SET processed = ?,
+            updated_at = ?,
+            total = COALESCE(?, total)
+        WHERE app_id = ?
+    """
+    new_total = int(total) if total is not None else None
+    with _get_connection() as conn:
+        conn.execute(query, (int(processed), timestamp, new_total, app_id))
+        conn.commit()
+
+
+def clear_progress(app_id: int) -> None:
+    with _get_connection() as conn:
+        conn.execute("DELETE FROM classification_progress WHERE app_id = ?", (app_id,))
+        conn.commit()
+
+
+def load_progress(app_id: int) -> Optional[Dict[str, int]]:
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT total, processed, updated_at FROM classification_progress WHERE app_id = ?",
+            (app_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "total": int(row["total"] or 0),
+        "processed": int(row["processed"] or 0),
+        "updated_at": int(row["updated_at"] or 0),
+    }

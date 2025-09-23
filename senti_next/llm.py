@@ -8,7 +8,7 @@ import os
 import re
 import subprocess
 from string import Template
-from typing import Any, Dict, Mapping, Sequence, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -16,7 +16,7 @@ from . import storage
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_MODEL = os.getenv("SENTINEXT_OLLAMA_MODEL", "gemma3:12b")
+OLLAMA_MODEL = os.getenv("SENTINEXT_OLLAMA_MODEL", "gemma3:4b")
 PROMPT_VERSION = "steam_review_labels_v1"
 PROMPT_TIMEOUT = int(os.getenv("SENTINEXT_OLLAMA_TIMEOUT", "120"))
 MAX_REVIEW_CHARS = 3000
@@ -194,16 +194,27 @@ def ensure_review_labels(
     app_id: int,
     reviews: Sequence[Mapping[str, Any]],
     force_refresh: bool = False,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     if not reviews:
+        if progress_callback is not None:
+            progress_callback(0, 0)
         return {}
 
     existing = storage.load_review_labels(app_id)
     results: Dict[str, Dict[str, Any]] = {}
+    total_reviews = len(reviews)
+    processed_count = 0
+
+    if progress_callback is not None:
+        progress_callback(0, total_reviews)
 
     for review in reviews:
         review_id_value = review.get("recommendationid") or review.get("review_id")
         if review_id_value is None:
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_reviews)
             continue
         review_id = str(review_id_value)
         review_text = (review.get("review") or "").strip()
@@ -237,11 +248,20 @@ def ensure_review_labels(
 
         if not needs_refresh:
             results[review_id] = cached["payload"]
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_reviews)
             continue
 
         payload, model_used = classify_review(review_text)
         storage.upsert_review_label(app_id, review_id, review_hash, payload, model_used, PROMPT_VERSION)
         results[review_id] = payload
+        processed_count += 1
+        if progress_callback is not None:
+            progress_callback(processed_count, total_reviews)
+
+    if progress_callback is not None and processed_count < total_reviews:
+        progress_callback(total_reviews, total_reviews)
 
     return results
 

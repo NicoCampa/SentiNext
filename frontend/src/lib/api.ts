@@ -1,4 +1,4 @@
-import { AnalyzeResponse, SearchResult } from "@/types";
+import { AnalyzeResponse, ProgressStatus, SearchResult } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -32,4 +32,11 @@ export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeRespo
     body: JSON.stringify(payload),
   });
   return handleResponse<AnalyzeResponse>(response);
+}
+
+export async function fetchProgress(appId: number): Promise<ProgressStatus> {
+  const response = await fetch(`${API_BASE}/progress/${appId}`, {
+    cache: "no-store",
+  });
+  return handleResponse<ProgressStatus>(response);
 }

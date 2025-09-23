@@ -145,3 +145,11 @@ export interface LLMMetrics {
   feature_request_rate: number;
   avg_confidence: number;
 }
+
+export interface ProgressStatus {
+  app_id: number;
+  total: number;
+  processed: number;
+  updated_at: string | null;
+  active: boolean;
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, Line, Pie, Doughnut, Scatter } from "react-chartjs-2";
 import {
   ArcElement,
@@ -15,10 +15,11 @@ import {
 } from "chart.js";
 import clsx from "clsx";
 
-import { analyzeGame, searchGames } from "@/lib/api";
+import { analyzeGame, fetchProgress, searchGames } from "@/lib/api";
 import {
   AnalyzeResponse,
   InsightsResponse,
+  ProgressStatus,
   ReviewRow,
   SearchResult,
   StarredGame,
@@ -1810,6 +1811,8 @@ export default function HomePage() {
   const [activeStarId, setActiveStarId] = useState<number | null>(null);
   const [comparisonSelection, setComparisonSelection] = useState<number[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [progressStatus, setProgressStatus] = useState<ProgressStatus | null>(null);
+  const progressTimerRef = useRef<number | null>(null);
   const [sentimentFilter, setSentimentFilter] = useState<
     "all" | "positive" | "neutral" | "negative"
   >("all");
@@ -1917,6 +1920,15 @@ async function handleExportReviews() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (progressTimerRef.current !== null) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!hydrated) return;
     const serialisable = Object.fromEntries(
       Object.entries(starred).map(([appid, game]) => [
@@ -1973,9 +1985,15 @@ async function handleExportReviews() {
     setError(null);
     try {
       setLoading(true);
+      setProgressStatus(null);
       const desiredCount = Math.max(0, Math.min(FETCH_LIMIT, Number(reviewCount) || 0));
 
-      const response = await analyzeGame({
+      if (progressTimerRef.current !== null) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+
+      const analyzePromise = analyzeGame({
         app_id: selectedApp.appid,
         language,
         review_count: desiredCount,
@@ -1984,6 +2002,21 @@ async function handleExportReviews() {
         persist,
         refresh,
       });
+
+      if (desiredCount > 0) {
+        const poll = async () => {
+          try {
+            const status = await fetchProgress(selectedApp.appid);
+            setProgressStatus(status);
+          } catch (err) {
+            // Silently ignore polling errors while analysis is running.
+          }
+        };
+        progressTimerRef.current = window.setInterval(poll, 500);
+        poll().catch(() => undefined);
+      }
+
+      const response = await analyzePromise;
       const allReviews = response.reviews ?? [];
       setSampleReviews(allReviews.slice(0, SAMPLE_LIMIT));
       setAnalysis({ metadata: response.metadata, insights: response.insights });
@@ -1998,6 +2031,11 @@ async function handleExportReviews() {
       setError((err as Error).message || "Analysis failed");
     } finally {
       setLoading(false);
+      if (progressTimerRef.current !== null) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      setProgressStatus(null);
     }
   }
 
@@ -2446,6 +2484,37 @@ async function handleExportReviews() {
               <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-200/70">
                 <span className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white" />
                 Fetching {Math.max(0, Math.min(FETCH_LIMIT, reviewCount)).toLocaleString()} reviews from Steam…
+              </div>
+            )}
+
+            {loading && progressStatus && progressStatus.total > 0 && (
+              <div className="mt-2 w-full space-y-1 rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-200/80">
+                <div className="flex items-center justify-between">
+                  <span>LLM processing</span>
+                  <span>
+                    {Math.min(progressStatus.processed, progressStatus.total).toLocaleString()} /
+                    {" "}
+                    {progressStatus.total.toLocaleString()} reviews
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800/60">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-fuchsia-400 transition-all"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        progressStatus.total
+                          ? (progressStatus.processed / progressStatus.total) * 100
+                          : 0,
+                      ).toFixed(1)}%`,
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  {progressStatus.active
+                    ? 'Streaming reviews through the local LLM classifier…'
+                    : 'Finalising classification results…'}
+                </p>
               </div>
             )}
 

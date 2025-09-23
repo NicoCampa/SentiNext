@@ -154,7 +154,31 @@ def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     if request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
-    llm_labels = llm.ensure_review_labels(request.app_id, all_reviews)
+    total_reviews = len(all_reviews)
+    progress_active = total_reviews > 0
+
+    if progress_active:
+        storage.reset_progress(request.app_id, total_reviews)
+
+        def _progress_callback(processed: int, total: int) -> None:
+            try:
+                storage.update_progress(request.app_id, processed, total)
+            except Exception:
+                # Progress updates should never break the analysis flow.
+                pass
+    else:
+        storage.clear_progress(request.app_id)
+
+    try:
+        llm_labels = llm.ensure_review_labels(
+            request.app_id,
+            all_reviews,
+            progress_callback=_progress_callback if progress_active else None,
+        )
+    finally:
+        if progress_active:
+            storage.update_progress(request.app_id, total_reviews, total_reviews)
+            storage.clear_progress(request.app_id)
 
     df = build_reviews_dataframe(all_reviews)
     df = llm.apply_review_labels(df, llm_labels)
@@ -225,3 +249,33 @@ def export_reviews(app_id: int, limit: Optional[int] = None, format: str = "csv"
             "Content-Disposition": f"attachment; filename=senti-next-reviews-{app_id}.csv",
         },
     )
+
+
+@app.get("/progress/{app_id}")
+def classification_progress(app_id: int) -> dict:
+    progress = storage.load_progress(app_id)
+    if not progress:
+        return {
+            "app_id": app_id,
+            "total": 0,
+            "processed": 0,
+            "active": False,
+            "updated_at": None,
+        }
+
+    total = int(progress.get("total", 0))
+    processed = int(progress.get("processed", 0))
+    timestamp = progress.get("updated_at")
+    updated_at = (
+        datetime.utcfromtimestamp(timestamp).isoformat() + "Z"
+        if timestamp
+        else None
+    )
+
+    return {
+        "app_id": app_id,
+        "total": total,
+        "processed": processed,
+        "active": processed < total,
+        "updated_at": updated_at,
+    }
