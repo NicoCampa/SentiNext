@@ -1,0 +1,67 @@
+"""SentiNext - Steam review sentiment MVP package."""
+
+from .analysis import (
+    build_reviews_dataframe,
+    churn_signal_rate,
+    core_fan_disappointment,
+    early_access_vs_release_sentiment,
+    free_vs_paid_sentiment,
+    helpfulness_summary,
+    keyword_summary_by_label,
+    market_quality_signal,
+    patch_impact_index,
+    playtime_segment_sentiment,
+    recommended_share_over_time,
+    recommendation_rate,
+    reviewer_influence_sentiment,
+    refund_risk_index,
+    summarize_playtime,
+    summarize_sentiment,
+    top_keywords,
+    veteran_benchmarking,
+)
+from .insights import prepare_insights
+from . import storage
+from . import llm
+from .steam_api import (
+    AUTHOR_METADATA_FIELDS,
+    REVIEW_METADATA_FIELDS,
+    SteamAPIError,
+    fetch_reviews,
+    iter_author_fields,
+    iter_review_fields,
+    resolve_app_id,
+    search_applications,
+)
+
+__all__ = [
+    "AUTHOR_METADATA_FIELDS",
+    "REVIEW_METADATA_FIELDS",
+    "SteamAPIError",
+    "build_reviews_dataframe",
+    "churn_signal_rate",
+    "core_fan_disappointment",
+    "early_access_vs_release_sentiment",
+    "fetch_reviews",
+    "free_vs_paid_sentiment",
+    "helpfulness_summary",
+    "iter_author_fields",
+    "iter_review_fields",
+    "keyword_summary_by_label",
+    "market_quality_signal",
+    "patch_impact_index",
+    "playtime_segment_sentiment",
+    "recommended_share_over_time",
+    "recommendation_rate",
+    "reviewer_influence_sentiment",
+    "refund_risk_index",
+    "resolve_app_id",
+    "search_applications",
+    "summarize_playtime",
+    "summarize_sentiment",
+    "top_keywords",
+    "prepare_insights",
+    "veteran_benchmarking",
+    "storage",
+    "llm",
+]
