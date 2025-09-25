@@ -10,17 +10,22 @@ dist/
 .env
 .env.*
 *.local
-
 # OS cruft
 .DS_Store
-
 # Python (if any)
 __pycache__/
 *.pyc
 .venv/
-
 # App data
 data/*.db
 data/*.sqlite
 *.sqlite
 *.db
+# Data
+/data/senti_next.db
+/data/*.sqlite
+/data/*.db
+# Cache & builds
+frontend/.next/
+frontend/out/
+*.py[cod]

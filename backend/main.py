@@ -72,6 +72,23 @@ class AnalyzeResponse(BaseModel):
     reviews: List[dict]
 
 
+class StarredGamePayload(BaseModel):
+    app_id: int
+    name: str
+    metadata: AnalyzeMetadata
+    insights: Optional[dict] = None
+    sample: List[dict] = Field(default_factory=list)
+
+
+class StarredGameResponse(BaseModel):
+    app_id: int
+    name: str
+    metadata: AnalyzeMetadata
+    insights: Optional[dict]
+    sample: List[dict]
+    updated_at: str
+
+
 REVIEW_EXPORT_COLUMNS = [
     "review_id",
     "review",
@@ -279,3 +296,41 @@ def classification_progress(app_id: int) -> dict:
         "active": processed < total,
         "updated_at": updated_at,
     }
+
+
+@app.get("/starred", response_model=List[StarredGameResponse])
+def list_starred_games() -> List[StarredGameResponse]:
+    entries = storage.load_starred_games()
+    response: List[StarredGameResponse] = []
+    for item in entries:
+        metadata_payload = item.get("metadata") or {}
+        metadata = AnalyzeMetadata(**metadata_payload)
+        updated_at = datetime.utcfromtimestamp(item["updated_at"]).isoformat() + "Z"
+        response.append(
+            StarredGameResponse(
+                app_id=item["app_id"],
+                name=item["name"],
+                metadata=metadata,
+                insights=item.get("insights"),
+                sample=item.get("sample", []),
+                updated_at=updated_at,
+            )
+        )
+    return response
+
+
+@app.post("/starred", status_code=204)
+def save_starred_game(payload: StarredGamePayload) -> None:
+    sample = payload.sample[:SAMPLE_LIMIT]
+    storage.save_starred_game(
+        app_id=payload.app_id,
+        name=payload.name,
+        metadata=payload.metadata.dict(),
+        insights=payload.insights,
+        sample=sample,
+    )
+
+
+@app.delete("/starred/{app_id}", status_code=204)
+def remove_starred_game(app_id: int) -> None:
+    storage.delete_starred_game(app_id)

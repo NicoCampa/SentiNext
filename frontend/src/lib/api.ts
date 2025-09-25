@@ -1,4 +1,10 @@
-import { AnalyzeResponse, ProgressStatus, SearchResult } from "@/types";
+import {
+  AnalyzeResponse,
+  ProgressStatus,
+  SearchResult,
+  StarredGameDTO,
+  StarredGamePayload,
+} from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -39,4 +45,33 @@ export async function fetchProgress(appId: number): Promise<ProgressStatus> {
     cache: "no-store",
   });
   return handleResponse<ProgressStatus>(response);
+}
+
+export async function fetchStarredGames(): Promise<StarredGameDTO[]> {
+  const response = await fetch(`${API_BASE}/starred`, {
+    cache: "no-store",
+  });
+  return handleResponse<StarredGameDTO[]>(response);
+}
+
+export async function saveStarredGame(payload: StarredGamePayload): Promise<void> {
+  await fetch(`${API_BASE}/starred`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`Failed to save starred game (status ${response.status})`);
+    }
+  });
+}
+
+export async function removeStarredGame(appId: number): Promise<void> {
+  await fetch(`${API_BASE}/starred/${appId}`, {
+    method: "DELETE",
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`Failed to remove starred game (status ${response.status})`);
+    }
+  });
 }

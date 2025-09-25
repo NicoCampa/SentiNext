@@ -127,6 +127,7 @@ export interface StarredGame {
   insights: InsightsResponse | null;
   sample: ReviewRow[];
   name: string;
+  updated_at?: string;
 }
 
 export interface TopicFrequency {
@@ -152,4 +153,21 @@ export interface ProgressStatus {
   processed: number;
   updated_at: string | null;
   active: boolean;
+}
+
+export interface StarredGamePayload {
+  app_id: number;
+  name: string;
+  metadata: AnalyzeMetadata;
+  insights: InsightsResponse | null;
+  sample: ReviewRow[];
+}
+
+export interface StarredGameDTO {
+  app_id: number;
+  name: string;
+  metadata: AnalyzeMetadata;
+  insights: InsightsResponse | null;
+  sample: ReviewRow[];
+  updated_at: string;
 }

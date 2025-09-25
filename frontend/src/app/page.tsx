@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { Bar, Line, Pie, Doughnut, Scatter } from "react-chartjs-2";
 import {
   ArcElement,
@@ -15,7 +16,14 @@ import {
 } from "chart.js";
 import clsx from "clsx";
 
-import { analyzeGame, fetchProgress, searchGames } from "@/lib/api";
+import {
+  analyzeGame,
+  fetchProgress,
+  fetchStarredGames,
+  removeStarredGame,
+  saveStarredGame,
+  searchGames,
+} from "@/lib/api";
 import {
   AnalyzeResponse,
   InsightsResponse,
@@ -23,6 +31,7 @@ import {
   ReviewRow,
   SearchResult,
   StarredGame,
+  StarredGamePayload,
   ThemeDefinition,
   TopicFrequency,
 } from "@/types";
@@ -49,12 +58,18 @@ const FILTERS = [
 ];
 
 const TABLE_HELPERS: Record<string, string> = {
-  "Early access vs release": "Distribution of reviews written during Early Access versus after full release.",
-  "Steam purchase vs external": "Breakdown of reviewers who bought on Steam versus received keys/free copies.",
-  "Playtime segments": "Reviewer cohorts grouped by total lifetime hours played when writing the review.",
-  "Reviewer influence": "Heavy reviewers (top decile by number of reviews) compared to the rest.",
-  "Veteran benchmarking": "Sentiment split between high-library owners (top decile) and other players.",
-  "Market quality": "Sentiment comparison between Steam purchasers, external key users, and freebies.",
+  "Early access vs release":
+    "Compares LLM-labelled sentiment and recommendation rates for reviews posted during Early Access versus after full launch.",
+  "Steam purchase vs external":
+    "Shows how sentiment shifts between verified Steam purchasers, external key activations, and reviewers who received the game for free.",
+  "Playtime segments":
+    "Buckets reviewers by lifetime playtime so you can contrast first-hour impressions, mid-term players, and long-term fans.",
+  "Reviewer influence":
+    "Contrasts sentiment between prolific reviewers (top decile by total Steam reviews written) and the broader audience.",
+  "Veteran benchmarking":
+    "Highlights how high-library owners react compared with smaller-library players, signalling franchise veteran sentiment.",
+  "Market quality":
+    "Maps sentiment for Steam purchasers versus those using external keys to surface perceived value and potential grey-market impact.",
 };
 
 const SAMPLE_LIMIT = 200;
@@ -97,6 +112,53 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[0.65rem] uppercase tracking-[0.38em] text-slate-400">{title}</p>
+      {subtitle ? <p className="text-xs text-slate-400/80">{subtitle}</p> : null}
+    </div>
+  );
+}
+
+function InfoIcon({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function handleClick(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative inline-flex" ref={ref}>
+      <button
+        type="button"
+        aria-label="Toggle explanation"
+        onClick={() => setOpen((prev) => !prev)}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[10px] text-slate-200 transition hover:border-white/40 hover:text-white"
+      >
+        ⓘ
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 z-30 mb-2 w-72 max-w-[18rem] rounded-lg border border-white/10 bg-slate-900/90 p-3 text-left text-xs leading-relaxed text-slate-200 shadow-[0_14px_30px_rgba(8,15,40,0.45)]">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MetricsGrid({ insights, theme }: { insights: InsightsResponse; theme: ThemeDefinition }) {
   const llmMetrics = insights.llm ?? {
     pain_point_rate: 0,
@@ -107,49 +169,49 @@ function MetricsGrid({ insights, theme }: { insights: InsightsResponse; theme: T
     {
       title: "% recommended",
       value: formatPercentage(insights.recommendation, 1),
-      helper: "Share of reviews that marked the title as recommended.",
+      helper: "Percent of Steam reviewers who clicked the in-client 'Recommended' toggle.",
       accent: theme.palette.secondary,
     },
     {
       title: "% positive (LLM)",
       value: formatPercentage(insights.metrics.share_positive, 1),
-      helper: "Positive sentiment share classified by the local LLM.",
+      helper: "Share of reviews the local LLM classified as positive in tone.",
       accent: theme.palette.positive,
     },
     {
       title: "% negative (LLM)",
       value: formatPercentage(insights.metrics.share_negative, 1),
-      helper: "Negative sentiment share classified by the local LLM.",
+      helper: "Share of reviews the LLM tagged as negative, indicating friction or dissatisfaction.",
       accent: theme.palette.negative,
     },
     {
       title: "Avg. LLM score",
       value: insights.metrics.average_compound.toFixed(2),
-      helper: "Mean sentiment score mapped from the LLM labels (-1 to 1).",
+      helper: "Mean sentiment score using the LLM label mapping (positive = +1, neutral = 0, negative = -1).",
       accent: theme.palette.accent,
     },
     {
       title: "Pain-point rate",
       value: formatPercentage(llmMetrics.pain_point_rate, 1),
-      helper: "Fraction of reviews where the LLM spotted a concrete issue.",
+      helper: "Portion of reviews where the LLM detected a concrete problem such as a bug, crash, or broken feature.",
       accent: theme.palette.negative,
     },
     {
       title: "Feature-request rate",
       value: formatPercentage(llmMetrics.feature_request_rate, 1),
-      helper: "Percentage of reviews asking for new or improved functionality.",
+      helper: "Percentage of reviews explicitly requesting a new feature or change.",
       accent: theme.palette.secondary,
     },
     {
       title: "LLM confidence",
       value: `${(llmMetrics.avg_confidence * 100).toFixed(0)}%`,
-      helper: "Average confidence reported by the LLM classifier.",
+      helper: "Average confidence returned by the local LLM across the analysed reviews.",
       accent: theme.palette.accent,
     },
     {
       title: "Median playtime",
       value: `${insights.playtime.median_playtime_hours.toFixed(1)} h`,
-      helper: "Median lifetime hours played by reviewers.",
+      helper: "Median lifetime hours played (at review time) for the contributing reviewers.",
       accent: theme.palette.positive,
     },
   ];
@@ -232,14 +294,7 @@ function MetricCard({
     >
       <div className="flex items-center justify-between">
         <p className="text-xs uppercase tracking-[0.28em] text-slate-300/70">{title}</p>
-        {helper ? (
-          <span
-            title={helper}
-            className="text-xs text-slate-200/70 transition hover:text-white"
-          >
-            ⓘ
-          </span>
-        ) : null}
+        {helper ? <InfoIcon text={helper} /> : null}
       </div>
       <p className="mt-3 text-3xl font-semibold text-white">{value}</p>
     </div>
@@ -253,7 +308,7 @@ function RiskPanel({ insights, theme }: { insights: InsightsResponse; theme: The
     {
       title: "Refund risk",
       value: formatPercentage(risk.refund_risk),
-      helper: "Share of negative reviews with <2h playtime (refund window).",
+      helper: "Percent of negative reviews from players with under two hours played—potential Steam refund candidates.",
       tone:
         risk.refund_risk >= 0.4
           ? "#fa8072"
@@ -270,7 +325,7 @@ function RiskPanel({ insights, theme }: { insights: InsightsResponse; theme: The
     {
       title: "Core fan disappointment",
       value: formatPercentage(risk.core_fan_disappointment),
-      helper: "Negative reviews from players with >50h playtime.",
+      helper: "Negative-review share among players who have invested 50+ hours in the game.",
       tone:
         risk.core_fan_disappointment >= 0.25
           ? "#fa8072"
@@ -287,7 +342,7 @@ function RiskPanel({ insights, theme }: { insights: InsightsResponse; theme: The
     {
       title: "Churn risk",
       value: formatPercentage(risk.churn_rate),
-      helper: "Negative reviews whose last play was within the churn window (default 7 days).",
+      helper: "Share of negative reviews where the author last played within the default 7-day churn window.",
       tone:
         risk.churn_rate >= 0.35
           ? "#fa8072"
@@ -319,9 +374,7 @@ function RiskPanel({ insights, theme }: { insights: InsightsResponse; theme: The
         >
           <div className="flex items-center justify-between">
             <p className="text-xs uppercase tracking-[0.28em] text-slate-200/80">{item.title}</p>
-            <span title={item.helper} className="text-xs text-slate-200/70">
-              ⓘ
-            </span>
+            <InfoIcon text={item.helper} />
           </div>
           <p className="mt-2 text-2xl font-semibold text-white">{item.value}</p>
           <p className="mt-3 text-sm text-slate-200/80">{item.note}</p>
@@ -338,12 +391,12 @@ function CohortDonuts({ insights, theme }: { insights: InsightsResponse; theme: 
     {
       title: "Release stage",
       rows: segments.early_access_vs_release,
-      helper: "Share of reviews written during early access vs post release.",
+      helper: "Distribution of sentiment metrics for reviews written in Early Access compared to post-release updates.",
     },
     {
       title: "Purchase source",
       rows: segments.free_vs_paid,
-      helper: "Steam purchases vs external keys / free copies.",
+      helper: "Breakdown of sentiment by purchase source: Steam store, external keys, or freebies.",
     },
   ];
 
@@ -371,9 +424,7 @@ function CohortDonuts({ insights, theme }: { insights: InsightsResponse; theme: 
             >
               <div className="flex items-center justify-between">
                 <h4 className="text-base font-semibold text-white">{chart.title}</h4>
-                <span title={chart.helper} className="text-xs text-slate-200/70">
-                  ⓘ
-                </span>
+                <InfoIcon text={chart.helper} />
               </div>
               <p className="mt-2 text-sm text-slate-400">Not enough data yet.</p>
             </div>
@@ -385,20 +436,18 @@ function CohortDonuts({ insights, theme }: { insights: InsightsResponse; theme: 
         const colors = labels.map((_, index) => hexToRgba(palette[index % palette.length], 0.85));
 
         return (
-          <div
-            key={chart.title}
-            className="rounded-2xl border p-5 shadow-[0_20px_45px_rgba(8,15,40,0.45)] backdrop-blur"
-            style={{
-              borderColor: theme.palette.border,
-              background: hexToRgba(theme.palette.surface_alt, 0.72),
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <h4 className="text-base font-semibold text-white">{chart.title}</h4>
-              <span title={chart.helper} className="text-xs text-slate-200/70">
-                ⓘ
-              </span>
-            </div>
+            <div
+              key={chart.title}
+              className="rounded-2xl border p-5 shadow-[0_20px_45px_rgba(8,15,40,0.45)] backdrop-blur"
+              style={{
+                borderColor: theme.palette.border,
+                background: hexToRgba(theme.palette.surface_alt, 0.72),
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <h4 className="text-base font-semibold text-white">{chart.title}</h4>
+                <InfoIcon text={chart.helper} />
+              </div>
             <div className="mt-3 flex flex-col items-center gap-4 md:flex-row">
               <div className="h-40 w-40">
                 <Doughnut
@@ -495,9 +544,7 @@ function PlaytimeSentimentScatter({
     >
       <div className="flex items-center justify-between">
         <h4 className="text-base font-semibold text-white">Playtime vs sentiment</h4>
-        <span className="text-xs text-slate-200/70" title="Each dot is a review (x = total hours played, y = sentiment score).">
-          ⓘ
-        </span>
+        <InfoIcon text="Each dot is a review: X-axis is lifetime hours played when posted, Y-axis is the LLM sentiment score (-1 to 1)." />
       </div>
       <div className="mt-4 h-64">
         <Scatter
@@ -570,12 +617,7 @@ function HelpfulHeatmap({ reviews, theme }: { reviews: ReviewRow[]; theme: Theme
     >
       <div className="flex items-center justify-between">
         <h4 className="text-base font-semibold text-white">Helpful votes vs sentiment</h4>
-        <span
-          className="text-xs text-slate-200/70"
-          title="Highlights sentiment distribution across helpful vote buckets. Darker cells = more reviews."
-        >
-          ⓘ
-        </span>
+        <InfoIcon text="Shows how the LLM sentiment mix changes as helpful votes increase; darker cells indicate more reviews in that bucket." />
       </div>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-left text-sm">
@@ -668,9 +710,7 @@ function ComparisonTrendOverlay({
     >
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">Trend overlay</h3>
-        <span className="text-xs text-slate-200/70" title="Compare % recommended trajectories for selected games.">
-          ⓘ
-        </span>
+        <InfoIcon text="Compare % recommended trajectories for selected games." />
       </div>
       <div className="mt-4 h-72">
         <Line
@@ -871,7 +911,10 @@ function TrendSection({
           background: hexToRgba(theme.palette.surface_alt, 0.7),
         }}
       >
+      <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-slate-100">Trend</h3>
+        <InfoIcon text="Tracks % Recommended (Steam toggle) and the LLM sentiment score over time using 7-day buckets." />
+      </div>
         <div className="mt-4 h-64">
           <Line data={chartData} options={chartOptions} />
         </div>
@@ -883,7 +926,10 @@ function TrendSection({
           background: hexToRgba(theme.palette.surface_alt, 0.7),
         }}
       >
+      <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-slate-100">Sentiment mix</h3>
+        <InfoIcon text="Pie chart of positive, neutral, and negative labels assigned by the on-device LLM." />
+      </div>
         <div className="mt-4">
           <Pie data={pieData} />
         </div>
@@ -901,7 +947,7 @@ function TrendSection({
             <Line data={confidenceData} options={confidenceOptions} />
           </div>
           <p className="mt-3 text-xs text-slate-400">
-            Confidence uses the right axis; pain-point and feature-request rates use the left axis (percent of reviews per period).
+            Confidence traces the LLM self-reported certainty (right axis); pain-point and feature-request lines show the % of reviews per 7-day window (left axis).
           </p>
         </div>
       ) : null}
@@ -937,9 +983,7 @@ function Table({
       <div className="flex items-center justify-between">
         <h4 className="text-base font-semibold text-white">{title}</h4>
         {helper ? (
-          <span className="text-xs text-slate-200/70" title={helper}>
-            ⓘ
-          </span>
+          <InfoIcon text={helper} />
         ) : null}
       </div>
       <div className="mt-4 overflow-x-auto">
@@ -1020,24 +1064,24 @@ function TopicsSection({
         onSelectTopic={onSelectTopic}
       />
       <div className="space-y-6">
-        <TopicTable
-          title="Most positive topics"
-          rows={positiveRows}
-          theme={theme}
-          topicKey="Topic"
-          activeTopic={activeTopic}
-          onSelectTopic={onSelectTopic}
-          helper="LLM-classified topics with the highest share of positive reviews."
-        />
-        <TopicTable
-          title="Most negative topics"
-          rows={negativeRows}
-          theme={theme}
-          topicKey="Topic"
-          activeTopic={activeTopic}
-          onSelectTopic={onSelectTopic}
-          helper="Topics most often associated with negative sentiment."
-        />
+      <TopicTable
+        title="Most positive topics"
+        rows={positiveRows}
+        theme={theme}
+        topicKey="Topic"
+        activeTopic={activeTopic}
+        onSelectTopic={onSelectTopic}
+        helper="Topics where the LLM sees the highest proportion of positive reviews, along with pain-point and feature-request rates."
+      />
+      <TopicTable
+        title="Most negative topics"
+        rows={negativeRows}
+        theme={theme}
+        topicKey="Topic"
+        activeTopic={activeTopic}
+        onSelectTopic={onSelectTopic}
+        helper="Topics most frequently tied to negative LLM sentiment—useful for spotting friction clusters."
+      />
       </div>
     </div>
   );
@@ -1141,9 +1185,7 @@ function TopicFrequencyChart({
     >
       <div className="flex items-center justify-between">
         <h4 className="text-base font-semibold text-white">LLM topic hotspots</h4>
-        <span className="text-xs text-slate-200/70" title="Most mentioned topics in recent reviews as labelled by the LLM.">
-          ⓘ
-        </span>
+        <InfoIcon text="Most-mentioned topics detected by the LLM; click a bar to focus filters and tables on that topic." />
       </div>
       <div className="mt-4 h-72">
         <Bar data={data} options={options} />
@@ -1200,9 +1242,7 @@ function TopicTable({
       <div className="flex items-center justify-between">
         <h4 className="text-base font-semibold text-white">{title}</h4>
         {helper ? (
-          <span className="text-xs text-slate-200/70" title={helper}>
-            ⓘ
-          </span>
+          <InfoIcon text={helper} />
         ) : null}
       </div>
       <div className="mt-3 overflow-x-auto">
@@ -1426,9 +1466,7 @@ function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper?: stri
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">Raw review sample</h3>
         {helper ? (
-          <span className="text-xs text-slate-200/70" title={helper}>
-            ⓘ
-          </span>
+          <InfoIcon text={helper} />
         ) : null}
       </div>
       <div className="mt-4 max-h-96 overflow-y-auto">
@@ -1695,7 +1733,7 @@ function InsightsView({
   const topicOptions = insights.topic_catalog ?? [];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-sky-300/80">Snapshot</p>
@@ -1710,84 +1748,138 @@ function InsightsView({
         </div>
       </div>
 
-      <MetricsGrid insights={insights} theme={theme} />
-      <RiskPanel insights={insights} theme={theme} />
-
-      <CohortDonuts insights={insights} theme={theme} />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <PlaytimeSentimentScatter reviews={sampleReviews} theme={theme} />
-        <HelpfulHeatmap reviews={sampleReviews} theme={theme} />
-      </div>
-
-      <TrendSection insights={insights} theme={theme} />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Table
-          title="Early access vs release"
-          rows={insights.segments.early_access_vs_release}
-          theme={theme}
-          helper={TABLE_HELPERS["Early access vs release"]}
+      <section className="space-y-6">
+        <SectionTitle
+          title="Sentiment pulse"
+          subtitle="LLM-powered KPIs summarising the current state of player sentiment."
         />
-        <Table
-          title="Steam purchase vs external"
-          rows={insights.segments.free_vs_paid}
-          theme={theme}
-          helper={TABLE_HELPERS["Steam purchase vs external"]}
+        <MetricsGrid insights={insights} theme={theme} />
+      </section>
+
+      <section className="space-y-6">
+        <SectionTitle
+          title="Risk signals"
+          subtitle="Identify where dissatisfaction could translate into refunds or churn."
         />
-      </div>
-      <Table
-        title="Playtime segments"
-        rows={insights.segments.playtime_buckets}
-        theme={theme}
-        helper={TABLE_HELPERS["Playtime segments"]}
-      />
+        <RiskPanel insights={insights} theme={theme} />
+      </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Table
-          title="Reviewer influence"
-          rows={insights.audience.reviewer_influence}
-          theme={theme}
-          helper={TABLE_HELPERS["Reviewer influence"]}
+      <section className="space-y-6">
+        <SectionTitle
+          title="Audience cohorts"
+          subtitle="Understand how sentiment varies across release phase and purchase source."
         />
-        <Table
-          title="Veteran benchmarking"
-          rows={insights.audience.veteran_benchmarking}
-          theme={theme}
-          helper={TABLE_HELPERS["Veteran benchmarking"]}
+        <CohortDonuts insights={insights} theme={theme} />
+      </section>
+
+      <section className="space-y-6">
+        <SectionTitle
+          title="Review diagnostics"
+          subtitle="Visualise playtime sentiment distribution and helpful vote patterns."
         />
-      </div>
-      <Table
-        title="Market quality"
-        rows={insights.audience.market_quality}
-        theme={theme}
-        helper={TABLE_HELPERS["Market quality"]}
-      />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <PlaytimeSentimentScatter reviews={sampleReviews} theme={theme} />
+          <HelpfulHeatmap reviews={sampleReviews} theme={theme} />
+        </div>
+      </section>
 
-      <TopicsSection
-        insights={insights}
-        theme={theme}
-        activeTopic={topicFilter}
-        onSelectTopic={onTopicChange}
-      />
+      <section className="space-y-6">
+        <SectionTitle
+          title="Momentum & mix"
+          subtitle="Track trends in recommendation rate, LLM sentiment, and confidence over time."
+        />
+        <TrendSection insights={insights} theme={theme} />
+      </section>
 
-      <ReviewFilters
-        sentimentFilter={sentimentFilter}
-        onSentimentChange={onSentimentChange}
-        painFilter={painFilter}
-        onPainChange={onPainChange}
-        featureFilter={featureFilter}
-        onFeatureChange={onFeatureChange}
-        topicFilter={topicFilter}
-        onTopicChange={onTopicChange}
-        topics={topicOptions}
-        theme={theme}
-      />
+      <section className="space-y-6">
+        <SectionTitle
+          title="Segments & sources"
+          subtitle="Break down sentiment by lifecycle stage, playtime cohort, and reviewer influence."
+        />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Table
+            title="Early access vs release"
+            rows={insights.segments.early_access_vs_release}
+            theme={theme}
+            helper={TABLE_HELPERS["Early access vs release"]}
+          />
+          <Table
+            title="Steam purchase vs external"
+            rows={insights.segments.free_vs_paid}
+            theme={theme}
+            helper={TABLE_HELPERS["Steam purchase vs external"]}
+          />
+        </div>
+        <Table
+          title="Playtime segments"
+          rows={insights.segments.playtime_buckets}
+          theme={theme}
+          helper={TABLE_HELPERS["Playtime segments"]}
+        />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Table
+            title="Reviewer influence"
+            rows={insights.audience.reviewer_influence}
+            theme={theme}
+            helper={TABLE_HELPERS["Reviewer influence"]}
+          />
+          <Table
+            title="Veteran benchmarking"
+            rows={insights.audience.veteran_benchmarking}
+            theme={theme}
+            helper={TABLE_HELPERS["Veteran benchmarking"]}
+          />
+        </div>
+        <Table
+          title="Market quality"
+          rows={insights.audience.market_quality}
+          theme={theme}
+          helper={TABLE_HELPERS["Market quality"]}
+        />
+      </section>
 
-      <ReviewsTable
-        reviews={filteredReviews.slice(0, 200)}
-        helper={`Showing ${Math.min(filteredReviews.length, 200)} of ${filteredReviews.length} filtered reviews (out of ${sampleReviews.length}). Export the CSV for the full dataset.`}
-      />
+      <section className="space-y-6">
+        <SectionTitle
+          title="LLM topic intelligence"
+          subtitle="Drill into themes the classifier detected and see which ones carry praise or pain."
+        />
+        <TopicsSection
+          insights={insights}
+          theme={theme}
+          activeTopic={topicFilter}
+          onSelectTopic={onTopicChange}
+        />
+      </section>
+
+      <section className="space-y-6">
+        <SectionTitle
+          title="LLM filters"
+          subtitle="Refine the review sample by sentiment, pain points, feature requests, or topic focus."
+        />
+        <ReviewFilters
+          sentimentFilter={sentimentFilter}
+          onSentimentChange={onSentimentChange}
+          painFilter={painFilter}
+          onPainChange={onPainChange}
+          featureFilter={featureFilter}
+          onFeatureChange={onFeatureChange}
+          topicFilter={topicFilter}
+          onTopicChange={onTopicChange}
+          topics={topicOptions}
+          theme={theme}
+        />
+      </section>
+
+      <section className="space-y-6">
+        <SectionTitle
+          title="Review sample"
+          subtitle="Preview a filtered slice of the latest reviews with the LLM annotations applied."
+        />
+        <ReviewsTable
+          reviews={filteredReviews.slice(0, 200)}
+          helper={`Showing ${Math.min(filteredReviews.length, 200)} of ${filteredReviews.length} filtered reviews (out of ${sampleReviews.length}). Export the CSV for the full dataset.`}
+        />
+      </section>
     </div>
   );
 }
@@ -1810,7 +1902,6 @@ export default function HomePage() {
   const [starred, setStarred] = useState<Record<number, StarredGame>>({});
   const [activeStarId, setActiveStarId] = useState<number | null>(null);
   const [comparisonSelection, setComparisonSelection] = useState<number[]>([]);
-  const [hydrated, setHydrated] = useState(false);
   const [progressStatus, setProgressStatus] = useState<ProgressStatus | null>(null);
   const progressTimerRef = useRef<number | null>(null);
   const [sentimentFilter, setSentimentFilter] = useState<
@@ -1884,39 +1975,33 @@ async function handleExportReviews() {
   }
 
   useEffect(() => {
-    setHydrated(true);
-    try {
-      const storedStarred = localStorage.getItem("senti-starred");
-      const storedActive = localStorage.getItem("senti-active-star-id");
-      const storedComparison = localStorage.getItem("senti-comparison");
-
-      if (storedStarred) {
-        const parsed = JSON.parse(storedStarred) as Record<string, StarredGame & { reviews?: ReviewRow[] }>;
-        const migrated: Record<number, StarredGame> = {};
-        Object.entries(parsed).forEach(([key, game]) => {
-          const sample = Array.isArray(game.sample)
-            ? game.sample
-            : Array.isArray((game as any).reviews)
-            ? (game as any).reviews.slice(0, SAMPLE_LIMIT)
-            : [];
-          migrated[Number(key)] = {
-            metadata: game.metadata,
-            insights: game.insights ?? DEFAULT_INSIGHTS,
-            sample,
-            name: game.name,
+    async function loadStarred() {
+      try {
+        const remote = await fetchStarredGames();
+        if (!remote.length) {
+          setStarred({});
+          setActiveStarId(null);
+          setComparisonSelection([]);
+          return;
+        }
+        const mapping = remote.reduce<Record<number, StarredGame>>((acc, entry) => {
+          acc[entry.app_id] = {
+            metadata: entry.metadata,
+            insights: (entry.insights ?? DEFAULT_INSIGHTS) as InsightsResponse | null,
+            sample: (entry.sample ?? []) as ReviewRow[],
+            name: entry.name,
+            updated_at: entry.updated_at,
           };
-        });
-        setStarred(migrated);
+          return acc;
+        }, {});
+        setStarred(mapping);
+        setComparisonSelection((prev) => prev.filter((id) => mapping[id]));
+        setActiveStarId((prev) => prev ?? remote[0].app_id);
+      } catch (err) {
+        console.warn("Failed to fetch starred games", err);
       }
-      if (storedActive) {
-        setActiveStarId(JSON.parse(storedActive));
-      }
-      if (storedComparison) {
-        setComparisonSelection(JSON.parse(storedComparison));
-      }
-    } catch (err) {
-      console.warn("Failed to load workspace state", err);
     }
+    loadStarred();
   }, []);
 
   useEffect(() => {
@@ -1928,33 +2013,6 @@ async function handleExportReviews() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    const serialisable = Object.fromEntries(
-      Object.entries(starred).map(([appid, game]) => [
-        appid,
-        {
-          ...game,
-          sample: game.sample.slice(0, SAMPLE_LIMIT),
-        },
-      ]),
-    );
-    localStorage.setItem("senti-starred", JSON.stringify(serialisable));
-  }, [starred, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    if (activeStarId === null) {
-      localStorage.removeItem("senti-active-star-id");
-    } else {
-      localStorage.setItem("senti-active-star-id", JSON.stringify(activeStarId));
-    }
-  }, [activeStarId, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("senti-comparison", JSON.stringify(comparisonSelection));
-  }, [comparisonSelection, hydrated]);
 
   async function handleSearch() {
     if (query.trim().length < 2) {
@@ -2039,46 +2097,63 @@ async function handleExportReviews() {
     }
   }
 
-  function handleStarCurrent() {
+  async function handleStarCurrent() {
     if (!analysis || !selectedApp) {
       setFlash({ type: "error", message: "Analyze a game before starring it." });
       return;
     }
-    setStarred((prev) => {
-      const next: Record<number, StarredGame> = {
+    const payload: StarredGamePayload = {
+      app_id: analysis.metadata.app_id,
+      name: selectedApp.name,
+      metadata: analysis.metadata,
+      insights: analysis.insights,
+      sample: sampleReviews.slice(0, SAMPLE_LIMIT),
+    };
+
+    try {
+      await saveStarredGame(payload);
+      setStarred((prev) => ({
         ...prev,
-        [analysis.metadata.app_id]: {
-          metadata: analysis.metadata,
-          insights: analysis.insights ?? DEFAULT_INSIGHTS,
-          sample: sampleReviews,
-          name: selectedApp.name,
+        [payload.app_id]: {
+          metadata: payload.metadata,
+          insights: payload.insights ?? DEFAULT_INSIGHTS,
+          sample: payload.sample,
+          name: payload.name,
+          updated_at: new Date().toISOString(),
         },
-      };
-      return next;
-    });
-    setActiveStarId(analysis.metadata.app_id);
-    if (Object.keys(starred).length >= 1) {
+      }));
+      setActiveStarId(payload.app_id);
       setComparisonSelection((prev) => {
-        if (prev.includes(analysis.metadata.app_id)) {
+        if (prev.includes(payload.app_id)) {
           return prev;
         }
-        const combined = [...prev, analysis.metadata.app_id];
+        const combined = [...prev, payload.app_id];
         return combined.slice(-3);
       });
+      setFlash({ type: "success", message: `${payload.name} saved to the starred workspace.` });
+    } catch (err) {
+      console.error(err);
+      setFlash({ type: "error", message: "Could not save this game to the starred workspace." });
     }
-    setFlash({ type: "success", message: `${selectedApp.name} saved to the starred workspace.` });
   }
 
-  function handleRemoveStar(appid: number) {
-    setStarred((prev) => {
-      const next = { ...prev };
-      delete next[appid];
-      return next;
-    });
-    if (activeStarId === appid) {
-      setActiveStarId(null);
+  async function handleRemoveStar(appid: number) {
+    try {
+      await removeStarredGame(appid);
+      setStarred((prev) => {
+        const next = { ...prev };
+        delete next[appid];
+        return next;
+      });
+      if (activeStarId === appid) {
+        setActiveStarId(null);
+      }
+      setComparisonSelection((prev) => prev.filter((id) => id !== appid));
+      setFlash({ type: "success", message: "Removed from the starred workspace." });
+    } catch (err) {
+      console.error(err);
+      setFlash({ type: "error", message: "Failed to remove the starred game." });
     }
-    setComparisonSelection((prev) => prev.filter((id) => id !== appid));
   }
 
   function handleToggleComparison(appid: number) {
@@ -2161,6 +2236,16 @@ async function handleExportReviews() {
       return true;
     });
   }, [currentSample, sentimentFilter, painFilter, featureFilter, topicFilter]);
+
+  const starredEntries = useMemo(
+    () =>
+      Object.entries(starred).sort(([, a], [, b]) => {
+        const aDate = Date.parse(a.updated_at ?? a.metadata?.fetched_at ?? "") || 0;
+        const bDate = Date.parse(b.updated_at ?? b.metadata?.fetched_at ?? "") || 0;
+        return bDate - aDate;
+      }),
+    [starred],
+  );
 
   const activeTheme = (
     focusedAnalysis?.summary.insights?.theme || DEFAULT_THEME
@@ -2303,64 +2388,120 @@ async function handleExportReviews() {
             </div>
           </div>
 
-          <div>
+          <div className="space-y-3">
             <p className="text-xs uppercase tracking-[0.35em] text-slate-400">⭐ Starred workspace</p>
-            {!Object.keys(starred).length ? (
-              <p className="mt-2 text-xs text-slate-500">
-                Star a game after analysing it to pin the dataset here for quick recall and comparison insights.
+            {!starredEntries.length ? (
+              <p className="text-xs text-slate-500">
+                Star a game after analysing it to pin the dataset here for quick recall and comparisons.
               </p>
             ) : (
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="text-xs text-slate-400">Focus starred game</label>
-                  <select
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
-                    value={activeStarId ?? ""}
-                    onChange={(event) =>
-                      setActiveStarId(event.target.value ? Number(event.target.value) : null)
+              <div className="mt-2 flex flex-col gap-3">
+                {starredEntries.map(([appidKey, game]) => {
+                  const appId = Number(appidKey);
+                  const isActive = activeStarId === appId;
+                  const inComparison = comparisonSelection.includes(appId);
+                  const insights = game.insights;
+                  const metrics = insights?.metrics ?? {};
+                  const recommendation = insights
+                    ? formatPercentage(insights.recommendation ?? 0, 1)
+                    : null;
+                  const positiveShare = insights
+                    ? formatPercentage(metrics.share_positive ?? 0, 1)
+                    : null;
+                  const savedAt = game.updated_at ?? game.metadata?.fetched_at ?? null;
+                  const savedLabel = (() => {
+                    if (!savedAt) return "Saved just now";
+                    const parsed = new Date(savedAt);
+                    return Number.isNaN(parsed.getTime())
+                      ? savedAt
+                      : parsed.toLocaleString();
+                  })();
+
+                  const handleFocus = () => {
+                    setActiveStarId(appId);
+                    setFlash(null);
+                  };
+
+                  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleFocus();
                     }
-                  >
-                    {Object.entries(starred).map(([appid, game]) => (
-                      <option key={appid} value={appid}>
-                        {game.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  };
 
-                {activeStarId !== null && starred[activeStarId] && (
-                  <button
-                    onClick={() => handleRemoveStar(activeStarId)}
-                    className="w-full rounded-xl border border-white/10 bg-transparent px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/5"
-                  >
-                    Remove from workspace
-                  </button>
-                )}
-
-                {Object.keys(starred).length >= 2 && (
-                  <div>
-                    <p className="text-xs text-slate-400">Comparison set</p>
-                    <div className="mt-2 space-y-2">
-                      {Object.entries(starred).map(([appid, game]) => (
-                        <label
-                          key={appid}
-                          className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-xs text-slate-200 backdrop-blur"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={comparisonSelection.includes(Number(appid))}
-                            onChange={() => handleToggleComparison(Number(appid))}
-                            className="accent-sky-500"
-                          />
-                          <span>{game.name}</span>
-                        </label>
-                      ))}
+                  return (
+                    <div
+                      key={appId}
+                      role="button"
+                      tabIndex={0}
+                      onClick={handleFocus}
+                      onKeyDown={handleKeyDown}
+                      className={clsx(
+                        "rounded-2xl border px-4 py-3 transition backdrop-blur",
+                        "focus:outline-none focus:ring-2 focus:ring-indigo-400/70",
+                        isActive
+                          ? "border-indigo-400/80 bg-white/12 shadow-[0_14px_30px_rgba(99,102,241,0.35)]"
+                          : "border-white/10 bg-white/5 hover:border-indigo-300/60 hover:bg-white/8",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{game.name}</p>
+                          <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">
+                            AppID {game.metadata.app_id}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {isActive && (
+                            <span className="rounded-full bg-indigo-500/80 px-2 py-0.5 text-[10px] font-semibold text-white">
+                              Active
+                            </span>
+                          )}
+                          {inComparison && (
+                            <span className="rounded-full border border-indigo-400/70 px-2 py-0.5 text-[10px] text-indigo-100">
+                              In compare
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300/80">
+                        {recommendation && <span>Rec {recommendation}</span>}
+                        {positiveShare && <span>Pos {positiveShare}</span>}
+                        <span>{game.metadata.retrieved.toLocaleString()} reviews</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                        <span>Saved {savedLabel}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleToggleComparison(appId);
+                            }}
+                            className={clsx(
+                              "rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em] transition",
+                              inComparison
+                                ? "border-indigo-400 bg-indigo-500/90 text-white"
+                                : "border-white/15 bg-white/10 text-slate-200 hover:border-indigo-300/50 hover:text-white",
+                            )}
+                          >
+                            {inComparison ? "In compare" : "Add to compare"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleRemoveStar(appId);
+                            }}
+                            className="rounded-full border border-white/15 bg-transparent px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-300 transition hover:border-rose-400/60 hover:text-rose-200"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="mt-2 text-[11px] text-slate-500">
-                      Pick at least two starred titles to unlock the comparison dashboards.
-                    </p>
-                  </div>
-                )}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2453,7 +2594,7 @@ async function handleExportReviews() {
                   {loading ? "Fetching…" : "Analyze"}
                 </button>
                 <button
-                  onClick={handleStarCurrent}
+                  onClick={() => void handleStarCurrent()}
                   disabled={!analysis}
                   className={clsx(
                     "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] transition",

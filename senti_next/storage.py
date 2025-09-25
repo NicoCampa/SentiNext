@@ -5,7 +5,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 
 _DB_PATH = Path(__file__).resolve().parent.parent / "data" / "senti_next.db"
@@ -62,6 +62,18 @@ def init_db() -> None:
                 app_id INTEGER PRIMARY KEY,
                 total INTEGER NOT NULL,
                 processed INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS starred_games (
+                app_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                insights TEXT,
+                sample TEXT,
                 updated_at INTEGER NOT NULL
             )
             """
@@ -223,3 +235,72 @@ def load_progress(app_id: int) -> Optional[Dict[str, int]]:
         "processed": int(row["processed"] or 0),
         "updated_at": int(row["updated_at"] or 0),
     }
+
+
+def save_starred_game(
+    app_id: int,
+    name: str,
+    metadata: Dict,
+    insights: Optional[Dict],
+    sample: Optional[list],
+) -> None:
+    payload_metadata = json.dumps(metadata)
+    payload_insights = json.dumps(insights) if insights is not None else None
+    payload_sample = json.dumps(sample) if sample is not None else None
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO starred_games (app_id, name, metadata, insights, sample, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(app_id) DO UPDATE SET
+                name = excluded.name,
+                metadata = excluded.metadata,
+                insights = excluded.insights,
+                sample = excluded.sample,
+                updated_at = excluded.updated_at
+            """,
+            (app_id, name, payload_metadata, payload_insights, payload_sample, timestamp),
+        )
+        conn.commit()
+
+
+def delete_starred_game(app_id: int) -> None:
+    with _get_connection() as conn:
+        conn.execute("DELETE FROM starred_games WHERE app_id = ?", (app_id,))
+        conn.commit()
+
+
+def load_starred_games() -> list[Dict[str, Any]]:
+    with _get_connection() as conn:
+        rows = conn.execute(
+            "SELECT app_id, name, metadata, insights, sample, updated_at FROM starred_games ORDER BY updated_at DESC"
+        ).fetchall()
+
+    results: list[Dict[str, Any]] = []
+    for row in rows:
+        try:
+            metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+        except json.JSONDecodeError:
+            metadata = {}
+        try:
+            insights = json.loads(row["insights"]) if row["insights"] else None
+        except json.JSONDecodeError:
+            insights = None
+        try:
+            sample = json.loads(row["sample"]) if row["sample"] else []
+        except json.JSONDecodeError:
+            sample = []
+
+        results.append(
+            {
+                "app_id": int(row["app_id"]),
+                "name": row["name"],
+                "metadata": metadata,
+                "insights": insights,
+                "sample": sample,
+                "updated_at": int(row["updated_at"] or 0),
+            }
+        )
+
+    return results
