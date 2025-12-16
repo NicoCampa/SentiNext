@@ -43,7 +43,11 @@ export default function ReportPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ appId, email }),
       });
-      const payload = (await response.json()) as { url?: string; error?: string };
+      const contentType = response.headers.get("content-type") || "";
+      const payload =
+        contentType.includes("application/json")
+          ? ((await response.json()) as { url?: string; error?: string })
+          : { error: await response.text() };
       if (!response.ok) {
         throw new Error(payload.error || "Checkout failed");
       }

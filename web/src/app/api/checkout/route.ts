@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getEnv } from "@/lib/env";
+import { getCheckoutEnv } from "@/lib/env";
 import { stripeClient } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -27,34 +27,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid request" }, { status: 400 });
   }
 
-  const env = getEnv();
+  let env: ReturnType<typeof getCheckoutEnv>;
+  try {
+    env = getCheckoutEnv();
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
+
   const stripe = stripeClient();
 
   const appUrl = env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer_email: parsed.data.email,
-    line_items: [
-      {
-        price_data: {
-          currency: "eur",
-          unit_amount: 1000,
-          product_data: {
-            name: "SentiNext Steam Insights PDF",
-            description: `One-off PDF report for Steam app ${parsed.data.appId}`,
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer_email: parsed.data.email,
+      line_items: [
+        {
+          price_data: {
+            currency: "eur",
+            unit_amount: 1000,
+            product_data: {
+              name: "SentiNext Steam Insights PDF",
+              description: `One-off PDF report for Steam app ${parsed.data.appId}`,
+            },
           },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      success_url: `${appUrl}/success`,
+      cancel_url: `${appUrl}/cancel`,
+      metadata: {
+        app_id: parsed.data.appId,
+        email: parsed.data.email,
       },
-    ],
-    success_url: `${appUrl}/success`,
-    cancel_url: `${appUrl}/cancel`,
-    metadata: {
-      app_id: parsed.data.appId,
-      email: parsed.data.email,
-    },
-  });
+    });
 
-  return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    const message = (err as { message?: string })?.message || "Stripe checkout failed";
+    return NextResponse.json({ error: message || "Stripe checkout failed" }, { status: 400 });
+  }
 }

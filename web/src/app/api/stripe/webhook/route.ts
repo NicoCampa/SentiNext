@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
 import Stripe from "stripe";
-import { getEnv } from "@/lib/env";
+import { getWebhookEnv } from "@/lib/env";
 import { stripeClient } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
 async function triggerPdfJob(appId: number, email: string) {
-  const env = getEnv();
+  const env = getWebhookEnv();
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (env.SENTINEXT_SERVICE_TOKEN) {
     headers["x-service-token"] = env.SENTINEXT_SERVICE_TOKEN;
@@ -32,7 +32,12 @@ async function triggerPdfJob(appId: number, email: string) {
 }
 
 export async function POST(request: Request) {
-  const env = getEnv();
+  let env: ReturnType<typeof getWebhookEnv>;
+  try {
+    env = getWebhookEnv();
+  } catch (err) {
+    return new NextResponse((err as Error).message, { status: 500 });
+  }
   const stripe = stripeClient();
 
   const signature = request.headers.get("stripe-signature");
@@ -70,4 +75,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ received: true });
 }
-
