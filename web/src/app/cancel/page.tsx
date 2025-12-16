@@ -2,19 +2,19 @@ import Link from "next/link";
 
 export default function CancelPage() {
   return (
-    <main style={{ minHeight: "100vh", background: "#0b1120", color: "#e5e7eb" }}>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "56px 20px" }}>
-        <h1 style={{ fontSize: 34, margin: 0 }}>Checkout canceled</h1>
-        <p style={{ marginTop: 12, color: "#cbd5e1" }}>
-          No payment was made.
-        </p>
-        <div style={{ marginTop: 18 }}>
-          <Link href="/report" style={{ color: "#93c5fd", textDecoration: "none" }}>
+    <div className="container" style={{ maxWidth: 860 }}>
+      <div className="callout">
+        <h1 className="calloutTitle">Checkout canceled</h1>
+        <p className="calloutText">No payment was made. You can try again whenever you’re ready.</p>
+        <div className="ctaRow" style={{ marginTop: 6 }}>
+          <Link href="/report" className="btn btnPrimary">
             Try again →
+          </Link>
+          <Link href="/" className="btn">
+            Back to home
           </Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
-

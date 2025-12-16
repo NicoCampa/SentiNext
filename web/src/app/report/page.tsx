@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 export default function ReportPage() {
   const [appId, setAppId] = useState("");
@@ -33,78 +34,73 @@ export default function ReportPage() {
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "#0b1120", color: "#e5e7eb" }}>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "56px 20px" }}>
-        <h1 style={{ fontSize: 34, margin: 0 }}>Buy a PDF report</h1>
-        <p style={{ color: "#cbd5e1", marginTop: 10 }}>
-          We’ll analyze up to <b>100</b> recent reviews for testing and email you the PDF.
-        </p>
+    <div className="container" style={{ maxWidth: 860 }}>
+      <div className="badge">
+        <span>€10</span>
+        One-time payment • Secure checkout via Stripe
+      </div>
 
-        <form onSubmit={onSubmit} style={{ marginTop: 22, display: "grid", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontSize: 13, color: "#cbd5e1" }}>Steam app id</span>
+      <h1 className="headline" style={{ fontSize: "clamp(30px, 3.4vw, 44px)", marginTop: 18 }}>
+        Buy a PDF report
+      </h1>
+      <p className="subhead">
+        We analyze recent Steam reviews and email you a PDF with key themes, top issues, and feature requests.
+      </p>
+
+      <div className="formCard">
+        <form onSubmit={onSubmit} className="fieldGrid">
+          <label className="label">
+            Steam app id
             <input
               value={appId}
               onChange={(e) => setAppId(e.target.value)}
               placeholder="e.g. 620"
               inputMode="numeric"
-              style={{
-                padding: "12px 12px",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.25)",
-                color: "white",
-              }}
+              className="input"
               required
             />
           </label>
 
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontSize: 13, color: "#cbd5e1" }}>Email</span>
+          <label className="label">
+            Email
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@domain.com"
               type="email"
-              style={{
-                padding: "12px 12px",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.25)",
-                color: "white",
-              }}
+              className="input"
               required
             />
           </label>
 
-          {error ? (
-            <div style={{ color: "#fca5a5", fontSize: 13, marginTop: 4 }}>{error}</div>
-          ) : null}
+          <div className="helperRow">
+            <span>
+              Need help finding it?{" "}
+              <a href="https://store.steampowered.com" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
+                Open Steam →
+              </a>
+            </span>
+            <span>We’ll email the report after payment.</span>
+          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 8,
-              background: "#2563eb",
-              color: "white",
-              padding: "12px 16px",
-              borderRadius: 10,
-              border: "none",
-              fontWeight: 700,
-              cursor: loading ? "default" : "pointer",
-              opacity: loading ? 0.75 : 1,
-            }}
-          >
+          {error ? <div className="error">{error}</div> : null}
+
+          <button type="submit" disabled={loading} className="btn btnPrimary" style={{ width: "100%", marginTop: 4 }}>
             {loading ? "Redirecting…" : "Pay €10 with Stripe"}
           </button>
-        </form>
 
-        <p style={{ marginTop: 14, fontSize: 12, color: "#94a3b8" }}>
-          After payment, we start generating your report and email it to you automatically.
-        </p>
+          <div className="muted" style={{ marginTop: 8, lineHeight: 1.5 }}>
+            By continuing, you agree that we’ll process public Steam review text to generate the report. Not affiliated with
+            Valve.
+          </div>
+        </form>
       </div>
-    </main>
+
+      <div className="ctaRow" style={{ marginTop: 18 }}>
+        <Link href="/" className="btn">
+          ← Back to home
+        </Link>
+      </div>
+    </div>
   );
 }
-
