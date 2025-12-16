@@ -74,6 +74,9 @@ npm run dev  # http://localhost:3000
 - Poll status: `GET /report/pdf/status/{job_id}`.
 - Generated PDFs are saved under `SENTINEXT_REPORTS_DIR` (or next to the DB under `reports/`) and emailed as an attachment.
 - For production, set `SENTINEXT_SERVICE_TOKEN` and send it as `x-service-token` from your website/webhook.
+- For local testing without email/LLM:
+  - Set `SENTINEXT_DISABLE_EMAIL=1` to skip SMTP sending (PDF still gets written to disk).
+  - Set `SENTINEXT_DISABLE_LLM=1` to skip Ollama calls (uses fast heuristics + defaults).
 
 ### SMTP env vars
 - `SENTINEXT_SMTP_HOST` (required)

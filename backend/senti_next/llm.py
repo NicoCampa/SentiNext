@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 OLLAMA_MODEL = os.getenv("SENTINEXT_OLLAMA_MODEL", "gpt-oss:20b-cloud")
 FAST_CLASSIFIER_ENABLED = os.getenv("SENTINEXT_FAST_CLASSIFIER", "true").lower() in {"1", "true", "yes"}
 FAST_CONFIDENCE_THRESHOLD = float(os.getenv("SENTINEXT_FAST_CONFIDENCE", "0.78"))
+LLM_DISABLED = os.getenv("SENTINEXT_DISABLE_LLM", "false").lower() in {"1", "true", "yes"}
 PROMPT_VERSION = "steam_review_insights_v8_standardized"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
 MAX_REVIEW_CHARS = 3000
@@ -500,6 +501,9 @@ def classify_review(
         fast_payload, confidence = _fast_classify_review(clean_text)
         if fast_payload and confidence >= FAST_CONFIDENCE_THRESHOLD:
             return fast_payload, "fast_classifier"
+
+    if LLM_DISABLED:
+        return _DEFAULT_LABEL.copy(), "disabled"
 
     prompt = _build_prompt(clean_text, game_context, reviewer_playtime, reviewer_voted_up)
     try:

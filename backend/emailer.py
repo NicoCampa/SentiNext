@@ -9,6 +9,10 @@ class EmailConfigError(RuntimeError):
     pass
 
 
+def _email_disabled() -> bool:
+    return os.getenv("SENTINEXT_DISABLE_EMAIL", "false").lower() in {"1", "true", "yes"}
+
+
 def _get_smtp_config() -> dict:
     host = os.getenv("SENTINEXT_SMTP_HOST")
     port_raw = os.getenv("SENTINEXT_SMTP_PORT", "587")
@@ -37,6 +41,9 @@ def _get_smtp_config() -> dict:
 
 
 def send_pdf_email(*, to_email: str, subject: str, body_text: str, pdf_bytes: bytes, filename: str) -> None:
+    if _email_disabled():
+        return
+
     cfg = _get_smtp_config()
 
     message = EmailMessage()
@@ -59,4 +66,3 @@ def send_pdf_email(*, to_email: str, subject: str, body_text: str, pdf_bytes: by
         if cfg["username"] and cfg["password"]:
             smtp.login(cfg["username"], cfg["password"])
         smtp.send_message(message)
-
