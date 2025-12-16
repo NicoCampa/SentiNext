@@ -34,11 +34,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 
-  const stripe = stripeClient();
-
   const appUrl = env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
   try {
+    const stripe = stripeClient(env.STRIPE_SECRET_KEY);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_email: parsed.data.email,

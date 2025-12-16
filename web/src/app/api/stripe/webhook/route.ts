@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   } catch (err) {
     return new NextResponse((err as Error).message, { status: 500 });
   }
-  const stripe = stripeClient();
+  const stripe = stripeClient(env.STRIPE_SECRET_KEY);
 
   const signature = request.headers.get("stripe-signature");
   if (!signature) {
