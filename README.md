@@ -1,6 +1,6 @@
 # SentiNext (minimal)
 
-FastAPI backend + Next.js frontend for Steam review sentiment and issue insights.
+SentiNext turns raw Steam reviews into clear, actionable insights. It ingests recent reviews, clusters themes, highlights top issues and feature requests, and can email a polished PDF report to buyers via Stripe checkout.
 
 ## Structure
 - `backend/` – FastAPI app (`backend/main.py`) and shared package (`senti_next/`)
