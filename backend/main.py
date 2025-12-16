@@ -401,6 +401,10 @@ def _run_pdf_report_job(job_id: str, request: PdfReportRequest) -> None:
             game_name=game_name,
             metadata=metadata.dict(),
             insights=insights or {},
+            game_image_url=(
+                game_context.get("header_image")
+                or f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/header.jpg"
+            ),
         )
 
         reports_dir = _reports_dir()

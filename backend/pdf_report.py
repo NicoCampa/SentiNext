@@ -8,7 +8,34 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+import requests
+from PIL import Image as PILImage
+
+
+def _fetch_steam_header_image(url: str) -> Optional[bytes]:
+    if not url:
+        return None
+
+    allowed_prefixes = (
+        "https://cdn.akamai.steamstatic.com/",
+        "https://shared.akamai.steamstatic.com/",
+        "https://steamcdn-a.akamaihd.net/",
+    )
+    if not url.startswith(allowed_prefixes):
+        return None
+
+    try:
+        resp = requests.get(url, timeout=8)
+        if resp.status_code != 200:
+            return None
+        content_type = (resp.headers.get("content-type") or "").lower()
+        if "image" not in content_type:
+            return None
+        return resp.content
+    except Exception:
+        return None
 
 
 def _fmt_pct(value: Optional[float]) -> str:
@@ -32,6 +59,7 @@ def render_insights_pdf(
     game_name: str,
     metadata: Dict[str, Any],
     insights: Dict[str, Any],
+    game_image_url: Optional[str] = None,
 ) -> bytes:
     """Render a readable PDF report from the aggregated insights dict."""
     buffer = BytesIO()
@@ -59,6 +87,30 @@ def render_insights_pdf(
         )
     )
     story.append(Spacer(1, 12))
+
+    image_bytes = _fetch_steam_header_image(game_image_url or "")
+    if image_bytes:
+        try:
+            with PILImage.open(BytesIO(image_bytes)) as img:
+                width_px, height_px = img.size
+        except Exception:
+            width_px, height_px = (0, 0)
+
+        max_width = doc.width
+        max_height = 44 * mm
+        if width_px > 0 and height_px > 0:
+            scaled_height = max_width * (height_px / width_px)
+            if scaled_height > max_height:
+                scaled_height = max_height
+                scaled_width = scaled_height * (width_px / height_px)
+            else:
+                scaled_width = max_width
+        else:
+            scaled_width = max_width
+            scaled_height = max_height
+
+        story.append(Image(BytesIO(image_bytes), width=scaled_width, height=scaled_height))
+        story.append(Spacer(1, 12))
 
     metrics = insights.get("metrics", {}) if isinstance(insights, dict) else {}
     llm_metrics = insights.get("llm", {}) if isinstance(insights, dict) else {}
@@ -169,4 +221,3 @@ def render_insights_pdf(
 
     doc.build(story)
     return buffer.getvalue()
-

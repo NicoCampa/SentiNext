@@ -224,6 +224,7 @@ def fetch_app_details(app_id: int) -> Optional[Dict]:
             "name": details.get("name", ""),
             "short_description": details.get("short_description", ""),
             "type": details.get("type", "game"),
+            "header_image": details.get("header_image", ""),
         }
 
         # Extract genres
