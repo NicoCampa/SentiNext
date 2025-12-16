@@ -31,6 +31,8 @@ backend/.venv/
 # App data
 data/*.db
 data/*.sqlite
+data/reports/
+data/*.pdf
 *.sqlite
 *.db
 /data/senti_next.db

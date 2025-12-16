@@ -77,6 +77,7 @@ npm run dev  # http://localhost:3000
 - For local testing without email/LLM:
   - Set `SENTINEXT_DISABLE_EMAIL=1` to skip SMTP sending (PDF still gets written to disk).
   - Set `SENTINEXT_DISABLE_LLM=1` to skip Ollama calls (uses fast heuristics + defaults).
+  - If your network can’t reach Steam, set `SENTINEXT_PDF_USE_CACHE=1` to generate PDFs from cached DB reviews (run an analysis first to populate the cache).
 
 ### SMTP env vars
 - `SENTINEXT_SMTP_HOST` (required)

@@ -349,20 +349,29 @@ def _run_pdf_report_job(job_id: str, request: PdfReportRequest) -> None:
     storage.update_pdf_job(job_id, status="running")
     try:
         app_id = int(request.app_id)
-        game_context = fetch_app_details(app_id) or {}
+        use_cache = os.getenv("SENTINEXT_PDF_USE_CACHE", "false").lower() in {"1", "true", "yes"}
+        game_context = fetch_app_details(app_id) or {} if not use_cache else {}
         game_name = game_context.get("name", str(app_id))
 
         filter_type = (request.filter or "recent").lower()
         if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
             filter_type = "recent"
 
-        reviews = fetch_reviews(
-            app_id,
-            count=min(int(request.review_count), PDF_REVIEW_LIMIT),
-            language=request.language,
-            filter_type=filter_type,
-            day_range=request.day_range,
-        )
+        if use_cache:
+            reviews = storage.load_reviews(app_id, limit=min(int(request.review_count), PDF_REVIEW_LIMIT))
+            if not reviews:
+                raise RuntimeError(
+                    "No cached reviews available (SENTINEXT_PDF_USE_CACHE=1). "
+                    "Run an analysis with persistence enabled first, or disable cache mode."
+                )
+        else:
+            reviews = fetch_reviews(
+                app_id,
+                count=min(int(request.review_count), PDF_REVIEW_LIMIT),
+                language=request.language,
+                filter_type=filter_type,
+                day_range=request.day_range,
+            )
 
         metadata = AnalyzeMetadata(
             app_id=app_id,
