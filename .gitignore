@@ -13,6 +13,7 @@ frontend/out/
 .env
 .env.*
 *.local
+!*.env.example
 
 # OS cruft
 .DS_Store
