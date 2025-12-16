@@ -34,17 +34,14 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="container" style={{ maxWidth: 860 }}>
-      <div className="badge">
-        <span>€10</span>
-        One-time payment • Secure checkout via Stripe
-      </div>
+    <div className="container" style={{ maxWidth: 900 }}>
+      <div className="pill pillPrimary">€10 · One-time · Stripe checkout</div>
 
-      <h1 className="headline" style={{ fontSize: "clamp(30px, 3.4vw, 44px)", marginTop: 18 }}>
-        Buy a PDF report
+      <h1 className="headline" style={{ fontSize: "clamp(30px, 3.4vw, 44px)", marginTop: 16 }}>
+        Buy a PDF report for your Steam game
       </h1>
       <p className="subhead">
-        We analyze recent Steam reviews and email you a PDF with key themes, top issues, and feature requests.
+        We analyze recent reviews, surface sentiment, issues, and feature requests, and email you a polished PDF.
       </p>
 
       <div className="formCard">
@@ -94,6 +91,20 @@ export default function ReportPage() {
             Valve.
           </div>
         </form>
+      </div>
+
+      <div className="gridColumns section">
+        <div className="panel">
+          <div className="panelTitle">What happens next?</div>
+          <div className="panelDesc">
+            We process ~100 recent reviews, extract themes and issues, and send you a PDF. If something looks off, reply to
+            the email and we’ll regenerate it.
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panelTitle">Payment & security</div>
+          <div className="panelDesc">Stripe handles the payment. We never store card details.</div>
+        </div>
       </div>
 
       <div className="ctaRow" style={{ marginTop: 18 }}>

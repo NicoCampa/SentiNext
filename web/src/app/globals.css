@@ -10,6 +10,7 @@
   --muted-2: #a19c8d;
   --accent: #f6b565;
   --accent-2: #5fe0c2;
+  --accent-3: #e48cff;
   --danger: #f9a8a8;
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
 }
@@ -133,6 +134,19 @@ a:hover {
   max-width: 760px;
 }
 
+.section {
+  margin-top: 48px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -152,12 +166,42 @@ a:hover {
   color: transparent;
 }
 
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.pillPrimary {
+  background: linear-gradient(120deg, rgba(246, 181, 101, 0.25), rgba(95, 224, 194, 0.25));
+  border-color: rgba(246, 181, 101, 0.4);
+  color: var(--text);
+}
+
+.pillGhost {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 .ctaRow {
   margin-top: 26px;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .btn {
@@ -219,6 +263,66 @@ a:hover {
   padding: 18px;
   display: grid;
   gap: 14px;
+}
+
+.gridColumns {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.panel {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.panelTitle {
+  font-weight: 750;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panelDesc {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.list {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.statGrid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.statNumber {
+  font-size: 24px;
+  font-weight: 750;
+}
+
+.statLabel {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
 }
 
 .cardGrid {
@@ -333,6 +437,33 @@ a:hover {
   margin: 0;
   color: var(--muted);
   line-height: 1.55;
+}
+
+.divider {
+  height: 1px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 18px 0;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ctaPanel {
+  margin-top: 22px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(120deg, rgba(246, 181, 101, 0.12), rgba(95, 224, 194, 0.12));
+  padding: 18px;
+  box-shadow: var(--shadow);
 }
 
 @media (min-width: 860px) {
