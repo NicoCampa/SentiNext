@@ -19,8 +19,6 @@ from . import storage
 logger = logging.getLogger(__name__)
 
 OLLAMA_MODEL = os.getenv("SENTINEXT_OLLAMA_MODEL", "gpt-oss:20b-cloud")
-FAST_CLASSIFIER_ENABLED = os.getenv("SENTINEXT_FAST_CLASSIFIER", "true").lower() in {"1", "true", "yes"}
-FAST_CONFIDENCE_THRESHOLD = float(os.getenv("SENTINEXT_FAST_CONFIDENCE", "0.78"))
 LLM_DISABLED = os.getenv("SENTINEXT_DISABLE_LLM", "false").lower() in {"1", "true", "yes"}
 PROMPT_VERSION = "steam_review_insights_v8_standardized"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
@@ -299,92 +297,6 @@ def _run_ollama(prompt: str) -> str:
     return content
 
 
-_FAST_KEYWORDS = {
-    "technical": {
-        "performance": ["fps", "stutter", "lag", "frame", "optimiz", "performance", "drop"],
-        "stability": ["crash", "freeze", "hang", "stuck", "save corrupt"],
-        "bugs": ["bug", "glitch", "broken", "clip", "collision"],
-    },
-    "gameplay": {
-        "balance": ["balance", "op", "overpowered", "unbalanced", "too hard", "too easy", "boss"],
-        "controls": ["control", "input", "camera", "controller", "kbm", "mouse"],
-        "progression": ["grind", "progression", "level", "xp", "reward", "loot"],
-    },
-    "content": {
-        "quantity": ["short", "no content", "lack content", "empty", "little content"],
-        "variety": ["repetitive", "same", "variety", "repeat"],
-        "quality": ["story", "writing", "narrative", "quest", "mission design"],
-    },
-    "interface": {
-        "usability": ["ui", "interface", "menu", "inventory", "hud"],
-        "tutorial": ["tutorial", "onboarding", "explain", "teach"],
-        "accessibility": ["subtitle", "colorblind", "difficulty option"],
-    },
-    "social": {
-        "multiplayer": ["multiplayer", "coop", "co-op", "pvp", "matchmaking", "server"],
-        "community": ["toxic", "community"],
-    },
-    "monetization": {
-        "pricing": ["price", "expensive", "overpriced"],
-        "dlc": ["dlc"],
-        "microtransactions": ["mtx", "microtransaction", "loot box", "battle pass"],
-    },
-}
-
-
-def _fast_classify_review(review_text: str) -> Tuple[Optional[Dict[str, Any]], float]:
-    """Lightweight heuristic classifier to avoid heavy LLM calls when confident."""
-    text = (review_text or "").lower()
-    if not text.strip():
-        return None, 0.0
-
-    scores: Dict[str, Dict[str, int]] = {cat: {} for cat in _ALLOWED_MAIN_CATEGORIES}
-
-    for main_cat, submap in _FAST_KEYWORDS.items():
-        for subcat, keywords in submap.items():
-            for kw in keywords:
-                if kw in text:
-                    scores[main_cat][subcat] = scores[main_cat].get(subcat, 0) + 1
-
-    # Pick main/sub with highest hits
-    best_main = None
-    best_sub = None
-    best_score = 0
-    for main_cat, sub_scores in scores.items():
-        for subcat, score in sub_scores.items():
-            if score > best_score:
-                best_score = score
-                best_main = main_cat
-                best_sub = subcat
-
-    if not best_main or best_score == 0:
-        return None, 0.0
-
-    urgency = "medium"
-    if any(term in text for term in ("crash", "save corrupt", "unplayable")):
-        urgency = "critical"
-    elif any(term in text for term in ("broken", "cannot", "unusable", "freeze")):
-        urgency = "high"
-    elif any(term in text for term in ("minor", "small", "nitpick")):
-        urgency = "low"
-
-    feature_requests: list[dict] = []
-    if any(term in text for term in ("wish", "would love", "add", "need", "please add", "want")):
-        feature_requests.append({"category": "feature_request", "demand": "medium", "example": ""})
-
-    payload = {
-        "main_category": best_main,
-        "subcategory": best_sub,
-        "issues": [],
-        "feature_requests": feature_requests,
-        "feature_request": bool(feature_requests),
-        "urgency": urgency,
-    }
-
-    confidence = min(1.0, 0.5 + 0.1 * best_score)
-    return payload, confidence
-
-
 def _parse_payload(raw: str) -> Dict[str, Any]:
     if not raw:
         raise ValueError("Empty response from Ollama")
@@ -496,11 +408,6 @@ def classify_review(
     clean_text = (review_text or "").strip()
     if not clean_text:
         return _DEFAULT_LABEL.copy(), "fallback"
-
-    if FAST_CLASSIFIER_ENABLED:
-        fast_payload, confidence = _fast_classify_review(clean_text)
-        if fast_payload and confidence >= FAST_CONFIDENCE_THRESHOLD:
-            return fast_payload, "fast_classifier"
 
     if LLM_DISABLED:
         return _DEFAULT_LABEL.copy(), "disabled"

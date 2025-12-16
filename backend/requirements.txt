@@ -7,3 +7,4 @@ ollama>=0.2
 PyYAML>=6.0
 platformdirs>=4.2
 reportlab>=4.2
+pillow>=9.0

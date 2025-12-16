@@ -37,6 +37,21 @@ logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = os.getenv("SENTINEXT_EMBEDDING_MODEL", "embeddinggemma")
 _EMBEDDING_CACHE: dict[tuple[str, str], np.ndarray] = {}
+CLUSTER_LABELS = os.getenv("SENTINEXT_CLUSTER_LABELS", "true").lower() in {"1", "true", "yes"}
+CLUSTER_SIMILARITY = float(os.getenv("SENTINEXT_CLUSTER_SIMILARITY", "0.80"))
+
+
+def embedding_model_name() -> str:
+    return EMBEDDING_MODEL
+
+
+def get_embedding_preview(text: str, dims: int = 10) -> Optional[dict[str, Any]]:
+    """Return a small debug-friendly preview of the embedding vector."""
+    vec = _get_embedding(text)
+    if vec is None:
+        return None
+    preview = [float(x) for x in vec[: max(1, min(dims, len(vec)))]]
+    return {"dims": int(len(vec)), "preview": preview}
 
 
 def _frame_records(df: pd.DataFrame) -> list[dict[str, Any]]:
@@ -86,7 +101,9 @@ def _cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
     return dot_product / (norm1 * norm2)
 
 
-def _cluster_similar_issues(issues: list[dict[str, Any]], similarity_threshold: float = 0.75) -> list[dict[str, Any]]:
+def _cluster_similar_issues(
+    issues: list[dict[str, Any]], similarity_threshold: float = 0.75
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Cluster similar issues using embeddings and merge them.
 
     Args:
@@ -98,21 +115,26 @@ def _cluster_similar_issues(issues: list[dict[str, Any]], similarity_threshold: 
     """
     if not issues or len(issues) <= 1:
         logger.debug("Skipping clustering: only %d issue(s)", len(issues))
-        return issues
+        return issues, {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}
 
     logger.debug("Starting clustering of %d issues with threshold %.2f", len(issues), similarity_threshold)
 
     # Get embeddings for all issues
     issue_texts = [item["issue"] for item in issues]
     embeddings = []
+    attempted = 0
+    available = 0
 
     for text in issue_texts:
+        attempted += 1
         emb = _get_embedding(text)
+        if emb is not None:
+            available += 1
         embeddings.append(emb)
 
     if not any(emb is not None for emb in embeddings):
         logger.debug("Skipping clustering: no embeddings available")
-        return issues
+        return issues, {"attempted": attempted, "available": available, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}
 
     # Cluster similar issues
     clusters = []
@@ -192,7 +214,7 @@ def _cluster_similar_issues(issues: list[dict[str, Any]], similarity_threshold: 
         result.append(item)
 
     logger.debug("Clustered %d issues into %d clusters", len(issues), len(result))
-    return result
+    return result, {"attempted": attempted, "available": available, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}
 
 
 def aggregate_standardized_issues(df: pd.DataFrame) -> list[dict[str, Any]]:
@@ -318,10 +340,10 @@ def aggregate_standardized_feature_requests(df: pd.DataFrame) -> list[dict[str, 
     return requests_list
 
 
-def build_issue_clusters(df: pd.DataFrame, similarity_threshold: float = 0.8) -> list[dict[str, Any]]:
+def build_issue_clusters(df: pd.DataFrame, similarity_threshold: float = 0.8) -> dict[str, Any]:
     """Cluster issues with embeddings and attach representative examples + review ids."""
     if df is None or df.empty or "llm_issues" not in df.columns:
-        return []
+        return {"clusters": [], "embeddings": {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}}
 
     issues_df = df[["review_id", "llm_issues", "llm_urgency", "llm_main_category", "llm_subcategory"]].copy()
     issues_df["llm_issues"] = issues_df["llm_issues"].apply(lambda value: value if isinstance(value, list) else [])
@@ -329,7 +351,15 @@ def build_issue_clusters(df: pd.DataFrame, similarity_threshold: float = 0.8) ->
     exploded = issues_df.explode("llm_issues")
     exploded = exploded[exploded["llm_issues"].notna()].copy()
     if exploded.empty:
-        return []
+        return {
+            "clusters": [],
+            "embeddings": {
+                "attempted": 0,
+                "available": 0,
+                "model": EMBEDDING_MODEL,
+                "threshold": similarity_threshold,
+            },
+        }
 
     parsed_rows: list[dict[str, Any]] = []
     for _, row in exploded.iterrows():
@@ -353,7 +383,7 @@ def build_issue_clusters(df: pd.DataFrame, similarity_threshold: float = 0.8) ->
                 }
             )
     if not parsed_rows:
-        return []
+        return {"clusters": [], "embeddings": {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}}
 
     # Aggregate identical issues first
     aggregate: dict[str, dict[str, Any]] = {}
@@ -370,14 +400,19 @@ def build_issue_clusters(df: pd.DataFrame, similarity_threshold: float = 0.8) ->
             agg["review_ids"].extend(item["review_ids"])
 
     base_list = list(aggregate.values())
-    clustered = _cluster_similar_issues(base_list, similarity_threshold=similarity_threshold)
+    threshold = CLUSTER_SIMILARITY if CLUSTER_LABELS else float(similarity_threshold)
+    if CLUSTER_LABELS:
+        clustered, embedding_stats = _cluster_similar_issues(base_list, similarity_threshold=threshold)
+    else:
+        clustered = base_list
+        embedding_stats = {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": threshold, "disabled": True}
 
     # Post-process samples
     for cluster in clustered:
         cluster["examples"] = cluster.get("examples", [])[:3]
         cluster["review_ids"] = cluster.get("review_ids", [])[:5]
 
-    return clustered
+    return {"clusters": clustered, "embeddings": embedding_stats}
 
 
 def version_based_insights(df: pd.DataFrame) -> Dict[str, Any]:
@@ -596,6 +631,8 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
         "coverage_rate": coverage_rate,
     }
 
+    issue_cluster_payload = build_issue_clusters(df)
+
     insights = {
         "metrics": metrics,
         "llm": llm_summary,
@@ -626,7 +663,8 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
         },
         "standardized_issues": aggregate_standardized_issues(df) if "llm_issues" in df.columns else [],
         "feature_requests": aggregate_standardized_feature_requests(df) if "llm_feature_requests" in df.columns else [],
-        "clustered_issues": build_issue_clusters(df),
+        "clustered_issues": issue_cluster_payload.get("clusters", []),
+        "embeddings": issue_cluster_payload.get("embeddings", {}),
         "player_segments": {
             "experience_level": experience_level_issues(df),
             "purchase_type": purchase_type_insights(df),
