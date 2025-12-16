@@ -8,6 +8,30 @@ export default function ReportPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Array<{ appId: number; name: string; image: string | null }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  async function searchGames(term: string) {
+    if (term.trim().length < 2) {
+      setResults([]);
+      setSearchError(null);
+      return;
+    }
+    setSearching(true);
+    setSearchError(null);
+    try {
+      const res = await fetch(`/api/games?q=${encodeURIComponent(term.trim())}`);
+      const data = (await res.json()) as { items?: typeof results };
+      setResults(data.items || []);
+    } catch (err) {
+      setSearchError((err as Error).message);
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -57,6 +81,51 @@ export default function ReportPage() {
               required
             />
           </label>
+
+          <label className="label">
+            Or search by name
+            <input
+              value={query}
+              onChange={(e) => {
+                const val = e.target.value;
+                setQuery(val);
+                void searchGames(val);
+              }}
+              placeholder="e.g. Counter-Strike 2"
+              className="input"
+            />
+          </label>
+
+          {results.length > 0 ? (
+            <div className="panel" style={{ marginTop: 4 }}>
+              <div className="panelTitle" style={{ marginBottom: 8 }}>Select a game</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {results.map((item) => (
+                  <button
+                    key={item.appId}
+                    type="button"
+                    className="btn"
+                    style={{
+                      justifyContent: "flex-start",
+                      background: "rgba(255,255,255,0.05)",
+                      borderColor: "rgba(255,255,255,0.12)",
+                    }}
+                    onClick={() => {
+                      setAppId(String(item.appId));
+                      setQuery(item.name);
+                      setResults([]);
+                    }}
+                  >
+                    <span style={{ fontWeight: 700 }}>{item.name}</span>
+                    <span style={{ color: "var(--muted-2)", marginLeft: "auto" }}>#{item.appId}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {searching ? <div className="muted">Searching…</div> : null}
+          {searchError ? <div className="error">{searchError}</div> : null}
 
           <label className="label">
             Email
