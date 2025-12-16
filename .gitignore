@@ -5,27 +5,33 @@ node_modules/
 out/
 dist/
 *.log
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 
 # Env & local
 .env
 .env.*
 *.local
+
 # OS cruft
 .DS_Store
-# Python (if any)
+**/.DS_Store
+
+# Python
 __pycache__/
 *.pyc
+*.py[cod]
 .venv/
+.venv*/
+backend/.venv/
+.pytest_cache/
+
 # App data
 data/*.db
 data/*.sqlite
 *.sqlite
 *.db
-# Data
 /data/senti_next.db
 /data/*.sqlite
 /data/*.db
-# Cache & builds
-frontend/.next/
-frontend/out/
-*.py[cod]

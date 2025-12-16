@@ -1,0 +1,676 @@
+"""Simple SQLite storage for persisted Steam reviews."""
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import time
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
+
+from platformdirs import user_data_dir
+
+
+def _default_db_path() -> Path:
+    """Resolve a stable path for the SQLite database."""
+    env_path = os.getenv("SENTINEXT_DB_PATH")
+    if env_path:
+        return Path(env_path).expanduser()
+
+    # Default to per-user application data so packaged desktop builds work cleanly.
+    # Examples:
+    # - macOS: ~/Library/Application Support/SentiNext/senti_next.db
+    # - Windows: %APPDATA%\\SentiNext\\senti_next.db
+    # - Linux: ~/.local/share/SentiNext/senti_next.db
+    data_root = Path(user_data_dir(appname="SentiNext", appauthor=False))
+    return data_root / "senti_next.db"
+
+
+_DB_PATH = _default_db_path()
+
+def db_path() -> Path:
+    return _DB_PATH
+
+
+def _get_connection() -> sqlite3.Connection:
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reviews (
+                review_id TEXT PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                data TEXT NOT NULL,
+                timestamp_created INTEGER,
+                timestamp_updated INTEGER
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_reviews_app_id_created
+            ON reviews (app_id, timestamp_created DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS review_labels (
+                review_id TEXT PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                model TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                review_hash TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_review_labels_app
+            ON review_labels (app_id)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS classification_progress (
+                app_id INTEGER PRIMARY KEY,
+                total INTEGER NOT NULL,
+                processed INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS starred_games (
+                app_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                insights TEXT,
+                sample TEXT,
+                genres TEXT,
+                categories TEXT,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_results (
+                app_id INTEGER PRIMARY KEY,
+                metadata TEXT,
+                insights TEXT,
+                reviews TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                error TEXT,
+                updated_at INTEGER NOT NULL,
+                run_id TEXT,
+                snapshot_hash TEXT,
+                stale INTEGER DEFAULT 0,
+                context_hash TEXT,
+                stale_reason TEXT
+            )
+            """
+        )
+        # Backfill new columns if table existed
+        for col in ["context_hash", "stale_reason"]:
+            try:
+                conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass
+        for col in ["run_id", "snapshot_hash", "stale"]:
+            try:
+                conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS embeddings (
+                key TEXT PRIMARY KEY,
+                model TEXT NOT NULL,
+                vector TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pdf_jobs (
+                job_id TEXT PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                email TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT,
+                file_path TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+
+def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
+    """Insert or update the provided reviews. Returns number of upserts."""
+    rows = list(reviews)
+    if not rows:
+        return 0
+
+    with _get_connection() as conn:
+        cursor = conn.cursor()
+        for review in rows:
+            review_id = str(review.get("recommendationid"))
+            if not review_id:
+                continue
+            payload = json.dumps(review)
+            timestamp_created = review.get("timestamp_created")
+            timestamp_updated = review.get("timestamp_updated")
+            cursor.execute(
+                """
+                INSERT INTO reviews (review_id, app_id, data, timestamp_created, timestamp_updated)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(review_id) DO UPDATE SET
+                    data = excluded.data,
+                    timestamp_updated = excluded.timestamp_updated
+                """,
+                (review_id, app_id, payload, timestamp_created, timestamp_updated),
+            )
+        conn.commit()
+        return cursor.rowcount or 0
+
+
+def load_reviews(app_id: int, limit: Optional[int] = None) -> List[dict]:
+    query = "SELECT data FROM reviews WHERE app_id = ? ORDER BY timestamp_created DESC"
+    params: list = [app_id]
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+
+    with _get_connection() as conn:
+        rows = conn.execute(query, params).fetchall()
+
+    return [json.loads(row["data"]) for row in rows]
+
+
+def count_reviews(app_id: int) -> int:
+    with _get_connection() as conn:
+        result = conn.execute("SELECT COUNT(*) FROM reviews WHERE app_id = ?", (app_id,)).fetchone()
+    return int(result[0]) if result else 0
+
+
+def upsert_review_label(
+    app_id: int,
+    review_id: str,
+    review_hash: str,
+    payload: Dict,
+    model: str,
+    prompt_version: str,
+) -> None:
+    serialized = json.dumps(payload, separators=(",", ":"))
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO review_labels (review_id, app_id, model, prompt_version, review_hash, payload, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(review_id) DO UPDATE SET
+                model = excluded.model,
+                prompt_version = excluded.prompt_version,
+                review_hash = excluded.review_hash,
+                payload = excluded.payload,
+                updated_at = excluded.updated_at
+            """,
+            (review_id, app_id, model, prompt_version, review_hash, serialized, timestamp),
+        )
+        conn.commit()
+
+
+def load_review_labels(app_id: int) -> Dict[str, Dict]:
+    with _get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT review_id, model, prompt_version, review_hash, payload
+            FROM review_labels
+            WHERE app_id = ?
+            """,
+            (app_id,),
+        ).fetchall()
+
+    labels: Dict[str, Dict] = {}
+    for row in rows:
+        try:
+            payload = json.loads(row["payload"]) if row["payload"] else {}
+        except json.JSONDecodeError:
+            payload = {}
+        labels[row["review_id"]] = {
+            "model": row["model"],
+            "prompt_version": row["prompt_version"],
+            "review_hash": row["review_hash"],
+            "payload": payload,
+        }
+    return labels
+
+
+def reset_progress(app_id: int, total: int) -> None:
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO classification_progress (app_id, total, processed, updated_at)
+            VALUES (?, ?, 0, ?)
+            ON CONFLICT(app_id) DO UPDATE SET
+                total = excluded.total,
+                processed = excluded.processed,
+                updated_at = excluded.updated_at
+            """,
+            (app_id, int(total), timestamp),
+        )
+        conn.commit()
+
+
+def update_progress(app_id: int, processed: int, total: Optional[int] = None) -> None:
+    timestamp = int(time.time())
+    query = """
+        UPDATE classification_progress
+        SET processed = ?,
+            updated_at = ?,
+            total = COALESCE(?, total)
+        WHERE app_id = ?
+    """
+    new_total = int(total) if total is not None else None
+    with _get_connection() as conn:
+        conn.execute(query, (int(processed), timestamp, new_total, app_id))
+        conn.commit()
+
+
+def clear_progress(app_id: int) -> None:
+    with _get_connection() as conn:
+        conn.execute("DELETE FROM classification_progress WHERE app_id = ?", (app_id,))
+        conn.commit()
+
+
+def load_progress(app_id: int) -> Optional[Dict[str, int]]:
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT total, processed, updated_at FROM classification_progress WHERE app_id = ?",
+            (app_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "total": int(row["total"] or 0),
+        "processed": int(row["processed"] or 0),
+        "updated_at": int(row["updated_at"] or 0),
+    }
+
+
+def save_starred_game(
+    app_id: int,
+    name: str,
+    metadata: Dict,
+    insights: Optional[Dict],
+    sample: Optional[list],
+    genres: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+) -> None:
+    payload_metadata = json.dumps(metadata)
+    payload_insights = json.dumps(insights) if insights is not None else None
+    payload_sample = json.dumps(sample) if sample is not None else None
+    payload_genres = json.dumps(genres) if genres is not None else None
+    payload_categories = json.dumps(categories) if categories is not None else None
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO starred_games (app_id, name, metadata, insights, sample, genres, categories, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(app_id) DO UPDATE SET
+                name = excluded.name,
+                metadata = excluded.metadata,
+                insights = excluded.insights,
+                sample = excluded.sample,
+                genres = excluded.genres,
+                categories = excluded.categories,
+                updated_at = excluded.updated_at
+            """,
+            (app_id, name, payload_metadata, payload_insights, payload_sample, payload_genres, payload_categories, timestamp),
+        )
+        conn.commit()
+
+
+def delete_starred_game(app_id: int) -> None:
+    with _get_connection() as conn:
+        conn.execute("DELETE FROM starred_games WHERE app_id = ?", (app_id,))
+        conn.commit()
+
+
+def delete_all_game_data(app_id: int) -> None:
+    """Delete all data associated with a game: reviews, labels, progress, and starred entry."""
+    with _get_connection() as conn:
+        conn.execute("DELETE FROM reviews WHERE app_id = ?", (app_id,))
+        conn.execute("DELETE FROM review_labels WHERE app_id = ?", (app_id,))
+        conn.execute("DELETE FROM classification_progress WHERE app_id = ?", (app_id,))
+        conn.execute("DELETE FROM starred_games WHERE app_id = ?", (app_id,))
+        conn.commit()
+
+
+def get_database_stats() -> Dict[str, Any]:
+    """Get database statistics: counts of games, reviews, labels."""
+    with _get_connection() as conn:
+        # Count unique games across all tables
+        games_count = conn.execute(
+            """
+            SELECT COUNT(DISTINCT app_id) FROM (
+                SELECT app_id FROM reviews
+                UNION
+                SELECT app_id FROM starred_games
+            )
+            """
+        ).fetchone()[0]
+
+        # Count total reviews
+        reviews_count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+
+        # Count total labels
+        labels_count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
+
+        # Count labels with new schema (has main_category field)
+        new_schema_count = conn.execute(
+            """
+            SELECT COUNT(*) FROM review_labels
+            WHERE json_extract(payload, '$.main_category') IS NOT NULL
+            """
+        ).fetchone()[0]
+
+        # Count labels with old schema (missing category field)
+        old_schema_count = labels_count - new_schema_count
+
+        # Count starred games
+        starred_count = conn.execute("SELECT COUNT(*) FROM starred_games").fetchone()[0]
+
+        return {
+            "games": games_count,
+            "reviews": reviews_count,
+            "labels": labels_count,
+            "labels_new_schema": new_schema_count,
+            "labels_old_schema": old_schema_count,
+            "starred_games": starred_count,
+        }
+
+
+def clear_all_labels() -> int:
+    """Delete all labels. Returns count of deleted labels."""
+    with _get_connection() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
+        conn.execute("DELETE FROM review_labels")
+        conn.commit()
+        return count
+
+
+def clear_old_schema_labels() -> int:
+    """Delete labels with old schema (missing main_category field). Returns count of deleted labels."""
+    with _get_connection() as conn:
+        # Delete labels where main_category field is NULL
+        cursor = conn.execute(
+            """
+            DELETE FROM review_labels
+            WHERE json_extract(payload, '$.main_category') IS NULL
+            """
+        )
+        count = cursor.rowcount
+        conn.commit()
+        return count
+
+
+def clear_entire_database() -> Dict[str, int]:
+    """Clear all data from database. Returns counts of deleted records."""
+    with _get_connection() as conn:
+        reviews_count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+        labels_count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
+        progress_count = conn.execute("SELECT COUNT(*) FROM classification_progress").fetchone()[0]
+        starred_count = conn.execute("SELECT COUNT(*) FROM starred_games").fetchone()[0]
+        analysis_count = conn.execute("SELECT COUNT(*) FROM analysis_results").fetchone()[0]
+
+        conn.execute("DELETE FROM reviews")
+        conn.execute("DELETE FROM review_labels")
+        conn.execute("DELETE FROM classification_progress")
+        conn.execute("DELETE FROM starred_games")
+        conn.execute("DELETE FROM analysis_results")
+        conn.commit()
+
+        return {
+            "reviews": reviews_count,
+            "labels": labels_count,
+            "progress": progress_count,
+            "starred_games": starred_count,
+            "analysis_results": analysis_count,
+        }
+
+
+def load_starred_games() -> list[Dict[str, Any]]:
+    with _get_connection() as conn:
+        rows = conn.execute(
+            "SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at FROM starred_games ORDER BY updated_at DESC"
+        ).fetchall()
+
+    results: list[Dict[str, Any]] = []
+    for row in rows:
+        try:
+            metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+        except json.JSONDecodeError:
+            metadata = {}
+        try:
+            insights = json.loads(row["insights"]) if row["insights"] else None
+        except json.JSONDecodeError:
+            insights = None
+        try:
+            sample = json.loads(row["sample"]) if row["sample"] else []
+        except json.JSONDecodeError:
+            sample = []
+        try:
+            genres = json.loads(row["genres"]) if row["genres"] else []
+        except json.JSONDecodeError:
+            genres = []
+        try:
+            categories = json.loads(row["categories"]) if row["categories"] else []
+        except json.JSONDecodeError:
+            categories = []
+
+        results.append(
+            {
+                "app_id": int(row["app_id"]),
+                "name": row["name"],
+                "metadata": metadata,
+                "insights": insights,
+                "sample": sample,
+                "genres": genres,
+                "categories": categories,
+                "updated_at": int(row["updated_at"] or 0),
+            }
+        )
+
+    return results
+
+
+def save_analysis_result(
+    app_id: int,
+    metadata: Optional[Dict],
+    insights: Optional[Dict],
+    reviews: list,
+    status: str,
+    error: Optional[str] = None,
+    run_id: Optional[str] = None,
+    snapshot_hash: Optional[str] = None,
+    stale: bool = False,
+    context_hash: Optional[str] = None,
+    stale_reason: Optional[str] = None,
+) -> None:
+    """Persist analysis output for async jobs."""
+    payload_metadata = json.dumps(metadata) if metadata is not None else None
+    payload_insights = json.dumps(insights) if insights is not None else None
+    payload_reviews = json.dumps(reviews) if reviews is not None else None
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO analysis_results (app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(app_id) DO UPDATE SET
+                metadata = excluded.metadata,
+                insights = excluded.insights,
+                reviews = excluded.reviews,
+                status = excluded.status,
+                error = excluded.error,
+                run_id = excluded.run_id,
+                snapshot_hash = excluded.snapshot_hash,
+                stale = excluded.stale,
+                context_hash = excluded.context_hash,
+                stale_reason = excluded.stale_reason,
+                updated_at = excluded.updated_at
+            """,
+            (app_id, payload_metadata, payload_insights, payload_reviews, status, error, timestamp, run_id, snapshot_hash, int(stale), context_hash, stale_reason),
+        )
+        conn.commit()
+
+
+def load_analysis_result(app_id: int) -> Optional[Dict[str, Any]]:
+    with _get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason
+            FROM analysis_results
+            WHERE app_id = ?
+            """,
+            (app_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    try:
+        metadata = json.loads(row["metadata"]) if row["metadata"] else None
+    except json.JSONDecodeError:
+        metadata = None
+    try:
+        insights = json.loads(row["insights"]) if row["insights"] else None
+    except json.JSONDecodeError:
+        insights = None
+    try:
+        reviews = json.loads(row["reviews"]) if row["reviews"] else []
+    except json.JSONDecodeError:
+        reviews = []
+
+    return {
+        "metadata": metadata,
+        "insights": insights,
+        "reviews": reviews,
+        "status": row["status"],
+        "error": row["error"],
+        "updated_at": int(row["updated_at"] or 0),
+        "run_id": row["run_id"],
+        "snapshot_hash": row["snapshot_hash"],
+        "stale": bool(row["stale"]),
+        "context_hash": row["context_hash"],
+        "stale_reason": row["stale_reason"],
+    }
+
+
+def upsert_embedding(key: str, model: str, vector: list[float]) -> None:
+    """Persist embedding vector for reuse across runs."""
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO embeddings (key, model, vector, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                model = excluded.model,
+                vector = excluded.vector,
+                updated_at = excluded.updated_at
+            """,
+            (key, model, json.dumps(vector), timestamp),
+        )
+        conn.commit()
+
+
+def load_embedding(key: str, model: str) -> Optional[list[float]]:
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT vector FROM embeddings WHERE key = ? AND model = ?",
+            (key, model),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["vector"])
+    except json.JSONDecodeError:
+        return None
+
+
+def create_pdf_job(job_id: str, app_id: int, email: str) -> None:
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO pdf_jobs (job_id, app_id, email, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (job_id, int(app_id), email, "queued", timestamp, timestamp),
+        )
+        conn.commit()
+
+
+def update_pdf_job(
+    job_id: str,
+    *,
+    status: str,
+    error: Optional[str] = None,
+    file_path: Optional[str] = None,
+) -> None:
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE pdf_jobs
+            SET status = ?,
+                error = COALESCE(?, error),
+                file_path = COALESCE(?, file_path),
+                updated_at = ?
+            WHERE job_id = ?
+            """,
+            (status, error, file_path, timestamp, job_id),
+        )
+        conn.commit()
+
+
+def load_pdf_job(job_id: str) -> Optional[Dict[str, Any]]:
+    with _get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT job_id, app_id, email, status, error, file_path, created_at, updated_at
+            FROM pdf_jobs
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "job_id": row["job_id"],
+        "app_id": int(row["app_id"]),
+        "email": row["email"],
+        "status": row["status"],
+        "error": row["error"],
+        "file_path": row["file_path"],
+        "created_at": int(row["created_at"] or 0),
+        "updated_at": int(row["updated_at"] or 0),
+    }

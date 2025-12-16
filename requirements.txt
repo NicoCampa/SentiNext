@@ -1,7 +1,0 @@
-streamlit>=1.35
-requests>=2.32
-pandas>=2.2
-numpy>=1.26
-fastapi>=0.111
-uvicorn[standard]>=0.30
-altair>=5.0

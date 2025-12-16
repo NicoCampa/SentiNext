@@ -1,66 +1,83 @@
-# SentiNext – Steam Sentiment MVP
+# SentiNext (minimal)
 
-SentiNext now ships as a FastAPI backend paired with a Next.js frontend. The backend fetches and analyses Steam reviews, while the React dashboard surfaces trends, cohorts, risk signals, and comparison tooling for starred games.
+FastAPI backend + Next.js frontend for Steam review sentiment and issue insights.
 
-## Features
+## Structure
+- `backend/` – FastAPI app (`backend/main.py`) and shared package (`senti_next/`)
+- `frontend/` – Next.js app (static export UI)
+- `data/` – SQLite database (created at runtime)
 
-- Search the Steam catalogue and fetch up to 2,000 reviews via the public `appreviews` endpoint with control over order (newest vs helpful) and optional day-range filters.
-- VADER-driven sentiment scoring plus helpfulness, recommendation, and playtime summaries.
-- Time-series trends, confidence-band overlays, cohort donuts (release stage & purchase source), playtime-vs-sentiment scatterplots, helpfulness heatmaps, and reviewer/veteran benchmarking.
-- Refund risk, core-fan disappointment, and churn indicators.
-- Keyword spotlight for positive and negative topics.
-- Star games to pin their datasets, revisit them from the sidebar workspace, and unlock a multi-title comparison dashboard.
-- Persist reviews locally (SQLite) so subsequent analyses reuse the cached corpus while optional refresh pulls in the latest feedback. Full datasets are available via `/reviews/{app_id}` for bulk export.
+## Local app (recommended)
+Build the UI once, then run a single local server that serves both UI and API.
 
-## Architecture
+### Build UI
+```bash
+cd frontend
+npm install
+npm run build
+```
 
-- **Backend** – `FastAPI` app in `backend/main.py` that exposes `/search` and `/analyze` endpoints by composing the helpers in `senti_next`.
-- **Frontend** – Next.js (TypeScript + Tailwind) application in `frontend/` consuming the API and managing the starred workspace client-side.
-
-Streamlit is still available in `streamlit_app.py` for reference, but the primary experience now runs through Next.js.
-
-## Getting started
-
-Both services run locally; open two terminals inside the project root.
-
-### 1. Backend (FastAPI)
-
+### Run local app server
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
+uvicorn backend.local_app:app --reload --port 8000
+```
+
+Open `http://localhost:8000`.
+
+## Downloadable desktop app (build it)
+This project can be packaged into a desktop app that opens a window (no browser/localhost) and runs the local server in the background.
+
+Prereqs: Node.js + Python 3.11+.
+
+### macOS / Linux
+```bash
+./desktop/build.sh
+```
+
+### Windows (PowerShell)
+```powershell
+.\desktop\build.ps1
+```
+
+Output:
+- `dist/SentiNext/` (foldered build)
+
+## Dev mode (optional)
+Run backend and frontend separately.
+
+### Run backend
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
 uvicorn backend.main:app --reload --port 8000
 ```
 
-The backend persists reviews to an on-disk SQLite database at `data/senti_next.db`. Disable persistence by sending `persist=false` on the `/analyze` request.
-
-### 2. Frontend (Next.js)
-
+### Run frontend
 ```bash
 cd frontend
-npm install        # downloads dependencies (requires network access)
-cp .env.example .env.local  # optional: tweak API base URL
-npm run dev        # launches on http://localhost:3000
+npm install
+cp .env.example .env.local  # set NEXT_PUBLIC_API_BASE_URL if different
+npm run dev  # http://localhost:3000
 ```
 
-The frontend expects the backend at `http://localhost:8000`. Adjust `NEXT_PUBLIC_API_BASE_URL` in `.env.local` if you change the port/host.
+## Notes
+- The API persists reviews/labels to `data/senti_next.db`. Set `SENTINEXT_DB_PATH` to override.
+- LLM settings via env: `SENTINEXT_OLLAMA_MODEL`, `SENTINEXT_CLUSTER_LABELS`, `SENTINEXT_CLUSTER_SIMILARITY`.
+- Destructive admin actions (delete game data / clear DB) are disabled by default. To enable them set `SENTINEXT_ENABLE_DESTRUCTIVE=1` and `SENTINEXT_ADMIN_TOKEN` on the backend, then unlock via the **Admin** box in the UI sidebar.
 
-> **Note**: Dependencies were scaffolded offline. The first `npm install` will fetch packages from the registry on your machine.
+## PDF email reports (testing)
+- Endpoint: `POST /report/pdf` (hard-caps `review_count` to 100 for now).
+- Poll status: `GET /report/pdf/status/{job_id}`.
+- Generated PDFs are saved under `SENTINEXT_REPORTS_DIR` (or next to the DB under `reports/`) and emailed as an attachment.
+- For production, set `SENTINEXT_SERVICE_TOKEN` and send it as `x-service-token` from your website/webhook.
 
-## FastAPI endpoints
-
-| Method | Endpoint     | Description                                 |
-| ------ | ------------ | ------------------------------------------- |
-| GET    | `/health`    | Basic health check                          |
-| GET    | `/search`    | Query the Steam store for matching titles   |
-| POST   | `/analyze`   | Fetch reviews and return sentiment insights |
-| GET    | `/reviews/{app_id}` | Download cached reviews as CSV or JSON |
-
-`/analyze` returns metadata, a JSON-serialised insight bundle, and a compact review table suitable for the frontend’s explorer.
-
-## Notes & next steps
-
-- Steam enforces cursor-based pagination (max 100 reviews per call); the backend keeps requesting pages until the requested count is reached or the API stops returning data.
-- Topic modelling currently relies on frequent keyword extraction. Swap in LDA or embedding-based clustering once the MVP is validated.
-- VADER works well for short, informal reviews. Consider fine-tuning or replacing it with a custom model for production accuracy.
-- Respect Steam’s [API terms of use](https://partner.steamgames.com/doc/store/getreviews) and rate limits when deploying.
+### SMTP env vars
+- `SENTINEXT_SMTP_HOST` (required)
+- `SENTINEXT_SMTP_PORT` (default `587`)
+- `SENTINEXT_SMTP_USER` / `SENTINEXT_SMTP_PASS` (optional, if your SMTP requires auth)
+- `SENTINEXT_SMTP_FROM` (required)
+- `SENTINEXT_SMTP_TLS` (default `true`)

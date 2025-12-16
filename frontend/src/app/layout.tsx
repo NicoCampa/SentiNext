@@ -2,6 +2,8 @@ import clsx from "clsx";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { AnalysisProvider } from "@/contexts/AnalysisContext";
+import { AnalysisWidget } from "@/components/AnalysisWidget";
 
 export const metadata: Metadata = {
   title: "SentiNext",
@@ -17,7 +19,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="bg-slate-950">
-      <body className={clsx(inter.variable, "min-h-screen bg-transparent text-slate-100 antialiased")}>{children}</body>
+      <body className={clsx(inter.variable, "min-h-screen bg-transparent text-slate-100 antialiased")}>
+        <AnalysisProvider>
+          {children}
+          <AnalysisWidget />
+        </AnalysisProvider>
+      </body>
     </html>
   );
 }

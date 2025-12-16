@@ -4,9 +4,43 @@ import {
   SearchResult,
   StarredGameDTO,
   StarredGamePayload,
+  AnalysisResultResponse,
+  FeedbackItem,
 } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+declare global {
+  interface Window {
+    __SENTINEXT_API_BASE__?: string;
+  }
+}
+
+function normalizeBase(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+}
+
+function getApiBase(): string {
+  if (typeof window !== "undefined" && window.__SENTINEXT_API_BASE__) {
+    return normalizeBase(window.__SENTINEXT_API_BASE__);
+  }
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return normalizeBase(process.env.NEXT_PUBLIC_API_BASE_URL);
+  }
+  // Local app default: UI served by backend, API mounted under /api.
+  return "/api";
+}
+
+function apiUrl(pathname: string): string {
+  const base = getApiBase();
+  if (!pathname.startsWith("/")) {
+    throw new Error(`API path must start with '/': ${pathname}`);
+  }
+  if (base.startsWith("http://") || base.startsWith("https://")) {
+    return new URL(pathname, base).toString();
+  }
+  return `${base}${pathname}`;
+}
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -17,7 +51,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 export async function searchGames(query: string): Promise<SearchResult[]> {
-  const url = new URL("/search", API_BASE);
+  const url = new URL(apiUrl("/search"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
   url.searchParams.set("query", query);
   const response = await fetch(url.toString(), { cache: "no-store" });
   return handleResponse<SearchResult[]>(response);
@@ -29,10 +63,13 @@ export interface AnalyzePayload {
   language: string;
   filter: string;
   day_range?: number | null;
+  persist?: boolean;
+  refresh?: boolean;
+  refresh_days?: number | null;
 }
 
 export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeResponse> {
-  const response = await fetch(`${API_BASE}/analyze`, {
+  const response = await fetch(apiUrl("/analyze"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -41,21 +78,52 @@ export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeRespo
 }
 
 export async function fetchProgress(appId: number): Promise<ProgressStatus> {
-  const response = await fetch(`${API_BASE}/progress/${appId}`, {
+  const response = await fetch(apiUrl(`/progress/${appId}`), {
     cache: "no-store",
   });
   return handleResponse<ProgressStatus>(response);
 }
 
 export async function fetchStarredGames(): Promise<StarredGameDTO[]> {
-  const response = await fetch(`${API_BASE}/starred`, {
+  const response = await fetch(apiUrl("/starred"), {
     cache: "no-store",
   });
   return handleResponse<StarredGameDTO[]>(response);
 }
 
+export async function fetchAnalysisResult(appId: number): Promise<AnalysisResultResponse> {
+  const response = await fetch(apiUrl(`/analysis/${appId}`), {
+    cache: "no-store",
+  });
+  return handleResponse<AnalysisResultResponse>(response);
+}
+
+export interface FeedbackOptions {
+  include_reddit?: boolean;
+  include_discord?: boolean;
+  include_steam_forums?: boolean;
+  steam_limit?: number;
+  reddit_limit?: number;
+  discord_limit?: number;
+  forum_limit?: number;
+}
+
+export async function fetchFeedback(appId: number, options: FeedbackOptions = {}): Promise<FeedbackItem[]> {
+  const url = new URL(apiUrl(`/feedback/${appId}`), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (options.include_reddit === false) url.searchParams.set("include_reddit", "false");
+  if (options.include_discord === false) url.searchParams.set("include_discord", "false");
+  if (options.include_steam_forums === false) url.searchParams.set("include_steam_forums", "false");
+  if (options.steam_limit) url.searchParams.set("steam_limit", String(options.steam_limit));
+  if (options.reddit_limit) url.searchParams.set("reddit_limit", String(options.reddit_limit));
+  if (options.discord_limit) url.searchParams.set("discord_limit", String(options.discord_limit));
+  if (options.forum_limit) url.searchParams.set("forum_limit", String(options.forum_limit));
+
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  return handleResponse<FeedbackItem[]>(response);
+}
+
 export async function saveStarredGame(payload: StarredGamePayload): Promise<void> {
-  await fetch(`${API_BASE}/starred`, {
+  await fetch(apiUrl("/starred"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -66,12 +134,104 @@ export async function saveStarredGame(payload: StarredGamePayload): Promise<void
   });
 }
 
+const ADMIN_TOKEN_STORAGE_KEY = "sentinext_admin_token";
+
+export function getAdminToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+}
+
+export function setAdminToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  if (!token) {
+    window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+}
+
+export async function verifyAdminToken(token: string): Promise<void> {
+  const response = await fetch(apiUrl("/admin/verify"), {
+    method: "POST",
+    headers: { "x-admin-token": token },
+    cache: "no-store",
+  });
+  await handleResponse<{ ok: boolean }>(response);
+}
+
+function requireAdminHeaders(): HeadersInit {
+  const token = getAdminToken();
+  if (!token) {
+    throw new Error("Admin is locked. Unlock to proceed.");
+  }
+  return { "x-admin-token": token };
+}
+
 export async function removeStarredGame(appId: number): Promise<void> {
-  await fetch(`${API_BASE}/starred/${appId}`, {
+  await fetch(apiUrl(`/starred/${appId}`), {
     method: "DELETE",
+    headers: requireAdminHeaders(),
   }).then((response) => {
     if (!response.ok) {
       throw new Error(`Failed to remove starred game (status ${response.status})`);
     }
   });
+}
+
+export async function deleteGame(appId: number): Promise<void> {
+  await fetch(apiUrl(`/games/${appId}`), {
+    method: "DELETE",
+    headers: requireAdminHeaders(),
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`Failed to delete game data (status ${response.status})`);
+    }
+  });
+}
+
+export interface DatabaseStats {
+  games: number;
+  reviews: number;
+  labels: number;
+  labels_new_schema: number;
+  labels_old_schema: number;
+  starred_games: number;
+}
+
+export async function fetchDatabaseStats(): Promise<DatabaseStats> {
+  const response = await fetch(apiUrl("/database/stats"), {
+    cache: "no-store",
+  });
+  return handleResponse<DatabaseStats>(response);
+}
+
+export interface BackendAdminStatus {
+  destructive_enabled: boolean;
+  token_configured: boolean;
+}
+
+export async function fetchBackendAdminStatus(): Promise<BackendAdminStatus> {
+  const response = await fetch(apiUrl("/admin/status"), {
+    cache: "no-store",
+  });
+  return handleResponse<BackendAdminStatus>(response);
+}
+
+export async function clearLabels(oldSchemaOnly: boolean = false): Promise<{ deleted: number; scope: string }> {
+  const url = oldSchemaOnly
+    ? apiUrl("/database/labels") + "?old_schema_only=true"
+    : apiUrl("/database/labels");
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: requireAdminHeaders(),
+  });
+  return handleResponse<{ deleted: number; scope: string }>(response);
+}
+
+export async function clearEntireDatabase(): Promise<{ deleted: Record<string, number>; scope: string }> {
+  const response = await fetch(apiUrl("/database/clear"), {
+    method: "DELETE",
+    headers: requireAdminHeaders(),
+  });
+  return handleResponse<{ deleted: Record<string, number>; scope: string }>(response);
 }

@@ -20,13 +20,6 @@ export interface TrendPoint {
   reviews: number;
 }
 
-export interface ConfidenceTrendPoint {
-  period: string;
-  avg_confidence: number;
-  pain_point_rate: number;
-  feature_request_rate: number;
-  reviews: number;
-}
 
 export interface SentimentCount {
   sentiment: string;
@@ -52,11 +45,6 @@ export interface RiskMetrics {
   churn_rate: number;
 }
 
-export interface TopicsSummary {
-  overall: TopicFrequency[];
-  positive: TopicFrequency[];
-  negative: TopicFrequency[];
-}
 
 export interface ThemeDefinition {
   name: string;
@@ -73,20 +61,147 @@ export interface ThemeDefinition {
   };
 }
 
+export interface IssueCategory {
+  category: string;
+  count: number;
+}
+
+export interface ExperienceLevelSegment {
+  count: number;
+  top_issues: IssueCategory[];
+  critical_count: number;
+}
+
+export interface ExperienceLevelIssues {
+  newcomers: ExperienceLevelSegment;
+  casual: ExperienceLevelSegment;
+  experienced: ExperienceLevelSegment;
+  veterans: ExperienceLevelSegment;
+}
+
+export interface PurchaseTypeSegment {
+  count: number;
+  feature_request_rate: number;
+  recommendation_rate: number;
+}
+
+export interface PurchaseTypeInsights {
+  steam_buyers: PurchaseTypeSegment;
+  key_users: PurchaseTypeSegment;
+  free_users: PurchaseTypeSegment;
+}
+
+export interface TopicWithCount {
+  topic: string;
+  count: number;
+}
+
+export interface EngagementSegment {
+  count: number;
+  top_topics: TopicWithCount[];
+}
+
+export interface EngagementBasedTopics {
+  highly_engaged: EngagementSegment;
+  moderately_engaged: EngagementSegment;
+  low_engagement: EngagementSegment;
+}
+
+export interface ActivitySegment {
+  count: number;
+  recommendation_rate: number;
+  critical_issues: number;
+}
+
+export interface ActivityBasedFeedback {
+  currently_active: ActivitySegment;
+  recently_stopped: ActivitySegment;
+  inactive: ActivitySegment;
+}
+
+export interface PlayerSegments {
+  experience_level: ExperienceLevelIssues;
+  purchase_type: PurchaseTypeInsights;
+  engagement_topics: EngagementBasedTopics;
+  activity_status: ActivityBasedFeedback;
+}
+
+export interface StandardizedIssue {
+  category: string;             // v8: standardized issue category
+  count: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  example: string;              // Example from reviews
+}
+
+export interface IssueCluster {
+  issue: string;
+  count: number;
+  critical_count?: number;
+  high_count?: number;
+  examples?: string[];
+  review_ids?: Array<string | number | null>;
+  variations?: string[];
+  llm_main_category?: string;
+  llm_subcategory?: string;
+}
+
+export interface FeatureRequest {
+  category: string;             // v8: standardized feature request category
+  count: number;
+  high_demand_count: number;
+  medium_demand_count: number;
+  low_demand_count: number;
+  example: string;              // Example from reviews
+}
+
+export interface CategoryBreakdown {
+  [mainCategory: string]: {
+    [subcategory: string]: number;
+  };
+}
+
+export interface CategoryRecommendationRate {
+  rate: number;
+  count: number;
+  recommended: number;
+  not_recommended: number;
+}
+
+export interface CategoryTrendPoint {
+  period: string;
+  count: number;
+}
+
+export interface VersionInsight {
+  total_reviews: number;
+  recommendation_rate: number;
+  top_issues: StandardizedIssue[];
+  top_feature_requests: FeatureRequest[];
+  top_categories: Record<string, number>;
+}
+
 export interface InsightsResponse {
   metrics: Record<string, number>;
   llm: LLMMetrics;
+  category_breakdown: CategoryBreakdown;
+  category_recommendation_rates?: Record<string, CategoryRecommendationRate>;
+  category_trend?: Record<string, CategoryTrendPoint[]>;
+  version_insights?: Record<string, VersionInsight>;
   playtime: Record<string, number>;
   helpful: Record<string, number>;
   recommendation: number;
   sentiment_counts: SentimentCount[];
   trend: TrendPoint[];
-  confidence_trend: ConfidenceTrendPoint[];
   segments: InsightSegments;
   audience: AudienceSegments;
   risk: RiskMetrics;
-  topics: TopicsSummary;
-  topic_catalog: string[];
+  standardized_issues?: StandardizedIssue[];
+  feature_requests?: FeatureRequest[];
+  clustered_issues?: IssueCluster[];
+  player_segments?: PlayerSegments;
   theme?: ThemeDefinition;
 }
 
@@ -94,12 +209,7 @@ export interface ReviewRow {
   review_id: string | number | null;
   review: string;
   language: string;
-  sentiment_label: string;
-  sentiment_compound: number;
-  sentiment_positive: number;
-  sentiment_neutral: number;
-  sentiment_negative: number;
-  voted_up: boolean;
+  voted_up: boolean;  // Steam's official thumbs up/down (the only sentiment indicator)
   votes_up: number;
   votes_funny: number;
   author_num_games_owned: number;
@@ -109,11 +219,14 @@ export interface ReviewRow {
   author_playtime_hours?: number;
   author_recent_playtime_hours?: number;
   created_at?: string;
-  llm_sentiment?: string;
-  llm_topics?: string[];
-  llm_pain_point?: boolean;
+  // v7 LLM insights (hierarchical)
+  llm_main_category?: "gameplay" | "technical" | "content" | "interface" | "social" | "monetization" | "other";
+  llm_subcategory?: string;
   llm_feature_request?: boolean;
-  llm_confidence?: number;
+  llm_urgency?: "critical" | "high" | "medium" | "low";
+  // v8 LLM insights (standardized)
+  llm_issues?: Array<{ category: string; severity: string; example: string }>;
+  llm_feature_requests?: Array<{ category: string; demand: string; example: string }>;
 }
 
 export interface AnalyzeResponse {
@@ -127,25 +240,46 @@ export interface StarredGame {
   insights: InsightsResponse | null;
   sample: ReviewRow[];
   name: string;
+  genres?: string[];
+  categories?: string[];
   updated_at?: string;
 }
 
-export interface TopicFrequency {
-  topic: string;
-  count: number;
-  share?: number;
-  share_positive?: number;
-  share_negative?: number;
-  pain_point_rate?: number;
-  feature_request_rate?: number;
-  avg_confidence?: number;
+export interface FeedbackItem {
+  feedback_id: string;
+  app_id: number;
+  source: string;
+  text: string;
+  created_at?: string | null;
+  author?: string | null;
+  language?: string | null;
+  engagement?: Record<string, unknown>;
+  url?: string | null;
+  context?: Record<string, unknown>;
 }
 
-export interface LLMMetrics {
-  pain_point_rate: number;
-  feature_request_rate: number;
-  avg_confidence: number;
+export type AnalysisJobStatus = "pending" | "running" | "completed" | "failed" | "unknown";
+
+export interface AnalysisResultResponse {
+  status: AnalysisJobStatus;
+  metadata?: AnalyzeMetadata | null;
+  insights: InsightsResponse | null;
+  reviews: ReviewRow[];
+  error?: string | null;
+  run_id?: string | null;
+  snapshot_hash?: string | null;
+  stale?: boolean;
+  stale_reason?: string | null;
 }
+
+
+export interface LLMMetrics {
+  feature_request_rate: number;
+  critical_issues: number;  // Count of critical urgency
+  high_priority: number;    // Count of high urgency
+  coverage_rate?: number;   // Share of reviews with structured labels
+}
+
 
 export interface ProgressStatus {
   app_id: number;
@@ -169,5 +303,7 @@ export interface StarredGameDTO {
   metadata: AnalyzeMetadata;
   insights: InsightsResponse | null;
   sample: ReviewRow[];
+  genres?: string[];
+  categories?: string[];
   updated_at: string;
 }
