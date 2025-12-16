@@ -1,16 +1,16 @@
 :root {
   color-scheme: dark;
-  --bg0: #060b19;
-  --bg1: #0b1120;
-  --card: rgba(255, 255, 255, 0.06);
-  --card-strong: rgba(255, 255, 255, 0.09);
+  --bg0: #0a0c10;
+  --bg1: #111821;
+  --card: rgba(255, 255, 255, 0.05);
+  --card-strong: rgba(255, 255, 255, 0.08);
   --border: rgba(255, 255, 255, 0.12);
-  --text: #e5e7eb;
-  --muted: #a4b2c7;
-  --muted-2: #7f91ad;
-  --accent: #60a5fa;
-  --accent-2: #a78bfa;
-  --danger: #fca5a5;
+  --text: #f2f0e8;
+  --muted: #c7c2b4;
+  --muted-2: #a19c8d;
+  --accent: #f6b565;
+  --accent-2: #5fe0c2;
+  --danger: #f9a8a8;
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
 }
 
@@ -32,9 +32,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   color: var(--text);
   background:
-    radial-gradient(1000px 600px at 15% -10%, rgba(96, 165, 250, 0.25), transparent 60%),
-    radial-gradient(900px 600px at 85% 0%, rgba(167, 139, 250, 0.18), transparent 55%),
-    radial-gradient(900px 600px at 60% 110%, rgba(34, 211, 238, 0.08), transparent 60%),
+    radial-gradient(1200px 700px at 16% -12%, rgba(246, 181, 101, 0.22), transparent 60%),
+    radial-gradient(950px 620px at 82% 4%, rgba(95, 224, 194, 0.16), transparent 55%),
+    radial-gradient(900px 620px at 58% 110%, rgba(255, 255, 255, 0.05), transparent 60%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
 }
 
@@ -146,7 +146,7 @@ a:hover {
 }
 
 .gradientText {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: linear-gradient(95deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -182,13 +182,13 @@ a:hover {
 }
 
 .btnPrimary {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(99, 102, 241, 0.95));
-  border-color: rgba(99, 102, 241, 0.35);
+  background: linear-gradient(135deg, rgba(246, 181, 101, 0.98), rgba(95, 224, 194, 0.95));
+  border-color: rgba(246, 181, 101, 0.45);
 }
 
 .btnPrimary:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.98), rgba(129, 140, 248, 0.95));
-  border-color: rgba(129, 140, 248, 0.55);
+  background: linear-gradient(135deg, rgba(255, 191, 120, 0.99), rgba(125, 234, 210, 0.98));
+  border-color: rgba(255, 191, 120, 0.6);
 }
 
 .btnSmall {
