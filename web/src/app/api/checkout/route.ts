@@ -7,8 +7,11 @@ import { stripeClient } from "@/lib/stripe";
 export const runtime = "nodejs";
 
 const bodySchema = z.object({
-  appId: z.string().regex(/^\d+$/),
-  email: z.string().email(),
+  appId: z
+    .string()
+    .trim()
+    .regex(/^\d+$/, { message: "Steam app id must be numeric" }),
+  email: z.string().trim().email(),
 });
 
 export async function POST(request: Request) {
@@ -55,4 +58,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ url: session.url });
 }
-
