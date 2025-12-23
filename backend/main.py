@@ -341,7 +341,18 @@ def _reports_dir() -> Path:
     raw = os.getenv("SENTINEXT_REPORTS_DIR")
     if raw:
         return Path(raw).expanduser()
-    # Default to the same data dir root as the DB.
+
+    # If we're running from a git checkout, prefer a local repo `reports/` folder
+    # (more intuitive during development than writing to OS app-data directories).
+    try:
+        cwd = Path.cwd().resolve()
+        for candidate in [cwd, *cwd.parents]:
+            if (candidate / ".git").exists():
+                return candidate / "reports"
+    except Exception:
+        pass
+
+    # Default to the same data dir root as the DB (works well for packaged desktop builds).
     return storage.db_path().parent / "reports"
 
 

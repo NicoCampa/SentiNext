@@ -38,3 +38,6 @@ data/*.pdf
 /data/senti_next.db
 /data/*.sqlite
 /data/*.db
+
+# Generated reports (repo-local)
+reports/

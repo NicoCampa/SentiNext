@@ -7,12 +7,17 @@ npm install
 npm run build
 
 Set-Location $RootDir
-python -m venv .venv-build
-. .\.venv-build\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
-pip install -r desktop\requirements.txt
+if (-not (Get-Command conda -ErrorAction SilentlyContinue)) {
+  throw "conda is required. Install Miniconda/Anaconda, then re-run."
+}
 
-pyinstaller --clean --noconfirm desktop\sentinext_desktop.spec
+$hasEnv = (conda env list) | Select-String -Pattern "^\s*SentiNext\s"
+if (-not $hasEnv) {
+  conda env create -f environment.yml
+}
+
+conda run -n SentiNext pip install -r desktop\requirements.txt
+
+conda run -n SentiNext pyinstaller --clean --noconfirm desktop\sentinext_desktop.spec
 
 Write-Host "Built app in: $RootDir\dist\SentiNext"
-

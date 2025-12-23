@@ -8,12 +8,17 @@ npm install
 npm run build
 
 cd "$ROOT_DIR"
-python -m venv .venv-build
-source .venv-build/bin/activate
-pip install -r backend/requirements.txt
-pip install -r desktop/requirements.txt
+if ! command -v conda >/dev/null 2>&1; then
+  echo "conda is required. Install Miniconda/Anaconda, then re-run."
+  exit 1
+fi
 
-pyinstaller --clean --noconfirm desktop/sentinext_desktop.spec
+if ! conda env list | grep -E '^[[:space:]]*SentiNext[[:space:]]' >/dev/null 2>&1; then
+  conda env create -f environment.yml
+fi
+
+conda run -n SentiNext pip install -r desktop/requirements.txt
+
+conda run -n SentiNext pyinstaller --clean --noconfirm desktop/sentinext_desktop.spec
 
 echo "Built app in: $ROOT_DIR/dist/SentiNext"
-
