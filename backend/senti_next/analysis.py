@@ -371,10 +371,10 @@ def experience_level_issues(df: pd.DataFrame) -> Dict[str, Any]:
     """Analyze what issues different experience levels are reporting."""
     if df.empty:
         return {
-            "newcomers": {"count": 0, "top_issues": [], "critical_count": 0},
-            "casual": {"count": 0, "top_issues": [], "critical_count": 0},
-            "experienced": {"count": 0, "top_issues": [], "critical_count": 0},
-            "veterans": {"count": 0, "top_issues": [], "critical_count": 0},
+            "newcomers": {"count": 0, "top_issues": [], "issue_count": 0},
+            "casual": {"count": 0, "top_issues": [], "issue_count": 0},
+            "experienced": {"count": 0, "top_issues": [], "issue_count": 0},
+            "veterans": {"count": 0, "top_issues": [], "issue_count": 0},
         }
 
     minutes = df["author_playtime_forever"].fillna(0)
@@ -387,23 +387,28 @@ def experience_level_issues(df: pd.DataFrame) -> Dict[str, Any]:
 
     def analyze_segment(segment_df):
         if segment_df.empty:
-            return {"count": 0, "top_issues": [], "critical_count": 0}
+            return {"count": 0, "top_issues": [], "issue_count": 0}
 
-        # Get top issue categories (v7: main_category)
         top_issues = []
-        if "llm_main_category" in segment_df.columns:
-            category_counts = segment_df["llm_main_category"].value_counts().head(3)
-            top_issues = [{"category": cat, "count": int(count)} for cat, count in category_counts.items()]
+        if "llm_issue_subcategories" in segment_df.columns:
+            exploded = segment_df["llm_issue_subcategories"].explode()
+            if not exploded.empty:
+                counts = exploded.dropna().value_counts().head(3)
+                top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
+        elif "llm_subcategories" in segment_df.columns:
+            exploded = segment_df["llm_subcategories"].explode()
+            if not exploded.empty:
+                counts = exploded.dropna().value_counts().head(3)
+                top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
 
-        # Count critical issues
-        critical_count = 0
-        if "llm_urgency" in segment_df.columns:
-            critical_count = int((segment_df["llm_urgency"] == "critical").sum())
+        issue_count = 0
+        if "llm_issue_subcategories" in segment_df.columns:
+            issue_count = int(segment_df["llm_issue_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).sum())
 
         return {
             "count": len(segment_df),
             "top_issues": top_issues,
-            "critical_count": critical_count,
+            "issue_count": issue_count,
         }
 
     return {
@@ -432,8 +437,10 @@ def purchase_type_insights(df: pd.DataFrame) -> Dict[str, Any]:
             return {"count": 0, "feature_request_rate": 0.0, "recommendation_rate": 0.0}
 
         feature_request_rate = 0.0
-        if "llm_feature_request" in segment_df.columns:
-            feature_request_rate = float(segment_df["llm_feature_request"].fillna(False).astype(bool).mean())
+        if "llm_request_subcategories" in segment_df.columns:
+            feature_request_rate = float(
+                segment_df["llm_request_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).mean()
+            )
 
         recommendation_rate = float(segment_df["voted_up"].mean()) if "voted_up" in segment_df.columns else 0.0
 
@@ -506,18 +513,18 @@ def activity_based_feedback(df: pd.DataFrame) -> Dict[str, Any]:
 
     def analyze_activity_segment(segment_df):
         if segment_df.empty:
-            return {"count": 0, "recommendation_rate": 0.0, "critical_issues": 0}
+            return {"count": 0, "recommendation_rate": 0.0, "issue_count": 0}
 
         recommendation_rate = float(segment_df["voted_up"].mean()) if "voted_up" in segment_df.columns else 0.0
 
-        critical_issues = 0
-        if "llm_urgency" in segment_df.columns:
-            critical_issues = int((segment_df["llm_urgency"] == "critical").sum())
+        issue_count = 0
+        if "llm_issue_subcategories" in segment_df.columns:
+            issue_count = int(segment_df["llm_issue_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).sum())
 
         return {
             "count": len(segment_df),
             "recommendation_rate": recommendation_rate,
-            "critical_issues": critical_issues,
+            "issue_count": issue_count,
         }
 
     return {

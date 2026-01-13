@@ -77,14 +77,9 @@ function ReviewsContent() {
 
   // Filter reviews
   const filteredReviews = (game.sample || []).filter((review: any) => {
-    if (filterType === "standardized_issue") {
-      const issues = Array.isArray(review.llm_issues) ? review.llm_issues : [];
-      const hasIssue = issues.some((issue: any) => issue?.category === filterValue);
-      if (!hasIssue) return false;
-    }
-
-    if (filterType === "urgency") {
-      if (review.llm_urgency !== filterValue) return false;
+    if (filterType === "subcategory") {
+      const subcats = Array.isArray(review.llm_subcategories) ? review.llm_subcategories : [];
+      if (!subcats.includes(filterValue)) return false;
     }
 
     if (filterType === "main_category") {
@@ -96,8 +91,9 @@ function ReviewsContent() {
       if (filterValue === "negative" && review.voted_up) return false;
     }
 
-    if (filterType === "feature_request") {
-      if (filterValue === "yes" && !review.llm_feature_request) return false;
+    if (filterType === "feature_request" || filterType === "request") {
+      const hasRequest = review.llm_has_request ?? (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0);
+      if (filterValue === "yes" && !hasRequest) return false;
     }
 
     if (filterType === "risk_refund") {
@@ -133,9 +129,9 @@ function ReviewsContent() {
             <p className="mt-1 text-sm text-slate-400">
               Filtered Reviews: {filteredReviews.length} matching
             </p>
-            {filterType === "standardized_issue" && (
+            {filterType === "subcategory" && (
               <p className="mt-1 text-sm text-sky-400">
-                Issue category: &quot;{filterValue}&quot;
+                Subcategory: &quot;{filterValue.replace(/_/g, " ").replace("/", " / ")}&quot;
               </p>
             )}
           </div>
@@ -162,23 +158,19 @@ function ReviewsContent() {
                     }`}>
                       {review.voted_up ? 'Recommended' : 'Not Recommended'}
                     </span>
-                    {review.llm_urgency && review.llm_urgency !== 'low' && (
-                      <span className={`rounded px-2 py-1 text-xs font-semibold ${
-                        review.llm_urgency === 'critical' ? 'bg-rose-500/30 text-rose-300' :
-                        review.llm_urgency === 'high' ? 'bg-amber-500/30 text-amber-300' :
-                        'bg-sky-500/30 text-sky-300'
-                      }`}>
-                        {review.llm_urgency.toUpperCase()}
-                      </span>
-                    )}
                     {review.llm_main_category && (
                       <span className="rounded bg-purple-500/20 px-2 py-1 text-xs font-semibold text-purple-300">
                         {review.llm_main_category}
                       </span>
                     )}
-                    {review.llm_feature_request && (
+                    {(review.llm_has_issue ?? (Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0)) && (
+                      <span className="rounded bg-rose-500/20 px-2 py-1 text-xs font-semibold text-rose-300">
+                        Issue
+                      </span>
+                    )}
+                    {(review.llm_has_request ?? (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0)) && (
                       <span className="rounded bg-cyan-500/20 px-2 py-1 text-xs font-semibold text-cyan-300">
-                        Feature Request
+                        Request
                       </span>
                     )}
                   </div>
@@ -190,26 +182,42 @@ function ReviewsContent() {
                 {/* Review Text */}
                 <p className="mb-3 text-sm text-slate-200 leading-relaxed">{review.review}</p>
 
-                {/* Standardized Issues */}
-                {Array.isArray(review.llm_issues) && review.llm_issues.length > 0 && (
-                  <div className="mb-2 space-y-1">
-                    <p className="text-xs font-semibold text-slate-400">Issues:</p>
-                    {review.llm_issues.map((issue: any, issueIdx: number) => {
-                      const isHighlighted = filterType === "standardized_issue" && issue?.category === filterValue;
-                      return (
-                        <div key={issueIdx} className="flex flex-col gap-1 rounded px-2 py-1 bg-slate-800/40">
-                          <span className={`text-xs font-semibold capitalize ${isHighlighted ? 'text-yellow-300' : 'text-slate-200'}`}>
-                            {issue.category?.replace(/_/g, " ") ?? "unspecified"}
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            {issue.severity ? `[${issue.severity}] ` : ""}
-                            {issue.example || "No example provided"}
-                          </span>
+                {/* Issue & Request Subcategories */}
+                {(Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0) ||
+                (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0) ? (
+                  <div className="mb-2 space-y-2">
+                    {Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-400">Issues:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {review.llm_issue_subcategories.map((issue: string, issueIdx: number) => (
+                            <span
+                              key={issueIdx}
+                              className="rounded bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-300"
+                            >
+                              {issue.replace(/_/g, " ").replace("/", " / ")}
+                            </span>
+                          ))}
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
+                    {Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-400">Requests:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {review.llm_request_subcategories.map((request: string, requestIdx: number) => (
+                            <span
+                              key={requestIdx}
+                              className="rounded bg-cyan-500/10 px-2 py-1 text-xs font-semibold text-cyan-300"
+                            >
+                              {request.replace(/_/g, " ").replace("/", " / ")}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                ) : null}
 
                 {/* Footer */}
                 <div className="flex items-center justify-between text-xs text-slate-500">

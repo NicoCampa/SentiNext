@@ -19,7 +19,7 @@ from . import storage
 logger = logging.getLogger(__name__)
 
 OLLAMA_MODEL = os.getenv("SENTINEXT_OLLAMA_MODEL", "gpt-oss:20b-cloud")
-PROMPT_VERSION = "steam_review_insights_v8_optimized"
+PROMPT_VERSION = "steam_review_insights_v10_subcategory_only_opt"
 MAX_REVIEW_CHARS = 3000
 
 _PROMPT_TEMPLATE = Template(
@@ -31,10 +31,11 @@ _PROMPT_TEMPLATE = Template(
 
         YAML OUTPUT:
         main_category: gameplay|technical|content|interface|social|monetization|other
-        subcategory: <see categories below>
-        issues: [{category: <from list>, severity: critical|high|medium|low, example: "quote"}]
-        feature_requests: [{category: <from list>, demand: high|medium|low, example: "quote"}]
-        urgency: critical|high|medium|low
+        subcategory: <primary subcategory for main_category>
+        subcategories: [list of "<main>/<sub>" strings]
+        issue_subcategories: [subset of subcategories with problems]
+        request_subcategories: [subset of subcategories with explicit requests]
+        evidence: { "<main>/<sub>": ["short quote from review"] }
 
         CATEGORIES:
 
@@ -46,40 +47,30 @@ _PROMPT_TEMPLATE = Template(
         monetization → pricing|dlc|microtransactions|value
         other → general|mixed|unclear
 
-        ISSUE CATEGORIES:
-        boss_difficulty, combat_balance, fps_drops, crashes_frequent, bugs_gameplay,
-        ui_confusing, progression_too_slow, content_repetitive, ai_broken, optimization_poor,
-        loading_times, save_corruption, story_quality_poor, map_issues, tutorial_poor
-
-        FEATURE REQUEST CATEGORIES:
-        difficulty_options_wanted, new_game_plus_wanted, more_endgame_wanted,
-        fast_travel_wanted, skip_cutscenes_wanted, coop_mode_wanted, mod_support_wanted,
-        fov_slider_wanted, crossplay_wanted, photo_mode_wanted
-
         RULES:
-        - Extract 0-5 issues, 0-5 requests per review
-        - Use standardized categories above
-        - Add specific example for each (short quote)
-        - critical=unplayable, high=major, medium=annoying, low=minor
-        - Vague reviews: issues=[], feature_requests=[], urgency=low
+        - Add 1-6 subcategories using "<main>/<sub>" format
+        - issue_subcategories and request_subcategories must be subsets of subcategories
+        - Provide at least one short evidence snippet per subcategory
+        - Vague reviews: main_category=other, subcategory=general, subcategories=["other/general"],
+          issue_subcategories=[], request_subcategories=[], evidence={"other/general":["short quote"]}
 
         REVIEW: $review_literal
 
         EXAMPLE OUTPUT:
         main_category: technical
         subcategory: stability
-        issues:
-          - category: crashes_frequent
-            severity: critical
-            example: "crashes every 20 min"
-          - category: boss_difficulty
-            severity: high
-            example: "final boss too hard"
-        feature_requests:
-          - category: new_game_plus_wanted
-            demand: high
-            example: "want to replay with gear"
-        urgency: critical
+        subcategories:
+          - technical/stability
+          - technical/performance
+        issue_subcategories:
+          - technical/stability
+        request_subcategories:
+          - technical/performance
+        evidence:
+          technical/stability:
+            - "crashes every 20 min"
+          technical/performance:
+            - "need a performance mode"
         """
     )
 )
@@ -87,12 +78,11 @@ _PROMPT_TEMPLATE = Template(
 _DEFAULT_LABEL = {
     "main_category": "other",
     "subcategory": "general",
-    "issues": [],
-    "feature_requests": [],
-    "urgency": "low",
+    "subcategories": ["other/general"],
+    "issue_subcategories": [],
+    "request_subcategories": [],
+    "evidence": {},
 }
-
-_ALLOWED_URGENCIES = {"critical", "high", "medium", "low"}
 _ALLOWED_MAIN_CATEGORIES = {"gameplay", "technical", "content", "interface", "social", "monetization", "other"}
 _ALLOWED_SUBCATEGORIES = {
     "gameplay": {"mechanics", "controls", "balance", "progression"},
@@ -103,6 +93,103 @@ _ALLOWED_SUBCATEGORIES = {
     "monetization": {"pricing", "dlc", "microtransactions", "value"},
     "other": {"general", "mixed", "unclear"},
 }
+_ALLOWED_SUBCATEGORY_KEYS = {
+    f"{main}/{sub}" for main, subs in _ALLOWED_SUBCATEGORIES.items() for sub in subs
+}
+_SUBCATEGORY_SEPARATORS = ("/", ":", ".")
+MAX_EVIDENCE_SNIPPET_CHARS = 160
+
+
+def _clean_snippet(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).replace("\n", " ").replace("\r", " ").strip()
+    if not text:
+        return ""
+    if len(text) > MAX_EVIDENCE_SNIPPET_CHARS:
+        return text[: MAX_EVIDENCE_SNIPPET_CHARS - 3].rstrip() + "..."
+    return text
+
+
+def _normalize_subcategory_value(value: Any, fallback_main: Optional[str] = None) -> Optional[str]:
+    if isinstance(value, dict):
+        main = value.get("main_category") or value.get("main")
+        sub = value.get("subcategory") or value.get("sub")
+        if main and sub:
+            value = f"{main}/{sub}"
+        else:
+            return None
+    if not isinstance(value, str):
+        return None
+    raw = value.strip().lower()
+    if not raw:
+        return None
+    main = ""
+    sub = ""
+    for sep in _SUBCATEGORY_SEPARATORS:
+        if sep in raw:
+            main, sub = raw.split(sep, 1)
+            break
+    if not main or not sub:
+        if fallback_main:
+            main = fallback_main
+            sub = raw
+        else:
+            return None
+    main = main.strip()
+    sub = sub.strip()
+    if main not in _ALLOWED_SUBCATEGORIES:
+        return None
+    if sub not in _ALLOWED_SUBCATEGORIES[main]:
+        return None
+    return f"{main}/{sub}"
+
+
+def _parse_subcategory_list(value: Any, fallback_main: Optional[str] = None) -> list[str]:
+    results: list[str] = []
+    if isinstance(value, dict):
+        for main_key, subs in value.items():
+            if not isinstance(subs, list):
+                continue
+            for sub in subs:
+                normalized = _normalize_subcategory_value(f"{main_key}/{sub}")
+                if normalized and normalized not in results:
+                    results.append(normalized)
+        return results
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, str):
+        items = [value]
+    else:
+        return results
+    for item in items:
+        normalized = _normalize_subcategory_value(item, fallback_main=fallback_main)
+        if normalized and normalized not in results:
+            results.append(normalized)
+    return results
+
+
+def _parse_evidence(value: Any, allowed_subcategories: list[str]) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    allowed = set(allowed_subcategories)
+    evidence: dict[str, list[str]] = {}
+    for raw_key, raw_snippets in value.items():
+        normalized_key = _normalize_subcategory_value(raw_key)
+        if not normalized_key or (allowed and normalized_key not in allowed):
+            continue
+        if isinstance(raw_snippets, list):
+            snippets = raw_snippets
+        else:
+            snippets = [raw_snippets]
+        cleaned = []
+        for snippet in snippets:
+            text = _clean_snippet(snippet)
+            if text and text not in cleaned:
+                cleaned.append(text)
+        if cleaned:
+            evidence[normalized_key] = cleaned[:4]
+    return evidence
 
 
 def _build_prompt(
@@ -174,65 +261,39 @@ def _parse_ollama_response(payload: Dict[str, Any]) -> Dict[str, Any]:
     if subcategory not in allowed_subs:
         subcategory = next(iter(allowed_subs))
 
-    # Parse issues (v8: structured objects)
-    issues_value = payload.get("issues") or []
-    issues: list[dict] = []
-    if isinstance(issues_value, list):
-        for item in issues_value:
-            if isinstance(item, dict):
-                category = item.get("category", "")
-                severity = item.get("severity", "medium")
-                example = item.get("example", "")
-                if category:
-                    issues.append({
-                        "category": str(category).strip(),
-                        "severity": severity if severity in _ALLOWED_URGENCIES else "medium",
-                        "example": str(example).strip() if example else ""
-                    })
-            elif isinstance(item, str) and item.strip():
-                # Defensive: allow plain strings to pass through
-                issues.append({
-                    "category": item.strip(),
-                    "severity": "medium",
-                    "example": ""
-                })
+    subcategories = _parse_subcategory_list(payload.get("subcategories"), fallback_main=main_category)
+    if not subcategories:
+        subcategories = [f"{main_category}/{subcategory}"]
+    if len(subcategories) > 6:
+        subcategories = subcategories[:6]
 
-    # Parse feature requests
-    feature_requests_value = payload.get("feature_requests") or []
-    feature_requests: list[dict] = []
-    if isinstance(feature_requests_value, list):
-        for item in feature_requests_value:
-            if isinstance(item, dict):
-                category = item.get("category", "")
-                demand = item.get("demand", "medium")
-                example = item.get("example", "")
-                if category:
-                    feature_requests.append({
-                        "category": str(category).strip(),
-                        "demand": demand if demand in _ALLOWED_URGENCIES else "medium",
-                        "example": str(example).strip() if example else ""
-                    })
-            elif isinstance(item, str) and item.strip():
-                feature_requests.append({
-                    "category": item.strip(),
-                    "demand": "medium",
-                    "example": ""
-                })
+    issue_subcategories = _parse_subcategory_list(payload.get("issue_subcategories"), fallback_main=main_category)
+    request_subcategories = _parse_subcategory_list(payload.get("request_subcategories"), fallback_main=main_category)
+    if len(issue_subcategories) > 6:
+        issue_subcategories = issue_subcategories[:6]
+    if len(request_subcategories) > 6:
+        request_subcategories = request_subcategories[:6]
 
-    # Boolean convenience flag indicating presence of feature requests
-    feature_request = len(feature_requests) > 0
+    for entry in issue_subcategories + request_subcategories:
+        if entry not in subcategories:
+            subcategories.append(entry)
 
-    urgency = (payload.get("urgency") or "low").lower()
-    if urgency not in _ALLOWED_URGENCIES:
-        urgency = "low"
+    for entry in subcategories:
+        if entry.startswith(f"{main_category}/"):
+            subcategory = entry.split("/", 1)[1]
+            break
+
+    issue_subcategories = [entry for entry in issue_subcategories if entry in subcategories]
+    request_subcategories = [entry for entry in request_subcategories if entry in subcategories]
+    evidence = _parse_evidence(payload.get("evidence"), subcategories)
 
     return {
         "main_category": main_category,
         "subcategory": subcategory,
-        "issues": issues,
-        "feature_requests": feature_requests,
-        "feature_request": feature_request,
-        "urgency": urgency,
+        "subcategories": subcategories,
+        "issue_subcategories": issue_subcategories,
+        "request_subcategories": request_subcategories,
+        "evidence": evidence,
     }
 
 
@@ -315,7 +376,16 @@ def ensure_review_labels(
 def apply_review_labels(df: pd.DataFrame, labels: Mapping[str, Mapping[str, Any]]) -> pd.DataFrame:
     """Apply LLM labels to dataframe. Adds llm_* columns."""
     if df.empty:
-        return df
+        df_labeled = df.copy()
+        df_labeled["llm_main_category"] = pd.Series(dtype="object")
+        df_labeled["llm_subcategory"] = pd.Series(dtype="object")
+        df_labeled["llm_subcategories"] = pd.Series(dtype="object")
+        df_labeled["llm_issue_subcategories"] = pd.Series(dtype="object")
+        df_labeled["llm_request_subcategories"] = pd.Series(dtype="object")
+        df_labeled["llm_subcategory_evidence"] = pd.Series(dtype="object")
+        df_labeled["llm_has_issue"] = pd.Series(dtype="bool")
+        df_labeled["llm_has_request"] = pd.Series(dtype="bool")
+        return df_labeled
 
     df_labeled = df.copy()
     key_series = df_labeled["review_id"]
@@ -323,22 +393,25 @@ def apply_review_labels(df: pd.DataFrame, labels: Mapping[str, Mapping[str, Any]
     def _get_value(rid: str, field: str, default: Any = None) -> Any:
         entry = labels.get(rid, {})
         payload = entry.get("payload", {})
-        return payload.get(field, default)
+        value = payload.get(field, default)
+        if field in ("subcategories", "issue_subcategories", "request_subcategories"):
+            return list(value) if isinstance(value, list) else default
+        if field == "evidence":
+            return value if isinstance(value, dict) else default
+        return value
 
-    # Add V8 columns
+    # Add V10 columns
     df_labeled["llm_main_category"] = key_series.map(lambda rid: _get_value(rid, "main_category", "other"))
     df_labeled["llm_subcategory"] = key_series.map(lambda rid: _get_value(rid, "subcategory", "general"))
-    df_labeled["llm_issues"] = key_series.map(lambda rid: _get_value(rid, "issues", []))
-    df_labeled["llm_feature_requests"] = key_series.map(lambda rid: _get_value(rid, "feature_requests", []))
-    df_labeled["llm_urgency"] = key_series.map(lambda rid: _get_value(rid, "urgency", "low"))
-
-    # Provide human-readable examples alongside structured issues
-    def _extract_examples(issues_list):
-        if not isinstance(issues_list, list):
-            return []
-        return [issue.get("example", issue.get("category", "")) for issue in issues_list if isinstance(issue, dict)]
-
-    df_labeled["llm_specific_issues"] = df_labeled["llm_issues"].apply(_extract_examples)
-    df_labeled["llm_feature_request"] = key_series.map(lambda rid: bool(_get_value(rid, "feature_request", False)))
+    df_labeled["llm_subcategories"] = key_series.map(lambda rid: _get_value(rid, "subcategories", []))
+    df_labeled["llm_issue_subcategories"] = key_series.map(lambda rid: _get_value(rid, "issue_subcategories", []))
+    df_labeled["llm_request_subcategories"] = key_series.map(lambda rid: _get_value(rid, "request_subcategories", []))
+    df_labeled["llm_subcategory_evidence"] = key_series.map(lambda rid: _get_value(rid, "evidence", {}))
+    df_labeled["llm_has_issue"] = df_labeled["llm_issue_subcategories"].apply(
+        lambda value: isinstance(value, list) and len(value) > 0
+    )
+    df_labeled["llm_has_request"] = df_labeled["llm_request_subcategories"].apply(
+        lambda value: isinstance(value, list) and len(value) > 0
+    )
 
     return df_labeled

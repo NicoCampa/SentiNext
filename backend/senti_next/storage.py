@@ -132,16 +132,6 @@ def init_db() -> None:
                 pass
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS embeddings (
-                key TEXT PRIMARY KEY,
-                model TEXT NOT NULL,
-                vector TEXT NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
             CREATE TABLE IF NOT EXISTS pdf_jobs (
                 job_id TEXT PRIMARY KEY,
                 app_id INTEGER NOT NULL,
@@ -582,38 +572,6 @@ def load_analysis_result(app_id: int) -> Optional[Dict[str, Any]]:
         "context_hash": row["context_hash"],
         "stale_reason": row["stale_reason"],
     }
-
-
-def upsert_embedding(key: str, model: str, vector: list[float]) -> None:
-    """Persist embedding vector for reuse across runs."""
-    timestamp = int(time.time())
-    with _get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO embeddings (key, model, vector, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-                model = excluded.model,
-                vector = excluded.vector,
-                updated_at = excluded.updated_at
-            """,
-            (key, model, json.dumps(vector), timestamp),
-        )
-        conn.commit()
-
-
-def load_embedding(key: str, model: str) -> Optional[list[float]]:
-    with _get_connection() as conn:
-        row = conn.execute(
-            "SELECT vector FROM embeddings WHERE key = ? AND model = ?",
-            (key, model),
-        ).fetchone()
-    if not row:
-        return None
-    try:
-        return json.loads(row["vector"])
-    except json.JSONDecodeError:
-        return None
 
 
 def create_pdf_job(job_id: str, app_id: int, email: str) -> None:

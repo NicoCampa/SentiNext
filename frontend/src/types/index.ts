@@ -69,7 +69,7 @@ export interface IssueCategory {
 export interface ExperienceLevelSegment {
   count: number;
   top_issues: IssueCategory[];
-  critical_count: number;
+  issue_count: number;
 }
 
 export interface ExperienceLevelIssues {
@@ -110,7 +110,7 @@ export interface EngagementBasedTopics {
 export interface ActivitySegment {
   count: number;
   recommendation_rate: number;
-  critical_issues: number;
+  issue_count: number;
 }
 
 export interface ActivityBasedFeedback {
@@ -126,35 +126,20 @@ export interface PlayerSegments {
   activity_status: ActivityBasedFeedback;
 }
 
-export interface StandardizedIssue {
-  category: string;             // v8: standardized issue category
+export interface SubcategoryInsight {
+  subcategory: string;
+  main_category: string;
+  sub_category: string;
   count: number;
-  critical_count: number;
-  high_count: number;
-  medium_count: number;
-  low_count: number;
-  example: string;              // Example from reviews
+  issue_count: number;
+  request_count: number;
+  issue_snippets?: string[];
+  request_snippets?: string[];
 }
 
-export interface IssueCluster {
-  issue: string;
+export interface SubcategoryCount {
+  subcategory: string;
   count: number;
-  critical_count?: number;
-  high_count?: number;
-  examples?: string[];
-  review_ids?: Array<string | number | null>;
-  variations?: string[];
-  llm_main_category?: string;
-  llm_subcategory?: string;
-}
-
-export interface FeatureRequest {
-  category: string;             // v8: standardized feature request category
-  count: number;
-  high_demand_count: number;
-  medium_demand_count: number;
-  low_demand_count: number;
-  example: string;              // Example from reviews
 }
 
 export interface CategoryBreakdown {
@@ -178,8 +163,8 @@ export interface CategoryTrendPoint {
 export interface VersionInsight {
   total_reviews: number;
   recommendation_rate: number;
-  top_issues: StandardizedIssue[];
-  top_feature_requests: FeatureRequest[];
+  top_issue_subcategories: SubcategoryCount[];
+  top_request_subcategories: SubcategoryCount[];
   top_categories: Record<string, number>;
 }
 
@@ -190,6 +175,7 @@ export interface InsightsResponse {
   category_recommendation_rates?: Record<string, CategoryRecommendationRate>;
   category_trend?: Record<string, CategoryTrendPoint[]>;
   version_insights?: Record<string, VersionInsight>;
+  subcategory_insights?: SubcategoryInsight[];
   playtime: Record<string, number>;
   helpful: Record<string, number>;
   recommendation: number;
@@ -198,9 +184,6 @@ export interface InsightsResponse {
   segments: InsightSegments;
   audience: AudienceSegments;
   risk: RiskMetrics;
-  standardized_issues?: StandardizedIssue[];
-  feature_requests?: FeatureRequest[];
-  clustered_issues?: IssueCluster[];
   player_segments?: PlayerSegments;
   theme?: ThemeDefinition;
 }
@@ -222,11 +205,12 @@ export interface ReviewRow {
   // v7 LLM insights (hierarchical)
   llm_main_category?: "gameplay" | "technical" | "content" | "interface" | "social" | "monetization" | "other";
   llm_subcategory?: string;
-  llm_feature_request?: boolean;
-  llm_urgency?: "critical" | "high" | "medium" | "low";
-  // v8 LLM insights (standardized)
-  llm_issues?: Array<{ category: string; severity: string; example: string }>;
-  llm_feature_requests?: Array<{ category: string; demand: string; example: string }>;
+  llm_subcategories?: string[];
+  llm_issue_subcategories?: string[];
+  llm_request_subcategories?: string[];
+  llm_subcategory_evidence?: Record<string, string[]>;
+  llm_has_issue?: boolean;
+  llm_has_request?: boolean;
 }
 
 export interface AnalyzeResponse {
@@ -275,8 +259,7 @@ export interface AnalysisResultResponse {
 
 export interface LLMMetrics {
   feature_request_rate: number;
-  critical_issues: number;  // Count of critical urgency
-  high_priority: number;    // Count of high urgency
+  issue_rate: number;
   coverage_rate?: number;   // Share of reviews with structured labels
 }
 

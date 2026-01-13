@@ -95,7 +95,7 @@ def main() -> None:
     from backend.senti_next import build_reviews_dataframe, fetch_reviews, llm, storage
     from backend.senti_next.steam_api import fetch_app_details
     from backend.senti_next.insights import prepare_insights
-    from backend.pdf_report import render_insights_pdf
+    from backend.html_pdf import render_insights_pdf
 
     storage.init_db()
 

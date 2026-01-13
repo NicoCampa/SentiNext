@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchStarredGames } from "@/lib/api";
-import type { StarredGameDTO, StandardizedIssue, FeatureRequest } from "@/types";
+import type { StarredGameDTO, SubcategoryCount } from "@/types";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { SteamImage } from "@/components/SteamImage";
@@ -11,8 +11,8 @@ import Link from "next/link";
 interface GenreCluster {
   genre: string;
   games: StarredGameDTO[];
-  topIssues: StandardizedIssue[];
-  topFeatures: FeatureRequest[];
+  topIssueSubcategories: SubcategoryCount[];
+  topRequestSubcategories: SubcategoryCount[];
   color: string;
 }
 
@@ -46,51 +46,39 @@ export default function NetworkPage() {
         const clusterList: GenreCluster[] = [];
         let hueIndex = 0;
         genreMap.forEach((gamesInGenre, genre) => {
-          // Aggregate issues across all games in this genre
-          const issueMap = new Map<string, StandardizedIssue>();
-          const featureMap = new Map<string, FeatureRequest>();
+          const issueMap = new Map<string, number>();
+          const requestMap = new Map<string, number>();
 
           gamesInGenre.forEach(game => {
-            if (game.insights?.standardized_issues) {
-              game.insights.standardized_issues.forEach(issue => {
-                if (issueMap.has(issue.category)) {
-                  const existing = issueMap.get(issue.category)!;
-                  existing.count += issue.count;
-                  existing.critical_count += issue.critical_count;
-                  existing.high_count += issue.high_count;
-                } else {
-                  issueMap.set(issue.category, { ...issue });
-                }
-              });
-            }
-
-            if (game.insights?.feature_requests) {
-              game.insights.feature_requests.forEach(feature => {
-                if (featureMap.has(feature.category)) {
-                  const existing = featureMap.get(feature.category)!;
-                  existing.count += feature.count;
-                  existing.high_demand_count += feature.high_demand_count;
-                } else {
-                  featureMap.set(feature.category, { ...feature });
-                }
-              });
-            }
+            const subcats = game.insights?.subcategory_insights ?? [];
+            subcats.forEach(entry => {
+              const issueCount = Number(entry.issue_count ?? 0);
+              const requestCount = Number(entry.request_count ?? 0);
+              if (issueCount > 0) {
+                issueMap.set(entry.subcategory, (issueMap.get(entry.subcategory) ?? 0) + issueCount);
+              }
+              if (requestCount > 0) {
+                requestMap.set(entry.subcategory, (requestMap.get(entry.subcategory) ?? 0) + requestCount);
+              }
+            });
           });
 
-          const topIssues = Array.from(issueMap.values())
-            .sort((a, b) => (b.critical_count + b.high_count) - (a.critical_count + a.high_count))
+          const topIssueSubcategories = Array.from(issueMap.entries())
+            .map(([subcategory, count]) => ({ subcategory, count }))
+            .sort((a, b) => b.count - a.count)
             .slice(0, 5);
 
-          const topFeatures = Array.from(featureMap.values())
-            .sort((a, b) => b.high_demand_count - a.high_demand_count)
+          const topRequestSubcategories = Array.from(requestMap.entries())
+            .map(([subcategory, count]) => ({ subcategory, count }))
+            .sort((a, b) => b.count - a.count)
             .slice(0, 5);
 
           const hue = (hueIndex * 360 / genreMap.size) % 360;
           clusterList.push({
             genre,
             games: gamesInGenre,
-            topIssues,
-            topFeatures,
+            topIssueSubcategories,
+            topRequestSubcategories,
             color: `hsl(${hue}, 70%, 60%)`,
           });
           hueIndex++;
@@ -266,17 +254,15 @@ export default function NetworkPage() {
             </div>
 
             <div className="grid gap-5 md:grid-cols-2">
-              {/* Top Issues */}
+              {/* Top Issue Subcategories */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-300 mb-3">🚨 Top Issues</h3>
-                {selectedCluster.topIssues.length > 0 ? (
+                <h3 className="text-sm font-semibold text-slate-300 mb-3">🚨 Top Issue Subcategories</h3>
+                {selectedCluster.topIssueSubcategories.length > 0 ? (
                   <div className="space-y-2">
-                    {selectedCluster.topIssues.map((issue, idx) => (
+                    {selectedCluster.topIssueSubcategories.map((issue, idx) => (
                       <div key={idx} className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
-                        <p className="text-sm font-medium text-white capitalize">{issue.category}</p>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {issue.critical_count} critical, {issue.high_count} high priority
-                        </p>
+                        <p className="text-sm font-medium text-white capitalize">{issue.subcategory.replace(/_/g, " ").replace("/", " / ")}</p>
+                        <p className="text-xs text-slate-400 mt-1">{issue.count} mentions</p>
                       </div>
                     ))}
                   </div>
@@ -285,22 +271,20 @@ export default function NetworkPage() {
                 )}
               </div>
 
-              {/* Top Features */}
+              {/* Top Request Subcategories */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-300 mb-3">✨ Top Feature Requests</h3>
-                {selectedCluster.topFeatures.length > 0 ? (
+                <h3 className="text-sm font-semibold text-slate-300 mb-3">✨ Top Request Subcategories</h3>
+                {selectedCluster.topRequestSubcategories.length > 0 ? (
                   <div className="space-y-2">
-                    {selectedCluster.topFeatures.map((feature, idx) => (
+                    {selectedCluster.topRequestSubcategories.map((feature, idx) => (
                       <div key={idx} className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
-                        <p className="text-sm font-medium text-white capitalize">{feature.category}</p>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {feature.high_demand_count} high demand requests
-                        </p>
+                        <p className="text-sm font-medium text-white capitalize">{feature.subcategory.replace(/_/g, " ").replace("/", " / ")}</p>
+                        <p className="text-xs text-slate-400 mt-1">{feature.count} mentions</p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">No feature requests</p>
+                  <p className="text-xs text-slate-500">No requests reported</p>
                 )}
               </div>
             </div>

@@ -29,7 +29,7 @@ from .senti_next.insights import prepare_insights
 from .senti_next import storage
 from .senti_next import llm
 from .reports import render_single_report, render_compare_report
-from .pdf_report import render_insights_pdf
+from .html_pdf import render_insights_pdf
 from .emailer import EmailConfigError, send_pdf_email
 
 logger = logging.getLogger(__name__)
@@ -184,15 +184,15 @@ REVIEW_EXPORT_COLUMNS = [
     "author_playtime_last_two_weeks",
     "author_playtime_hours",
     "author_recent_playtime_hours",
-    # LLM v7 classification
+    # LLM classification
     "llm_main_category",
     "llm_subcategory",
-    "llm_specific_issues",
-    "llm_feature_request",
-    "llm_urgency",
-    # LLM v8 structured insights
-    "llm_issues",
-    "llm_feature_requests",
+    "llm_subcategories",
+    "llm_issue_subcategories",
+    "llm_request_subcategories",
+    "llm_subcategory_evidence",
+    "llm_has_issue",
+    "llm_has_request",
 ]
 
 def require_admin(request: Request) -> None:

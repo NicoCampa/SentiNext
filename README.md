@@ -80,7 +80,6 @@ npm run dev  # http://localhost:3000
 - For production, set `SENTINEXT_SERVICE_TOKEN` and send it as `x-service-token` from your website/webhook.
 - For local testing without email/LLM:
   - Set `SENTINEXT_DISABLE_EMAIL=1` to skip SMTP sending (PDF still gets written to disk).
-  - Set `SENTINEXT_DISABLE_LLM=1` to skip Ollama calls (labels fall back to defaults).
   - If your network can’t reach Steam, set `SENTINEXT_PDF_USE_CACHE=1` to generate PDFs from cached DB reviews (run an analysis first to populate the cache).
 
 ### PDF CLI (local testing)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import List
 
@@ -49,24 +48,32 @@ def render_single_report(app_id: int, name: str, metadata: dict, insights: dict 
             <div class="grid">
                 <div><strong>Recommendation</strong><br>{round(insights.get("recommendation",0)*100)}%</div>
                 <div><strong>Avg compound</strong><br>{metrics.get("average_compound",0):.2f}</div>
-                <div><strong>Feature requests</strong><br>{llm.get("feature_request_rate",0)*100:.0f}%</div>
-                <div><strong>Critical issues</strong><br>{llm.get("critical_issues",0)}</div>
+                <div><strong>Issue rate</strong><br>{llm.get("issue_rate",0)*100:.0f}%</div>
+                <div><strong>Request rate</strong><br>{llm.get("feature_request_rate",0)*100:.0f}%</div>
                 <div><strong>Coverage</strong><br>{llm.get("coverage_rate",0)*100:.0f}%</div>
             </div>
         </div>
         """
-        issues = insights.get("standardized_issues") or []
-        clusters = insights.get("clustered_issues") or []
-        if issues:
-            body += "<div class='card'><h2>Top Issues</h2><div class='grid'>"
-            for issue in issues[:6]:
-                body += f"<div><strong>{_html_escape(issue.get('category',''))}</strong><br>{issue.get('count',0)} mentions</div>"
-            body += "</div></div>"
-        if clusters:
-            body += "<div class='card'><h2>Merged Issue Clusters</h2><div class='grid'>"
-            for cluster in clusters[:6]:
-                body += f"<div><strong>{_html_escape(cluster.get('issue',''))}</strong><br>{cluster.get('count',0)} mentions</div>"
-            body += "</div></div>"
+        subcats = insights.get("subcategory_insights") or []
+        if isinstance(subcats, list) and subcats:
+            issue_subcats = [item for item in subcats if (item.get("issue_count", 0) or 0) > 0]
+            request_subcats = [item for item in subcats if (item.get("request_count", 0) or 0) > 0]
+            if issue_subcats:
+                issue_subcats.sort(key=lambda item: item.get("issue_count", 0), reverse=True)
+                body += "<div class='card'><h2>Top Issue Subcategories</h2><div class='grid'>"
+                for entry in issue_subcats[:6]:
+                    label = _html_escape(str(entry.get("subcategory", "") or entry.get("sub_category", "")))
+                    count = entry.get("issue_count", 0)
+                    body += f"<div><strong>{label}</strong><br>{count} mentions</div>"
+                body += "</div></div>"
+            if request_subcats:
+                request_subcats.sort(key=lambda item: item.get("request_count", 0), reverse=True)
+                body += "<div class='card'><h2>Top Request Subcategories</h2><div class='grid'>"
+                for entry in request_subcats[:6]:
+                    label = _html_escape(str(entry.get("subcategory", "") or entry.get("sub_category", "")))
+                    count = entry.get("request_count", 0)
+                    body += f"<div><strong>{label}</strong><br>{count} mentions</div>"
+                body += "</div></div>"
     else:
         body += "<div class='card'><p>No insights available.</p></div>"
 
@@ -101,8 +108,8 @@ def render_compare_report(games: List[dict]) -> HTMLResponse:
             <div class="grid">
                 <div><strong>Recommendation</strong><br>{round(ins.get('recommendation',0)*100)}%</div>
                 <div><strong>Avg compound</strong><br>{metrics.get("average_compound",0):.2f}</div>
-                <div><strong>Feature requests</strong><br>{llm.get("feature_request_rate",0)*100:.0f}%</div>
-                <div><strong>Critical issues</strong><br>{llm.get("critical_issues",0)}</div>
+                <div><strong>Issue rate</strong><br>{llm.get("issue_rate",0)*100:.0f}%</div>
+                <div><strong>Request rate</strong><br>{llm.get("feature_request_rate",0)*100:.0f}%</div>
             </div>
         </div>
         """

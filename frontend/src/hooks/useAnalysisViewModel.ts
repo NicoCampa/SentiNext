@@ -1,19 +1,20 @@
 import { useMemo } from "react";
-import type { AnalyzeResponse, ReviewRow, StandardizedIssue, FeatureRequest, IssueCluster, RiskMetrics } from "@/types";
+import type { AnalyzeResponse, ReviewRow, SubcategoryInsight, RiskMetrics } from "@/types";
 
 type SparklinePoint = { label: string; value: number };
 
 export interface SummaryView {
   headline: string;
   recommendationRate: number;
-  featureRequestRate: number;
-  criticalIssues: number;
+  issueRate: number;
+  requestRate: number;
   requested: number;
   retrieved: number;
   fetchedAt: string;
   sparkline: SparklinePoint[];
   callout: string | null;
-  topIssue?: StandardizedIssue;
+  topIssue?: SubcategoryInsight;
+  topRequest?: SubcategoryInsight;
 }
 
 export interface ExperienceView {
@@ -25,8 +26,9 @@ export interface ExperienceView {
 }
 
 export interface ProductQualityView {
-  topIssues: StandardizedIssue[];
-  featureRequests: FeatureRequest[];
+  topIssueSubcategories: SubcategoryInsight[];
+  topRequestSubcategories: SubcategoryInsight[];
+  subcategoryInsights: SubcategoryInsight[];
   categoryBreakdown: Array<{ category: string; total: number }>;
   versionInsights: NonNullable<AnalyzeResponse["insights"]>["version_insights"];
 }
@@ -42,24 +44,25 @@ export interface AudienceView {
   marketQuality: NonNullable<AnalyzeResponse["insights"]>["audience"]["market_quality"];
 }
 
-export interface IssueSubcategoryView {
+export interface SubcategoryView {
+  key: string;
   name: string;
   total: number;
-  severity: Record<string, number>;
+  issueCount: number;
+  requestCount: number;
+  issueSnippets: string[];
+  requestSnippets: string[];
   reviews: ReviewRow[];
 }
 
-export interface IssueCategoryView {
+export interface CategoryGroupView {
   category: string;
   total: number;
-  severity: Record<string, number>;
-  example?: string;
-  subcategories: IssueSubcategoryView[];
+  subcategories: SubcategoryView[];
 }
 
 export interface DrilldownView {
-  issueCategories: IssueCategoryView[];
-  clusters: IssueCluster[];
+  categories: CategoryGroupView[];
 }
 
 export interface AnalysisViewModel {
@@ -84,101 +87,70 @@ function formatSparkline(trend: NonNullable<AnalyzeResponse["insights"]>["trend"
   }));
 }
 
-function buildIssueDrilldown(issues: StandardizedIssue[] | undefined, reviews: ReviewRow[]): IssueCategoryView[] {
-  const categoryMap = new Map<string, IssueCategoryView & { subMap: Map<string, IssueSubcategoryView> }>();
+function formatSubcategoryLabel(raw: string | undefined): string {
+  if (!raw) return "uncategorized";
+  return raw.replace("/", " / ").replace(/_/g, " ").trim();
+}
 
-  issues?.forEach((item) => {
-    if (!categoryMap.has(item.category)) {
-      categoryMap.set(item.category, {
-        category: item.category,
-        total: item.count,
-        severity: {
-          critical: item.critical_count ?? 0,
-          high: item.high_count ?? 0,
-          medium: item.medium_count ?? 0,
-          low: item.low_count ?? 0,
-        },
-        example: item.example,
-        subcategories: [],
-        subMap: new Map(),
-      });
-    } else {
-      const node = categoryMap.get(item.category)!;
-      node.total += item.count;
-      node.severity.critical += item.critical_count ?? 0;
-      node.severity.high += item.high_count ?? 0;
-      node.severity.medium += item.medium_count ?? 0;
-      node.severity.low += item.low_count ?? 0;
-      if (!node.example && item.example) {
-        node.example = item.example;
-      }
-    }
-  });
+function subcategoryTitle(entry: SubcategoryInsight | undefined): string {
+  if (!entry) return "";
+  return formatSubcategoryLabel(entry.sub_category || entry.subcategory);
+}
+
+function buildSubcategoryGroups(
+  subcategoryInsights: SubcategoryInsight[] | undefined,
+  reviews: ReviewRow[],
+): CategoryGroupView[] {
+  const groupMap = new Map<string, CategoryGroupView & { subMap: Map<string, SubcategoryView> }>();
+  const reviewBuckets = new Map<string, ReviewRow[]>();
 
   reviews.forEach((review) => {
-    const issuesList = Array.isArray(review.llm_issues) ? review.llm_issues : [];
-    if (issuesList.length === 0) return;
-
-    issuesList.forEach((issue) => {
-      const category = issue.category || "uncategorized";
-      let categoryNode = categoryMap.get(category);
-      if (!categoryNode) {
-        categoryNode = {
-          category,
-          total: 0,
-          severity: { critical: 0, high: 0, medium: 0, low: 0 },
-          example: issue.example || "",
-          subcategories: [],
-          subMap: new Map(),
-        };
-        categoryMap.set(category, categoryNode);
+    const subcats = Array.isArray(review.llm_subcategories) ? review.llm_subcategories : [];
+    subcats.forEach((key) => {
+      if (!reviewBuckets.has(key)) {
+        reviewBuckets.set(key, []);
       }
-
-      const severityKey = (issue.severity || "medium").toLowerCase();
-      if (categoryNode.severity[severityKey] !== undefined) {
-        categoryNode.severity[severityKey] += 1;
-      } else {
-        categoryNode.severity[severityKey] = 1;
-      }
-      categoryNode.total += 1;
-
-      const subcategoryName = review.llm_subcategory || "general";
-      let subcategoryNode = categoryNode.subMap.get(subcategoryName);
-      if (!subcategoryNode) {
-        subcategoryNode = {
-          name: subcategoryName,
-          total: 0,
-          severity: { critical: 0, high: 0, medium: 0, low: 0 },
-          reviews: [],
-        };
-        categoryNode.subMap.set(subcategoryName, subcategoryNode);
-      }
-
-      subcategoryNode.total += 1;
-      if (subcategoryNode.severity[severityKey] !== undefined) {
-        subcategoryNode.severity[severityKey] += 1;
-      } else {
-        subcategoryNode.severity[severityKey] = 1;
-      }
-      if (subcategoryNode.reviews.length < 8) {
-        subcategoryNode.reviews.push(review);
+      const bucket = reviewBuckets.get(key)!;
+      if (bucket.length < 6) {
+        bucket.push(review);
       }
     });
   });
 
-  const categoryList = Array.from(categoryMap.values()).map((node) => {
-    const subcategories = Array.from(node.subMap.values()).sort((a, b) => b.total - a.total);
-    return {
-      category: node.category,
-      total: node.total,
-      severity: node.severity,
-      example: node.example,
-      subcategories,
-    };
+  (subcategoryInsights ?? []).forEach((entry) => {
+    const rawKey = entry.subcategory || "";
+    const [main, sub] = rawKey.includes("/") ? rawKey.split("/", 2) : ["other", rawKey || entry.sub_category || "general"];
+    const mainKey = (entry.main_category || main || "other").toLowerCase();
+    const subKey = rawKey || `${mainKey}/${sub}`;
+
+    let group = groupMap.get(mainKey);
+    if (!group) {
+      group = { category: mainKey, total: 0, subcategories: [], subMap: new Map() };
+      groupMap.set(mainKey, group);
+    }
+    group.total += Number(entry.count ?? 0);
+
+    if (!group.subMap.has(subKey)) {
+      group.subMap.set(subKey, {
+        key: subKey,
+        name: entry.sub_category || sub || subKey,
+        total: Number(entry.count ?? 0),
+        issueCount: Number(entry.issue_count ?? 0),
+        requestCount: Number(entry.request_count ?? 0),
+        issueSnippets: entry.issue_snippets ?? [],
+        requestSnippets: entry.request_snippets ?? [],
+        reviews: reviewBuckets.get(subKey) ?? [],
+      });
+    }
   });
 
-  categoryList.sort((a, b) => b.total - a.total);
-  return categoryList;
+  return Array.from(groupMap.values())
+    .map((group) => ({
+      category: group.category,
+      total: group.total,
+      subcategories: Array.from(group.subMap.values()).sort((a, b) => b.total - a.total),
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
 export function useAnalysisViewModel(analysis: AnalyzeResponse | null): AnalysisViewModel {
@@ -188,8 +160,8 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
         summary: {
           headline: "No analysis available",
           recommendationRate: 0,
-          featureRequestRate: 0,
-          criticalIssues: 0,
+          issueRate: 0,
+          requestRate: 0,
           requested: analysis?.metadata.requested ?? 0,
           retrieved: analysis?.metadata.retrieved ?? 0,
           fetchedAt: analysis?.metadata.fetched_at ?? "",
@@ -204,18 +176,19 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
           helpful: {},
         },
         productQuality: {
-          topIssues: [],
-          featureRequests: [],
+          topIssueSubcategories: [],
+          topRequestSubcategories: [],
+          subcategoryInsights: [],
           categoryBreakdown: [],
           versionInsights: {},
         },
         audience: {
           risk: { refund_risk: 0, core_fan_disappointment: 0, churn_window_default: 0, churn_rate: 0 },
           experienceLevel: {
-            newcomers: { count: 0, critical_count: 0, top_issues: [] },
-            casual: { count: 0, critical_count: 0, top_issues: [] },
-            experienced: { count: 0, critical_count: 0, top_issues: [] },
-            veterans: { count: 0, critical_count: 0, top_issues: [] },
+            newcomers: { count: 0, issue_count: 0, top_issues: [] },
+            casual: { count: 0, issue_count: 0, top_issues: [] },
+            experienced: { count: 0, issue_count: 0, top_issues: [] },
+            veterans: { count: 0, issue_count: 0, top_issues: [] },
           },
           purchaseType: {
             steam_buyers: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
@@ -228,15 +201,15 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
             low_engagement: { count: 0, top_topics: [] },
           },
           activityStatus: {
-            currently_active: { count: 0, critical_issues: 0, recommendation_rate: 0 },
-            recently_stopped: { count: 0, critical_issues: 0, recommendation_rate: 0 },
-            inactive: { count: 0, critical_issues: 0, recommendation_rate: 0 },
+            currently_active: { count: 0, issue_count: 0, recommendation_rate: 0 },
+            recently_stopped: { count: 0, issue_count: 0, recommendation_rate: 0 },
+            inactive: { count: 0, issue_count: 0, recommendation_rate: 0 },
           },
           reviewerInfluence: [],
           veteranBenchmarking: [],
           marketQuality: [],
         },
-        drilldown: { issueCategories: [], clusters: [] },
+        drilldown: { categories: [] },
         metadata: analysis?.metadata ?? {
           app_id: 0,
           fetched_at: "",
@@ -253,26 +226,35 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
     const insights = analysis.insights;
     const trendSparkline = formatSparkline(insights.trend);
     const recommendationRate = Number((insights.recommendation ?? 0).toFixed(3));
-    const featureRequestRate = Number((insights.llm?.feature_request_rate ?? 0).toFixed(3));
-    const criticalIssues = insights.llm?.critical_issues ?? 0;
-    const topIssue = insights.standardized_issues?.[0];
+    const issueRate = Number((insights.llm?.issue_rate ?? 0).toFixed(3));
+    const requestRate = Number((insights.llm?.feature_request_rate ?? 0).toFixed(3));
+    const subcategoryInsights = insights.subcategory_insights ?? [];
+    const topIssueSubcategories = [...subcategoryInsights]
+      .filter((item) => Number(item.issue_count ?? 0) > 0)
+      .sort((a, b) => Number(b.issue_count ?? 0) - Number(a.issue_count ?? 0));
+    const topRequestSubcategories = [...subcategoryInsights]
+      .filter((item) => Number(item.request_count ?? 0) > 0)
+      .sort((a, b) => Number(b.request_count ?? 0) - Number(a.request_count ?? 0));
+    const topIssue = topIssueSubcategories[0];
+    const topRequest = topRequestSubcategories[0];
 
+    const topIssueLabel = subcategoryTitle(topIssue);
     const headline = (() => {
       if (recommendationRate >= 0.75) {
         return topIssue
-          ? `Players are upbeat (${Math.round(recommendationRate * 100)}% recommend) but ${topIssue.category.replace(/_/g, " ")} demands attention`
+          ? `Players are upbeat (${Math.round(recommendationRate * 100)}% recommend) but ${topIssueLabel} keeps resurfacing`
           : `Players are upbeat (${Math.round(recommendationRate * 100)}% recommend)`;
       }
       if (recommendationRate >= 0.55) {
         return topIssue
-          ? `Sentiment is mixed; watch ${topIssue.category.replace(/_/g, " ")}`
+          ? `Sentiment is mixed; watch ${topIssueLabel}`
           : `Sentiment is mixed across recent reviews`;
       }
       return `Players are signalling risk (${Math.round(recommendationRate * 100)}% recommend)`;
     })();
 
     const callout = topIssue
-      ? `${topIssue.count} mentions related to ${topIssue.category.replace(/_/g, " ")}, ${topIssue.critical_count} flagged critical`
+      ? `${topIssue.issue_count ?? topIssue.count} issue-tagged reviews mention ${topIssueLabel}`
       : null;
 
     const categoryBreakdown = insights.category_breakdown
@@ -285,14 +267,15 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
     const summary: SummaryView = {
       headline,
       recommendationRate,
-      featureRequestRate,
-      criticalIssues,
+      issueRate,
+      requestRate,
       requested: analysis.metadata.requested,
       retrieved: analysis.metadata.retrieved,
       fetchedAt: analysis.metadata.fetched_at,
       sparkline: trendSparkline,
       callout,
       topIssue,
+      topRequest,
     };
 
     const experience: ExperienceView = {
@@ -304,8 +287,9 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
     };
 
     const productQuality: ProductQualityView = {
-      topIssues: insights.standardized_issues ?? [],
-      featureRequests: insights.feature_requests ?? [],
+      topIssueSubcategories: topIssueSubcategories,
+      topRequestSubcategories: topRequestSubcategories,
+      subcategoryInsights,
       categoryBreakdown,
       versionInsights: insights.version_insights ?? {},
     };
@@ -313,10 +297,10 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
     const audience: AudienceView = {
       risk: insights.risk ?? { refund_risk: 0, core_fan_disappointment: 0, churn_window_default: 0, churn_rate: 0 },
       experienceLevel: insights.player_segments?.experience_level ?? {
-        newcomers: { count: 0, critical_count: 0, top_issues: [] },
-        casual: { count: 0, critical_count: 0, top_issues: [] },
-        experienced: { count: 0, critical_count: 0, top_issues: [] },
-        veterans: { count: 0, critical_count: 0, top_issues: [] },
+        newcomers: { count: 0, issue_count: 0, top_issues: [] },
+        casual: { count: 0, issue_count: 0, top_issues: [] },
+        experienced: { count: 0, issue_count: 0, top_issues: [] },
+        veterans: { count: 0, issue_count: 0, top_issues: [] },
       },
       purchaseType: insights.player_segments?.purchase_type ?? {
         steam_buyers: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
@@ -329,9 +313,9 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
         low_engagement: { count: 0, top_topics: [] },
       },
       activityStatus: insights.player_segments?.activity_status ?? {
-        currently_active: { count: 0, critical_issues: 0, recommendation_rate: 0 },
-        recently_stopped: { count: 0, critical_issues: 0, recommendation_rate: 0 },
-        inactive: { count: 0, critical_issues: 0, recommendation_rate: 0 },
+        currently_active: { count: 0, issue_count: 0, recommendation_rate: 0 },
+        recently_stopped: { count: 0, issue_count: 0, recommendation_rate: 0 },
+        inactive: { count: 0, issue_count: 0, recommendation_rate: 0 },
       },
       reviewerInfluence: insights.audience?.reviewer_influence ?? [],
       veteranBenchmarking: insights.audience?.veteran_benchmarking ?? [],
@@ -339,8 +323,7 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
     };
 
     const drilldown: DrilldownView = {
-      issueCategories: buildIssueDrilldown(insights.standardized_issues, analysis.reviews),
-      clusters: insights.clustered_issues ?? [],
+      categories: buildSubcategoryGroups(subcategoryInsights, analysis.reviews),
     };
 
     return {

@@ -6,8 +6,6 @@ import { ReviewRow, ThemeDefinition } from "@/types";
 export function ReviewFilters({
   sentimentFilter,
   onSentimentChange,
-  urgencyFilter,
-  onUrgencyChange,
   featureFilter,
   onFeatureChange,
   categoryFilter,
@@ -16,8 +14,6 @@ export function ReviewFilters({
 }: {
   sentimentFilter: "all" | "positive" | "neutral" | "negative";
   onSentimentChange: (value: "all" | "positive" | "neutral" | "negative") => void;
-  urgencyFilter: "all" | "critical" | "high" | "medium" | "low";
-  onUrgencyChange: (value: "all" | "critical" | "high" | "medium" | "low") => void;
   featureFilter: "all" | "feature" | "no_feature";
   onFeatureChange: (value: "all" | "feature" | "no_feature") => void;
   categoryFilter: string;
@@ -31,18 +27,10 @@ export function ReviewFilters({
     { value: "negative", label: "Negative" },
   ] as const;
 
-  const urgencyOptions = [
-    { value: "all", label: "All" },
-    { value: "critical", label: "Critical" },
-    { value: "high", label: "High" },
-    { value: "medium", label: "Medium" },
-    { value: "low", label: "Low" },
-  ] as const;
-
   const featureOptions = [
     { value: "all", label: "All" },
-    { value: "feature", label: "Feature requests" },
-    { value: "no_feature", label: "No feature" },
+    { value: "feature", label: "Requests only" },
+    { value: "no_feature", label: "No requests" },
   ] as const;
 
   const categoryOptions = [
@@ -72,7 +60,6 @@ export function ReviewFilters({
           className="text-xs text-slate-300 transition hover:text-white"
           onClick={() => {
             onSentimentChange("all");
-            onUrgencyChange("all");
             onFeatureChange("all");
             onCategoryChange("all");
           }}
@@ -90,14 +77,7 @@ export function ReviewFilters({
           activeClass="border-indigo-400 bg-indigo-500/80 text-white shadow-lg shadow-indigo-900/40"
         />
         <FilterGroup
-          title="Urgency"
-          options={urgencyOptions}
-          active={urgencyFilter}
-          onSelect={onUrgencyChange}
-          activeClass="border-amber-400 bg-amber-400/90 text-slate-900 shadow-lg shadow-amber-900/40"
-        />
-        <FilterGroup
-          title="Feature requests"
+          title="Requests"
           options={featureOptions}
           active={featureFilter}
           onSelect={onFeatureChange}
@@ -174,9 +154,8 @@ export function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper
               <th className="px-4 py-3">Review</th>
               <th className="px-4 py-3">Sentiment</th>
               <th className="px-4 py-3">Category</th>
-              <th className="px-4 py-3">Urgency</th>
-              <th className="px-4 py-3">Feature</th>
-              <th className="px-4 py-3">Specific Issues</th>
+              <th className="px-4 py-3">Issue Subcategories</th>
+              <th className="px-4 py-3">Request Subcategories</th>
               <th className="px-4 py-3">Helpful</th>
               <th className="px-4 py-3">Playtime (h)</th>
             </tr>
@@ -205,35 +184,27 @@ export function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper
                     </div>
                   )}
                 </td>
-                <td className="px-4 py-3 text-xs">
-                  <span className={clsx(
-                    "rounded-full px-2 py-1 font-semibold capitalize",
-                    review.llm_urgency === "critical" && "bg-red-500/20 text-red-400",
-                    review.llm_urgency === "high" && "bg-amber-500/20 text-amber-400",
-                    review.llm_urgency === "medium" && "bg-sky-500/20 text-sky-400",
-                    review.llm_urgency === "low" && "bg-slate-500/20 text-slate-400",
-                  )}>
-                    {review.llm_urgency ?? "N/A"}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-slate-200">{review.llm_feature_request ? "Yes" : "No"}</td>
                 <td className="px-4 py-3 text-xs text-slate-300">
-                  {review.llm_issues && review.llm_issues.length > 0 ? (
+                  {Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0 ? (
                     <ul className="space-y-1">
-                      {review.llm_issues.map((issue, idx) => {
-                        const label = issue.example || issue.category;
-                        return (
-                          <li key={idx} className="flex flex-col">
-                            <span className="font-semibold capitalize text-slate-200">{issue.category.replace(/_/g, " ")}</span>
-                            {label && (
-                              <span className="text-slate-400">
-                                {issue.severity ? `[${issue.severity}] ` : ""}
-                                {issue.example || ""}
-                              </span>
-                            )}
-                          </li>
-                        );
-                      })}
+                      {review.llm_issue_subcategories.map((issue, idx) => (
+                        <li key={idx} className="text-slate-200">
+                          {issue.replace(/_/g, " ").replace("/", " / ")}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-xs text-slate-300">
+                  {Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0 ? (
+                    <ul className="space-y-1">
+                      {review.llm_request_subcategories.map((request, idx) => (
+                        <li key={idx} className="text-slate-200">
+                          {request.replace(/_/g, " ").replace("/", " / ")}
+                        </li>
+                      ))}
                     </ul>
                   ) : (
                     <span className="text-slate-500">—</span>

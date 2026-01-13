@@ -30,7 +30,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
-import { formatPercentage } from "@/utils/format";
 import { hexToRgba } from "@/utils/colors";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import {
@@ -39,8 +38,8 @@ import {
   ExperienceView,
   ProductQualityView,
   AudienceView,
-  IssueCategoryView,
-  IssueSubcategoryView,
+  CategoryGroupView,
+  SubcategoryView,
 } from "@/hooks/useAnalysisViewModel";
 import { ReviewFilters, ReviewsTable } from "@/components/review-explorer";
 
@@ -435,53 +434,51 @@ function AnalysisResults({
     { id: "experience", label: "Experience" },
     { id: "quality", label: "Product Quality" },
     { id: "audience", label: "Audience Segments" },
-    { id: "clusters", label: "Issue Clusters" },
     { id: "feedback", label: "Community Feedback" },
     { id: "reviews", label: "Raw Reviews" },
   ];
 
-  const [selectedIssueCategory, setSelectedIssueCategory] = useState<string | null>(null);
+  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!view.drilldown.issueCategories.length) {
-      setSelectedIssueCategory(null);
+    if (!view.drilldown.categories.length) {
+      setSelectedMainCategory(null);
       setSelectedSubcategory(null);
       return;
     }
-    const fallback = view.summary.topIssue?.category ?? view.drilldown.issueCategories[0].category;
-    setSelectedIssueCategory((prev) => {
-      if (prev && view.drilldown.issueCategories.some((item) => item.category === prev)) {
+    const fallback = view.drilldown.categories[0].category;
+    setSelectedMainCategory((prev) => {
+      if (prev && view.drilldown.categories.some((item) => item.category === prev)) {
         return prev;
       }
       return fallback;
     });
-  }, [view.drilldown.issueCategories, view.summary.topIssue]);
+  }, [view.drilldown.categories]);
 
   useEffect(() => {
-    if (!selectedIssueCategory) {
+    if (!selectedMainCategory) {
       setSelectedSubcategory(null);
       return;
     }
-    const category = view.drilldown.issueCategories.find((item) => item.category === selectedIssueCategory);
+    const category = view.drilldown.categories.find((item) => item.category === selectedMainCategory);
     if (!category) {
       setSelectedSubcategory(null);
       return;
     }
-    const defaultSub = category.subcategories[0]?.name ?? null;
+    const defaultSub = category.subcategories[0]?.key ?? null;
     setSelectedSubcategory((prev) => {
-      if (prev && category.subcategories.some((item) => item.name === prev)) {
+      if (prev && category.subcategories.some((item) => item.key === prev)) {
         return prev;
       }
       return defaultSub;
     });
-  }, [selectedIssueCategory, view.drilldown.issueCategories]);
+  }, [selectedMainCategory, view.drilldown.categories]);
 
-  const selectedCategory = selectedIssueCategory
-    ? view.drilldown.issueCategories.find((item) => item.category === selectedIssueCategory)
+  const selectedCategory = selectedMainCategory
+    ? view.drilldown.categories.find((item) => item.category === selectedMainCategory)
     : undefined;
-  const selectedSubcategoryData = selectedCategory?.subcategories.find((item) => item.name === selectedSubcategory);
-  const coverageRate = analysis?.insights?.llm?.coverage_rate ?? null;
+  const selectedSubcategoryData = selectedCategory?.subcategories.find((item) => item.key === selectedSubcategory);
 
   const feedbackSection = (
     <section id="feedback">
@@ -504,19 +501,20 @@ function AnalysisResults({
     }
   };
 
-  const handleOpenReviews = (category: string) => {
+  const handleOpenReviews = (category: string, subcategoryKey?: string | null) => {
     if (!selectedGame) return;
+    const filterType = subcategoryKey ? "subcategory" : "main_category";
+    const filterValue = subcategoryKey || category;
     const params = new URLSearchParams({
       appId: String(selectedGame.appid),
-      filterType: "standardized_issue",
-      filterValue: category,
+      filterType,
+      filterValue,
     });
     router.push(`/reviews?${params.toString()}`);
   };
 
   const [showReviews, setShowReviews] = useState(false);
   const [sentimentFilter, setSentimentFilter] = useState<"all" | "positive" | "neutral" | "negative">("all");
-  const [urgencyFilter, setUrgencyFilter] = useState<"all" | "critical" | "high" | "medium" | "low">("all");
   const [featureFilter, setFeatureFilter] = useState<"all" | "feature" | "no_feature">("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
@@ -524,13 +522,13 @@ function AnalysisResults({
     return view.reviews.filter((review) => {
       if (sentimentFilter === "positive" && !review.voted_up) return false;
       if (sentimentFilter === "negative" && review.voted_up) return false;
-      if (urgencyFilter !== "all" && review.llm_urgency !== urgencyFilter) return false;
-      if (featureFilter === "feature" && !review.llm_feature_request) return false;
-      if (featureFilter === "no_feature" && review.llm_feature_request) return false;
+      const hasRequest = review.llm_has_request ?? (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0);
+      if (featureFilter === "feature" && !hasRequest) return false;
+      if (featureFilter === "no_feature" && hasRequest) return false;
       if (categoryFilter !== "all" && review.llm_main_category !== categoryFilter) return false;
       return true;
     });
-  }, [view.reviews, sentimentFilter, urgencyFilter, featureFilter, categoryFilter]);
+  }, [view.reviews, sentimentFilter, featureFilter, categoryFilter]);
 
   return (
     <div className="space-y-12">
@@ -588,14 +586,6 @@ function AnalysisResults({
             <AudienceSection audience={view.audience} theme={theme} />
           </section>
 
-          <section id="clusters">
-            <IssueClustersSection
-              clusters={view.drilldown.clusters}
-              coverageRate={coverageRate}
-              reviews={view.reviews}
-            />
-          </section>
-
           {feedbackSection}
 
           <section id="reviews">
@@ -605,8 +595,6 @@ function AnalysisResults({
               onToggle={() => setShowReviews((prev) => !prev)}
               sentimentFilter={sentimentFilter}
               onSentimentChange={setSentimentFilter}
-              urgencyFilter={urgencyFilter}
-              onUrgencyChange={setUrgencyFilter}
               featureFilter={featureFilter}
               onFeatureChange={setFeatureFilter}
               categoryFilter={categoryFilter}
@@ -619,14 +607,13 @@ function AnalysisResults({
 
         <aside id="drilldown" className="mt-10 lg:mt-0">
           <DrilldownPanel
-            categories={view.drilldown.issueCategories}
+            categories={view.drilldown.categories}
             selectedCategory={selectedCategory}
-            onSelectCategory={setSelectedIssueCategory}
+            onSelectCategory={setSelectedMainCategory}
             selectedSubcategory={selectedSubcategory}
             onSelectSubcategory={setSelectedSubcategory}
             selectedSubcategoryData={selectedSubcategoryData}
             onOpenReviews={handleOpenReviews}
-            theme={theme}
           />
         </aside>
       </div>
@@ -665,8 +652,8 @@ function ExecutiveSummary({
   const sparklineValues = summary.sparkline.map((point) => point.value);
   const metrics = [
     { label: "Recommendation Rate", value: formatPercent(summary.recommendationRate) },
-    { label: "Critical Issues", value: summary.criticalIssues.toString() },
-    { label: "Feature Request Rate", value: formatPercent(summary.featureRequestRate) },
+    { label: "Issue Rate", value: formatPercent(summary.issueRate) },
+    { label: "Request Rate", value: formatPercent(summary.requestRate) },
   ];
 
   const sparklineData = {
@@ -971,62 +958,69 @@ function ProductQualitySection({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="bg-slate-900/40 p-4">
-          <h3 className="text-sm font-semibold text-white">Top Issues</h3>
-          <p className="text-xs text-slate-500">Highest volume standardized taxonomy categories</p>
+          <h3 className="text-sm font-semibold text-white">Top Issue Subcategories</h3>
+          <p className="text-xs text-slate-500">Most frequent issue-tagged subcategories</p>
           <div className="mt-3 space-y-3">
-            {productQuality.topIssues.slice(0, 5).map((issue) => (
-              <div key={issue.category} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white">{toTitleCase(issue.category)}</p>
-                    {issue.example && <p className="mt-1 text-xs text-slate-400">“{issue.example}”</p>}
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                      {renderSeverityBadge("critical", issue.critical_count)}
-                      {renderSeverityBadge("high", issue.high_count)}
-                      {renderSeverityBadge("medium", issue.medium_count)}
-                      {renderSeverityBadge("low", issue.low_count)}
+            {productQuality.topIssueSubcategories.length ? (
+              productQuality.topIssueSubcategories.slice(0, 5).map((issue) => (
+                <div key={issue.subcategory} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">{toTitleCase(issue.sub_category || issue.subcategory)}</p>
+                      {issue.issue_snippets?.[0] && (
+                        <p className="mt-1 text-xs text-slate-400">“{issue.issue_snippets[0]}”</p>
+                      )}
+                      <div className="mt-2 text-[11px] text-slate-400">
+                        {issue.issue_count} issue-tagged · {issue.count} total tags
+                      </div>
                     </div>
+                    <span className="text-lg font-bold text-sky-400">{issue.issue_count}</span>
                   </div>
-                  <span className="text-lg font-bold text-sky-400">{issue.count}</span>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-xs text-slate-500">No issue subcategories tagged yet.</p>
+            )}
           </div>
         </Card>
 
         <Card className="bg-slate-900/40 p-4">
-          <h3 className="text-sm font-semibold text-white">Feature Requests</h3>
-          <p className="text-xs text-slate-500">What players want the team to build next</p>
+          <h3 className="text-sm font-semibold text-white">Top Request Subcategories</h3>
+          <p className="text-xs text-slate-500">What players are asking to see next</p>
           <div className="mt-3 space-y-3">
-            {productQuality.featureRequests.slice(0, 5).map((request) => (
-              <div key={request.category} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white">{toTitleCase(request.category)}</p>
-                    {request.example && <p className="mt-1 text-xs text-slate-400">“{request.example}”</p>}
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                      {renderDemandBadge("high", request.high_demand_count)}
-                      {renderDemandBadge("medium", request.medium_demand_count)}
-                      {renderDemandBadge("low", request.low_demand_count)}
+            {productQuality.topRequestSubcategories.length ? (
+              productQuality.topRequestSubcategories.slice(0, 5).map((request) => (
+                <div key={request.subcategory} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">{toTitleCase(request.sub_category || request.subcategory)}</p>
+                      {request.request_snippets?.[0] && (
+                        <p className="mt-1 text-xs text-slate-400">“{request.request_snippets[0]}”</p>
+                      )}
+                      <div className="mt-2 text-[11px] text-slate-400">
+                        {request.request_count} request-tagged · {request.count} total tags
+                      </div>
                     </div>
+                    <span className="text-lg font-bold text-sky-300">{request.request_count}</span>
                   </div>
-                  <span className="text-lg font-bold text-sky-300">{request.count}</span>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-xs text-slate-500">No request subcategories tagged yet.</p>
+            )}
           </div>
         </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <h3 className="text-sm font-semibold text-white">Issue Volume by Category</h3>
+          <h3 className="text-sm font-semibold text-white">Tagged Reviews by Category</h3>
           <div className="mt-3 h-56">
             {productQuality.categoryBreakdown.length ? (
               <Bar data={barData} options={barOptions} />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                No categorized issues yet.
+                No tagged subcategories yet.
               </div>
             )}
           </div>
@@ -1042,9 +1036,14 @@ function ProductQualitySection({
                   <p className="mt-1 text-sm text-white">
                     {Math.round((insight.recommendation_rate ?? 0) * 100)}% recommend · {insight.total_reviews ?? 0} reviews
                   </p>
-                  {insight.top_issues?.length ? (
+                  {insight.top_issue_subcategories?.length ? (
                     <p className="mt-1 text-xs text-slate-400">
-                      Top issue: {toTitleCase(insight.top_issues[0].category)}
+                      Top issue: {toTitleCase(insight.top_issue_subcategories[0].subcategory)}
+                    </p>
+                  ) : null}
+                  {insight.top_request_subcategories?.length ? (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Top request: {toTitleCase(insight.top_request_subcategories[0].subcategory)}
                     </p>
                   ) : null}
                 </div>
@@ -1125,7 +1124,7 @@ function AudienceSection({ audience, theme }: { audience: AudienceView; theme: T
               <div key={segment.label} className="rounded-lg border border-white/10 bg-white/5 p-3">
                 <p className="font-medium text-white">{segment.label}</p>
                 <p className="text-xs text-slate-400">
-                  {segment.data.count} reviews · {segment.data.critical_count} critical reports
+                  {segment.data.count} reviews · {segment.data.issue_count} issue-tagged
                 </p>
                 {segment.data.top_issues?.length ? (
                   <p className="text-xs text-slate-400">
@@ -1164,22 +1163,22 @@ function DrilldownPanel({
   onSelectSubcategory,
   selectedSubcategoryData,
   onOpenReviews,
-  theme,
 }: {
-  categories: IssueCategoryView[];
-  selectedCategory: IssueCategoryView | undefined;
+  categories: CategoryGroupView[];
+  selectedCategory: CategoryGroupView | undefined;
   onSelectCategory: (value: string | null) => void;
   selectedSubcategory: string | null;
   onSelectSubcategory: (value: string | null) => void;
-  selectedSubcategoryData: IssueSubcategoryView | undefined;
-  onOpenReviews: (category: string) => void;
-  theme: ThemeDefinition;
+  selectedSubcategoryData: SubcategoryView | undefined;
+  onOpenReviews: (category: string, subcategoryKey?: string | null) => void;
 }) {
+  const issueTotal = selectedCategory?.subcategories.reduce((sum, item) => sum + item.issueCount, 0) ?? 0;
+  const requestTotal = selectedCategory?.subcategories.reduce((sum, item) => sum + item.requestCount, 0) ?? 0;
   return (
     <div className="space-y-4">
       <Card className="bg-slate-900/50 p-4">
-        <h3 className="text-sm font-semibold text-white">Issue Navigator</h3>
-        <p className="text-xs text-slate-400">Browse categories extracted from player reviews</p>
+        <h3 className="text-sm font-semibold text-white">Category Navigator</h3>
+        <p className="text-xs text-slate-400">Browse tagged categories extracted from player reviews</p>
         <ul className="mt-3 space-y-2">
           {categories.map((category) => {
             const isActive = category.category === selectedCategory?.category;
@@ -1208,14 +1207,14 @@ function DrilldownPanel({
             <a href="#summary" className="hover:text-slate-200">Overview</a> → {" "}
             <a href="#quality" className="hover:text-slate-200">Product Quality</a>
             {selectedCategory ? ` → ${toTitleCase(selectedCategory.category)}` : null}
-            {selectedSubcategory ? ` → ${toTitleCase(selectedSubcategory)}` : null}
+            {selectedSubcategoryData ? ` → ${toTitleCase(selectedSubcategoryData.name)}` : null}
           </div>
           {selectedCategory && (
             <button
-              onClick={() => onOpenReviews(selectedCategory.category)}
+              onClick={() => onOpenReviews(selectedCategory.category, selectedSubcategory)}
               className="text-xs text-sky-300 hover:text-sky-200"
             >
-              View all in reviews →
+              View in reviews →
             </button>
           )}
         </div>
@@ -1226,20 +1225,24 @@ function DrilldownPanel({
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-semibold text-white">{toTitleCase(selectedCategory.category)}</p>
-                  {selectedCategory.example && (
-                    <p className="mt-1 text-xs text-slate-400">“{selectedCategory.example}”</p>
-                  )}
+                  <p className="mt-1 text-xs text-slate-400">Total tagged reviews across this category.</p>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold text-sky-400">{selectedCategory.total}</p>
-                  <p className="text-xs text-slate-500">reports</p>
+                  <p className="text-xs text-slate-500">mentions</p>
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-300">
-                {renderSeverityBadge("critical", selectedCategory.severity.critical)}
-                {renderSeverityBadge("high", selectedCategory.severity.high)}
-                {renderSeverityBadge("medium", selectedCategory.severity.medium)}
-                {renderSeverityBadge("low", selectedCategory.severity.low)}
+                {issueTotal > 0 && (
+                  <span className="rounded-full border border-rose-500/40 bg-rose-500/20 px-2 py-0.5 text-rose-200">
+                    {issueTotal} issues
+                  </span>
+                )}
+                {requestTotal > 0 && (
+                  <span className="rounded-full border border-sky-500/40 bg-sky-500/20 px-2 py-0.5 text-sky-200">
+                    {requestTotal} requests
+                  </span>
+                )}
               </div>
             </div>
 
@@ -1249,11 +1252,11 @@ function DrilldownPanel({
               </p>
               <div className="mt-2 space-y-2">
                 {selectedCategory.subcategories.map((subcategory) => {
-                  const isActive = subcategory.name === selectedSubcategory;
+                  const isActive = subcategory.key === selectedSubcategory;
                   return (
                     <button
-                      key={subcategory.name}
-                      onClick={() => onSelectSubcategory(subcategory.name)}
+                      key={subcategory.key}
+                      onClick={() => onSelectSubcategory(subcategory.key)}
                       className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs transition ${
                         isActive
                           ? "border-indigo-400/60 bg-indigo-500/20 text-white"
@@ -1271,6 +1274,16 @@ function DrilldownPanel({
             {selectedSubcategoryData && (
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Sample reviews</p>
+                {(selectedSubcategoryData.issueSnippets.length > 0 || selectedSubcategoryData.requestSnippets.length > 0) && (
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-[11px] text-slate-300">
+                    {selectedSubcategoryData.issueSnippets[0] && (
+                      <p className="text-rose-200">Issue: “{selectedSubcategoryData.issueSnippets[0]}”</p>
+                    )}
+                    {selectedSubcategoryData.requestSnippets[0] && (
+                      <p className="mt-2 text-sky-200">Request: “{selectedSubcategoryData.requestSnippets[0]}”</p>
+                    )}
+                  </div>
+                )}
                 {selectedSubcategoryData.reviews.slice(0, 4).map((review, idx) => (
                   <div key={String(review.review_id ?? idx)} className="rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-slate-200">
                     <div className="flex items-center justify-between">
@@ -1297,95 +1310,12 @@ function DrilldownPanel({
   );
 }
 
-function IssueClustersSection({
-  clusters,
-  coverageRate,
-  reviews,
-}: {
-  clusters: NonNullable<AnalyzeResponse["insights"]>["clustered_issues"] | undefined;
-  coverageRate: number | null;
-  reviews: ReviewRow[];
-}) {
-  if (!clusters || clusters.length === 0) {
-    return null;
-  }
-
-  const reviewLookup = new Map<string | number | null, ReviewRow>();
-  reviews.forEach((r) => reviewLookup.set(r.review_id ?? "", r));
-
-  return (
-    <Card variant="glass" className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-white">Merged Issue Clusters</h2>
-          <p className="text-sm text-slate-400">Embeddings merge similar issues with representative examples</p>
-        </div>
-        {coverageRate !== null && (
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-            Label coverage: {(coverageRate * 100).toFixed(0)}%
-          </span>
-        )}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {clusters.slice(0, 8).map((cluster) => {
-          const sampleReviews = (cluster.review_ids || [])
-            .map((rid) => reviewLookup.get(rid ?? ""))
-            .filter(Boolean)
-            .slice(0, 2) as ReviewRow[];
-          return (
-            <div key={cluster.issue} className="space-y-3 rounded-xl border border-white/10 bg-slate-900/40 p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-white">{cluster.issue}</p>
-                  {cluster.examples?.length ? (
-                    <p className="text-xs text-slate-400">“{truncate(cluster.examples[0], 120)}”</p>
-                  ) : null}
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-sky-400">{cluster.count}</p>
-                  <p className="text-[11px] text-slate-500">mentions</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
-                {renderSeverityBadge("critical", cluster.critical_count)}
-                {renderSeverityBadge("high", cluster.high_count)}
-              </div>
-              {sampleReviews.length > 0 && (
-                <div className="space-y-2 text-xs text-slate-200">
-                  {sampleReviews.map((rev, idx) => (
-                    <div key={String(rev.review_id ?? idx)} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                      <div className="flex items-center justify-between">
-                        <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${
-                          rev.voted_up ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
-                        }`}>
-                          {rev.voted_up ? "Recommended" : "Not recommended"}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {rev.created_at ? new Date(rev.created_at).toLocaleDateString() : ""}
-                        </span>
-                      </div>
-                      <p className="mt-2 leading-relaxed text-slate-100">{truncate(rev.review, 200)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
 function RawReviewsSection({
   theme,
   showReviews,
   onToggle,
   sentimentFilter,
   onSentimentChange,
-  urgencyFilter,
-  onUrgencyChange,
   featureFilter,
   onFeatureChange,
   categoryFilter,
@@ -1398,8 +1328,6 @@ function RawReviewsSection({
   onToggle: () => void;
   sentimentFilter: "all" | "positive" | "neutral" | "negative";
   onSentimentChange: (value: "all" | "positive" | "neutral" | "negative") => void;
-  urgencyFilter: "all" | "critical" | "high" | "medium" | "low";
-  onUrgencyChange: (value: "all" | "critical" | "high" | "medium" | "low") => void;
   featureFilter: "all" | "feature" | "no_feature";
   onFeatureChange: (value: "all" | "feature" | "no_feature") => void;
   categoryFilter: string;
@@ -1424,8 +1352,6 @@ function RawReviewsSection({
           <ReviewFilters
             sentimentFilter={sentimentFilter}
             onSentimentChange={onSentimentChange}
-            urgencyFilter={urgencyFilter}
-            onUrgencyChange={onUrgencyChange}
             featureFilter={featureFilter}
             onFeatureChange={onFeatureChange}
             categoryFilter={categoryFilter}
@@ -1567,35 +1493,6 @@ function AudienceTopicList({ label, topics }: { label: string; topics: { topic: 
   );
 }
 
-function renderSeverityBadge(level: string, count: number | undefined) {
-  if (!count) return null;
-  const classes: Record<string, string> = {
-    critical: "bg-rose-500/20 text-rose-200 border border-rose-500/40",
-    high: "bg-amber-500/20 text-amber-200 border border-amber-500/40",
-    medium: "bg-sky-500/20 text-sky-200 border border-sky-500/40",
-    low: "bg-slate-500/20 text-slate-300 border border-slate-500/40",
-  };
-  return (
-    <span className={`rounded-full px-2 py-0.5 ${classes[level] ?? "bg-slate-700/20 text-slate-200"}`}>
-      {count} {level}
-    </span>
-  );
-}
-
-function renderDemandBadge(level: string, count: number | undefined) {
-  if (!count) return null;
-  const classes: Record<string, string> = {
-    high: "bg-sky-500/20 text-sky-200 border border-sky-500/40",
-    medium: "bg-purple-500/20 text-purple-200 border border-purple-500/40",
-    low: "bg-slate-500/20 text-slate-300 border border-slate-500/40",
-  };
-  return (
-    <span className={`rounded-full px-2 py-0.5 ${classes[level] ?? "bg-slate-700/20 text-slate-200"}`}>
-      {count} {level}
-    </span>
-  );
-}
-
 function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
@@ -1603,6 +1500,7 @@ function formatPercent(value: number): string {
 function toTitleCase(value: string): string {
   return value
     .replace(/_/g, " ")
+    .replace("/", " / ")
     .split(" ")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");

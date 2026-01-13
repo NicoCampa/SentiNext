@@ -2,13 +2,9 @@
 from __future__ import annotations
 
 import json
-import logging
-import os
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict
 
-import numpy as np
 import pandas as pd
-import ollama
 
 from .analysis import (
     early_access_vs_release_sentiment,
@@ -30,30 +26,6 @@ from .analysis import (
     engagement_based_topics,
     activity_based_feedback,
 )
-from . import storage
-import hashlib
-
-logger = logging.getLogger(__name__)
-
-EMBEDDING_MODEL = os.getenv("SENTINEXT_EMBEDDING_MODEL", "embeddinggemma")
-_EMBEDDING_CACHE: dict[tuple[str, str], np.ndarray] = {}
-CLUSTER_LABELS = os.getenv("SENTINEXT_CLUSTER_LABELS", "true").lower() in {"1", "true", "yes"}
-CLUSTER_SIMILARITY = float(os.getenv("SENTINEXT_CLUSTER_SIMILARITY", "0.80"))
-
-
-def embedding_model_name() -> str:
-    return EMBEDDING_MODEL
-
-
-def get_embedding_preview(text: str, dims: int = 10) -> Optional[dict[str, Any]]:
-    """Return a small debug-friendly preview of the embedding vector."""
-    vec = _get_embedding(text)
-    if vec is None:
-        return None
-    preview = [float(x) for x in vec[: max(1, min(dims, len(vec)))]]
-    return {"dims": int(len(vec)), "preview": preview}
-
-
 def _frame_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     if df is None or df.empty:
         return []
@@ -62,357 +34,90 @@ def _frame_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     )
 
 
-def _get_embedding(text: str, model: Optional[str] = None) -> np.ndarray:
-    """Get embedding vector for text using Ollama."""
-    model_name = model or EMBEDDING_MODEL
-    key = hashlib.sha256(f"{model_name}:{text}".encode("utf-8")).hexdigest()
-
-    persisted = storage.load_embedding(key, model_name)
-    if persisted is not None:
-        return np.array(persisted)
-
-    cache_key = (model_name, text)
-    cached = _EMBEDDING_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-    try:
-        response = ollama.embeddings(model=model_name, prompt=text)
-        vector = np.array(response["embedding"])
-        storage.upsert_embedding(key, model_name, response["embedding"])
-        # Basic LRU behaviour: clear cache if it grows unbounded
-        if len(_EMBEDDING_CACHE) >= 512:
-            _EMBEDDING_CACHE.clear()
-        _EMBEDDING_CACHE[cache_key] = vector
-        return vector
-    except Exception as e:
-        logger.warning(f"Failed to get embedding for '{text}': {e}")
-        return None
-
-
-def _cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
-    """Calculate cosine similarity between two vectors."""
-    if vec1 is None or vec2 is None:
-        return 0.0
-    dot_product = np.dot(vec1, vec2)
-    norm1 = np.linalg.norm(vec1)
-    norm2 = np.linalg.norm(vec2)
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
-    return dot_product / (norm1 * norm2)
-
-
-def _cluster_similar_issues(
-    issues: list[dict[str, Any]], similarity_threshold: float = 0.75
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Cluster similar issues using embeddings and merge them.
-
-    Args:
-        issues: List of issue dicts with 'issue', 'count', 'critical_count', 'high_count'
-        similarity_threshold: Cosine similarity threshold for clustering (0.75 = moderate, 0.85 = very similar)
-
-    Returns:
-        Clustered list where similar issues are merged with combined counts
-    """
-    if not issues or len(issues) <= 1:
-        logger.debug("Skipping clustering: only %d issue(s)", len(issues))
-        return issues, {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}
-
-    logger.debug("Starting clustering of %d issues with threshold %.2f", len(issues), similarity_threshold)
-
-    # Get embeddings for all issues
-    issue_texts = [item["issue"] for item in issues]
-    embeddings = []
-    attempted = 0
-    available = 0
-
-    for text in issue_texts:
-        attempted += 1
-        emb = _get_embedding(text)
-        if emb is not None:
-            available += 1
-        embeddings.append(emb)
-
-    if not any(emb is not None for emb in embeddings):
-        logger.debug("Skipping clustering: no embeddings available")
-        return issues, {"attempted": attempted, "available": available, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}
-
-    # Cluster similar issues
-    clusters = []
-    used_indices = set()
-
-    for i, emb_i in enumerate(embeddings):
-        if i in used_indices or emb_i is None:
-            continue
-
-        # Start new cluster with this issue
-        cluster = {
-            "representative": issues[i]["issue"],
-            "count": issues[i]["count"],
-            "critical_count": issues[i]["critical_count"],
-            "high_count": issues[i]["high_count"],
-            "variations": [issues[i]["issue"]],
-            "examples": list(issues[i].get("examples", []))[:5],
-            "review_ids": list(issues[i].get("review_ids", []))[:5],
-        }
-
-        # Copy over category fields if present
-        if "llm_main_category" in issues[i]:
-            cluster["llm_main_category"] = issues[i]["llm_main_category"]
-        if "llm_subcategory" in issues[i]:
-            cluster["llm_subcategory"] = issues[i]["llm_subcategory"]
-
-        used_indices.add(i)
-
-        # Find similar issues
-        for j, emb_j in enumerate(embeddings):
-            if j in used_indices or j <= i or emb_j is None:
-                continue
-
-            similarity = _cosine_similarity(emb_i, emb_j)
-
-            if similarity >= similarity_threshold:
-                # Merge into this cluster
-                cluster["count"] += issues[j]["count"]
-                cluster["critical_count"] += issues[j]["critical_count"]
-                cluster["high_count"] += issues[j]["high_count"]
-                cluster["variations"].append(issues[j]["issue"])
-                # Keep a small sample of examples and review ids for drilldown
-                cluster["examples"].extend(issues[j].get("examples", [])[:3])
-                cluster["review_ids"].extend(issues[j].get("review_ids", [])[:3])
-                used_indices.add(j)
-                logger.debug("Clustered '%s' with '%s' (similarity: %.3f)", issues[j]['issue'], issues[i]['issue'], similarity)
-
-        clusters.append(cluster)
-
-    # Sort by count descending
-    clusters.sort(key=lambda x: x["count"], reverse=True)
-
-    # Convert back to original format (keeping representative as 'issue')
-    result = []
-    for cluster in clusters:
-        item = {
-            "issue": cluster["representative"],
-            "count": cluster["count"],
-            "critical_count": cluster["critical_count"],
-            "high_count": cluster["high_count"],
-        }
-
-        # Add category fields if present
-        if "llm_main_category" in cluster:
-            item["llm_main_category"] = cluster["llm_main_category"]
-        if "llm_subcategory" in cluster:
-            item["llm_subcategory"] = cluster["llm_subcategory"]
-
-        # Add variations for debugging (optional)
-        if len(cluster["variations"]) > 1:
-            item["variations"] = cluster["variations"]
-        if cluster.get("examples"):
-            item["examples"] = cluster["examples"][:5]
-        if cluster.get("review_ids"):
-            item["review_ids"] = cluster["review_ids"][:8]
-
-        result.append(item)
-
-    logger.debug("Clustered %d issues into %d clusters", len(issues), len(result))
-    return result, {"attempted": attempted, "available": available, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}
-
-
-def aggregate_standardized_issues(df: pd.DataFrame) -> list[dict[str, Any]]:
-    """Aggregate standardized issues (v8) by category.
-
-    Returns aggregated issues with counts, severity distribution, and example.
-    """
-    if df is None or df.empty or "llm_issues" not in df.columns:
+def aggregate_subcategory_insights(
+    df: pd.DataFrame, *, max_snippets: int = 6
+) -> list[dict[str, Any]]:
+    """Aggregate evidence snippets for issue/request subcategories."""
+    if (
+        df is None
+        or df.empty
+        or "llm_subcategories" not in df.columns
+        or "llm_subcategory_evidence" not in df.columns
+    ):
         return []
 
-    # Explode issues lists into individual rows
-    issues_df = df[["llm_issues", "llm_urgency"]].copy()
-    issues_df["llm_issues"] = issues_df["llm_issues"].apply(
-        lambda value: value if isinstance(value, list) else []
-    )
+    def _listify(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if isinstance(item, str)]
 
-    exploded = issues_df.explode("llm_issues")
-    exploded = exploded[exploded["llm_issues"].notna()].copy()
-
-    if exploded.empty:
-        return []
-
-    # Parse issue objects
-    def parse_issue(issue_obj):
-        if isinstance(issue_obj, dict):
-            return issue_obj
-        return None
-
-    exploded["parsed"] = exploded["llm_issues"].apply(parse_issue)
-    exploded = exploded[exploded["parsed"].notna()].copy()
-
-    if exploded.empty:
-        return []
-
-    # Extract fields
-    exploded["category"] = exploded["parsed"].apply(lambda x: x.get("category", ""))
-    exploded["severity"] = exploded["parsed"].apply(lambda x: x.get("severity", "medium"))
-    exploded["example"] = exploded["parsed"].apply(lambda x: x.get("example", ""))
-
-    # Filter out empty categories
-    exploded = exploded[exploded["category"] != ""].copy()
-
-    if exploded.empty:
-        return []
-
-    # Group by category
-    grouped = exploded.groupby("category", as_index=False).agg(
-        count=("category", "size"),
-        critical_count=("severity", lambda s: (s == "critical").sum()),
-        high_count=("severity", lambda s: (s == "high").sum()),
-        medium_count=("severity", lambda s: (s == "medium").sum()),
-        low_count=("severity", lambda s: (s == "low").sum()),
-        example=("example", lambda s: next((x for x in s if x), "")),  # First non-empty example
-    )
-
-    # Sort by count descending
-    grouped = grouped.sort_values("count", ascending=False)
-
-    # Convert to list of dicts
-    issues_list = json.loads(grouped.to_json(orient="records"))
-
-    return issues_list
-
-
-def aggregate_standardized_feature_requests(df: pd.DataFrame) -> list[dict[str, Any]]:
-    """Aggregate standardized feature requests (v8) by category.
-
-    Returns aggregated feature requests with counts, demand distribution, and example.
-    """
-    if df is None or df.empty or "llm_feature_requests" not in df.columns:
-        return []
-
-    # Explode feature_requests lists into individual rows
-    requests_df = df[["llm_feature_requests"]].copy()
-    requests_df["llm_feature_requests"] = requests_df["llm_feature_requests"].apply(
-        lambda value: value if isinstance(value, list) else []
-    )
-
-    exploded = requests_df.explode("llm_feature_requests")
-    exploded = exploded[exploded["llm_feature_requests"].notna()].copy()
-
-    if exploded.empty:
-        return []
-
-    # Parse request objects
-    def parse_request(request_obj):
-        if isinstance(request_obj, dict):
-            return request_obj
-        return None
-
-    exploded["parsed"] = exploded["llm_feature_requests"].apply(parse_request)
-    exploded = exploded[exploded["parsed"].notna()].copy()
-
-    if exploded.empty:
-        return []
-
-    # Extract fields
-    exploded["category"] = exploded["parsed"].apply(lambda x: x.get("category", ""))
-    exploded["demand"] = exploded["parsed"].apply(lambda x: x.get("demand", "medium"))
-    exploded["example"] = exploded["parsed"].apply(lambda x: x.get("example", ""))
-
-    # Filter out empty categories
-    exploded = exploded[exploded["category"] != ""].copy()
-
-    if exploded.empty:
-        return []
-
-    # Group by category
-    grouped = exploded.groupby("category", as_index=False).agg(
-        count=("category", "size"),
-        high_demand_count=("demand", lambda s: (s == "high").sum()),
-        medium_demand_count=("demand", lambda s: (s == "medium").sum()),
-        low_demand_count=("demand", lambda s: (s == "low").sum()),
-        example=("example", lambda s: next((x for x in s if x), "")),  # First non-empty example
-    )
-
-    # Sort by count descending
-    grouped = grouped.sort_values("count", ascending=False)
-
-    # Convert to list of dicts
-    requests_list = json.loads(grouped.to_json(orient="records"))
-
-    return requests_list
-
-
-def build_issue_clusters(df: pd.DataFrame, similarity_threshold: float = 0.8) -> dict[str, Any]:
-    """Cluster issues with embeddings and attach representative examples + review ids."""
-    if df is None or df.empty or "llm_issues" not in df.columns:
-        return {"clusters": [], "embeddings": {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}}
-
-    issues_df = df[["review_id", "llm_issues", "llm_urgency", "llm_main_category", "llm_subcategory"]].copy()
-    issues_df["llm_issues"] = issues_df["llm_issues"].apply(lambda value: value if isinstance(value, list) else [])
-
-    exploded = issues_df.explode("llm_issues")
-    exploded = exploded[exploded["llm_issues"].notna()].copy()
-    if exploded.empty:
-        return {
-            "clusters": [],
-            "embeddings": {
-                "attempted": 0,
-                "available": 0,
-                "model": EMBEDDING_MODEL,
-                "threshold": similarity_threshold,
-            },
-        }
-
-    parsed_rows: list[dict[str, Any]] = []
-    for _, row in exploded.iterrows():
-        issue_obj = row["llm_issues"]
-        if isinstance(issue_obj, dict):
-            issue_text = issue_obj.get("example") or issue_obj.get("category") or ""
-            category = issue_obj.get("category", "")
-            if not issue_text:
-                continue
-            parsed_rows.append(
-                {
-                    "issue": issue_text,
-                    "count": 1,
-                    "critical_count": 1 if row.get("llm_urgency") == "critical" else 0,
-                    "high_count": 1 if row.get("llm_urgency") == "high" else 0,
-                    "examples": [issue_text],
-                    "review_ids": [row.get("review_id")],
-                    "llm_main_category": row.get("llm_main_category") or "other",
-                    "llm_subcategory": row.get("llm_subcategory") or "general",
-                    "category": category,
-                }
-            )
-    if not parsed_rows:
-        return {"clusters": [], "embeddings": {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": similarity_threshold}}
-
-    # Aggregate identical issues first
-    aggregate: dict[str, dict[str, Any]] = {}
-    for item in parsed_rows:
-        key = item["issue"].strip().lower()
-        if key not in aggregate:
-            aggregate[key] = item
+    def _snippets(value: Any) -> list[str]:
+        if isinstance(value, list):
+            items = value
+        elif value is None:
+            return []
         else:
-            agg = aggregate[key]
-            agg["count"] += 1
-            agg["critical_count"] += item["critical_count"]
-            agg["high_count"] += item["high_count"]
-            agg["examples"].extend(item["examples"])
-            agg["review_ids"].extend(item["review_ids"])
+            items = [value]
+        cleaned = []
+        for item in items:
+            text = str(item).replace("\n", " ").replace("\r", " ").strip()
+            if text and text not in cleaned:
+                cleaned.append(text[:160])
+        return cleaned
 
-    base_list = list(aggregate.values())
-    threshold = CLUSTER_SIMILARITY if CLUSTER_LABELS else float(similarity_threshold)
-    if CLUSTER_LABELS:
-        clustered, embedding_stats = _cluster_similar_issues(base_list, similarity_threshold=threshold)
-    else:
-        clustered = base_list
-        embedding_stats = {"attempted": 0, "available": 0, "model": EMBEDDING_MODEL, "threshold": threshold, "disabled": True}
+    results: dict[str, dict[str, Any]] = {}
+    for _, row in df.iterrows():
+        subcats = _listify(row.get("llm_subcategories"))
+        if not subcats:
+            continue
+        issue_subcats = set(_listify(row.get("llm_issue_subcategories")))
+        request_subcats = set(_listify(row.get("llm_request_subcategories")))
+        evidence = row.get("llm_subcategory_evidence") or {}
+        if not isinstance(evidence, dict):
+            evidence = {}
 
-    # Post-process samples
-    for cluster in clustered:
-        cluster["examples"] = cluster.get("examples", [])[:3]
-        cluster["review_ids"] = cluster.get("review_ids", [])[:5]
+        for subcat in subcats:
+            entry = results.setdefault(
+                subcat,
+                {
+                    "subcategory": subcat,
+                    "count": 0,
+                    "issue_count": 0,
+                    "request_count": 0,
+                    "issue_snippets": [],
+                    "request_snippets": [],
+                },
+            )
+            entry["count"] += 1
+            if subcat in issue_subcats:
+                entry["issue_count"] += 1
+            if subcat in request_subcats:
+                entry["request_count"] += 1
 
-    return {"clusters": clustered, "embeddings": embedding_stats}
+            snippets = _snippets(evidence.get(subcat))
+            if not snippets:
+                continue
+            if subcat in issue_subcats:
+                for snippet in snippets:
+                    if snippet not in entry["issue_snippets"] and len(entry["issue_snippets"]) < max_snippets:
+                        entry["issue_snippets"].append(snippet)
+            if subcat in request_subcats:
+                for snippet in snippets:
+                    if snippet not in entry["request_snippets"] and len(entry["request_snippets"]) < max_snippets:
+                        entry["request_snippets"].append(snippet)
+
+    insights_list = list(results.values())
+    for entry in insights_list:
+        raw = entry.get("subcategory", "")
+        if isinstance(raw, str) and "/" in raw:
+            main, sub = raw.split("/", 1)
+        else:
+            main, sub = "other", str(raw)
+        entry["main_category"] = main
+        entry["sub_category"] = sub
+
+    insights_list.sort(key=lambda item: int(item.get("count", 0) or 0), reverse=True)
+    return insights_list
 
 
 def version_based_insights(df: pd.DataFrame) -> Dict[str, Any]:
@@ -437,28 +142,42 @@ def version_based_insights(df: pd.DataFrame) -> Dict[str, Any]:
         total_reviews = len(reviews_df)
         recommendation_rate = float(reviews_df["voted_up"].mean()) if "voted_up" in reviews_df.columns else 0.0
 
-        # Top 5 issues (standardized)
-        top_issues = []
-        if "llm_issues" in reviews_df.columns:
-            issues_data = aggregate_standardized_issues(reviews_df)
-            top_issues = issues_data[:5] if issues_data else []
+        # Top subcategories for issues/requests
+        top_issue_subcategories = []
+        if "llm_issue_subcategories" in reviews_df.columns:
+            exploded = reviews_df["llm_issue_subcategories"].explode().dropna()
+            if not exploded.empty:
+                counts = exploded.value_counts().head(5)
+                top_issue_subcategories = [
+                    {"subcategory": subcat, "count": int(count)} for subcat, count in counts.items()
+                ]
 
-        # Top 5 feature requests
-        top_requests = []
-        if "llm_feature_requests" in reviews_df.columns:
-            requests_data = aggregate_standardized_feature_requests(reviews_df)
-            top_requests = requests_data[:5] if requests_data else []
+        top_request_subcategories = []
+        if "llm_request_subcategories" in reviews_df.columns:
+            exploded = reviews_df["llm_request_subcategories"].explode().dropna()
+            if not exploded.empty:
+                counts = exploded.value_counts().head(5)
+                top_request_subcategories = [
+                    {"subcategory": subcat, "count": int(count)} for subcat, count in counts.items()
+                ]
 
-        # Top categories
-        category_counts = {}
-        if "llm_main_category" in reviews_df.columns:
+        # Top categories (main)
+        category_counts: dict[str, int] = {}
+        if "llm_subcategories" in reviews_df.columns:
+            exploded = reviews_df["llm_subcategories"].explode().dropna()
+            if not exploded.empty:
+                main_counts = exploded.apply(
+                    lambda value: str(value).split("/", 1)[0] if "/" in str(value) else str(value)
+                )
+                category_counts = main_counts.value_counts().head(3).to_dict()
+        elif "llm_main_category" in reviews_df.columns:
             category_counts = reviews_df["llm_main_category"].value_counts().head(3).to_dict()
 
         results[status] = {
             "total_reviews": total_reviews,
             "recommendation_rate": recommendation_rate,
-            "top_issues": top_issues,
-            "top_feature_requests": top_requests,
+            "top_issue_subcategories": top_issue_subcategories,
+            "top_request_subcategories": top_request_subcategories,
             "top_categories": category_counts,
         }
 
@@ -466,18 +185,15 @@ def version_based_insights(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def category_trend_over_time(df: pd.DataFrame, freq: str = "W") -> Dict[str, list]:
-    """Calculate time series of issue counts by main category.
-
-    Returns dict with category names as keys and list of {period, count} dicts as values.
-    """
+    """Calculate time series of issue-tagged reviews by main category."""
     if df is None or df.empty or "created_at" not in df.columns or "llm_main_category" not in df.columns:
         return {}
 
-    if "llm_issues" not in df.columns:
+    if "llm_issue_subcategories" not in df.columns:
         return {}
 
     # Filter to reviews with issues
-    df_with_issues = df[df["llm_issues"].apply(
+    df_with_issues = df[df["llm_issue_subcategories"].apply(
         lambda x: isinstance(x, list) and len(x) > 0
     )].copy()
 
@@ -519,19 +235,18 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
         default_metrics = {
             **metrics,
             "feature_request_rate": 0.0,
-            "critical_issues": 0,
-            "high_priority": 0,
+            "issue_rate": 0.0,
             "coverage_rate": 0.0,
         }
         return {
             "metrics": default_metrics,
             "llm": {
                 "feature_request_rate": 0.0,
-                "critical_issues": 0,
-                "high_priority": 0,
+                "issue_rate": 0.0,
                 "coverage_rate": 0.0,
             },
             "category_breakdown": {},
+            "category_recommendation_rates": {},
             "playtime": summarize_playtime(df),
             "helpful": helpfulness_summary(df),
             "recommendation": recommendation_rate(df),
@@ -553,8 +268,8 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
                 "churn_window_default": 0,
                 "churn_rate": 0.0,
             },
+            "subcategory_insights": [],
             "theme": derive_theme(metrics),
-            "clustered_issues": [],
         }
 
     metrics = summarize_sentiment(df)
@@ -563,55 +278,67 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
     recommendation = recommendation_rate(df)
 
     # LLM-derived actionable metrics
-    feature_request_rate = float(
-        df["llm_feature_request"].fillna(False).astype(bool).mean()
-    ) if "llm_feature_request" in df.columns else 0.0
+    feature_request_rate = 0.0
+    issue_rate = 0.0
+    if "llm_request_subcategories" in df.columns:
+        feature_request_rate = float(
+            df["llm_request_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).mean()
+        )
+    if "llm_issue_subcategories" in df.columns:
+        issue_rate = float(
+            df["llm_issue_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).mean()
+        )
 
-    labeled_mask = df["llm_main_category"].notna() if "llm_main_category" in df.columns else pd.Series([False] * len(df))
+    if "llm_subcategories" in df.columns:
+        labeled_mask = df["llm_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0)
+    else:
+        labeled_mask = df["llm_main_category"].notna() if "llm_main_category" in df.columns else pd.Series([False] * len(df))
     coverage_rate = float(labeled_mask.mean()) if len(labeled_mask) else 0.0
 
-    # Urgency metrics
-    critical_issues = 0
-    high_priority = 0
-    if "llm_urgency" in df.columns:
-        critical_issues = int((df["llm_urgency"] == "critical").sum())
-        high_priority = int((df["llm_urgency"] == "high").sum())
+    category_breakdown: dict[str, dict[str, int]] = {}
+    category_recommendation_rates: dict[str, dict[str, Any]] = {}
+    if "llm_subcategories" in df.columns:
+        def _listify(value: Any) -> list[str]:
+            if not isinstance(value, list):
+                return []
+            return [str(item) for item in value if isinstance(item, str)]
 
-    # Hierarchical category breakdown (only reviews WITH structured issues)
-    category_breakdown = {}
-    category_recommendation_rates = {}
-    if "llm_main_category" in df.columns and "llm_subcategory" in df.columns and "llm_issues" in df.columns:
-        # Filter to only reviews that have structured issues
-        df_with_issues = df[df["llm_issues"].apply(
-            lambda x: isinstance(x, list) and len(x) > 0
-        )].copy()
+        exploded = df["llm_subcategories"].apply(_listify).explode().dropna()
+        if not exploded.empty:
+            for item in exploded:
+                text = str(item)
+                if "/" in text:
+                    main_cat, subcat = text.split("/", 1)
+                else:
+                    main_cat, subcat = "other", text
+                if not main_cat or not subcat:
+                    continue
+                category_breakdown.setdefault(main_cat, {})
+                category_breakdown[main_cat][subcat] = category_breakdown[main_cat].get(subcat, 0) + 1
 
-        if not df_with_issues.empty:
-            for main_cat in df_with_issues["llm_main_category"].dropna().unique():
-                main_df = df_with_issues[df_with_issues["llm_main_category"] == main_cat]
-                if not main_df.empty:
-                    subcats = {}
-                    for subcat in main_df["llm_subcategory"].dropna().unique():
-                        count = int((main_df["llm_subcategory"] == subcat).sum())
-                        if count > 0:
-                            subcats[subcat] = count
-                    if subcats:
-                        category_breakdown[main_cat] = subcats
-
-                    # Calculate recommendation rate for this category
-                    recommendation_rate_cat = float(main_df["voted_up"].mean()) if "voted_up" in main_df.columns else 0.0
-                    category_recommendation_rates[main_cat] = {
-                        "rate": recommendation_rate_cat,
-                        "count": len(main_df),
-                        "recommended": int(main_df["voted_up"].sum()) if "voted_up" in main_df.columns else 0,
-                        "not_recommended": int((~main_df["voted_up"]).sum()) if "voted_up" in main_df.columns else 0,
-                    }
+        main_categories = list(category_breakdown.keys())
+        for main_cat in main_categories:
+            mask = df["llm_subcategories"].apply(
+                lambda values: isinstance(values, list) and any(
+                    isinstance(entry, str) and entry.startswith(f"{main_cat}/") for entry in values
+                )
+            )
+            main_df = df[mask]
+            if main_df.empty:
+                continue
+            recommendation_rate_cat = float(main_df["voted_up"].mean()) if "voted_up" in main_df.columns else 0.0
+            category_recommendation_rates[main_cat] = {
+                "rate": recommendation_rate_cat,
+                "count": len(main_df),
+                "recommended": int(main_df["voted_up"].sum()) if "voted_up" in main_df.columns else 0,
+                "not_recommended": int((~main_df["voted_up"]).sum()) if "voted_up" in main_df.columns else 0,
+            }
 
     metrics.update(
         {
             "feature_request_rate": feature_request_rate,
-            "critical_issues": critical_issues,
-            "high_priority": high_priority,
+            "issue_rate": issue_rate,
+            "coverage_rate": coverage_rate,
         }
     )
 
@@ -626,12 +353,10 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
 
     llm_summary = {
         "feature_request_rate": feature_request_rate,
-        "critical_issues": critical_issues,
-        "high_priority": high_priority,
+        "issue_rate": issue_rate,
         "coverage_rate": coverage_rate,
     }
-
-    issue_cluster_payload = build_issue_clusters(df)
+    subcategory_insights = aggregate_subcategory_insights(df)
 
     insights = {
         "metrics": metrics,
@@ -661,10 +386,7 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
             "churn_window_default": 7,
             "churn_rate": churn_signal_rate(df, window_days=7),
         },
-        "standardized_issues": aggregate_standardized_issues(df) if "llm_issues" in df.columns else [],
-        "feature_requests": aggregate_standardized_feature_requests(df) if "llm_feature_requests" in df.columns else [],
-        "clustered_issues": issue_cluster_payload.get("clusters", []),
-        "embeddings": issue_cluster_payload.get("embeddings", {}),
+        "subcategory_insights": subcategory_insights,
         "player_segments": {
             "experience_level": experience_level_issues(df),
             "purchase_type": purchase_type_insights(df),

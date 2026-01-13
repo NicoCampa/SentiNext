@@ -92,7 +92,7 @@ export default function ComparePage() {
       name: g.name,
       recommendation_rate: g.insights?.recommendation ?? 0,
       feature_request_rate: g.insights?.llm?.feature_request_rate ?? 0,
-      critical_issues: g.insights?.llm?.critical_issues ?? 0,
+      issue_rate: g.insights?.llm?.issue_rate ?? 0,
       risk: g.insights?.risk ?? {},
       version_insights: g.insights?.version_insights ?? {},
     }));
@@ -333,9 +333,8 @@ function ComparisonView({
       recommendation: game.insights?.recommendation || 0,
       positive: game.insights?.metrics.share_positive || 0,
       negative: game.insights?.metrics.share_negative || 0,
-      featureRequests: game.insights?.llm?.feature_request_rate || 0,
-      criticalIssues: game.insights?.llm?.critical_issues || 0,
-      highPriority: game.insights?.llm?.high_priority || 0,
+      issueRate: game.insights?.llm?.issue_rate || 0,
+      requestRate: game.insights?.llm?.feature_request_rate || 0,
       refundRisk: game.insights?.risk?.refund_risk || 0,
       reviews: game.metadata.retrieved,
     }));
@@ -379,20 +378,13 @@ function ComparisonView({
                 colors={metrics.map((m) => m.color)}
               />
               <MetricRow
-                label="Critical Issues"
-                values={metrics.map((m) => m.criticalIssues.toString())}
+                label="Issue Rate"
+                values={metrics.map((m) => formatPercentage(m.issueRate))}
                 colors={metrics.map((m) => m.color)}
-                highlight="critical"
               />
               <MetricRow
-                label="High Priority"
-                values={metrics.map((m) => m.highPriority.toString())}
-                colors={metrics.map((m) => m.color)}
-                highlight="high"
-              />
-              <MetricRow
-                label="Feature Requests"
-                values={metrics.map((m) => formatPercentage(m.featureRequests))}
+                label="Request Rate"
+                values={metrics.map((m) => formatPercentage(m.requestRate))}
                 colors={metrics.map((m) => m.color)}
               />
               <MetricRow
@@ -441,22 +433,22 @@ function ComparisonView({
           />
         </Card>
 
-        {/* Urgency Breakdown */}
+        {/* Issue vs Request Rate */}
         <Card variant="glass" className="p-6">
-          <h3 className="mb-4 text-lg font-semibold text-white">Issue Urgency</h3>
+          <h3 className="mb-4 text-lg font-semibold text-white">Issue vs Request Rate</h3>
           <Bar
             data={{
               labels: metrics.map((m) => m.name),
               datasets: [
                 {
-                  label: "Critical",
-                  data: metrics.map((m) => m.criticalIssues),
+                  label: "Issue rate",
+                  data: metrics.map((m) => m.issueRate * 100),
                   backgroundColor: "#ef4444",
                 },
                 {
-                  label: "High Priority",
-                  data: metrics.map((m) => m.highPriority),
-                  backgroundColor: "#f59e0b",
+                  label: "Request rate",
+                  data: metrics.map((m) => m.requestRate * 100),
+                  backgroundColor: "#22d3ee",
                 },
               ],
             }}

@@ -5,7 +5,7 @@ import os
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -29,7 +29,7 @@ from reportlab.platypus import (
 import requests
 from PIL import Image as PILImage
 
-from .senti_next.insights import get_embedding_preview, embedding_model_name
+
 
 
 def _try_register_ttf(font_name: str, ttf_path: Path) -> bool:
@@ -143,15 +143,15 @@ def render_insights_pdf(
     )
 
     # Theme inspired by `web/src/app/globals.css` (light, airy, gradient accents).
-    COL_BG = colors.HexColor("#fbfbfe")
-    COL_TEXT = colors.HexColor("#0b1220")
-    COL_MUTED = colors.HexColor("#334155")
-    COL_MUTED_2 = colors.HexColor("#64748b")
-    COL_BORDER = colors.Color(15 / 255, 23 / 255, 42 / 255, alpha=0.12)
-    COL_CARD = colors.Color(1, 1, 1, alpha=0.92)
-    COL_ACCENT = colors.HexColor("#f6b565")
-    COL_ACCENT_2 = colors.HexColor("#5fe0c2")
-    COL_ACCENT_3 = colors.HexColor("#e48cff")
+    COL_BG = colors.HexColor("#f7f2ea")
+    COL_TEXT = colors.HexColor("#0f172a")
+    COL_MUTED = colors.HexColor("#344258")
+    COL_MUTED_2 = colors.HexColor("#61708a")
+    COL_BORDER = colors.Color(15 / 255, 23 / 255, 42 / 255, alpha=0.14)
+    COL_CARD = colors.Color(1, 1, 1, alpha=0.94)
+    COL_ACCENT = colors.HexColor("#f4a340")
+    COL_ACCENT_2 = colors.HexColor("#2fc7b5")
+    COL_ACCENT_3 = colors.HexColor("#ff6f61")
 
     BODY_FONT, BODY_FONT_BOLD = _resolve_pdf_fonts()
 
@@ -606,10 +606,10 @@ def render_insights_pdf(
     # Cover
     try_add_header_image()
     generated_at = datetime.utcnow().isoformat() + "Z"
-    story.append(Paragraph("<font color='#0b1220'>Steam review insights · PDF report</font>", styles["TinyMuted"]))
+    story.append(Paragraph("<font color='#0f172a'>Steam review insights · PDF report</font>", styles["TinyMuted"]))
     story.append(Spacer(1, 6))
-    story.append(Paragraph(f"SentiNext report for <font color='#0b1220'><b>{_safe_text(game_name)}</b></font>", styles["HeroTitle"]))
-    story.append(Paragraph(f"<font color='#64748b'>App id {app_id} · Generated {generated_at}</font>", styles["Muted"]))
+    story.append(Paragraph(f"SentiNext report for <font color='#0f172a'><b>{_safe_text(game_name)}</b></font>", styles["HeroTitle"]))
+    story.append(Paragraph(f"<font color='#61708a'>App id {app_id} · Generated {generated_at}</font>", styles["Muted"]))
     story.append(Spacer(1, 10))
 
     # Chip row (dashboard-like metadata)
@@ -618,17 +618,12 @@ def render_insights_pdf(
         Pill(
             f"{_safe_text(metadata.get('retrieved', '—'))} reviews",
             fg=COL_TEXT,
-            bg=colors.Color(246 / 255, 181 / 255, 101 / 255, alpha=0.18),
+            bg=colors.Color(244 / 255, 163 / 255, 64 / 255, alpha=0.18),
         ),
         Pill(
             f"LLM: {ollama_model}",
             fg=COL_TEXT,
-            bg=colors.Color(95 / 255, 224 / 255, 194 / 255, alpha=0.16),
-        ),
-        Pill(
-            f"Embeddings: {embedding_model_name()}",
-            fg=COL_TEXT,
-            bg=colors.Color(228 / 255, 140 / 255, 255 / 255, alpha=0.14),
+            bg=colors.Color(47 / 255, 199 / 255, 181 / 255, alpha=0.16),
         ),
         Pill(
             f"Lang: {_safe_text(metadata.get('language', '—'))}",
@@ -655,6 +650,13 @@ def render_insights_pdf(
     llm_metrics = insights.get("llm", {}) if isinstance(insights, dict) else {}
 
     theme = insights.get("theme") if isinstance(insights, dict) else None
+    theme_name = ""
+    if isinstance(theme, dict):
+        theme_name = _safe_text(theme.get("name") or "").strip()
+    elif isinstance(theme, str):
+        theme_name = theme.strip()
+    if not theme_name:
+        theme_name = "—"
 
     overview_rows = [
         ["Metric", "Value"],
@@ -662,7 +664,7 @@ def render_insights_pdf(
         ["Retrieved reviews", _safe_text(metadata.get("retrieved", "—"))],
         ["Language", _safe_text(metadata.get("language", "—"))],
         ["Fetched at", _safe_text(metadata.get("fetched_at", "—"))],
-        ["Theme", _safe_text(theme or "—")],
+        ["Theme", theme_name],
     ]
 
     # Stat grid (inspired by the homepage dashboard)
@@ -671,8 +673,8 @@ def render_insights_pdf(
             [
                 stat_card(_fmt_pct(insights.get("recommendation")), "Recommendation rate"),
                 stat_card(_safe_text(metrics.get("average_compound", "—")), "Avg sentiment (compound)"),
-                stat_card(_fmt_pct(llm_metrics.get("feature_request_rate")), "Feature request rate"),
-                stat_card(_safe_text(llm_metrics.get("critical_issues", "—")), "Critical issues"),
+                stat_card(_fmt_pct(llm_metrics.get("issue_rate")), "Issue rate"),
+                stat_card(_fmt_pct(llm_metrics.get("feature_request_rate")), "Request rate"),
             ]
         ],
         colWidths=[doc.width / 4] * 4,
@@ -681,17 +683,36 @@ def render_insights_pdf(
     story.append(stat_grid)
     story.append(Spacer(1, 12))
 
-    # Executive summary card (short, dashboard-like)
-    top_issue = (insights.get("standardized_issues") or [])[:1]
-    top_req = (insights.get("standardized_feature_requests") or insights.get("feature_requests") or [])[:1]
+    subcategory_insights = insights.get("subcategory_insights") or []
+    subcat_records = list(subcategory_insights) if isinstance(subcategory_insights, list) else []
+    issue_subcats = [item for item in subcat_records if (item.get("issue_count", 0) or 0) > 0]
+    request_subcats = [item for item in subcat_records if (item.get("request_count", 0) or 0) > 0]
+    issue_subcats.sort(key=lambda item: int(item.get("issue_count", 0) or 0), reverse=True)
+    request_subcats.sort(key=lambda item: int(item.get("request_count", 0) or 0), reverse=True)
+    top_issue = issue_subcats[:1]
+    top_req = request_subcats[:1]
     summary_bits = []
-    if theme:
-        summary_bits.append(f"Theme: <b>{_safe_text(theme)}</b>.")
+    if theme_name and theme_name != "—":
+        summary_bits.append(f"Theme: <b>{_safe_text(theme_name)}</b>.")
     if top_issue:
-        summary_bits.append(f"Top issue: <b>{_safe_text(top_issue[0].get('category',''))}</b> ({_safe_text(top_issue[0].get('count',''))} mentions).")
+        issue_label = _safe_text(top_issue[0].get("sub_category") or top_issue[0].get("subcategory", "")).replace("_", " ").strip()
+        summary_bits.append(f"Top issue: <b>{issue_label}</b> ({_safe_text(top_issue[0].get('issue_count',''))} mentions).")
     if top_req:
-        summary_bits.append(f"Top request: <b>{_safe_text(top_req[0].get('category',''))}</b> ({_safe_text(top_req[0].get('count',''))} mentions).")
+        req_label = _safe_text(top_req[0].get("sub_category") or top_req[0].get("subcategory", "")).replace("_", " ").strip()
+        summary_bits.append(f"Top request: <b>{req_label}</b> ({_safe_text(top_req[0].get('request_count',''))} mentions).")
     summary = " ".join(summary_bits) if summary_bits else "Summary not available."
+
+    requested_count = 0
+    retrieved_count = 0
+    try:
+        requested_count = int(metadata.get("requested") or 0)
+    except Exception:
+        requested_count = 0
+    try:
+        retrieved_count = int(metadata.get("retrieved") or 0)
+    except Exception:
+        retrieved_count = 0
+    retrieval_rate = (retrieved_count / requested_count) if requested_count else 0.0
 
     story.append(
         card(
@@ -703,14 +724,66 @@ def render_insights_pdf(
             ]
         )
     )
+    story.append(Spacer(1, 12))
+
+    takeaway_bits = []
+    if theme_name and theme_name != "—":
+        takeaway_bits.append(f"Theme: <b>{_safe_text(theme_name)}</b>")
+    if top_issue:
+        takeaway_bits.append(
+            f"Top issue: <b>{_safe_text(top_issue[0].get('sub_category') or top_issue[0].get('subcategory','')).replace('_', ' ')}</b>"
+        )
+    if top_req:
+        takeaway_bits.append(
+            f"Top request: <b>{_safe_text(top_req[0].get('sub_category') or top_req[0].get('subcategory','')).replace('_', ' ')}</b>"
+        )
+    if insights.get("recommendation") is not None:
+        takeaway_bits.append(f"Recommendation rate: <b>{_fmt_pct(insights.get('recommendation'))}</b>")
+    if not takeaway_bits:
+        takeaway_bits.append("Highlights unavailable yet.")
+    takeaways_text = "<br/>".join(f"{idx + 1}. {text}" for idx, text in enumerate(takeaway_bits))
+
+    if requested_count <= 0:
+        quality_note = "Coverage data unavailable."
+    elif retrieved_count < requested_count:
+        quality_note = f"Coverage {retrieval_rate * 100:.0f}% of requested reviews."
+    else:
+        quality_note = "Coverage 100% of requested reviews."
+
+    quality_flow = [
+        Paragraph(
+            f"<b>{retrieved_count}</b> <font color='#61708a'>retrieved</font> / <b>{requested_count}</b> <font color='#61708a'>requested</font>",
+            styles["Body"],
+        ),
+        Spacer(1, 6),
+        ProgressBar(retrieval_rate, width=(doc.width / 2) - 22, height=10, color=COL_ACCENT_2),
+        Spacer(1, 4),
+        Paragraph(quality_note, styles["TinyMuted"]),
+    ]
+
+    detail_row = Table(
+        [
+            [
+                widget("Key takeaways", [Paragraph(takeaways_text, styles["Body"])], accent=COL_ACCENT_2),
+                widget("Data quality", quality_flow, accent=COL_ACCENT),
+            ]
+        ],
+        colWidths=[(doc.width / 2) - 6, (doc.width / 2) - 6],
+    )
+    detail_row.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(detail_row)
     story.append(Spacer(1, 16))
 
-    # Top standardized issues (aggregated)
-    issues: Iterable[dict] = insights.get("standardized_issues") or []
-    issue_records = list(issues) if issues else []
-
-    requests = insights.get("standardized_feature_requests") or insights.get("feature_requests") or []
-    req_records = list(requests) if requests else []
+    issue_records = list(issue_subcats) if issue_subcats else []
+    req_records = list(request_subcats) if request_subcats else []
 
     # Widget dashboard page (cards instead of tables)
     story.append(PageBreak())
@@ -745,7 +818,19 @@ def render_insights_pdf(
 
     category_rates = insights.get("category_recommendation_rates") or {}
     category_items: list[dict] = []
-    if isinstance(category_rates, dict):
+    if subcat_records:
+        main_counts: dict[str, int] = {}
+        for entry in subcat_records:
+            if not isinstance(entry, dict):
+                continue
+            main = _safe_text(entry.get("main_category") or "").strip()
+            if not main:
+                raw = _safe_text(entry.get("subcategory") or "")
+                main = raw.split("/", 1)[0] if "/" in raw else raw or "other"
+            main_counts[main] = main_counts.get(main, 0) + int(entry.get("count", 0) or 0)
+        category_items = [{"category": key, "count": value} for key, value in main_counts.items()]
+        category_items.sort(key=lambda x: x.get("count", 0), reverse=True)
+    elif isinstance(category_rates, dict):
         for k, payload in category_rates.items():
             if not isinstance(payload, dict):
                 continue
@@ -756,13 +841,29 @@ def render_insights_pdf(
         [
             [
                 widget(
-                    "Top issues (by mentions)",
-                    [BarList(issue_records, width=(doc.width / 2) - 22, value_key="count", label_key="category", bar_color=COL_ACCENT)],
+                    "Top issue subcategories",
+                    [
+                        BarList(
+                            issue_records,
+                            width=(doc.width / 2) - 22,
+                            value_key="issue_count",
+                            label_key="subcategory",
+                            bar_color=COL_ACCENT,
+                        )
+                    ],
                     accent=COL_ACCENT,
                 ),
                 widget(
-                    "Top feature requests",
-                    [BarList(req_records, width=(doc.width / 2) - 22, value_key="count", label_key="category", bar_color=COL_ACCENT_2)],
+                    "Top request subcategories",
+                    [
+                        BarList(
+                            req_records,
+                            width=(doc.width / 2) - 22,
+                            value_key="request_count",
+                            label_key="subcategory",
+                            bar_color=COL_ACCENT_2,
+                        )
+                    ],
                     accent=COL_ACCENT_2,
                 ),
             ]
@@ -788,8 +889,8 @@ def render_insights_pdf(
                                         height=54,
                                     ),
                                     Paragraph(
-                                        f"<b>{_fmt_pct(rec_rate)}</b> <font color='#64748b'>recommendation rate</font><br/>"
-                                        f"<font color='#334155'>Positive</font> <b>{pos}</b> · <font color='#334155'>Negative</font> <b>{neg}</b>",
+                                        f"<b>{_fmt_pct(rec_rate)}</b> <font color='#61708a'>recommendation rate</font><br/>"
+                                        f"<font color='#344258'>Positive</font> <b>{pos}</b> · <font color='#344258'>Negative</font> <b>{neg}</b>",
                                         styles["Body"],
                                     ),
                                 ]
@@ -805,13 +906,13 @@ def render_insights_pdf(
                     "Trend (recommendation rate)",
                     [
                         Paragraph(
-                            f"<b>{_fmt_pct(trend_series[-1] if trend_series else rec_rate)}</b> <font color='#64748b'>latest period</font>",
+                            f"<b>{_fmt_pct(trend_series[-1] if trend_series else rec_rate)}</b> <font color='#61708a'>latest period</font>",
                             styles["Body"],
                         ),
                         Spacer(1, 6),
                         Sparkline(trend_series or [rec_rate, rec_rate], width=(doc.width / 2) - 22, height=34, color=COL_ACCENT),
                         Spacer(1, 6),
-                        Paragraph("<font color='#334155'>Tip:</font> Re-run after your next patch to see if the line moves.", styles["TinyMuted"]),
+                        Paragraph("<font color='#344258'>Tip:</font> Re-run after your next patch to see if the line moves.", styles["TinyMuted"]),
                     ],
                     accent=COL_ACCENT,
                 ),
@@ -827,26 +928,32 @@ def render_insights_pdf(
         cards: list[list[Any]] = []
         row: list[Any] = []
         for item in records[:12]:
-            title = _safe_text(item.get("category", "")).replace("_", " ").strip() or "—"
-            count = _safe_text(item.get("count", "—"))
-            example = _safe_text(item.get("example", "")).strip()
+            raw_title = _safe_text(item.get("subcategory") or item.get("sub_category") or item.get("category") or "")
+            title = raw_title.replace("/", " / ").replace("_", " ").strip() or "—"
+            count_key = "issue_count" if kind == "issue" else "request_count"
+            try:
+                count = int(item.get(count_key, item.get("count", 0) or 0) or 0)
+            except Exception:
+                count = 0
 
             if kind == "issue":
-                c = int(item.get("critical_count", 0) or 0)
-                h = int(item.get("high_count", 0) or 0)
-                meta = f"critical {c} · high {h}" if (c or h) else "severity: mixed"
+                meta = f"{count} issue-tagged reviews" if count else "Issue signal"
                 accent = COL_ACCENT
+                snippets = item.get("issue_snippets") or []
             else:
-                hd = int(item.get("high_demand_count", 0) or 0)
-                md = int(item.get("medium_demand_count", 0) or 0)
-                meta = f"high {hd} · medium {md}" if (hd or md) else "demand: mixed"
+                meta = f"{count} request-tagged reviews" if count else "Request signal"
                 accent = COL_ACCENT_2
+                snippets = item.get("request_snippets") or []
+
+            if not isinstance(snippets, list):
+                snippets = []
+            example = _safe_text(snippets[0]) if snippets else ""
 
             flow = [
                 Paragraph(f"<b>{title}</b>", styles["Body"]),
                 Spacer(1, 4),
-                Paragraph(f"<b>{count}</b> <font color='#64748b'>mentions</font>", styles["TinyMuted"]),
-                Paragraph(f"<font color='#64748b'>{_safe_text(meta)}</font>", styles["TinyMuted"]),
+                Paragraph(f"<b>{count}</b> <font color='#61708a'>mentions</font>", styles["TinyMuted"]),
+                Paragraph(f"<font color='#61708a'>{_safe_text(meta)}</font>", styles["TinyMuted"]),
             ]
             if example:
                 flow.append(Spacer(1, 6))
@@ -875,14 +982,14 @@ def render_insights_pdf(
         )
         return grid
 
-    heading("Top issues")
-    story.append(Paragraph("What players complain about most (aggregated across reviews).", styles["Muted"]))
+    heading("Top issue subcategories")
+    story.append(Paragraph("Subcategories most frequently tagged as issues.", styles["Muted"]))
     story.append(Spacer(1, 10))
     story.append(_detail_grid(issue_records, kind="issue") if issue_records else card([Paragraph("No issues found.", styles["Muted"])]))
     story.append(PageBreak())
 
-    heading("Top feature requests")
-    story.append(Paragraph("What players are asking you to add or improve (aggregated).", styles["Muted"]))
+    heading("Top request subcategories")
+    story.append(Paragraph("Subcategories most frequently tagged as requests.", styles["Muted"]))
     story.append(Spacer(1, 10))
     story.append(_detail_grid(req_records, kind="request") if req_records else card([Paragraph("No feature requests found.", styles["Muted"])]))
 
@@ -906,13 +1013,13 @@ def render_insights_pdf(
                 widget(
                     "Risk meter",
                     [
-                        Paragraph(f"<b>{refund_risk:.2f}</b> <font color='#64748b'>refund risk</font>", styles["TinyMuted"]),
+                        Paragraph(f"<b>{refund_risk:.2f}</b> <font color='#61708a'>refund risk</font>", styles["TinyMuted"]),
                         ProgressBar(min(1.0, max(0.0, refund_risk)), width=(doc.width / 2) - 22, height=10, color=COL_ACCENT_3),
                         Spacer(1, 6),
-                        Paragraph(f"<b>{churn_rate:.2f}</b> <font color='#64748b'>churn rate</font>", styles["TinyMuted"]),
+                        Paragraph(f"<b>{churn_rate:.2f}</b> <font color='#61708a'>churn rate</font>", styles["TinyMuted"]),
                         ProgressBar(min(1.0, max(0.0, churn_rate)), width=(doc.width / 2) - 22, height=10, color=COL_ACCENT),
                         Spacer(1, 6),
-                        Paragraph(f"<b>{core_fan:.2f}</b> <font color='#64748b'>core fan disappointment</font>", styles["TinyMuted"]),
+                        Paragraph(f"<b>{core_fan:.2f}</b> <font color='#61708a'>core fan disappointment</font>", styles["TinyMuted"]),
                         ProgressBar(min(1.0, max(0.0, core_fan)), width=(doc.width / 2) - 22, height=10, color=COL_ACCENT_2),
                     ],
                     accent=COL_ACCENT_3,
@@ -922,7 +1029,7 @@ def render_insights_pdf(
                     [
                         BarList(category_items, width=(doc.width / 2) - 22, value_key="count", label_key="category", bar_color=COL_ACCENT_2),
                         Spacer(1, 8),
-                        Paragraph("<font color='#334155'>Note:</font> Categories count only reviews that contained structured issues.", styles["TinyMuted"]),
+                        Paragraph("<font color='#344258'>Note:</font> Categories summarize tagged subcategories across reviews.", styles["TinyMuted"]),
                     ],
                     accent=COL_ACCENT_2,
                 ),
@@ -940,20 +1047,28 @@ def render_insights_pdf(
                 widget(
                     "Playtime & engagement",
                     [
-                        Paragraph(f"<b>{_safe_text(playtime.get('median_playtime_hours','—'))}</b> <font color='#64748b'>median hours</font>", styles["Body"]),
-                        Paragraph(f"<font color='#64748b'>mean</font> <b>{_safe_text(playtime.get('mean_playtime_hours','—'))}</b> · <font color='#64748b'>recent median</font> <b>{_safe_text(playtime.get('median_recent_playtime_hours','—'))}</b>", styles["TinyMuted"]),
+                        Paragraph(f"<b>{_safe_text(playtime.get('median_playtime_hours','—'))}</b> <font color='#61708a'>median hours</font>", styles["Body"]),
+                        Paragraph(f"<font color='#61708a'>mean</font> <b>{_safe_text(playtime.get('mean_playtime_hours','—'))}</b> · <font color='#61708a'>recent median</font> <b>{_safe_text(playtime.get('median_recent_playtime_hours','—'))}</b>", styles["TinyMuted"]),
                         Spacer(1, 8),
-                        Paragraph(f"<font color='#64748b'>avg helpful</font> <b>{_safe_text(helpful.get('avg_votes_up','—'))}</b> · <font color='#64748b'>avg funny</font> <b>{_safe_text(helpful.get('avg_votes_funny','—'))}</b>", styles["TinyMuted"]),
+                        Paragraph(f"<font color='#61708a'>avg helpful</font> <b>{_safe_text(helpful.get('average_votes_up','—'))}</b> · <font color='#61708a'>avg funny</font> <b>{_safe_text(helpful.get('average_votes_funny','—'))}</b>", styles["TinyMuted"]),
                     ],
                     accent=COL_ACCENT,
                 ),
                 widget(
-                    "Embeddings & clustering",
+                    "Label coverage",
                     [
-                        Paragraph(f"<b>{_safe_text((insights.get('embeddings') or {}).get('model', embedding_model_name()))}</b> <font color='#64748b'>embedding model</font>", styles["TinyMuted"]),
-                        Paragraph(f"<font color='#64748b'>similarity threshold</font> <b>{_safe_text((insights.get('embeddings') or {}).get('threshold','—'))}</b>", styles["TinyMuted"]),
-                        Spacer(1, 6),
-                        Paragraph("<font color='#334155'>Why it matters:</font> clusters merge similar issues so you don’t fix duplicates.", styles["TinyMuted"]),
+                        Paragraph(
+                            f"<b>{_fmt_pct(llm_metrics.get('coverage_rate'))}</b> <font color='#61708a'>reviews tagged</font>",
+                            styles["TinyMuted"],
+                        ),
+                        Paragraph(
+                            f"<font color='#61708a'>issue rate</font> <b>{_fmt_pct(llm_metrics.get('issue_rate'))}</b>",
+                            styles["TinyMuted"],
+                        ),
+                        Paragraph(
+                            f"<font color='#61708a'>request rate</font> <b>{_fmt_pct(llm_metrics.get('feature_request_rate'))}</b>",
+                            styles["TinyMuted"],
+                        ),
                     ],
                     accent=COL_ACCENT_2,
                 ),
@@ -975,18 +1090,11 @@ def render_insights_pdf(
 
         if show_tables:
             records_table(
-                title="Issues table",
-                records=issue_records,
-                columns=["category", "count", "critical_count", "high_count", "example"],
+                title="Subcategory table",
+                records=subcat_records,
+                columns=["subcategory", "count", "issue_count", "request_count"],
                 max_rows=30,
-                col_widths=[46 * mm, 16 * mm, 16 * mm, 16 * mm, 66 * mm],
-            )
-            records_table(
-                title="Feature requests table",
-                records=req_records,
-                columns=["category", "count", "high_demand_count", "medium_demand_count", "low_demand_count", "example"],
-                max_rows=30,
-                col_widths=[42 * mm, 14 * mm, 18 * mm, 18 * mm, 14 * mm, 54 * mm],
+                col_widths=[64 * mm, 20 * mm, 20 * mm, 20 * mm],
             )
         def _add_legacy_pages() -> None:
             story.append(PageBreak())
@@ -1003,8 +1111,8 @@ def render_insights_pdf(
                 ["Median playtime (h)", _safe_text(playtime_legacy.get("median_playtime_hours", "—"))],
                 ["Mean playtime (h)", _safe_text(playtime_legacy.get("mean_playtime_hours", "—"))],
                 ["Median recent playtime (h)", _safe_text(playtime_legacy.get("median_recent_playtime_hours", "—"))],
-                ["Avg helpful votes", _safe_text(helpful_legacy.get("avg_votes_up", "—"))],
-                ["Avg funny votes", _safe_text(helpful_legacy.get("avg_votes_funny", "—"))],
+                ["Avg helpful votes", _safe_text(helpful_legacy.get("average_votes_up", "—"))],
+                ["Avg funny votes", _safe_text(helpful_legacy.get("average_votes_funny", "—"))],
             ]
             story.append(kv_table(metrics_rows, col_widths=[62 * mm, 98 * mm]))
             story.append(Spacer(1, 14))
@@ -1109,23 +1217,24 @@ def render_insights_pdf(
                     story.append(kv_table(rows, col_widths=[62 * mm, 98 * mm]))
                     story.append(Spacer(1, 10))
 
-                    top_issues = payload.get("top_issues") or []
+                    top_issues = payload.get("top_issue_subcategories") or []
                     if isinstance(top_issues, list) and top_issues:
                         records_table(
-                            title=f"Top issues ({version_key})",
+                            title=f"Top issue subcategories ({version_key})",
                             records=top_issues,
-                            columns=["category", "count", "critical_count", "high_count", "example"],
+                            columns=["subcategory", "count"],
                             max_rows=10,
-                            col_widths=[46 * mm, 16 * mm, 16 * mm, 16 * mm, 66 * mm],
+                            col_widths=[80 * mm, 30 * mm],
                         )
 
-                    top_requests = payload.get("top_feature_requests") or []
+                    top_requests = payload.get("top_request_subcategories") or []
                     if isinstance(top_requests, list) and top_requests:
                         records_table(
-                            title=f"Top feature requests ({version_key})",
+                            title=f"Top request subcategories ({version_key})",
                             records=top_requests,
-                            columns=["category", "count", "high_demand_count", "medium_demand_count", "low_demand_count", "example"],
+                            columns=["subcategory", "count"],
                             max_rows=10,
+                            col_widths=[80 * mm, 30 * mm],
                         )
 
             player_segments = insights.get("player_segments") or {}
@@ -1135,53 +1244,6 @@ def render_insights_pdf(
                     snippet = json.dumps(payload, indent=2, ensure_ascii=False)[:2200]
                     story.append(Preformatted(snippet, styles["Code"]))
                     story.append(Spacer(1, 10))
-
-            story.append(PageBreak())
-
-            # Embeddings section (debug + clusters)
-            heading("Embeddings & Clusters")
-            embeddings = insights.get("embeddings") or {}
-            if isinstance(embeddings, dict) and embeddings:
-                rows = [["Metric", "Value"]]
-                rows.append(["embedding_model", _safe_text(embeddings.get("model", embedding_model_name()))])
-                rows.append(["similarity_threshold", _safe_text(embeddings.get("threshold", "—"))])
-                rows.append(["attempted", _safe_text(embeddings.get("attempted", "—"))])
-                rows.append(["available", _safe_text(embeddings.get("available", "—"))])
-                if embeddings.get("disabled"):
-                    rows.append(["clustering", "disabled"])
-                story.append(kv_table(rows, col_widths=[62 * mm, 98 * mm]))
-                story.append(Spacer(1, 14))
-
-            clusters = insights.get("clustered_issues") or []
-            if isinstance(clusters, list) and clusters:
-                # Show all clusters (cap to avoid runaway PDFs)
-                cluster_rows = [["issue", "count", "critical", "high", "variations"]]
-                for item in clusters[:40]:
-                    variations = item.get("variations", [])
-                    var_text = ", ".join(variations[:4]) if isinstance(variations, list) else ""
-                    cluster_rows.append(
-                        [
-                            _safe_text(item.get("issue", ""))[:70],
-                            _safe_text(item.get("count", "")),
-                            _safe_text(item.get("critical_count", "")),
-                            _safe_text(item.get("high_count", "")),
-                            _safe_text(var_text)[:80],
-                        ]
-                    )
-                story.append(kv_table(cluster_rows, col_widths=[62 * mm, 14 * mm, 14 * mm, 14 * mm, 56 * mm]))
-                story.append(Spacer(1, 12))
-
-                subheading("Embedding previews (top clusters)")
-                for item in clusters[:6]:
-                    text = _safe_text(item.get("issue", ""))
-                    preview = get_embedding_preview(text, dims=10)
-                    if not preview:
-                        continue
-                    paragraph(
-                        f"<font size=8><b>{_safe_text(text)[:80]}</b><br/>"
-                        f"dims={preview['dims']} preview={preview['preview']}</font>"
-                    )
-                    story.append(Spacer(1, 6))
 
         _add_legacy_pages()
 
@@ -1203,8 +1265,8 @@ def render_insights_pdf(
             canvas.setFillColor(COL_BG)
             canvas.rect(0, 0, page_width, page_height, fill=1, stroke=0)
         else:
-            top = colors.HexColor("#fbfbfe")
-            bottom = colors.HexColor("#f1f5f9")
+            top = colors.HexColor("#f7f2ea")
+            bottom = colors.HexColor("#eef4f8")
             steps = 28
             for i in range(steps):
                 t = i / max(1, steps - 1)
@@ -1218,9 +1280,9 @@ def render_insights_pdf(
 
             # Optional ultra-subtle accent wash on the cover.
             if cover and os.getenv("SENTINEXT_PDF_BG_ACCENT", "true").lower() in {"1", "true", "yes"}:
-                canvas.setFillColor(colors.Color(246 / 255, 181 / 255, 101 / 255, alpha=0.06))
+                canvas.setFillColor(colors.Color(244 / 255, 163 / 255, 64 / 255, alpha=0.06))
                 canvas.rect(0, page_height * 0.64, page_width, page_height * 0.36, fill=1, stroke=0)
-                canvas.setFillColor(colors.Color(95 / 255, 224 / 255, 194 / 255, alpha=0.05))
+                canvas.setFillColor(colors.Color(47 / 255, 199 / 255, 181 / 255, alpha=0.05))
                 canvas.rect(0, page_height * 0.46, page_width, page_height * 0.18, fill=1, stroke=0)
 
         # Header bar + logo mark.
