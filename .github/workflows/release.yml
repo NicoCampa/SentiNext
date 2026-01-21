@@ -27,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.11"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -44,6 +44,10 @@ jobs:
       - name: Install NSIS (Windows)
         if: runner.os == 'Windows'
         run: choco install nsis -y
+
+      - name: Install WiX (Windows)
+        if: runner.os == 'Windows'
+        run: choco install wixtoolset -y
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
