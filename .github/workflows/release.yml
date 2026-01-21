@@ -16,6 +16,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,36 +60,25 @@ jobs:
         run: choco install wixtoolset -y
 
       - name: Build (macOS, signed)
-        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
         run: |
           tauri build --bundles app,dmg
           ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos.zip"
 
       - name: Build (macOS, unsigned)
-        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE == ''
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE == ''
         run: |
           tauri build --bundles app,dmg
           ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos.zip"
 
       - name: Build (Windows, signed)
-        if: runner.os == 'Windows' && secrets.WINDOWS_CERTIFICATE != ''
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
         shell: bash
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
         run: |
           tauri build --bundles msi,nsis
 
       - name: Build (Windows, unsigned)
-        if: runner.os == 'Windows' && secrets.WINDOWS_CERTIFICATE == ''
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE == ''
         shell: bash
         run: |
           tauri build --bundles msi,nsis
