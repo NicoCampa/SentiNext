@@ -72,7 +72,13 @@ jobs:
             echo "Signing enabled."
           fi
           tauri build --bundles app,dmg
-          ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos.zip"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ -z "$VERSION" || "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="dev"
+          fi
+          DMG_PATH=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n 1)
+          mv "$DMG_PATH" "src-tauri/target/release/bundle/dmg/SentiNext-macos-${VERSION}.dmg"
+          ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos-${VERSION}.zip"
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
@@ -91,6 +97,14 @@ jobs:
             echo "Signing enabled."
           fi
           tauri build --bundles msi,nsis
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ -z "$VERSION" || "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="dev"
+          fi
+          EXE_PATH=$(ls src-tauri/target/release/bundle/nsis/*.exe | head -n 1)
+          mv "$EXE_PATH" "src-tauri/target/release/bundle/nsis/SentiNext-windows-${VERSION}-setup.exe"
+          MSI_PATH=$(ls src-tauri/target/release/bundle/msi/*.msi | head -n 1)
+          mv "$MSI_PATH" "src-tauri/target/release/bundle/msi/SentiNext-windows-${VERSION}.msi"
 
       - name: Upload artifacts (macOS)
         if: runner.os == 'macOS'
@@ -98,8 +112,8 @@ jobs:
         with:
           name: SentiNext-macos
           path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            SentiNext-macos.zip
+            src-tauri/target/release/bundle/dmg/SentiNext-macos-*.dmg
+            SentiNext-macos-*.zip
 
       - name: Upload artifacts (Windows)
         if: runner.os == 'Windows'
@@ -107,8 +121,8 @@ jobs:
         with:
           name: SentiNext-windows
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/SentiNext-windows-*.msi
+            src-tauri/target/release/bundle/nsis/SentiNext-windows-*-setup.exe
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
