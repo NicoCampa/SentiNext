@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame } from '@/lib/api';
+import { buildLlmRequestConfig } from '@/lib/settings';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
 interface AnalysisTask {
@@ -15,6 +16,10 @@ interface AnalysisTask {
 interface StartAnalysisOptions {
   refresh?: boolean;
   persist?: boolean;
+  llm_provider?: string;
+  llm_model?: string;
+  openai_api_key?: string | null;
+  ollama_host?: string | null;
 }
 
 interface AnalysisContextType {
@@ -121,6 +126,12 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const appId = game.appid;
     const persist = options.persist ?? true;
     const refresh = options.refresh ?? false;
+    const llmConfig = buildLlmRequestConfig({
+      llm_provider: options.llm_provider,
+      llm_model: options.llm_model,
+      openai_api_key: options.openai_api_key,
+      ollama_host: options.ollama_host,
+    });
 
     // Check if already analyzing
     const existing = tasks.get(appId);
@@ -145,12 +156,16 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     try {
       const result = await analyzeGame({
         app_id: appId,
-        review_count: 1000,
+        review_count: 100,
         language: 'english',
         filter: 'recent',
         persist,
         refresh,
         refresh_days: refresh ? 30 : undefined,
+        llm_provider: llmConfig.llm_provider,
+        llm_model: llmConfig.llm_model,
+        openai_api_key: llmConfig.openai_api_key,
+        ollama_host: llmConfig.ollama_host,
       });
 
       // Update task metadata but leave status as analyzing (LLM runs in background)

@@ -9,3 +9,4 @@ platformdirs>=4.2
 reportlab>=4.2
 pillow>=9.0
 weasyprint>=62.0
+cryptography>=42.0

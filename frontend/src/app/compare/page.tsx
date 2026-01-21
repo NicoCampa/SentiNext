@@ -1,38 +1,32 @@
 'use client';
 
-import { useEffect, useState, useMemo } from "react";
-import { Bar, Line, Radar } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  RadialLinearScale,
-  PointElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
+import { useEffect, useMemo, useState } from "react";
 import { fetchStarredGames, removeStarredGame } from "@/lib/api";
-import { StarredGameDTO, TrendPoint, VersionInsight } from "@/types";
+import { StarredGameDTO, SubcategoryInsight } from "@/types";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { formatPercentage } from "@/utils/format";
-import { hexToRgba } from "@/utils/colors";
+import { getRecommendationColor } from "@/utils/colors";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, RadialLinearScale, PointElement, Tooltip, Legend);
+const MAX_SELECTION = 2;
 
-const COLORS = [
-  "#6366f1", // Indigo
-  "#0ea5e9", // Sky
-  "#10b981", // Emerald
-  "#f59e0b", // Amber
-  "#ec4899", // Pink
-  "#8b5cf6", // Violet
-];
+const MAIN_CATEGORY_LABELS: Record<string, string> = {
+  gameplay: "Gameplay",
+  technical: "Technical",
+  content_design: "Content & Design",
+  ui_ux_accessibility: "UI/UX & Accessibility",
+  onboarding: "Onboarding",
+  presentation: "Presentation",
+  online_community: "Online & Community",
+  developer_updates: "Developer & Updates",
+  monetization_value: "Monetization & Value",
+  other: "Other / Meta",
+};
+
+const CATEGORY_KEYS = Object.keys(MAIN_CATEGORY_LABELS).filter((key) => key !== "other");
 
 export default function ComparePage() {
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
@@ -44,7 +38,6 @@ export default function ComparePage() {
       try {
         const games = await fetchStarredGames();
         setStarredGames(games);
-        // Auto-select first 2 games
         if (games.length >= 2) {
           setSelectedIds([games[0].app_id, games[1].app_id]);
         } else if (games.length === 1) {
@@ -68,8 +61,8 @@ export default function ComparePage() {
       if (prev.includes(appId)) {
         return prev.filter((id) => id !== appId);
       }
-      if (prev.length >= 6) {
-        return prev; // Max 6 games
+      if (prev.length >= MAX_SELECTION) {
+        return prev;
       }
       return [...prev, appId];
     });
@@ -93,8 +86,7 @@ export default function ComparePage() {
       recommendation_rate: g.insights?.recommendation ?? 0,
       feature_request_rate: g.insights?.llm?.feature_request_rate ?? 0,
       issue_rate: g.insights?.llm?.issue_rate ?? 0,
-      risk: g.insights?.risk ?? {},
-      version_insights: g.insights?.version_insights ?? {},
+      category_recommendation_rates: g.insights?.category_recommendation_rates ?? {},
     }));
     const blob = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -104,36 +96,6 @@ export default function ComparePage() {
     a.click();
     URL.revokeObjectURL(url);
   }
-
-  const trendOverlayData = useMemo(() => {
-    const labelsSet = new Set<string>();
-    selectedGames.forEach((game) => {
-      (game.insights?.trend ?? []).forEach((t) => labelsSet.add(t.period));
-    });
-    const labels = Array.from(labelsSet).sort();
-    const datasets = selectedGames.map((game, idx) => ({
-      label: game.name,
-      data: labels.map((period) => {
-        const found = (game.insights?.trend ?? []).find((t) => t.period === period);
-        return found ? Number((found.recommendation_rate * 100).toFixed(1)) : null;
-      }),
-      borderColor: COLORS[idx % COLORS.length],
-      backgroundColor: hexToRgba(COLORS[idx % COLORS.length], 0.15),
-      spanGaps: true,
-    }));
-    return { labels, datasets };
-  }, [selectedGames]);
-
-  const cohortSplits = useMemo(() => {
-    return selectedGames.map((game) => {
-      const vi = game.insights?.version_insights as Record<string, VersionInsight> | undefined;
-      return {
-        name: game.name,
-        early_access: vi?.early_access?.recommendation_rate ?? 0,
-        release: vi?.release?.recommendation_rate ?? 0,
-      };
-    });
-  }, [selectedGames]);
 
   if (loading) {
     return (
@@ -173,11 +135,10 @@ export default function ComparePage() {
   return (
     <AppLayout>
       <div className="mx-auto max-w-7xl px-4 py-10 space-y-8">
-        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-white">Game Comparison</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Compare up to 6 games side-by-side • {selectedIds.length} selected
+            Compare two games side-by-side • {selectedIds.length} selected
           </p>
           {selectedGames.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -191,7 +152,6 @@ export default function ComparePage() {
           )}
         </div>
 
-        {/* Game Selection Grid */}
         <Card variant="glass" className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-white">
             Select Games ({starredGames.length} available)
@@ -215,6 +175,7 @@ export default function ComparePage() {
                       variant="header"
                       alt={game.name}
                       className="h-full w-full object-cover"
+                      imageUrl={game.metadata.header_image}
                     />
                   </div>
                   <div className="mt-3">
@@ -222,7 +183,10 @@ export default function ComparePage() {
                       {game.name}
                     </h3>
                     {game.insights && (
-                      <p className="mt-1 text-xs text-slate-400">
+                      <p
+                        className="mt-1 text-xs"
+                        style={{ color: getRecommendationColor(game.insights.recommendation) }}
+                      >
                         {formatPercentage(game.insights.recommendation)} recommend
                       </p>
                     )}
@@ -238,307 +202,305 @@ export default function ComparePage() {
           </div>
         </Card>
 
-        {/* Trend overlay */}
-        {selectedGames.length > 0 && (
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-white">Recommendation Trend Overlay</h2>
-                <p className="text-sm text-slate-400">Weekly recommendation rates across selected games</p>
-              </div>
-            </div>
-            <div className="mt-4">
-              <Line
-                data={{
-                  labels: trendOverlayData.labels,
-                  datasets: trendOverlayData.datasets,
-                }}
-                options={{
-                  responsive: true,
-                  plugins: {
-                    legend: { position: "bottom", labels: { color: "#cbd5f5" } },
-                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue || "–"}%` } },
-                  },
-                  scales: {
-                    x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
-                    y: { ticks: { color: "#94a3b8", callback: (v) => `${v}%` }, grid: { color: "#1e293b" } },
-                  },
-                }}
-              />
-            </div>
-          </Card>
-        )}
-
-        {/* Cohort split */}
-        {selectedGames.length > 0 && (
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-white">Early Access vs Release</h2>
-                <p className="text-sm text-slate-400">Recommendation rates by build stage</p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {cohortSplits.map((cohort, idx) => (
-                <div key={cohort.name} className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-white">{cohort.name}</p>
-                    <span className="text-[11px] text-slate-400">#{idx + 1}</span>
-                  </div>
-                  <div className="mt-3 space-y-2 text-sm text-slate-200">
-                    <div className="flex items-center justify-between">
-                      <span>Early Access</span>
-                      <span className="text-sky-300">{Math.round(cohort.early_access * 100)}%</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Release</span>
-                      <span className="text-emerald-300">{Math.round(cohort.release * 100)}%</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Comparison */}
-        {selectedGames.length === 0 ? (
+        {selectedGames.length < MAX_SELECTION ? (
           <EmptyState
-            title="No games selected"
-            description="Click on games above to add them to the comparison."
+            title="Select two games"
+            description="Pick two starred games to compare their category performance."
             icon="👆"
             variant="default"
           />
         ) : (
-          <ComparisonView games={selectedGames} onRemove={handleRemove} />
+          <ComparisonDashboard games={selectedGames} onRemove={handleRemove} />
         )}
       </div>
     </AppLayout>
   );
 }
 
-function ComparisonView({
+function ComparisonDashboard({
   games,
   onRemove,
 }: {
   games: StarredGameDTO[];
   onRemove: (appId: number) => void;
 }) {
-  // Prepare comparison data
-  const metrics = useMemo(() => {
-    return games.map((game, idx) => ({
-      name: game.name,
-      appId: game.app_id,
-      color: COLORS[idx % COLORS.length],
-      recommendation: game.insights?.recommendation || 0,
-      positive: game.insights?.metrics.share_positive || 0,
-      negative: game.insights?.metrics.share_negative || 0,
-      issueRate: game.insights?.llm?.issue_rate || 0,
-      requestRate: game.insights?.llm?.feature_request_rate || 0,
-      refundRisk: game.insights?.risk?.refund_risk || 0,
-      reviews: game.metadata.retrieved,
-    }));
+  const gameData = useMemo(() => {
+    return games.map((game) => {
+      const insights = game.insights ?? null;
+      const subcategoryInsights = (insights?.subcategory_insights ?? []) as SubcategoryInsight[];
+      const subcategoriesByMain = new Map<string, SubcategoryInsight[]>();
+      subcategoryInsights.forEach((entry) => {
+        const main = mainCategoryForEntry(entry);
+        const list = subcategoriesByMain.get(main) ?? [];
+        list.push(entry);
+        subcategoriesByMain.set(main, list);
+      });
+      for (const [key, list] of subcategoriesByMain.entries()) {
+        list.sort((a, b) => Number(b.count ?? 0) - Number(a.count ?? 0));
+        subcategoriesByMain.set(key, list);
+      }
+      return {
+        appId: game.app_id,
+        name: game.name,
+        metadata: game.metadata,
+        recommendation: insights?.recommendation ?? 0,
+        categoryRates: insights?.category_recommendation_rates ?? {},
+        subcategoriesByMain,
+      };
+    });
   }, [games]);
 
+  const categories = useMemo(() => {
+    return CATEGORY_KEYS.map((key) => {
+      const perGame = gameData.map((game) => {
+        const categoryRate = game.categoryRates?.[key];
+        const subcats = game.subcategoriesByMain.get(key) ?? [];
+        const count =
+          Number(categoryRate?.count ?? 0) ||
+          subcats.reduce((sum, entry) => sum + Number(entry.count ?? 0), 0);
+        const subcatMap = new Map<string, SubcategoryInsight>();
+        subcats.forEach((entry) => {
+          const normalized = normalizeSubcategoryKey(entry);
+          if (!subcatMap.has(normalized)) {
+            subcatMap.set(normalized, entry);
+          }
+        });
+        return {
+          name: game.name,
+          rate: categoryRate?.rate,
+          count,
+          subcats,
+          subcatMap,
+        };
+      });
+
+      const subcategoryTotals = new Map<string, number>();
+      perGame.forEach((game) => {
+        game.subcats.forEach((entry) => {
+          const normalized = normalizeSubcategoryKey(entry);
+          const current = subcategoryTotals.get(normalized) ?? 0;
+          subcategoryTotals.set(normalized, current + Number(entry.count ?? 0));
+        });
+      });
+
+      const subcategoryRows = Array.from(subcategoryTotals.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([subcategoryKey]) => {
+          const label = subcategoryLabel(subcategoryKey);
+          const perGameMetrics = perGame.map((game) => {
+            const entry = game.subcatMap.get(subcategoryKey);
+            return {
+              rate: entry?.recommendation_rate,
+              count: Number(entry?.count ?? 0),
+            };
+          });
+          return {
+            key: subcategoryKey,
+            label,
+            perGameMetrics,
+          };
+        });
+
+      const totalTagged = perGame.reduce((sum, item) => sum + item.count, 0);
+
+      return {
+        key,
+        label: MAIN_CATEGORY_LABELS[key] ?? toTitleCase(key),
+        totalTagged,
+        perGame,
+        subcategoryRows,
+      };
+    });
+  }, [gameData]);
+
+  const gridCols = games.length === 2 ? "grid-cols-2" : "grid-cols-1";
+
   return (
-    <div className="space-y-8">
-      {/* Quick Comparison Table */}
-      <Card variant="glass" className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Metric
-                </th>
-                {metrics.map((game) => (
-                  <th
-                    key={game.appId}
-                    className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-400"
+    <div className="space-y-6">
+      <Card variant="glass" className="p-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          {gameData.map((game) => (
+            <div
+              key={game.appId}
+              className="flex gap-4 rounded-2xl border border-white/10 bg-slate-900/30 p-4"
+            >
+              <SteamImage
+                appId={game.appId}
+                variant="header"
+                alt={game.name}
+                className="h-20 w-32 rounded-xl object-cover"
+                imageUrl={game.metadata.header_image}
+              />
+              <div className="flex-1 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="text-lg font-semibold text-white line-clamp-1">{game.name}</h2>
+                  <button
+                    onClick={() => onRemove(game.appId)}
+                    className="text-xs text-slate-400 hover:text-white"
+                    title="Remove from starred"
                   >
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="h-12 w-20 overflow-hidden rounded">
-                        <SteamImage
-                          appId={game.appId}
-                          variant="capsule"
-                          alt={game.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <span className="line-clamp-1">{game.name}</span>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              <MetricRow
-                label="% Recommend"
-                values={metrics.map((m) => formatPercentage(m.recommendation))}
-                colors={metrics.map((m) => m.color)}
-              />
-              <MetricRow
-                label="Issue Rate"
-                values={metrics.map((m) => formatPercentage(m.issueRate))}
-                colors={metrics.map((m) => m.color)}
-              />
-              <MetricRow
-                label="Request Rate"
-                values={metrics.map((m) => formatPercentage(m.requestRate))}
-                colors={metrics.map((m) => m.color)}
-              />
-              <MetricRow
-                label="Reviews Analyzed"
-                values={metrics.map((m) => m.reviews.toString())}
-                colors={metrics.map((m) => m.color)}
-              />
-            </tbody>
-          </table>
+                    ✕
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400">
+                  {game.metadata.retrieved.toLocaleString()} / {game.metadata.requested.toLocaleString()} reviews
+                </p>
+                <p
+                  className="text-2xl font-semibold"
+                  style={{ color: getRecommendationColor(game.recommendation) }}
+                >
+                  {formatPercentOrDash(game.recommendation)} recommend
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       </Card>
 
-      {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recommendation Comparison */}
-        <Card variant="glass" className="p-6">
-          <h3 className="mb-4 text-lg font-semibold text-white">Recommendation Rate</h3>
-          <Bar
-            data={{
-              labels: metrics.map((m) => m.name),
-              datasets: [
-                {
-                  label: "% Recommended",
-                  data: metrics.map((m) => m.recommendation * 100),
-                  backgroundColor: metrics.map((m) => hexToRgba(m.color, 0.8)),
-                  borderColor: metrics.map((m) => m.color),
-                  borderWidth: 2,
-                },
-              ],
-            }}
-            options={{
-              responsive: true,
-              plugins: {
-                legend: { display: false },
-              },
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  max: 100,
-                  ticks: { color: "#e2e8f0" },
-                  grid: { color: "rgba(148, 163, 184, 0.1)" },
-                },
-                x: { ticks: { color: "#e2e8f0" } },
-              },
-            }}
-          />
-        </Card>
+      <Card variant="glass" className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Category recommendation</h3>
+            <p className="mt-1 text-sm text-slate-400">Side-by-side rates and coverage per category</p>
+          </div>
+        </div>
 
-        {/* Issue vs Request Rate */}
-        <Card variant="glass" className="p-6">
-          <h3 className="mb-4 text-lg font-semibold text-white">Issue vs Request Rate</h3>
-          <Bar
-            data={{
-              labels: metrics.map((m) => m.name),
-              datasets: [
-                {
-                  label: "Issue rate",
-                  data: metrics.map((m) => m.issueRate * 100),
-                  backgroundColor: "#ef4444",
-                },
-                {
-                  label: "Request rate",
-                  data: metrics.map((m) => m.requestRate * 100),
-                  backgroundColor: "#22d3ee",
-                },
-              ],
-            }}
-            options={{
-              responsive: true,
-              plugins: {
-                legend: { labels: { color: "#e2e8f0" } },
-              },
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  ticks: { color: "#e2e8f0" },
-                  grid: { color: "rgba(148, 163, 184, 0.1)" },
-                },
-                x: { ticks: { color: "#e2e8f0" } },
-              },
-            }}
-          />
-        </Card>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {categories.map((category) => (
+            <div
+              key={category.key}
+              className="rounded-2xl border border-white/10 bg-slate-900/30 p-5"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-slate-400">
+                    {category.label}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatCount(category.totalTagged)} tagged reviews
+                  </p>
+                </div>
+                <div className={`grid gap-4 text-right ${gridCols}`}>
+                  {category.perGame.map((game) => (
+                    <div key={game.name} className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                        {game.name}
+                      </p>
+                      <p
+                        className="text-xl font-semibold"
+                        style={{ color: getRecommendationColor(game.rate) }}
+                      >
+                        {formatPercentOrDash(game.rate)}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {formatCount(game.count)} reviews
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-
-        {/* Feature Requests */}
-        <Card variant="glass" className="p-6">
-          <h3 className="mb-4 text-lg font-semibold text-white">Feature Request Rate</h3>
-          <Bar
-            data={{
-              labels: metrics.map((m) => m.name),
-              datasets: [
-                {
-                  label: "% Reviews with Feature Requests",
-                  data: metrics.map((m) => m.featureRequests * 100),
-                  backgroundColor: metrics.map((m) => hexToRgba(m.color, 0.8)),
-                  borderColor: metrics.map((m) => m.color),
-                  borderWidth: 2,
-                },
-              ],
-            }}
-            options={{
-              responsive: true,
-              plugins: {
-                legend: { display: false },
-              },
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  max: 100,
-                  ticks: { color: "#e2e8f0" },
-                  grid: { color: "rgba(148, 163, 184, 0.1)" },
-                },
-                x: { ticks: { color: "#e2e8f0" } },
-              },
-            }}
-          />
-        </Card>
-      </div>
+              <div className="mt-4 space-y-2">
+                {category.subcategoryRows.length === 0 ? (
+                  <p className="text-sm text-slate-500">No tagged subcategories.</p>
+                ) : (
+                  category.subcategoryRows.map((row) => (
+                    <div
+                      key={row.key}
+                      className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/5 p-3"
+                    >
+                      <p className="text-sm text-slate-200">{row.label}</p>
+                      <div className={`grid gap-4 text-right ${gridCols}`}>
+                        {row.perGameMetrics.map((metric, idx) => (
+                          <div key={`${row.key}-${idx}`}>
+                            <p
+                              className="text-sm font-semibold"
+                              style={{ color: getRecommendationColor(metric.rate) }}
+                            >
+                              {formatPercentOrDash(metric.rate)}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {formatCount(metric.count)} tags
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }
 
-function MetricRow({
-  label,
-  values,
-  colors,
-  highlight,
-}: {
-  label: string;
-  values: string[];
-  colors: string[];
-  highlight?: 'critical' | 'high';
-}) {
-  const getHighlightColor = () => {
-    if (highlight === 'critical') return '#ef4444';
-    if (highlight === 'high') return '#f59e0b';
-    return undefined;
-  };
+function mainCategoryForEntry(entry: SubcategoryInsight): string {
+  const main = (entry.main_category || "").trim();
+  if (main) return main.toLowerCase();
+  const raw = (entry.subcategory || "").trim();
+  if (raw.includes("/")) {
+    return raw.split("/", 1)[0].toLowerCase();
+  }
+  return "other";
+}
 
-  const highlightColor = getHighlightColor();
+function normalizeSubcategoryKey(entry: SubcategoryInsight): string {
+  const raw = (entry.subcategory || "").trim();
+  if (raw) return raw;
+  const main = (entry.main_category || "").trim();
+  const sub = (entry.sub_category || "").trim();
+  if (main && sub) {
+    return `${main}/${sub}`;
+  }
+  return sub || "other/general";
+}
 
-  return (
-    <tr>
-      <td className="px-4 py-3 font-medium text-slate-300">{label}</td>
-      {values.map((value, idx) => (
-        <td
-          key={idx}
-          className="px-4 py-3 text-center font-semibold text-white"
-          style={{ color: highlightColor || colors[idx] }}
-        >
-          {value}
-        </td>
-      ))}
-    </tr>
-  );
+function subcategoryLabel(value: string): string {
+  if (!value) return "";
+  const raw = value.includes("/") ? value.split("/", 2)[1] : value;
+  return titleize(raw);
+}
+
+function toTitleCase(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const normalized = trimmed.toLowerCase();
+  const direct = MAIN_CATEGORY_LABELS[normalized];
+  if (direct) return direct;
+
+  return titleize(trimmed);
+}
+
+function titleize(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (lower === "ui") return "UI";
+      if (lower === "ux") return "UX";
+      if (lower === "ugc") return "UGC";
+      if (lower === "ai") return "AI";
+      if (lower === "dlc") return "DLC";
+      if (lower === "p2w") return "P2W";
+      if (lower === "ctd") return "CTD";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+function formatPercentOrDash(value: number | undefined | null): string {
+  if (value === undefined || value === null) return "—";
+  if (!Number.isFinite(value)) return "—";
+  return formatPercentage(value);
+}
+
+function formatCount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  return Math.round(value).toLocaleString();
 }

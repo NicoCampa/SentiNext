@@ -70,6 +70,8 @@ def aggregate_subcategory_insights(
         subcats = _listify(row.get("llm_subcategories"))
         if not subcats:
             continue
+        voted_up = row.get("voted_up")
+        voted_up_bool = bool(voted_up) if voted_up is not None else True
         issue_subcats = set(_listify(row.get("llm_issue_subcategories")))
         request_subcats = set(_listify(row.get("llm_request_subcategories")))
         evidence = row.get("llm_subcategory_evidence") or {}
@@ -82,6 +84,8 @@ def aggregate_subcategory_insights(
                 {
                     "subcategory": subcat,
                     "count": 0,
+                    "recommended": 0,
+                    "not_recommended": 0,
                     "issue_count": 0,
                     "request_count": 0,
                     "issue_snippets": [],
@@ -89,6 +93,10 @@ def aggregate_subcategory_insights(
                 },
             )
             entry["count"] += 1
+            if voted_up_bool:
+                entry["recommended"] += 1
+            else:
+                entry["not_recommended"] += 1
             if subcat in issue_subcats:
                 entry["issue_count"] += 1
             if subcat in request_subcats:
@@ -115,6 +123,13 @@ def aggregate_subcategory_insights(
             main, sub = "other", str(raw)
         entry["main_category"] = main
         entry["sub_category"] = sub
+        try:
+            count = int(entry.get("count", 0) or 0)
+            recommended = int(entry.get("recommended", 0) or 0)
+        except Exception:
+            count = 0
+            recommended = 0
+        entry["recommendation_rate"] = float(recommended / count) if count else 0.0
 
     insights_list.sort(key=lambda item: int(item.get("count", 0) or 0), reverse=True)
     return insights_list

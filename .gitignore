@@ -4,9 +4,11 @@ node_modules/
 .next/
 out/
 dist/
+build/
 *.log
 frontend/node_modules/
 frontend/.next/
+frontend/.next.bak*
 frontend/out/
 
 # Env & local
@@ -29,6 +31,7 @@ backend/.venv/
 .pytest_cache/
 
 # App data
+data/
 data/*.db
 data/*.sqlite
 data/reports/
@@ -41,3 +44,7 @@ data/*.pdf
 
 # Generated reports (repo-local)
 reports/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/

@@ -17,6 +17,8 @@ export {
   rgbToHex,
   getRiskColor,
   getSentimentColor,
+  getRecommendationColor,
+  getRecommendationBackground,
 } from './colors';
 
 // Steam utilities

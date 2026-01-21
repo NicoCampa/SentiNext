@@ -4,7 +4,6 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { AdminControl } from "@/components/AdminControl";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -18,9 +17,10 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const navItems = [
     { href: "/home", label: "Home", icon: "●" },
     { href: "/dashboard", label: "Analyze", icon: "▶" },
-    { href: "/network", label: "Network", icon: "◉" },
+    { href: "/chat", label: "Chat", icon: "?" },
     { href: "/compare", label: "Compare", icon: "≈" },
     { href: "/database", label: "Database", icon: "◫" },
+    { href: "/settings", label: "Settings", icon: "⚙" },
   ];
 
   return (
@@ -72,9 +72,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
               <div className="flex-1 overflow-y-auto">{sidebarContent}</div>
             )}
 
-            <div className="mt-auto">
-              <AdminControl />
-            </div>
           </div>
         </aside>
       )}

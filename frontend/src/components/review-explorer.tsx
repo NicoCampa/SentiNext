@@ -3,6 +3,56 @@
 import clsx from "clsx";
 import { ReviewRow, ThemeDefinition } from "@/types";
 
+const MAIN_CATEGORY_LABELS: Record<string, string> = {
+  gameplay: "Gameplay",
+  technical: "Technical",
+  content_design: "Content & Design",
+  ui_ux_accessibility: "UI/UX & Accessibility",
+  onboarding: "Onboarding",
+  presentation: "Presentation",
+  online_community: "Online & Community",
+  developer_updates: "Developer & Updates",
+  monetization_value: "Monetization & Value",
+  other: "Other / Meta",
+};
+
+function formatTaxonomyLabel(value: string | undefined): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const normalized = trimmed.toLowerCase();
+  const direct = MAIN_CATEGORY_LABELS[normalized];
+  if (direct) return direct;
+
+  if (trimmed.includes("/")) {
+    const [mainRaw, subRaw] = trimmed.split("/", 2);
+    const main = MAIN_CATEGORY_LABELS[mainRaw.toLowerCase()] ?? titleize(mainRaw);
+    const sub = titleize(subRaw);
+    return `${main} / ${sub}`;
+  }
+
+  return titleize(trimmed);
+}
+
+function titleize(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (lower === "ui") return "UI";
+      if (lower === "ux") return "UX";
+      if (lower === "ugc") return "UGC";
+      if (lower === "ai") return "AI";
+      if (lower === "dlc") return "DLC";
+      if (lower === "p2w") return "P2W";
+      if (lower === "ctd") return "CTD";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
 export function ReviewFilters({
   sentimentFilter,
   onSentimentChange,
@@ -37,11 +87,14 @@ export function ReviewFilters({
     { value: "all", label: "All categories" },
     { value: "gameplay", label: "Gameplay" },
     { value: "technical", label: "Technical" },
-    { value: "content", label: "Content" },
-    { value: "interface", label: "Interface" },
-    { value: "social", label: "Social" },
-    { value: "monetization", label: "Monetization" },
-    { value: "other", label: "Other" },
+    { value: "content_design", label: "Content & Design" },
+    { value: "ui_ux_accessibility", label: "UI/UX & Accessibility" },
+    { value: "onboarding", label: "Onboarding" },
+    { value: "presentation", label: "Presentation" },
+    { value: "online_community", label: "Online & Community" },
+    { value: "developer_updates", label: "Developer & Updates" },
+    { value: "monetization_value", label: "Monetization & Value" },
+    { value: "other", label: "Other / Meta" },
   ];
 
   return (
@@ -177,9 +230,9 @@ export function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper
                 <td className="px-4 py-3 text-xs text-slate-200">
                   {review.llm_main_category && (
                     <div>
-                      <div className="font-semibold capitalize">{review.llm_main_category}</div>
+                      <div className="font-semibold">{formatTaxonomyLabel(review.llm_main_category)}</div>
                       {review.llm_subcategory && (
-                        <div className="text-slate-400 capitalize">{review.llm_subcategory}</div>
+                        <div className="text-slate-400">{formatTaxonomyLabel(review.llm_subcategory)}</div>
                       )}
                     </div>
                   )}
@@ -189,7 +242,7 @@ export function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper
                     <ul className="space-y-1">
                       {review.llm_issue_subcategories.map((issue, idx) => (
                         <li key={idx} className="text-slate-200">
-                          {issue.replace(/_/g, " ").replace("/", " / ")}
+                          {formatTaxonomyLabel(issue)}
                         </li>
                       ))}
                     </ul>
@@ -202,7 +255,7 @@ export function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper
                     <ul className="space-y-1">
                       {review.llm_request_subcategories.map((request, idx) => (
                         <li key={idx} className="text-slate-200">
-                          {request.replace(/_/g, " ").replace("/", " / ")}
+                          {formatTaxonomyLabel(request)}
                         </li>
                       ))}
                     </ul>

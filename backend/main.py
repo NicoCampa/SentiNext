@@ -28,6 +28,8 @@ from .senti_next.steam_api import fetch_app_details
 from .senti_next.insights import prepare_insights
 from .senti_next import storage
 from .senti_next import llm
+from .senti_next import license as license_guard
+from .senti_next import chat
 from .reports import render_single_report, render_compare_report
 from .html_pdf import render_insights_pdf
 from .emailer import EmailConfigError, send_pdf_email
@@ -41,6 +43,9 @@ PDF_REVIEW_LIMIT = 100  # hard cap for testing
 APP_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
 ]
 
 def _parse_allowed_origins() -> list[str]:
@@ -73,6 +78,7 @@ class SearchResult(BaseModel):
     name: str
     price: Optional[str] = None
     url: str
+    image_url: Optional[str] = None
 
 
 class AnalyzeRequest(BaseModel):
@@ -84,6 +90,10 @@ class AnalyzeRequest(BaseModel):
     persist: bool = Field(True)
     refresh: bool = Field(False)
     refresh_days: Optional[int] = Field(None, ge=1, le=365, description="Only fetch reviews from the last N days")
+    llm_provider: Optional[str] = Field(None, description="LLM provider override (ollama or openai)")
+    llm_model: Optional[str] = Field(None, description="LLM model override for the selected provider")
+    openai_api_key: Optional[str] = Field(None, description="OpenAI API key override")
+    ollama_host: Optional[str] = Field(None, description="Ollama host override")
 
 
 class AnalyzeMetadata(BaseModel):
@@ -92,6 +102,7 @@ class AnalyzeMetadata(BaseModel):
     retrieved: int
     language: str
     fetched_at: str
+    header_image: Optional[str] = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -127,6 +138,48 @@ class AnalysisStatusResponse(BaseModel):
     snapshot_hash: Optional[str] = None
     stale: bool = False
     stale_reason: Optional[str] = None
+
+
+class LicenseStatusResponse(BaseModel):
+    valid: bool
+    reason: str
+    license_id: Optional[str] = None
+    issued_to: Optional[str] = None
+    expires_at: Optional[str] = None
+    features: List[str] = Field(default_factory=list)
+
+
+class ChatRequest(BaseModel):
+    app_id: int = Field(..., gt=0)
+    question: str = Field(..., min_length=3)
+    sentiment: str = Field("all")
+    min_helpful: int = Field(0, ge=0)
+    max_days: Optional[int] = Field(None, ge=1, le=365)
+    max_reviews: int = Field(500, ge=1, le=5000)
+    max_snippets: int = Field(8, ge=1, le=20)
+    llm_provider: Optional[str] = Field(None, description="LLM provider override (ollama or openai)")
+    llm_model: Optional[str] = Field(None, description="LLM model override for the selected provider")
+    openai_api_key: Optional[str] = Field(None, description="OpenAI API key override")
+    ollama_host: Optional[str] = Field(None, description="Ollama host override")
+
+
+class ChatCitation(BaseModel):
+    review_id: str
+    subcategory: str
+    snippet: str
+    votes_up: Optional[int] = None
+    created_at: Optional[str] = None
+    voted_up: Optional[bool] = None
+    review_text: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    citations: List[ChatCitation]
+    used_subcategories: List[str]
+    model: str
+    review_count: int
+    filtered_review_count: int
 
 
 class FeedbackItem(BaseModel):
@@ -205,6 +258,13 @@ def require_admin(request: Request) -> None:
     if not secrets.compare_digest(provided, ADMIN_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid admin token.")
 
+
+def require_license() -> None:
+    try:
+        license_guard.require_license()
+    except PermissionError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+
 def require_service_token(request: Request) -> None:
     """Optional shared-secret auth for website-to-backend calls."""
     if not SERVICE_TOKEN:
@@ -217,6 +277,18 @@ def require_service_token(request: Request) -> None:
 @app.get("/health")
 def healthcheck() -> dict:
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
+
+@app.get("/license/status", response_model=LicenseStatusResponse)
+def license_status() -> LicenseStatusResponse:
+    status = license_guard.get_license_status()
+    return LicenseStatusResponse(
+        valid=status.valid,
+        reason=status.reason,
+        license_id=status.license_id,
+        issued_to=status.issued_to,
+        expires_at=status.expires_at,
+        features=status.features or [],
+    )
 
 @app.get("/admin/status")
 def admin_status() -> dict:
@@ -246,12 +318,21 @@ def search(query: str) -> List[SearchResult]:
         raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     return [
-        SearchResult(appid=item.appid, name=item.name, price=item.price, url=item.url)
+        SearchResult(appid=item.appid, name=item.name, price=item.price, url=item.url, image_url=item.image_url)
         for item in results
     ]
 
 
-def _run_analysis_job(app_id: int, all_reviews: List[dict], metadata: AnalyzeMetadata, game_context: Optional[dict]) -> None:
+def _run_analysis_job(
+    app_id: int,
+    all_reviews: List[dict],
+    metadata: AnalyzeMetadata,
+    game_context: Optional[dict],
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+    ollama_host: Optional[str] = None,
+) -> None:
     run_id = hashlib.sha256(f"{app_id}-{datetime.utcnow().isoformat()}".encode("utf-8")).hexdigest()[:16]
     snapshot_hash = hashlib.sha256(json.dumps(all_reviews, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
     context_hash = hashlib.sha256(json.dumps(game_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
@@ -286,6 +367,10 @@ def _run_analysis_job(app_id: int, all_reviews: List[dict], metadata: AnalyzeMet
             all_reviews,
             progress_callback=_progress_callback if progress_active else None,
             game_context=game_context,
+            provider=llm_provider,
+            model=llm_model,
+            openai_api_key=openai_api_key,
+            ollama_host=ollama_host,
         )
 
         df = build_reviews_dataframe(all_reviews)
@@ -356,6 +441,27 @@ def _reports_dir() -> Path:
     return storage.db_path().parent / "reports"
 
 
+def _safe_report_dir_name(name: str, app_id: int) -> str:
+    raw = (name or "").strip()
+    if not raw:
+        return str(app_id)
+    allowed = set(" -_().[]")
+    cleaned = []
+    for char in raw:
+        if ord(char) >= 128:
+            cleaned.append("-")
+            continue
+        if char.isalnum() or char in allowed:
+            cleaned.append(char)
+        elif char.isspace():
+            cleaned.append(" ")
+        else:
+            cleaned.append("-")
+    compact = " ".join("".join(cleaned).split())
+    compact = compact.strip(" .-_")
+    return compact or str(app_id)
+
+
 def _run_pdf_report_job(job_id: str, request: PdfReportRequest) -> None:
     storage.update_pdf_job(job_id, status="running")
     try:
@@ -412,6 +518,8 @@ def _run_pdf_report_job(job_id: str, request: PdfReportRequest) -> None:
             game_name=game_name,
             metadata=metadata.dict(),
             insights=insights or {},
+            reviews=reviews,
+            llm_labels=llm_labels,
             game_image_url=(
                 game_context.get("header_image")
                 or f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/header.jpg"
@@ -419,9 +527,13 @@ def _run_pdf_report_job(job_id: str, request: PdfReportRequest) -> None:
         )
 
         reports_dir = _reports_dir()
-        reports_dir.mkdir(parents=True, exist_ok=True)
+        game_dir = reports_dir / _safe_report_dir_name(game_name, app_id)
+        pdf_dir = game_dir / "PDF report"
+        html_dir = game_dir / "HTML report"
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        html_dir.mkdir(parents=True, exist_ok=True)
         filename = f"sentinext-report-{app_id}-{job_id}.pdf"
-        path = reports_dir / filename
+        path = pdf_dir / filename
         path.write_bytes(pdf_bytes)
 
         send_pdf_email(
@@ -445,7 +557,7 @@ def _run_pdf_report_job(job_id: str, request: PdfReportRequest) -> None:
         storage.update_pdf_job(job_id, status="failed", error=str(exc))
 
 
-@app.post("/analyze", response_model=AnalyzeResponse, status_code=202)
+@app.post("/analyze", response_model=AnalyzeResponse, status_code=202, dependencies=[Depends(require_license)])
 def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> AnalyzeResponse:
     filter_type = (request.filter or "recent").lower()
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
@@ -485,12 +597,18 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> Analy
     if request.review_count and len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
+    game_context = fetch_app_details(request.app_id)
+    header_image = None
+    if game_context:
+        header_image = game_context.get("header_image")
+
     metadata = AnalyzeMetadata(
         app_id=request.app_id,
         requested=request.review_count,
         retrieved=len(all_reviews),
         language=request.language,
         fetched_at=datetime.utcnow().isoformat() + "Z",
+        header_image=header_image,
     )
 
     # Persist placeholder result and kick off background job
@@ -506,22 +624,35 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> Analy
     )
     storage.clear_progress(request.app_id)
 
-    game_context = fetch_app_details(request.app_id)
     if game_context:
         logger.info(f"Fetched game context for {game_context.get('name', request.app_id)}")
 
-    background_tasks.add_task(_run_analysis_job, request.app_id, all_reviews, metadata, game_context)
+    background_tasks.add_task(
+        _run_analysis_job,
+        request.app_id,
+        all_reviews,
+        metadata,
+        game_context,
+        request.llm_provider,
+        request.llm_model,
+        request.openai_api_key,
+        request.ollama_host,
+    )
 
     return AnalyzeResponse(metadata=metadata, insights=None, reviews=[])
 
 
-@app.get("/analysis/{app_id}", response_model=AnalysisStatusResponse)
+@app.get("/analysis/{app_id}", response_model=AnalysisStatusResponse, dependencies=[Depends(require_license)])
 def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
     result = storage.load_analysis_result(app_id)
     if not result:
         raise HTTPException(status_code=404, detail="No analysis result available for this app.")
 
     metadata_payload = result.get("metadata")
+    if metadata_payload and not metadata_payload.get("header_image"):
+        details = fetch_app_details(app_id)
+        if details and details.get("header_image"):
+            metadata_payload["header_image"] = details["header_image"]
     metadata = AnalyzeMetadata(**metadata_payload) if metadata_payload else None
     stale_reason = None
     if metadata and metadata.fetched_at:
@@ -558,7 +689,40 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
     )
 
 
-@app.get("/feedback/{app_id}", response_model=List[FeedbackItem])
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_license)])
+def chat_insights(request: ChatRequest) -> ChatResponse:
+    question = (request.question or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    sentiment = (request.sentiment or "all").strip().lower()
+    if sentiment not in {"all", "positive", "negative"}:
+        sentiment = "all"
+
+    try:
+        payload = chat.answer_chat(
+            app_id=request.app_id,
+            question=question,
+            sentiment=sentiment,
+            min_helpful=request.min_helpful,
+            max_days=request.max_days,
+            max_reviews=request.max_reviews,
+            max_snippets=request.max_snippets,
+            llm_provider=request.llm_provider,
+            llm_model=request.llm_model,
+            openai_api_key=request.openai_api_key,
+            ollama_host=request.ollama_host,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Chat failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Chat request failed.") from exc
+
+    return ChatResponse(**payload)
+
+
+@app.get("/feedback/{app_id}", response_model=List[FeedbackItem], dependencies=[Depends(require_license)])
 def aggregate_feedback(
     app_id: int,
     include_reddit: bool = True,
@@ -588,7 +752,7 @@ def aggregate_feedback(
     return [FeedbackItem(**item) for item in combined]
 
 
-@app.get("/report/{app_id}")
+@app.get("/report/{app_id}", dependencies=[Depends(require_license)])
 def export_report(app_id: int, format: str = "html"):
     result = storage.load_analysis_result(app_id)
     if not result or not result.get("insights"):
@@ -601,7 +765,7 @@ def export_report(app_id: int, format: str = "html"):
     return render_single_report(app_id, name, metadata, insights)
 
 
-@app.get("/compare/export")
+@app.get("/compare/export", dependencies=[Depends(require_license)])
 def export_comparison(app_ids: Optional[str] = None, format: str = "html"):
     ids = []
     if app_ids:
@@ -632,7 +796,7 @@ def export_comparison(app_ids: Optional[str] = None, format: str = "html"):
     return render_compare_report(games_payload)
 
 
-@app.post("/report/pdf", response_model=PdfReportJobResponse, status_code=202)
+@app.post("/report/pdf", response_model=PdfReportJobResponse, status_code=202, dependencies=[Depends(require_license)])
 def request_pdf_report(
     payload: PdfReportRequest,
     background_tasks: BackgroundTasks,
@@ -648,7 +812,7 @@ def request_pdf_report(
     )
 
 
-@app.get("/report/pdf/status/{job_id}", response_model=PdfReportStatusResponse)
+@app.get("/report/pdf/status/{job_id}", response_model=PdfReportStatusResponse, dependencies=[Depends(require_license)])
 def pdf_report_status(job_id: str, _: None = Depends(require_service_token)) -> PdfReportStatusResponse:
     job = storage.load_pdf_job(job_id)
     if not job:
@@ -663,7 +827,7 @@ def pdf_report_status(job_id: str, _: None = Depends(require_service_token)) -> 
         updated_at=updated_at or "",
     )
 
-@app.get("/reviews/{app_id}")
+@app.get("/reviews/{app_id}", dependencies=[Depends(require_license)])
 def export_reviews(app_id: int, limit: Optional[int] = None, format: str = "csv", refresh: bool = False):
     rows = storage.load_reviews(app_id, limit)
     if not rows:
@@ -711,7 +875,7 @@ def export_reviews(app_id: int, limit: Optional[int] = None, format: str = "csv"
     )
 
 
-@app.get("/progress/{app_id}")
+@app.get("/progress/{app_id}", dependencies=[Depends(require_license)])
 def classification_progress(app_id: int) -> dict:
     progress = storage.load_progress(app_id)
     if not progress:
@@ -741,12 +905,16 @@ def classification_progress(app_id: int) -> dict:
     }
 
 
-@app.get("/starred", response_model=List[StarredGameResponse])
+@app.get("/starred", response_model=List[StarredGameResponse], dependencies=[Depends(require_license)])
 def list_starred_games() -> List[StarredGameResponse]:
     entries = storage.load_starred_games()
     response: List[StarredGameResponse] = []
     for item in entries:
         metadata_payload = item.get("metadata") or {}
+        if metadata_payload and not metadata_payload.get("header_image"):
+            details = fetch_app_details(item["app_id"])
+            if details and details.get("header_image"):
+                metadata_payload["header_image"] = details["header_image"]
         metadata = AnalyzeMetadata(**metadata_payload)
         updated_at = datetime.utcfromtimestamp(item["updated_at"]).isoformat() + "Z"
         response.append(
@@ -762,7 +930,7 @@ def list_starred_games() -> List[StarredGameResponse]:
     return response
 
 
-@app.post("/starred", status_code=204)
+@app.post("/starred", status_code=204, dependencies=[Depends(require_license)])
 def save_starred_game(payload: StarredGamePayload) -> Response:
     sample = payload.sample[:SAMPLE_LIMIT]
 
@@ -770,11 +938,14 @@ def save_starred_game(payload: StarredGamePayload) -> Response:
     game_details = fetch_app_details(payload.app_id)
     genres = game_details.get("genres", []) if game_details else []
     categories = game_details.get("categories", []) if game_details else []
+    metadata_payload = payload.metadata.dict()
+    if game_details and game_details.get("header_image"):
+        metadata_payload["header_image"] = game_details["header_image"]
 
     storage.save_starred_game(
         app_id=payload.app_id,
         name=payload.name,
-        metadata=payload.metadata.dict(),
+        metadata=metadata_payload,
         insights=payload.insights,
         sample=sample,
         genres=genres,
@@ -796,7 +967,7 @@ def delete_game_data(app_id: int, _: None = Depends(require_admin)) -> Response:
     return Response(status_code=204)
 
 
-@app.get("/database/stats")
+@app.get("/database/stats", dependencies=[Depends(require_license)])
 def database_stats() -> dict:
     """Get database statistics (games, reviews, labels counts)."""
     return storage.get_database_stats()

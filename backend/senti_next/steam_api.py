@@ -19,6 +19,7 @@ class AppSearchResult:
     name: str
     price: Optional[str]
     url: str
+    image_url: Optional[str] = None
 
 
 class SteamAPIError(RuntimeError):
@@ -97,12 +98,16 @@ def search_applications(query: str, limit: int = 5) -> List[AppSearchResult]:
             appid = int(row["id"])
         except (KeyError, ValueError, TypeError):
             continue
+        image_url = None
+        if isinstance(row, dict):
+            image_url = row.get("tiny_image") or row.get("header_image") or row.get("capsule_image")
         results.append(
             AppSearchResult(
                 appid=appid,
                 name=row.get("name", "Unknown title"),
                 price=row.get("final_formatted"),
                 url=f"https://store.steampowered.com/app/{appid}",
+                image_url=image_url,
             )
         )
 

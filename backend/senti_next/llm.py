@@ -1,31 +1,76 @@
-"""Local Ollama-powered review classification helpers."""
+"""Review classification helpers (default Ollama, optional OpenAI)."""
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
 import os
+from pathlib import Path
+import random
+import re
+import time
 from string import Template
 from textwrap import dedent
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
-import yaml
 
-import ollama
+import requests
 
 from . import storage
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_MODEL = os.getenv("SENTINEXT_OLLAMA_MODEL", "gpt-oss:20b-cloud")
-PROMPT_VERSION = "steam_review_insights_v10_subcategory_only"
+OPENAI_BASE_URL = os.getenv("SENTINEXT_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+PROMPT_VERSION = "steam_review_insights_v13_subcategories_primary_json"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
 MAX_REVIEW_CHARS = 3000
+MIN_REVIEW_WORDS = 2
+_WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
+HYBRID_RULES_VERSION = "v1"
+
+
+def _maybe_load_dotenv() -> None:
+    if os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY"):
+        return
+
+    try:
+        cwd = Path.cwd().resolve()
+    except Exception:
+        return
+
+    for candidate in [cwd, *cwd.parents]:
+        env_path = candidate / ".env"
+        if not env_path.is_file():
+            continue
+        try:
+            content = env_path.read_text(encoding="utf-8")
+        except Exception:
+            return
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :].strip()
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if not key or key in os.environ:
+                continue
+            value = value.strip()
+            if value and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]
+            os.environ[key] = value
+        return
 
 _PROMPT_TEMPLATE = Template(
     dedent(
-        """Extract actionable developer insights from Steam reviews. Reply with STRICT YAML only — no prose, no code fences.
+        """Extract actionable developer insights from a Steam review by labeling it with the taxonomy below.
+
+        Reply with STRICT JSON only (a single JSON object). No prose, no markdown, no code fences.
 
         GAME CONTEXT:
         Name: $game_name
@@ -38,108 +83,74 @@ _PROMPT_TEMPLATE = Template(
         Playtime: $reviewer_playtime hours
         Recommendation: $reviewer_recommendation
 
-        YAML SCHEMA (use these exact keys):
-        main_category: gameplay | technical | content | interface | social | monetization | other
-        subcategory: <primary subcategory for main_category, see hierarchy below>
-        subcategories: [list of "<main>/<sub>" strings, 1-6 items]
-        issue_subcategories: [subset of subcategories that describe problems]
-        request_subcategories: [subset of subcategories that describe explicit requests]
-        evidence: { "<main>/<sub>": ["short quote from review (<=140 chars)"] }
+        OUTPUT JSON SCHEMA (use these exact keys; no extras):
+        {
+          "subcategories": ["<main>/<sub>", "..."],
+          "issue_subcategories": ["<main>/<sub>", "..."],
+          "request_subcategories": ["<main>/<sub>", "..."],
+          "evidence": { "<main>/<sub>": ["<verbatim quote>", "..."] }
+        }
 
-        HIERARCHICAL TAXONOMY (7 main categories):
+        FIELD CONSTRAINTS:
+        - subcategories: 1-6 unique items
+        - subcategories[0]: primary label (dominant theme)
+        - issue_subcategories: subset of subcategories
+        - request_subcategories: subset of subcategories
+        - evidence: keys must match subcategories
 
-        1. gameplay:
-           - mechanics: combat, movement, puzzles, systems depth, game feel, core loop
-           - controls: input mapping, controller/KBM, responsiveness, camera behavior
-           - balance: difficulty curve, fairness, PvE/PvP balance, skill ceiling
-           - progression: leveling, unlocks, rewards, grind, experience gain
+        RULES:
+        - Choose 1-6 unique subcategories from the taxonomy below, each formatted as "<main>/<sub>".
+        - Put the primary label first: subcategories[0] MUST be the dominant theme of the review.
+        - issue_subcategories: only problems/complaints (subset of subcategories).
+        - request_subcategories: only explicit requests (subset of subcategories; e.g., "please add", "can you", "I wish").
+        - evidence: for EVERY tag in subcategories, include 1-3 short verbatim quotes from the review (<=160 chars).
+          Do not invent quotes. Use double quotes in JSON strings and escape as needed.
+        - If review is vague/generic: subcategories=["other/general"], issue_subcategories=[], request_subcategories=[],
+          evidence={"other/general":["short quote from review"]}.
+        - JSON MUST be valid: double quotes only, no trailing commas, no comments, no code fences.
+        - Fill with real values only. Do not output placeholders like "<main>/<sub>", "<verbatim quote>", or "...".
 
-        2. technical:
-           - performance: FPS drops, stuttering, frame pacing, optimization
-           - stability: crashes, freezes, save corruption, game-breaking bugs
-           - bugs: glitches, physics issues, broken features, clipping
-           - compatibility: platform issues, hardware requirements, Steam Deck
+        EXAMPLES (for format only; do not copy; do not output examples):
+        Example 1 (Issues only):
+        {
+          "subcategories": ["technical/performance", "technical/bugs"],
+          "issue_subcategories": ["technical/performance", "technical/bugs"],
+          "request_subcategories": [],
+          "evidence": {
+            "technical/performance": ["FPS drops"],
+            "technical/bugs": ["Quest breaks"]
+          }
+        }
 
-        3. content:
-           - quantity: too short, not enough content, lack of levels/missions
-           - variety: repetitive, lack of diversity, same enemies/environments
-           - quality: story quality, writing, level design, mission design
-           - replayability: endgame content, replay value, post-game activities
+        Example 2 (Issue + request):
+        {
+          "subcategories": ["gameplay/difficulty", "ui_ux_accessibility/quality_of_life"],
+          "issue_subcategories": ["gameplay/difficulty"],
+          "request_subcategories": ["ui_ux_accessibility/quality_of_life"],
+          "evidence": {
+            "gameplay/difficulty": ["Too hard"],
+            "ui_ux_accessibility/quality_of_life": ["Add FOV slider"]
+          }
+        }
 
-        4. interface:
-           - usability: confusing UI, menu navigation, control scheme clarity
-           - accessibility: colorblind modes, subtitles, difficulty options
-           - tutorial: onboarding, learning curve, explanations, tooltips
-           - audio_visual: graphics quality, art style, sound design, music
+        TAXONOMY (allowed main/sub):
+        - gameplay: mechanics (combat/movement/core loop), controls (input/controller), balance, difficulty, progression, ai
+        - technical: performance, bugs, stability, crashes, compatibility (deck/ultrawide/VR/HDR), networking,
+          installation (launcher/DRM/account linking/cloud saves)
+        - content_design: amount_variety, level_design, quests_modes, narrative_characters, replayability, pacing, customization
+        - ui_ux_accessibility: menus_hud, readability, quality_of_life, controller_support, accessibility_options
+        - onboarding: tutorial, learning_curve, clarity, tooltips
+        - presentation: visuals_art_style, animation, audio_music_voice, atmosphere, localization
+        - online_community: multiplayer_experience (non-technical), matchmaking, social_features, toxicity_moderation, mods_ugc,
+          cheating_anti_cheat
+        - developer_updates: patch_quality, update_frequency, roadmap_events, communication, customer_support
+        - monetization_value: price, regional_pricing, dlc, microtransactions, pay_to_win_grind, value_for_money
+        - other: general, mixed, meta, unclear
 
-        5. social:
-           - multiplayer: servers, netcode, matchmaking, co-op, online features
-           - community: toxicity, player behavior, moderation, forums
-           - support: developer communication, bug reports, community management
-
-        6. monetization:
-           - pricing: base game price, regional pricing, sales, bundles
-           - dlc: DLC quality, pricing, value proposition, cut content
-           - microtransactions: MTX, loot boxes, pay-to-win, cosmetics
-           - value: worth the money, content per dollar, price justification
-
-        7. other:
-           - general: vague praise or criticism without specifics
-           - mixed: multiple unrelated issues across categories
-           - unclear: cannot determine category
-
-        LABELING RULES:
-        - Pick ONE main_category (the dominant theme in the review)
-        - Pick ONE subcategory within that main_category (primary)
-        - Add 1-6 subcategories across all topics using "<main>/<sub>" format
-        - issue_subcategories must be a subset of subcategories with problems
-        - request_subcategories must be a subset of subcategories with explicit requests
-        - Provide at least one short evidence snippet for each subcategory
-        - If review is vague/generic: main_category=other, subcategory=general, subcategories=["other/general"],
-          issue_subcategories=[], request_subcategories=[], evidence={"other/general":["short quote"]}
-        - Respond with single YAML document. No backticks, no commentary.
-
-        REVIEW:
-          text: $review_literal
-
-        YAML RESPONSE EXAMPLES:
-
-        Example 1 (Technical issues):
-        main_category: technical
-        subcategory: performance
-        subcategories:
-          - technical/performance
-        issue_subcategories:
-          - technical/performance
-        request_subcategories: []
-        evidence:
-          technical/performance:
-            - "Frame rate drops to 15 FPS during boss fights"
-
-        Example 2 (Vague review):
-        main_category: other
-        subcategory: general
-        subcategories:
-          - other/general
-        issue_subcategories: []
-        request_subcategories: []
-        evidence:
-          other/general:
-            - "pretty fun overall"
-
-        Example 3 (Balance issue with request):
-        main_category: gameplay
-        subcategory: balance
-        subcategories:
-          - gameplay/balance
-        issue_subcategories:
-          - gameplay/balance
-        request_subcategories:
-          - gameplay/balance
-        evidence:
-          gameplay/balance:
-            - "boss Malenia too difficult in second phase"
-            - "need easier mode"
+        REVIEW TEXT (verbatim):
+        <<<BEGIN REVIEW>>>
+        $review_text
+        <<<END REVIEW>>>
         """
     )
 )
@@ -152,15 +163,44 @@ _DEFAULT_LABEL = {
     "request_subcategories": [],
     "evidence": {},
 }
-_ALLOWED_MAIN_CATEGORIES = {"gameplay", "technical", "content", "interface", "social", "monetization", "other"}
+_ALLOWED_MAIN_CATEGORIES = {
+    "gameplay",
+    "technical",
+    "content_design",
+    "ui_ux_accessibility",
+    "onboarding",
+    "presentation",
+    "online_community",
+    "developer_updates",
+    "monetization_value",
+    "other",
+}
 _ALLOWED_SUBCATEGORIES = {
-    "gameplay": {"mechanics", "controls", "balance", "progression"},
-    "technical": {"performance", "stability", "bugs", "compatibility"},
-    "content": {"quantity", "variety", "quality", "replayability"},
-    "interface": {"usability", "accessibility", "tutorial", "audio_visual"},
-    "social": {"multiplayer", "community", "support"},
-    "monetization": {"pricing", "dlc", "microtransactions", "value"},
-    "other": {"general", "mixed", "unclear"},
+    "gameplay": {"mechanics", "controls", "balance", "difficulty", "progression", "ai"},
+    "technical": {"performance", "bugs", "stability", "crashes", "compatibility", "networking", "installation"},
+    "content_design": {
+        "amount_variety",
+        "level_design",
+        "quests_modes",
+        "narrative_characters",
+        "replayability",
+        "pacing",
+        "customization",
+    },
+    "ui_ux_accessibility": {"menus_hud", "readability", "quality_of_life", "controller_support", "accessibility_options"},
+    "onboarding": {"tutorial", "learning_curve", "clarity", "tooltips"},
+    "presentation": {"visuals_art_style", "animation", "audio_music_voice", "atmosphere", "localization"},
+    "online_community": {
+        "multiplayer_experience",
+        "matchmaking",
+        "social_features",
+        "toxicity_moderation",
+        "mods_ugc",
+        "cheating_anti_cheat",
+    },
+    "developer_updates": {"patch_quality", "update_frequency", "roadmap_events", "communication", "customer_support"},
+    "monetization_value": {"price", "regional_pricing", "dlc", "microtransactions", "pay_to_win_grind", "value_for_money"},
+    "other": {"general", "mixed", "meta", "unclear"},
 }
 _ALLOWED_SUBCATEGORY_KEYS = {
     f"{main}/{sub}" for main, subs in _ALLOWED_SUBCATEGORIES.items() for sub in subs
@@ -180,7 +220,293 @@ def _clean_snippet(value: Any) -> str:
     return text
 
 
-def _normalize_subcategory_value(value: Any, fallback_main: Optional[str] = None) -> Optional[str]:
+def _review_word_count(text: str) -> int:
+    if not text:
+        return 0
+    return len(_WORD_RE.findall(text))
+
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+", flags=re.UNICODE)
+
+
+def _labeling_strategy_from_env() -> str:
+    value = os.getenv("SENTINEXT_LABELING_STRATEGY", "hybrid").strip().lower()
+    return value or "hybrid"
+
+
+def _hybrid_rules_enabled() -> bool:
+    return _labeling_strategy_from_env() in {"hybrid", "rules_first", "hybrid_rules"}
+
+
+def _hybrid_rules_model_id() -> str:
+    return f"rules:{HYBRID_RULES_VERSION}"
+
+
+def _split_sentences(text: str) -> list[str]:
+    if not text:
+        return []
+    parts = _SENTENCE_SPLIT_RE.split(text)
+    return [part.strip() for part in parts if part and part.strip()]
+
+
+_REQUEST_SIGNAL_PATTERNS = [
+    re.compile(r"\b(please|pls)\s+(add|include|implement|support|allow|give)\b", flags=re.IGNORECASE),
+    re.compile(r"\b(please|pls)\s+fix\b", flags=re.IGNORECASE),
+    re.compile(r"\b(can|could)\s+you\b", flags=re.IGNORECASE),
+    re.compile(r"\b(i\s+wish|i['’]?d\s+like|would\s+love|would\s+like)\b", flags=re.IGNORECASE),
+    re.compile(r"\b(should|needs?|need)\s+(an?\s+)?(option|mode|feature)\b", flags=re.IGNORECASE),
+    re.compile(r"\b(need|needs|should)\s+fix\b", flags=re.IGNORECASE),
+]
+
+
+def _has_request_signal(text: str) -> bool:
+    if not text:
+        return False
+    for pattern in _REQUEST_SIGNAL_PATTERNS:
+        if pattern.search(text):
+            return True
+    return False
+
+
+def _is_negated(sentence: str, match_start: int, match_text: str = "") -> bool:
+    window = sentence[max(0, match_start - 32) : match_start].lower()
+    if re.search(r"\b(no|without|never)\b", window):
+        return True
+    # e.g. "bug-free", "crash-free" (only relevant to bug/crash matches)
+    if match_text:
+        lowered = match_text.lower()
+        if lowered.startswith(("bug", "crash")) and re.search(r"\b(bug|crash)[- ]?free\b", sentence.lower()):
+            return True
+    return False
+
+
+def _compile_patterns(patterns: Sequence[str]) -> tuple[re.Pattern[str], ...]:
+    return tuple(re.compile(pattern, flags=re.IGNORECASE) for pattern in patterns)
+
+
+_HYBRID_RULES: list[dict[str, Any]] = [
+    {
+        "key": "technical/crashes",
+        "weight": 12,
+        "patterns": _compile_patterns(
+            [
+                r"\bctd\b",
+                r"\bcrash(?:es|ed|ing)?\b",
+                r"\bcrash[- ]?to[- ]?desktop\b",
+                r"\bcrash\s+on\s+launch\b",
+            ]
+        ),
+    },
+    {
+        "key": "technical/stability",
+        "weight": 10,
+        "patterns": _compile_patterns(
+            [
+                r"\bfreez(?:e|es|ing|en)\b",
+                r"\bhang(?:s|ing)?\b",
+                r"\bsoft[- ]?lock(?:ed|s)?\b",
+                r"\bsave\s+corrupt(?:ion|ed)?\b",
+                r"\bcorrupt(?:ed)?\s+save\b",
+                r"\bprogress\s+los(?:s|t)\b",
+            ]
+        ),
+    },
+    {
+        "key": "technical/performance",
+        "weight": 9,
+        "patterns": _compile_patterns(
+            [
+                r"\bfps\b",
+                r"\bframe\s*(?:rate|rates|time|times|pacing)\b",
+                r"\bframe\s*drops?\b",
+                r"\bfps\s*drops?\b",
+                r"\bstutter(?:ing|s)?\b",
+                r"\bmicro[- ]?stutter(?:ing|s)?\b",
+                r"\binput\s+lag\b",
+            ]
+        ),
+    },
+    {
+        "key": "technical/bugs",
+        "weight": 9,
+        "patterns": _compile_patterns(
+            [
+                r"\bbug(?:s|gy)?\b",
+                r"\bglitch(?:es|y)?\b",
+                r"\bbroken\b",
+                r"\bdoesn['’]?t\s+work\b",
+                r"\bnot\s+working\b",
+                r"\bclipping\b",
+            ]
+        ),
+    },
+    {
+        "key": "technical/networking",
+        "weight": 8,
+        "patterns": _compile_patterns(
+            [
+                r"\bdisconnect(?:s|ed|ing)?\b",
+                r"\blatency\b",
+                r"\bnetcode\b",
+                r"\brubber[- ]?band(?:ing)?\b",
+                r"\bserver\s+(?:issue|issues|problem|problems|down)\b",
+            ]
+        ),
+    },
+    {
+        "key": "technical/compatibility",
+        "weight": 8,
+        "patterns": _compile_patterns(
+            [
+                r"\bsteam\s*deck\b",
+                r"\bultra[- ]?wide\b",
+                r"\bhdr\b",
+                r"\bvr\b",
+                r"\bproton\b",
+                r"\blinux\b",
+            ]
+        ),
+    },
+    {
+        "key": "technical/installation",
+        "weight": 8,
+        "patterns": _compile_patterns(
+            [
+                r"\blauncher\b",
+                r"\binstall(?:ation)?\b.*\b(?:fail|fails|failed|stuck|issue|issues|problem|problems|error)\b",
+                r"\bupdate\b.*\b(?:fail|fails|failed|stuck|loop|issue|issues|problem|problems|error)\b",
+                r"\bpatch\b.*\b(?:fail|fails|failed|stuck|break|breaks|broke)\b",
+                r"\baccount\s+link(?:ing|ed)?\b",
+            ]
+        ),
+    },
+    {
+        "key": "ui_ux_accessibility/readability",
+        "weight": 7,
+        "patterns": _compile_patterns(
+            [
+                r"\btext\b.*\b(?:too\s+small|tiny|unreadable)\b",
+                r"\bfont\b.*\b(?:too\s+small|tiny|unreadable)\b",
+                r"\b(?:motion|sea)\s*sickness\b",
+            ]
+        ),
+    },
+    {
+        "key": "ui_ux_accessibility/controller_support",
+        "weight": 7,
+        "patterns": _compile_patterns(
+            [
+                r"\b(no|missing)\s+controller\s+support\b",
+                r"\bcontroller\b.*\b(?:not\s+work(?:ing)?|broken|unresponsive|doesn['’]?t\s+work)\b",
+                r"\bgamepad\b.*\b(?:not\s+work(?:ing)?|broken|unresponsive|doesn['’]?t\s+work)\b",
+                r"\b(keybind|rebind|remap)\w*\b.*\b(missing|can['’]?t|cannot|doesn['’]?t|won['’]?t)\b",
+            ]
+        ),
+    },
+]
+
+
+def _rules_score(text: str) -> tuple[dict[str, int], dict[str, list[str]]]:
+    scores: dict[str, int] = {}
+    evidence: dict[str, list[str]] = {}
+
+    sentences = _split_sentences(text)
+    if not sentences:
+        sentences = [text.strip()]
+
+    for rule in _HYBRID_RULES:
+        key = str(rule.get("key") or "").strip().lower()
+        patterns = rule.get("patterns") or ()
+        try:
+            weight = int(rule.get("weight") or 0)
+        except Exception:
+            weight = 0
+        if not key or key not in _ALLOWED_SUBCATEGORY_KEYS or not weight:
+            continue
+
+        matched_sentence = ""
+        matched_start = -1
+        for sentence in sentences:
+            for pattern in patterns:
+                match = pattern.search(sentence)
+                if not match:
+                    continue
+                if _is_negated(sentence, match.start(), match.group(0)):
+                    continue
+                matched_sentence = sentence
+                matched_start = match.start()
+                break
+            if matched_sentence:
+                break
+
+        if not matched_sentence or matched_start < 0:
+            continue
+
+        scores[key] = scores.get(key, 0) + weight
+        if key not in evidence:
+            evidence[key] = [_clean_snippet(matched_sentence)]
+
+    return scores, evidence
+
+
+def _classify_review_rules(
+    review_text: str,
+    reviewer_voted_up: bool = True,
+) -> Optional[Dict[str, Any]]:
+    text = (review_text or "").strip()
+    if not text:
+        return None
+
+    truncated = text[:MAX_REVIEW_CHARS]
+    scores, evidence = _rules_score(truncated)
+    if not scores:
+        return None
+
+    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    best_key, best_score = ranked[0]
+    second_score = ranked[1][1] if len(ranked) > 1 else 0
+
+    # Conservative thresholds: accept only when a single topic clearly dominates.
+    threshold = 9
+    margin = 4
+    if _review_word_count(truncated) <= 12:
+        threshold = 7
+        margin = 3
+
+    if best_score < threshold or (best_score - second_score) < margin:
+        return None
+
+    best_main, best_sub = best_key.split("/", 1)
+
+    # If another main category is also strongly indicated, fall back to the LLM.
+    for key, score in ranked[1:]:
+        main = key.split("/", 1)[0]
+        if main != best_main and score >= threshold - 1:
+            return None
+
+    candidate_keys = [key for key, score in ranked if score >= max(3, best_score - 2)]
+    candidate_keys = candidate_keys[:6] or [best_key]
+
+    request_signal = _has_request_signal(truncated)
+    issue_signal = True
+
+    issue_subcategories = candidate_keys if issue_signal else []
+    request_subcategories = candidate_keys if request_signal else []
+
+    payload: Dict[str, Any] = {
+        "main_category": best_main,
+        "subcategory": best_sub,
+        "subcategories": candidate_keys,
+        "issue_subcategories": issue_subcategories,
+        "request_subcategories": request_subcategories,
+        "evidence": evidence,
+        "_label_source": "rules",
+        "_label_model": _hybrid_rules_model_id(),
+    }
+    return payload
+
+
+def _normalize_subcategory_value(value: Any) -> Optional[str]:
     if isinstance(value, dict):
         main = value.get("main_category") or value.get("main")
         sub = value.get("subcategory") or value.get("sub")
@@ -200,11 +526,7 @@ def _normalize_subcategory_value(value: Any, fallback_main: Optional[str] = None
             main, sub = raw.split(sep, 1)
             break
     if not main or not sub:
-        if fallback_main:
-            main = fallback_main
-            sub = raw
-        else:
-            return None
+        return None
     main = main.strip()
     sub = sub.strip()
     if main not in _ALLOWED_SUBCATEGORIES:
@@ -214,7 +536,7 @@ def _normalize_subcategory_value(value: Any, fallback_main: Optional[str] = None
     return f"{main}/{sub}"
 
 
-def _parse_subcategory_list(value: Any, fallback_main: Optional[str] = None) -> list[str]:
+def _parse_subcategory_list(value: Any) -> list[str]:
     results: list[str] = []
     if isinstance(value, dict):
         for main_key, subs in value.items():
@@ -232,7 +554,7 @@ def _parse_subcategory_list(value: Any, fallback_main: Optional[str] = None) -> 
     else:
         return results
     for item in items:
-        normalized = _normalize_subcategory_value(item, fallback_main=fallback_main)
+        normalized = _normalize_subcategory_value(item)
         if normalized and normalized not in results:
             results.append(normalized)
     return results
@@ -261,6 +583,43 @@ def _parse_evidence(value: Any, allowed_subcategories: list[str]) -> dict[str, l
     return evidence
 
 
+_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", flags=re.IGNORECASE | re.DOTALL)
+
+
+def _strip_code_fences(raw: str) -> str:
+    if not raw:
+        return ""
+    match = _CODE_FENCE_RE.search(raw)
+    if match:
+        return match.group(1).strip()
+    return raw.strip()
+
+
+def _load_json_mapping(raw: str) -> Dict[str, Any]:
+    cleaned = _strip_code_fences(raw)
+    if not cleaned:
+        raise ValueError("Empty response from LLM")
+
+    decoder = json.JSONDecoder()
+    try:
+        obj, _ = decoder.raw_decode(cleaned)
+    except json.JSONDecodeError:
+        obj = None
+    if isinstance(obj, dict):
+        return obj
+
+    start = cleaned.find("{")
+    if start >= 0:
+        try:
+            obj, _ = decoder.raw_decode(cleaned[start:])
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON from LLM: {exc}") from exc
+        if isinstance(obj, dict):
+            return obj
+
+    raise ValueError(f"No JSON object found in LLM response: {raw!r}")
+
+
 def _build_prompt(
     review_text: str,
     game_context: Optional[Dict[str, Any]] = None,
@@ -268,7 +627,6 @@ def _build_prompt(
     reviewer_voted_up: bool = True,
 ) -> str:
     truncated = (review_text or "")[:MAX_REVIEW_CHARS]
-    review_literal = json.dumps(truncated, ensure_ascii=False)
 
     # Build game context strings
     if game_context:
@@ -293,7 +651,7 @@ def _build_prompt(
     recommendation = "Positive" if reviewer_voted_up else "Negative"
 
     return _PROMPT_TEMPLATE.substitute(
-        review_literal=review_literal,
+        review_text=truncated,
         game_name=game_name,
         game_type=game_type,
         game_genres=game_genres,
@@ -304,13 +662,23 @@ def _build_prompt(
     )
 
 
-def _run_ollama(prompt: str) -> str:
+def _run_ollama(prompt: str, model: str, host_override: Optional[str] = None) -> str:
     try:
-        response = ollama.chat(
-            model=OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            stream=False,
-        )
+        import ollama  # lazy import so OpenAI-only runs don't require Ollama
+        host_value = (host_override or "").strip()
+        if host_value:
+            client = ollama.Client(host=host_value)
+            response = client.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                stream=False,
+            )
+        else:
+            response = ollama.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                stream=False,
+            )
     except ollama.ResponseError as exc:  # pragma: no cover - defensive
         logger.error("Ollama chat failed: %s", exc)
         raise
@@ -328,73 +696,210 @@ def _run_ollama(prompt: str) -> str:
         content = (content_value or "").strip()
 
     if not content:
-        raise ValueError("Empty response from Ollama")
+        raise ValueError("Empty response from LLM")
 
     return content
 
 
+def _openai_timeout_seconds() -> Optional[float]:
+    raw = os.getenv("SENTINEXT_OPENAI_TIMEOUT_SEC")
+    if raw is None:
+        return 60.0
+    value = str(raw).strip().lower()
+    if value in {"", "0", "none", "null", "false"}:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError("SENTINEXT_OPENAI_TIMEOUT_SEC must be a number (seconds) or 0/none.") from exc
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _openai_max_retries() -> int:
+    raw = os.getenv("SENTINEXT_OPENAI_MAX_RETRIES", "12")
+    try:
+        value = int(str(raw).strip())
+    except ValueError as exc:
+        raise ValueError("SENTINEXT_OPENAI_MAX_RETRIES must be an integer.") from exc
+    return max(0, value)
+
+
+def _retry_backoff_seconds(attempt: int) -> float:
+    base = min(2 ** min(attempt, 6), 60)
+    return float(base) + random.random()
+
+
+def _run_openai(prompt: str, model: str, api_key_override: Optional[str] = None) -> str:
+    _maybe_load_dotenv()
+    api_key = (api_key_override or "").strip()
+    if not api_key:
+        api_key = os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not set.")
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "Return STRICT JSON only. No prose, no code fences."},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    temp_override = os.getenv("SENTINEXT_OPENAI_TEMPERATURE")
+    if temp_override:
+        try:
+            payload["temperature"] = float(temp_override)
+        except ValueError:
+            raise ValueError("SENTINEXT_OPENAI_TEMPERATURE must be a number.")
+    elif not model.startswith("gpt-5"):
+        payload["temperature"] = 0.2
+    timeout = _openai_timeout_seconds()
+    max_retries = _openai_max_retries()
+
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            response = requests.post(
+                f"{OPENAI_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=timeout,
+            )
+        except requests.exceptions.Timeout as exc:
+            if max_retries and attempt > max_retries:
+                raise
+            sleep_for = _retry_backoff_seconds(attempt)
+            logger.warning("OpenAI request timed out (attempt %s), retrying in %.1fs", attempt, sleep_for)
+            time.sleep(sleep_for)
+            continue
+        except requests.exceptions.RequestException as exc:
+            if max_retries and attempt > max_retries:
+                raise
+            sleep_for = _retry_backoff_seconds(attempt)
+            logger.warning("OpenAI request error (attempt %s), retrying in %.1fs: %s", attempt, sleep_for, exc)
+            time.sleep(sleep_for)
+            continue
+
+        if response.ok:
+            break
+
+        status = response.status_code
+        retryable = status in {408, 409, 425, 429, 500, 502, 503, 504}
+        if retryable and (not max_retries or attempt <= max_retries):
+            retry_after = response.headers.get("retry-after")
+            if retry_after:
+                try:
+                    sleep_for = float(retry_after)
+                except ValueError:
+                    sleep_for = _retry_backoff_seconds(attempt)
+            else:
+                sleep_for = _retry_backoff_seconds(attempt)
+            logger.warning(
+                "OpenAI API error %s (attempt %s), retrying in %.1fs: %s",
+                status,
+                attempt,
+                sleep_for,
+                response.text,
+            )
+            time.sleep(sleep_for)
+            continue
+
+        raise ValueError(f"OpenAI API error {response.status_code}: {response.text}")
+    data = response.json()
+    choices = data.get("choices") or []
+    if not choices:
+        raise ValueError("OpenAI API returned no choices.")
+    message = choices[0].get("message") or {}
+    content = (message.get("content") or "").strip()
+    if not content:
+        raise ValueError("Empty response from OpenAI.")
+    return content
+
+
+def _provider_from_env() -> str:
+    value = os.getenv("SENTINEXT_LLM_PROVIDER", "ollama").strip().lower()
+    return value or "ollama"
+
+
+def _effective_model(provider: str, model_override: Optional[str]) -> str:
+    if model_override:
+        return model_override
+    if provider in {"openai", "chatgpt", "gpt"}:
+        return os.getenv("SENTINEXT_OPENAI_MODEL", "gpt-5-mini")
+    return os.getenv("SENTINEXT_OLLAMA_MODEL", "gpt-oss:20b-cloud")
+
+
+def _model_id(provider: str, model: str) -> str:
+    return f"{provider}:{model}"
+
+
+def _run_llm(
+    prompt: str,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+    ollama_host: Optional[str] = None,
+) -> tuple[str, str]:
+    provider = (provider_override or _provider_from_env()).strip().lower()
+    model = _effective_model(provider, model_override)
+    if provider in {"openai", "chatgpt", "gpt"}:
+        return _run_openai(prompt, model, api_key_override=openai_api_key), _model_id("openai", model)
+    return _run_ollama(prompt, model, host_override=ollama_host), _model_id("ollama", model)
+
+
+def run_chat_completion(
+    prompt: str,
+    *,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+    ollama_host: Optional[str] = None,
+) -> tuple[str, str]:
+    """Run a chat completion with a pre-built prompt and return (content, model_id)."""
+    return _run_llm(
+        prompt,
+        provider_override=provider_override,
+        model_override=model_override,
+        openai_api_key=openai_api_key,
+        ollama_host=ollama_host,
+    )
+
+
 def _parse_payload(raw: str) -> Dict[str, Any]:
     if not raw:
-        raise ValueError("Empty response from Ollama")
+        raise ValueError("Empty response from LLM")
 
-    try:
-        documents = list(yaml.safe_load_all(raw))
-    except yaml.YAMLError as exc:
-        raise ValueError(f"Invalid YAML from Ollama: {exc}") from exc
+    payload = _load_json_mapping(raw)
 
-    data: Optional[Dict[str, Any]] = None
-    for doc in documents:
-        if isinstance(doc, dict):
-            data = doc
-            break
+    # Multi-label subcategories (canonical format "main/sub").
+    # `subcategories[0]` is treated as the primary label; main/sub are derived from it.
+    candidate_subcategories = _parse_subcategory_list(payload.get("subcategories"))
+    if not candidate_subcategories:
+        raise ValueError("No valid subcategories found in LLM response.")
+    if len(candidate_subcategories) > 6:
+        candidate_subcategories = candidate_subcategories[:6]
 
-    if not data:
-        raise ValueError(f"No YAML mapping found in Ollama response: {raw!r}")
+    issue_subcategories = _parse_subcategory_list(payload.get("issue_subcategories"))
+    request_subcategories = _parse_subcategory_list(payload.get("request_subcategories"))
 
-    payload = data
+    primary_key = candidate_subcategories[0]
+    main_category, subcategory = primary_key.split("/", 1)
 
-    # Main category
-    main_category = payload.get("main_category", "other")
-    if not isinstance(main_category, str) or main_category not in _ALLOWED_MAIN_CATEGORIES:
-        main_category = "other"
+    def _ordered_unique(items: Sequence[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for item in items:
+            if item in seen:
+                continue
+            seen.add(item)
+            ordered.append(item)
+        return ordered
 
-    # Subcategory (validate against main category)
-    subcategory = payload.get("subcategory", "")
-    if not isinstance(subcategory, str):
-        subcategory = ""
-
-    allowed_subs = _ALLOWED_SUBCATEGORIES.get(main_category, set())
-    if subcategory not in allowed_subs:
-        # Fallback to first allowed subcategory for this main category
-        subcategory = next(iter(allowed_subs)) if allowed_subs else "general"
-
-    # Multi-label subcategories (canonical format "main/sub")
-    subcategories = _parse_subcategory_list(payload.get("subcategories"), fallback_main=main_category)
-    if not subcategories:
-        subcategories = [f"{main_category}/{subcategory}"]
-    if len(subcategories) > 6:
-        subcategories = subcategories[:6]
-
-    issue_subcategories = _parse_subcategory_list(payload.get("issue_subcategories"), fallback_main=main_category)
-    request_subcategories = _parse_subcategory_list(payload.get("request_subcategories"), fallback_main=main_category)
-    if len(issue_subcategories) > 6:
-        issue_subcategories = issue_subcategories[:6]
-    if len(request_subcategories) > 6:
-        request_subcategories = request_subcategories[:6]
-
-    # Ensure issue/request tags are represented in subcategories
-    for entry in issue_subcategories + request_subcategories:
-        if entry not in subcategories:
-            subcategories.append(entry)
-
-    # Align primary subcategory with the dominant main category when possible
-    for entry in subcategories:
-        if entry.startswith(f"{main_category}/"):
-            subcategory = entry.split("/", 1)[1]
-            break
-
-    issue_subcategories = [entry for entry in issue_subcategories if entry in subcategories]
-    request_subcategories = [entry for entry in request_subcategories if entry in subcategories]
+    subcategories = candidate_subcategories
+    issue_subcategories = [entry for entry in _ordered_unique(issue_subcategories) if entry in subcategories][:6]
+    request_subcategories = [entry for entry in _ordered_unique(request_subcategories) if entry in subcategories][:6]
     evidence = _parse_evidence(payload.get("evidence"), subcategories)
 
     return {
@@ -412,6 +917,10 @@ def classify_review(
     game_context: Optional[Dict[str, Any]] = None,
     reviewer_playtime: float = 0,
     reviewer_voted_up: bool = True,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+    ollama_host: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], str]:
     clean_text = (review_text or "").strip()
     if not clean_text:
@@ -419,9 +928,15 @@ def classify_review(
 
     prompt = _build_prompt(clean_text, game_context, reviewer_playtime, reviewer_voted_up)
     try:
-        raw = _run_ollama(prompt)
+        raw, model_used = _run_llm(
+            prompt,
+            provider_override=provider,
+            model_override=model,
+            openai_api_key=openai_api_key,
+            ollama_host=ollama_host,
+        )
         payload = _parse_payload(raw)
-        return payload, OLLAMA_MODEL
+        return payload, model_used
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Falling back to default label due to classification error: %s", exc)
         return _DEFAULT_LABEL.copy(), "fallback"
@@ -434,6 +949,10 @@ def ensure_review_labels(
     progress_callback: Optional[Callable[[int, int], None]] = None,
     game_context: Optional[Dict[str, Any]] = None,
     cache_enabled: bool = True,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+    ollama_host: Optional[str] = None,
 ) -> Dict[str, Dict[str, Any]]:
     if not reviews:
         if progress_callback is not None:
@@ -441,6 +960,17 @@ def ensure_review_labels(
         return {}
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
+    effective_provider = (provider or _provider_from_env()).strip().lower()
+    effective_model = _effective_model(effective_provider, model)
+    expected_llm_model_id = _model_id(
+        "openai" if effective_provider in {"openai", "chatgpt", "gpt"} else "ollama",
+        effective_model,
+    )
+    hybrid_enabled = _hybrid_rules_enabled()
+    rules_model_id = _hybrid_rules_model_id() if hybrid_enabled else ""
+    valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
+    if rules_model_id:
+        valid_cached_models.add(rules_model_id)
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
     processed_count = 0
@@ -466,23 +996,52 @@ def ensure_review_labels(
                 needs_refresh = True
             if cached.get("prompt_version") != ACTIVE_PROMPT_VERSION:
                 needs_refresh = True
-            if cached.get("model") != OLLAMA_MODEL:
+            cached_model = cached.get("model")
+            if cached_model not in valid_cached_models:
                 needs_refresh = True
 
         if not review_text:
-            if cached is None:
-                payload = _DEFAULT_LABEL.copy()
-                storage.upsert_review_label(
-                    app_id,
-                    review_id,
-                    review_hash,
-                    payload,
-                    "fallback",
-                    ACTIVE_PROMPT_VERSION,
-                )
-            else:
+            if cached is not None and not needs_refresh:
                 payload = cached["payload"]
+            else:
+                payload = _DEFAULT_LABEL.copy()
+                payload["_label_source"] = "empty_review"
+                payload["_label_model"] = "empty_review"
+                if cache_enabled:
+                    storage.upsert_review_label(
+                        app_id,
+                        review_id,
+                        review_hash,
+                        payload,
+                        "empty_review",
+                        ACTIVE_PROMPT_VERSION,
+                    )
             results[review_id] = payload
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_reviews)
+            continue
+
+        if _review_word_count(review_text) < MIN_REVIEW_WORDS:
+            if cached is not None and not needs_refresh:
+                payload = cached["payload"]
+            else:
+                payload = _DEFAULT_LABEL.copy()
+                payload["_label_source"] = "short_review"
+                payload["_label_model"] = "short_review"
+                if cache_enabled:
+                    storage.upsert_review_label(
+                        app_id,
+                        review_id,
+                        review_hash,
+                        payload,
+                        "short_review",
+                        ACTIVE_PROMPT_VERSION,
+                    )
+            results[review_id] = payload
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_reviews)
             continue
 
         if not needs_refresh:
@@ -496,12 +1055,25 @@ def ensure_review_labels(
         reviewer_playtime = review.get("author", {}).get("playtime_forever", 0)
         reviewer_voted_up = review.get("voted_up", True)
 
-        payload, model_used = classify_review(
-            review_text,
-            game_context=game_context,
-            reviewer_playtime=reviewer_playtime,
-            reviewer_voted_up=reviewer_voted_up,
-        )
+        payload = None
+        model_used = ""
+        if hybrid_enabled:
+            payload = _classify_review_rules(review_text, reviewer_voted_up=bool(reviewer_voted_up))
+            if payload is not None:
+                model_used = rules_model_id
+        if payload is None:
+            payload, model_used = classify_review(
+                review_text,
+                game_context=game_context,
+                reviewer_playtime=reviewer_playtime,
+                reviewer_voted_up=reviewer_voted_up,
+                provider=effective_provider,
+                model=model,
+                openai_api_key=openai_api_key,
+                ollama_host=ollama_host,
+            )
+            payload["_label_source"] = "llm"
+            payload["_label_model"] = model_used
         if cache_enabled:
             storage.upsert_review_label(app_id, review_id, review_hash, payload, model_used, ACTIVE_PROMPT_VERSION)
         results[review_id] = payload
@@ -566,4 +1138,5 @@ __all__ = [
     "apply_review_labels",
     "classify_review",
     "ensure_review_labels",
+    "run_chat_completion",
 ]

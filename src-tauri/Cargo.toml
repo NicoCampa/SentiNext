@@ -1,0 +1,14 @@
+[package]
+name = "sentinext"
+version = "0.1.0"
+description = "SentiNext desktop shell"
+authors = ["SentiNext"]
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+tauri = { version = "1.5", features = [] }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }

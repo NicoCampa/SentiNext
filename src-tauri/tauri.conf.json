@@ -1,0 +1,23 @@
+{
+  "build": {
+    "beforeDevCommand": "npm --prefix frontend run dev",
+    "beforeBuildCommand": "npm --prefix frontend run build",
+    "devPath": "http://localhost:3000",
+    "distDir": "../frontend/out"
+  },
+  "package": {
+    "productName": "SentiNext",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "windows": [],
+    "security": {
+      "csp": null
+    },
+    "bundle": {
+      "identifier": "ai.sentinext.app",
+      "targets": ["dmg", "msi", "appimage"],
+      "externalBin": ["../backend/dist/sentinext-backend"]
+    }
+  }
+}

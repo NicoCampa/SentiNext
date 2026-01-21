@@ -3,6 +3,7 @@ export interface SearchResult {
   name: string;
   price?: string | null;
   url: string;
+  image_url?: string | null;
 }
 
 export interface AnalyzeMetadata {
@@ -11,6 +12,26 @@ export interface AnalyzeMetadata {
   retrieved: number;
   language: string;
   fetched_at: string;
+  header_image?: string | null;
+}
+
+export interface ChatCitation {
+  review_id: string;
+  subcategory: string;
+  snippet: string;
+  votes_up?: number | null;
+  created_at?: string | null;
+  voted_up?: boolean | null;
+  review_text?: string | null;
+}
+
+export interface ChatResponse {
+  answer: string;
+  citations: ChatCitation[];
+  used_subcategories: string[];
+  model: string;
+  review_count: number;
+  filtered_review_count: number;
 }
 
 export interface TrendPoint {
@@ -131,6 +152,9 @@ export interface SubcategoryInsight {
   main_category: string;
   sub_category: string;
   count: number;
+  recommendation_rate?: number;
+  recommended?: number;
+  not_recommended?: number;
   issue_count: number;
   request_count: number;
   issue_snippets?: string[];
@@ -202,8 +226,10 @@ export interface ReviewRow {
   author_playtime_hours?: number;
   author_recent_playtime_hours?: number;
   created_at?: string;
+  steam_purchase?: boolean;
+  received_for_free?: boolean;
   // v7 LLM insights (hierarchical)
-  llm_main_category?: "gameplay" | "technical" | "content" | "interface" | "social" | "monetization" | "other";
+  llm_main_category?: string;
   llm_subcategory?: string;
   llm_subcategories?: string[];
   llm_issue_subcategories?: string[];

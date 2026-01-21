@@ -51,6 +51,7 @@ export function AnalysisWidget() {
                   variant="capsule"
                   alt={task.game.name}
                   className="h-12 w-20 flex-shrink-0 rounded object-cover"
+                  imageUrl={task.game.image_url}
                 />
 
                 <div className="flex-1 space-y-2">

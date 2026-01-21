@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { formatSavedLabel } from "@/utils/format";
+import { getRecommendationBackground, getRecommendationColor } from "@/utils/colors";
 
 export default function HomePage() {
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
@@ -154,6 +155,7 @@ export default function HomePage() {
                         variant="header"
                         alt={game.name}
                         className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                        imageUrl={game.metadata.header_image}
                       />
                     </div>
                     <div className="mt-4 space-y-2">
@@ -166,7 +168,13 @@ export default function HomePage() {
                       </div>
                       {game.insights && (
                         <div className="flex gap-2 text-xs">
-                          <span className="rounded-full bg-indigo-500/20 px-2 py-1 text-indigo-300">
+                          <span
+                            className="rounded-full px-2 py-1"
+                            style={{
+                              color: getRecommendationColor(game.insights.recommendation),
+                              backgroundColor: getRecommendationBackground(game.insights.recommendation, 0.2),
+                            }}
+                          >
                             {(game.insights.recommendation * 100).toFixed(0)}% recommended
                           </span>
                         </div>

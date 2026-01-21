@@ -6,6 +6,7 @@ import {
   StarredGamePayload,
   AnalysisResultResponse,
   FeedbackItem,
+  ChatResponse,
 } from "@/types";
 
 declare global {
@@ -66,6 +67,10 @@ export interface AnalyzePayload {
   persist?: boolean;
   refresh?: boolean;
   refresh_days?: number | null;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  openai_api_key?: string | null;
+  ollama_host?: string | null;
 }
 
 export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeResponse> {
@@ -106,6 +111,29 @@ export interface FeedbackOptions {
   reddit_limit?: number;
   discord_limit?: number;
   forum_limit?: number;
+}
+
+export interface ChatRequestPayload {
+  app_id: number;
+  question: string;
+  sentiment?: "all" | "positive" | "negative";
+  min_helpful?: number;
+  max_days?: number | null;
+  max_reviews?: number;
+  max_snippets?: number;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  openai_api_key?: string | null;
+  ollama_host?: string | null;
+}
+
+export async function chatWithInsights(payload: ChatRequestPayload): Promise<ChatResponse> {
+  const response = await fetch(apiUrl("/chat"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<ChatResponse>(response);
 }
 
 export async function fetchFeedback(appId: number, options: FeedbackOptions = {}): Promise<FeedbackItem[]> {

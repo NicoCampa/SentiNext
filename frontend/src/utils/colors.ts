@@ -38,3 +38,16 @@ export function getSentimentColor(sentiment: string): string {
   };
   return colorMap[sentiment.toLowerCase()] || "#cbd5f5";
 }
+
+export function getRecommendationColor(value?: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "#94a3b8";
+  }
+  if (value < 0.55) return "#ef4444";
+  if (value < 0.75) return "#f59e0b";
+  return "#7dd3fc";
+}
+
+export function getRecommendationBackground(value?: number | null, alpha = 0.2): string {
+  return hexToRgba(getRecommendationColor(value), alpha);
+}

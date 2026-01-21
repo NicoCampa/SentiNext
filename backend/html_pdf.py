@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 import html
 import json
 from io import BytesIO
 import math
 import os
 from pathlib import Path
+from textwrap import dedent
 from typing import Any, Dict, Iterable, Optional
 
 import requests
+import yaml
 from PIL import Image as PILImage
 
 try:
@@ -25,29 +27,38 @@ COL_BG = "#0b1120"
 COL_TEXT = "#f8fafc"
 COL_MUTED = "#cbd5f5"
 COL_MUTED_2 = "#94a3b8"
-COL_BORDER = "rgba(129,140,248,0.25)"
-COL_CARD = "rgba(15,23,42,0.78)"
+COL_BORDER = "rgba(255,255,255,0.12)"
+COL_CARD = "rgba(15,23,42,0.45)"
 COL_ACCENT = "#6366f1"
 COL_ACCENT_2 = "#22d3ee"
 COL_ACCENT_3 = "#ef4444"
+COL_REC_HIGH = "#7dd3fc"
+COL_REC_MID = "#f59e0b"
+COL_REC_LOW = "#ef4444"
 CATEGORY_ACCENTS = {
     "gameplay": COL_ACCENT,
     "technical": COL_ACCENT_3,
-    "content": COL_ACCENT_2,
-    "interface": COL_ACCENT,
-    "social": COL_ACCENT_2,
-    "monetization": COL_ACCENT_3,
+    "content_design": COL_ACCENT_2,
+    "ui_ux_accessibility": COL_ACCENT,
+    "onboarding": COL_ACCENT_2,
+    "presentation": COL_ACCENT,
+    "online_community": COL_ACCENT_2,
+    "developer_updates": COL_ACCENT_3,
+    "monetization_value": COL_ACCENT_3,
     "other": COL_ACCENT,
 }
 
 MAIN_CATEGORY_LABELS = {
     "gameplay": "Gameplay",
     "technical": "Technical",
-    "content": "Content",
-    "interface": "Interface",
-    "social": "Social",
-    "monetization": "Monetization",
-    "other": "Other",
+    "content_design": "Content & Design",
+    "ui_ux_accessibility": "UI/UX & Accessibility",
+    "onboarding": "Onboarding",
+    "presentation": "Presentation",
+    "online_community": "Online & Community",
+    "developer_updates": "Developer & Updates",
+    "monetization_value": "Monetization & Value",
+    "other": "Other / Meta",
 }
 
 
@@ -70,6 +81,20 @@ def _fmt_pct(value: Optional[float]) -> str:
         return "-"
 
 
+def _rec_color(value: Optional[float]) -> str:
+    if value is None:
+        return COL_MUTED_2
+    try:
+        rate = float(value)
+    except Exception:
+        return COL_MUTED_2
+    if rate < 0.55:
+        return COL_REC_LOW
+    if rate < 0.75:
+        return COL_REC_MID
+    return COL_REC_HIGH
+
+
 def _fmt_float(value: Any, *, digits: int = 2) -> str:
     if value is None:
         return "-"
@@ -79,11 +104,278 @@ def _fmt_float(value: Any, *, digits: int = 2) -> str:
         return _safe_text(value) or "-"
 
 
+def _json_script(payload: Any) -> str:
+    try:
+        return json.dumps(payload, ensure_ascii=True).replace("</", "<\\/")
+    except Exception:
+        return "[]"
+
+
 def _shorten(text: str, max_len: int = 44) -> str:
     text = text.strip()
     if len(text) <= max_len:
         return text
     return text[: max_len - 3] + "..."
+
+
+def _truncate(text: str, max_len: int = 160) -> str:
+    text = text.strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+def _evidence_snippets(value: Any, *, max_len: int = 160) -> list[str]:
+    if isinstance(value, list):
+        items = value
+    elif value is None:
+        return []
+    else:
+        items = [value]
+    cleaned = []
+    for item in items:
+        text = _truncate(_safe_text(item).replace("\n", " ").replace("\r", " ").strip(), max_len)
+        if text and text not in cleaned:
+            cleaned.append(text)
+    return cleaned
+
+
+def _review_weight(review: dict) -> int:
+    try:
+        votes = int(review.get("votes_up", 0) or 0)
+    except Exception:
+        return 1
+    return votes if votes > 0 else 1
+
+
+def _parse_review_datetime(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.utcfromtimestamp(float(value))
+        except Exception:
+            return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        if text.isdigit():
+            return datetime.utcfromtimestamp(int(text))
+    except Exception:
+        pass
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _label_payload(label: Any) -> dict[str, Any]:
+    if isinstance(label, dict) and isinstance(label.get("payload"), dict):
+        return label["payload"]
+    if isinstance(label, dict):
+        return label
+    return {}
+
+
+def _weighted_subcategory_counts(
+    reviews: Iterable[dict], labels: Optional[dict]
+) -> dict[str, dict[str, int]]:
+    if not reviews or not isinstance(labels, dict):
+        return {}
+
+    counts: dict[str, dict[str, int]] = {}
+    for review in reviews:
+        review_id = review.get("recommendationid") or review.get("review_id")
+        if review_id is None:
+            continue
+        payload = _label_payload(labels.get(str(review_id)))
+        if not payload:
+            continue
+        subcats = payload.get("subcategories") or []
+        if not isinstance(subcats, list):
+            continue
+        issue_subcats = set(payload.get("issue_subcategories") or [])
+        request_subcats = set(payload.get("request_subcategories") or [])
+        weight = _review_weight(review)
+        for subcat in {str(item) for item in subcats if isinstance(item, str) and item}:
+            entry = counts.setdefault(subcat, {"count": 0, "issue_count": 0, "request_count": 0})
+            entry["count"] += weight
+            if subcat in issue_subcats:
+                entry["issue_count"] += weight
+            if subcat in request_subcats:
+                entry["request_count"] += weight
+    return counts
+
+
+def _apply_weighted_counts(records: list[dict], weighted: dict[str, dict[str, int]]) -> None:
+    if not weighted:
+        return
+    for entry in records:
+        if not isinstance(entry, dict):
+            continue
+        raw = entry.get("subcategory") or entry.get("sub_category")
+        if not raw:
+            continue
+        key = str(raw)
+        counts = weighted.get(key)
+        if not counts and "/" not in key:
+            main = _safe_text(entry.get("main_category") or "").strip()
+            if main:
+                counts = weighted.get(f"{main}/{key}")
+        if not counts:
+            continue
+        entry["weighted_count"] = int(counts.get("count", 0) or 0)
+        entry["weighted_issue_count"] = int(counts.get("issue_count", 0) or 0)
+        entry["weighted_request_count"] = int(counts.get("request_count", 0) or 0)
+
+
+def _weighted_value(entry: dict, key: str) -> int:
+    if not isinstance(entry, dict):
+        return 0
+    value = entry.get(f"weighted_{key}")
+    if value is None:
+        value = entry.get(key, 0)
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
+def _summary_prompt(kind: str, items: list[dict]) -> str:
+    def _format_items(values: list[dict]) -> str:
+        if not values:
+            return "  - none"
+        lines: list[str] = []
+        for item in values:
+            lines.append(f"- key: {item.get('key')}")
+            lines.append(f"  label: {item.get('label')}")
+            lines.append(f"  volume: {item.get('count')}")
+            snippets = item.get("snippets") or []
+            if snippets:
+                lines.append("  evidence:")
+                for snippet in snippets[:3]:
+                    lines.append(f"    - {_truncate(_safe_text(snippet), 160)}")
+        return "\n".join(lines)
+
+    items_block = _format_items(items)
+    kind_label = "issues" if kind == "issues" else "feature requests"
+    return dedent(
+        f"""
+        You are summarizing Steam review feedback for a report.
+        For each item, write a short paragraph (2-3 sentences, max 60 words) describing what players need or complain about.
+        Use the evidence snippets; paraphrase them and avoid filler. Do not mention "reviews" or "users".
+
+        Return STRICT JSON only (no prose, no code fences) with this schema:
+        {{
+          "{kind}": [
+            {{
+              "key": "<subcategory key>",
+              "summary": "<paragraph>"
+            }}
+          ]
+        }}
+
+        Only include items provided. No extra text.
+
+        {kind_label.upper()}:
+        {items_block}
+        """
+    ).strip()
+
+
+def _summarize_issue_requests(issues: list[dict], requests: list[dict]) -> dict[str, str]:
+    if not issues and not requests:
+        return {}
+    try:
+        from backend.senti_next import llm as llm_module
+    except Exception:
+        return {}
+
+    summaries: dict[str, str] = {}
+    for kind, items in (("issues", issues), ("requests", requests)):
+        if not items:
+            continue
+        prompt = _summary_prompt(kind, items)
+        try:
+            raw, _ = llm_module._run_llm(prompt)
+        except Exception:
+            continue
+
+        cleaned = raw
+        cleaner = getattr(llm_module, "_strip_code_fences", None)
+        if callable(cleaner):
+            try:
+                cleaned = cleaner(raw)
+            except Exception:
+                cleaned = raw
+
+        try:
+            payload = json.loads(cleaned) if cleaned else {}
+        except Exception:
+            try:
+                payload = yaml.safe_load(cleaned) or {}
+            except Exception:
+                continue
+
+        if not isinstance(payload, dict):
+            continue
+        entries = payload.get(kind) or payload.get("items")
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            key = entry.get("key") or entry.get("subcategory")
+            summary = entry.get("summary")
+            if key and summary:
+                summaries[str(key)] = str(summary).strip()
+    return summaries
+
+
+def _fallback_summary(item: dict) -> str:
+    snippets = item.get("snippets") or []
+    if not isinstance(snippets, list):
+        snippets = []
+    cleaned = [
+        _truncate(_safe_text(snippet).replace("\n", " ").replace("\r", " ").strip(), 220)
+        for snippet in snippets
+        if snippet
+    ]
+    if not cleaned:
+        return "No detailed feedback yet."
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return f"{cleaned[0]} {cleaned[1]}"
+
+
+def _main_category(value: str) -> str:
+    text = str(value or "").strip()
+    if "/" in text:
+        return text.split("/", 1)[0]
+    return text or "other"
+
+
+def _playtime_bucket(minutes: int) -> str:
+    if minutes < 120:
+        return "<2h"
+    if minutes < 1200:
+        return "2–20h"
+    return "20h+"
+
+
+def _fmt_pp(delta: Optional[float]) -> str:
+    if delta is None:
+        return "-"
+    try:
+        value = float(delta) * 100
+    except Exception:
+        return "-"
+    sign = "+" if value >= 0 else "-"
+    return f"{sign}{abs(value):.0f}pp"
 
 
 def _try_register_ttf(font_name: str, ttf_path: Path) -> bool:
@@ -366,6 +658,14 @@ body {{
   orphans: 2;
 }}
 
+@media screen {{
+  .screen-wrap {{
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 24px 18px 48px;
+  }}
+}}
+
 h1 {{
   font-size: 28px;
   margin: 0 0 8px;
@@ -520,6 +820,228 @@ h3 {{
   border-left: 2px solid {COL_BORDER};
 }}
 
+.category-board {{
+  width: 100%;
+}}
+
+.category-card {{
+  background: {COL_CARD};
+  border: 1px solid {COL_BORDER};
+  border-radius: 12px;
+  padding: 12px;
+  break-inside: avoid;
+}}
+
+.category-head {{
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}}
+
+.category-name {{
+  font-size: 11px;
+  font-weight: 700;
+}}
+
+.category-rate {{
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}}
+
+.category-meta {{
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: {COL_MUTED_2};
+  margin-top: 2px;
+}}
+
+.sub-list {{
+  margin-top: 10px;
+  border-top: 1px solid {COL_BORDER};
+  padding-top: 6px;
+}}
+
+.sub-row {{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 9px;
+  color: {COL_MUTED};
+  margin-top: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 8px;
+}}
+
+.sub-rate {{
+  font-weight: 700;
+  color: {COL_TEXT};
+}}
+
+.sub-row.more {{
+  justify-content: center;
+  color: {COL_MUTED_2};
+  border-style: dashed;
+  background: transparent;
+}}
+
+.sub-row-button {{
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  cursor: pointer;
+}}
+
+.sub-row-button:hover {{
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+}}
+
+.sub-toggle-row {{
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 8px;
+  color: {COL_MUTED_2};
+}}
+
+.sub-toggle {{
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: {COL_TEXT};
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 700;
+  cursor: pointer;
+}}
+
+.sub-toggle:hover {{
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
+}}
+
+.modal-open {{
+  overflow: hidden;
+}}
+
+.modal-overlay {{
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(2, 6, 23, 0.75);
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}}
+
+.modal-overlay.open {{
+  display: flex;
+}}
+
+.modal-card {{
+  width: 100%;
+  max-width: 960px;
+  border-radius: 16px;
+  border: 1px solid {COL_BORDER};
+  background: rgba(15, 23, 42, 0.96);
+  padding: 16px;
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.5);
+}}
+
+.modal-head {{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}}
+
+.modal-title {{
+  font-size: 16px;
+  font-weight: 700;
+}}
+
+.modal-meta {{
+  margin-top: 4px;
+  font-size: 9px;
+  color: {COL_MUTED_2};
+}}
+
+.modal-close {{
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: {COL_TEXT};
+  border-radius: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+}}
+
+.modal-close:hover {{
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+}}
+
+.modal-list {{
+  margin-top: 12px;
+  max-height: 440px;
+  overflow: auto;
+  padding-right: 4px;
+}}
+
+.modal-empty {{
+  margin-top: 12px;
+  font-size: 9px;
+  color: {COL_MUTED_2};
+}}
+
+.review-card {{
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}}
+
+.review-meta {{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 9px;
+  color: {COL_MUTED_2};
+}}
+
+.review-text {{
+  margin-top: 6px;
+  font-size: 10px;
+  color: {COL_TEXT};
+  white-space: pre-wrap;
+}}
+
+.review-footer {{
+  margin-top: 8px;
+}}
+
+.pill-pos {{
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+}}
+
+.pill-neg {{
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+}}
+
 .grid {{
   width: 100%;
   border-collapse: separate;
@@ -663,6 +1185,7 @@ table {{
   font-size: 9px;
   color: {COL_MUTED_2};
 }}
+
 """
     )
 
@@ -674,6 +1197,9 @@ def _render_html(
     metadata: Dict[str, Any],
     insights: Dict[str, Any],
     game_image_url: Optional[str] = None,
+    reviews: Optional[list[dict]] = None,
+    llm_labels: Optional[dict] = None,
+    interactive: bool = False,
 ) -> str:
     font_css, font_stack = _font_css()
     css = _build_css(font_css, font_stack)
@@ -729,6 +1255,20 @@ def _render_html(
 
     subcategory_insights = insights.get("subcategory_insights") or []
     subcat_records = list(subcategory_insights) if isinstance(subcategory_insights, list) else []
+    weighted_counts = _weighted_subcategory_counts(reviews or [], llm_labels)
+    _apply_weighted_counts(subcat_records, weighted_counts)
+    volume_label = "weighted mentions" if weighted_counts else "mentions"
+    min_summary_count = 10
+    segment_min_summary_count = 1
+    summary_review_cap = 100
+    threshold_note = f"Only items with >{min_summary_count} {volume_label} are included."
+    segmentation_weight_note = "weighted by helpful votes" if weighted_counts else "raw mentions"
+    summary_cap_note = f"Summaries use top {summary_review_cap} helpful reviews."
+    volume_note = (
+        f"Top 5 by weighted volume (helpful votes). {threshold_note} {summary_cap_note}"
+        if weighted_counts
+        else f"Top 5 by volume. {threshold_note} {summary_cap_note}"
+    )
     subcategory_by_main: dict[str, list[dict]] = {}
     for entry in subcat_records:
         if not isinstance(entry, dict):
@@ -742,7 +1282,7 @@ def _render_html(
                 main = "other"
         subcategory_by_main.setdefault(main, []).append(entry)
     for entries in subcategory_by_main.values():
-        entries.sort(key=lambda item: int(item.get("count", 0) or 0), reverse=True)
+        entries.sort(key=lambda item: _weighted_value(item, "count"), reverse=True)
 
     requested_count = 0
     retrieved_count = 0
@@ -771,16 +1311,16 @@ def _render_html(
         takeaways.append(f"Theme: {theme_name}")
     if subcat_records:
         top_issue_entry = max(
-            (entry for entry in subcat_records if int(entry.get("issue_count", 0) or 0) > 0),
-            key=lambda item: int(item.get("issue_count", 0) or 0),
+            (entry for entry in subcat_records if _weighted_value(entry, "issue_count") > 0),
+            key=lambda item: _weighted_value(item, "issue_count"),
             default=None,
         )
         if top_issue_entry:
             top_issue = _safe_text(top_issue_entry.get("sub_category") or top_issue_entry.get("subcategory", "-")).replace("_", " ").strip()
             takeaways.append(f"Top issue subcategory: {top_issue or '-'}")
         top_req_entry = max(
-            (entry for entry in subcat_records if int(entry.get("request_count", 0) or 0) > 0),
-            key=lambda item: int(item.get("request_count", 0) or 0),
+            (entry for entry in subcat_records if _weighted_value(entry, "request_count") > 0),
+            key=lambda item: _weighted_value(item, "request_count"),
             default=None,
         )
         if top_req_entry:
@@ -806,7 +1346,7 @@ def _render_html(
         for key, entries in subcategory_by_main.items():
             total = 0
             try:
-                total = sum(int(item.get("count", 0) or 0) for item in entries)
+                total = sum(_weighted_value(item, "count") for item in entries)
             except Exception:
                 total = 0
             category_items.append({"category": key, "count": total})
@@ -836,81 +1376,459 @@ def _render_html(
     player_segments = insights.get("player_segments") or {}
     chip_items = [
         f"<span class='pill'>{_h(metadata.get('retrieved', '-'))} analyzed</span>",
-        f"<span class='pill'>LLM coverage {_h(_fmt_pct(llm_metrics.get('coverage_rate')))}</span>",
     ]
 
     stat_cards = [
-        ("Recommendation rate", _fmt_pct(insights.get("recommendation"))),
-        ("Avg sentiment (compound)", _fmt_float(metrics.get("average_compound", "-"))),
-        ("Issue rate", _fmt_pct(llm_metrics.get("issue_rate"))),
-        ("Request rate", _fmt_pct(llm_metrics.get("feature_request_rate"))),
+        {
+            "label": "Recommendation rate",
+            "value": _fmt_pct(insights.get("recommendation")),
+            "color": _rec_color(insights.get("recommendation")),
+        },
+        {"label": "Issue rate", "value": _fmt_pct(llm_metrics.get("issue_rate")), "color": COL_ACCENT_3},
+        {"label": "Request rate", "value": _fmt_pct(llm_metrics.get("feature_request_rate")), "color": COL_ACCENT_2},
+        {"label": "Reviews analyzed", "value": _safe_text(metadata.get("retrieved", 0)), "color": COL_MUTED_2},
     ]
 
     stat_cells = "".join(
         "<td><div class='stat-card'>"
-        f"<div class='stat-number'>{_h(value)}</div>"
-        f"<div class='stat-label'>{_h(label)}</div>"
+        f"<div class='stat-number' style='color:{card['color']};'>{_h(card['value'])}</div>"
+        f"<div class='stat-label'>{_h(card['label'])}</div>"
         "</div></td>"
-        for label, value in stat_cards
+        for card in stat_cards
     )
 
-    takeaways_list = "<ol>" + "".join(f"<li>{_h(item)}</li>" for item in takeaways) + "</ol>"
+    category_blocks = []
+    category_keys = [key for key in MAIN_CATEGORY_LABELS if key != "other"]
+    for main_key in category_keys:
+        label = MAIN_CATEGORY_LABELS.get(main_key, str(main_key).title())
+        payload = category_rates.get(main_key) if isinstance(category_rates, dict) else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        rate_value = payload.get("rate") if payload else None
+        rate = _fmt_pct(rate_value) if payload else "-"
+        rate_color = _rec_color(rate_value)
+        entries = subcategory_by_main.get(main_key, []) or []
+        try:
+            tagged = sum(_weighted_value(item, "count") for item in entries)
+        except Exception:
+            tagged = 0
+        if not tagged:
+            try:
+                tagged = int(payload.get("count", 0) or 0) if payload else 0
+            except Exception:
+                tagged = 0
+        sub_rows = []
+        toggle_html = ""
+        if interactive:
+            for idx, entry in enumerate(entries):
+                if not isinstance(entry, dict):
+                    continue
+                raw_sub = _safe_text(entry.get("subcategory") or entry.get("sub_category") or "")
+                if not raw_sub:
+                    raw_sub = f"{main_key}/general"
+                sub_label_raw = raw_sub.split("/", 1)[1] if "/" in raw_sub else raw_sub
+                sub_label = sub_label_raw.replace("_", " ").strip().title()
+                sub_rate_value = entry.get("recommendation_rate")
+                sub_rate_color = _rec_color(sub_rate_value)
+                hidden_attr = " hidden" if idx >= 3 else ""
+                hidden_flag = "true" if idx >= 3 else "false"
+                sub_rows.append(
+                    "<button class='sub-row sub-row-button' type='button'"
+                    f" data-subcategory='{_h(raw_sub)}'"
+                    f" data-label='{_h(sub_label)}'"
+                    f" data-main='{_h(label)}'"
+                    f" data-hidden='{hidden_flag}'{hidden_attr}>"
+                    f"<span>{_h(sub_label)}</span>"
+                    f"<span class='sub-rate' style='color:{sub_rate_color};'>{_h(_fmt_pct(sub_rate_value))}</span>"
+                    "</button>"
+                )
+            if len(entries) > 3:
+                toggle_html = (
+                    "<div class='sub-toggle-row'>"
+                    f"<span class='sub-count' data-category='{_h(main_key)}'>Showing 3 of {len(entries)}</span>"
+                    f"<button class='sub-toggle' type='button' data-category='{_h(main_key)}'>+</button>"
+                    "</div>"
+                )
+        else:
+            visible_entries = entries[:3]
+            for entry in visible_entries:
+                if not isinstance(entry, dict):
+                    continue
+                sub_label_raw = _safe_text(entry.get("sub_category") or entry.get("subcategory", "")).strip()
+                if "/" in sub_label_raw:
+                    sub_label_raw = sub_label_raw.split("/", 1)[1]
+                sub_label = sub_label_raw.replace("_", " ").strip().title()
+                sub_rate_value = entry.get("recommendation_rate")
+                sub_rate_color = _rec_color(sub_rate_value)
+                sub_rows.append(
+                    "<div class='sub-row'>"
+                    f"<span>{_h(sub_label)}</span>"
+                    f"<span class='sub-rate' style='color:{sub_rate_color};'>{_h(_fmt_pct(sub_rate_value))}</span>"
+                    "</div>"
+                )
+            extra_count = max(0, len(entries) - len(visible_entries))
+            if extra_count:
+                sub_rows.append(f"<div class='sub-row more'>+{extra_count} more</div>")
 
-    summary_row = (
-        "<table class='grid'><tr>"
-        "<td class='grid-cell'>"
-        "<div class='card'>"
-        f"<div class='accent-bar' style='background:{COL_ACCENT_2};'></div>"
-        "<div class='card-title'>Highlights</div>"
-        f"{takeaways_list}"
-        "</div>"
-        "</td>"
-        "<td class='grid-cell'>"
-        "<div class='card'>"
-        f"<div class='accent-bar' style='background:{COL_ACCENT};'></div>"
-        "<div class='card-title'>Trend</div>"
-        f"<div class='card-meta'><strong>{_fmt_pct(trend_series[-1] if trend_series else rec_rate)}</strong> latest period</div>"
-        f"{sparkline}"
-        "</div>"
-        "</td>"
-        "</tr></table>"
-    )
+        if sub_rows:
+            sub_html = "<div class='sub-list'>" + "".join(sub_rows) + "</div>" + toggle_html
+        else:
+            sub_html = "<div class='sub-list'><div class='empty'>No subcategories tagged.</div></div>"
 
-    sentiment_row = (
+        card_attrs = ""
+        if interactive:
+            card_attrs = f" data-category='{_h(main_key)}' data-total='{len(entries)}' data-expanded='false'"
+
+        category_blocks.append(
+            "<div class='category-card'" + card_attrs + ">"
+            f"<div class='category-head'><div class='category-name'>{_h(label)}</div>"
+            f"<div class='category-rate' style='color:{rate_color};'>{_h(rate)}</div></div>"
+            f"<div class='category-meta'>{_h(tagged)} {_h(volume_label)}</div>"
+            f"{sub_html}"
+            "</div>"
+        )
+
+    if category_blocks:
+        category_board_html = _cards_grid(category_blocks, columns=3)
+    else:
+        category_board_html = "<div class='muted'>No category insights available yet.</div>"
+
+    issue_summary_snippets: dict[str, list[str]] = {}
+    request_summary_snippets: dict[str, list[str]] = {}
+    if reviews and llm_labels:
+        def _helpful_votes(review: dict) -> int:
+            try:
+                return int(review.get("votes_up", 0) or 0)
+            except Exception:
+                return 0
+
+        sorted_reviews = sorted(reviews, key=_helpful_votes, reverse=True)
+        for review in sorted_reviews[:summary_review_cap]:
+            review_id_value = review.get("recommendationid") or review.get("review_id")
+            if review_id_value is None:
+                continue
+            payload = _label_payload(llm_labels.get(str(review_id_value)))
+            if not payload:
+                continue
+            evidence = payload.get("evidence") or {}
+            if not isinstance(evidence, dict):
+                evidence = {}
+            issue_subcats = set(payload.get("issue_subcategories") or [])
+            request_subcats = set(payload.get("request_subcategories") or [])
+            for subcat in issue_subcats:
+                bucket = issue_summary_snippets.setdefault(subcat, [])
+                for snippet in _evidence_snippets(evidence.get(subcat)):
+                    if len(bucket) >= 3:
+                        break
+                    if snippet not in bucket:
+                        bucket.append(snippet)
+            for subcat in request_subcats:
+                bucket = request_summary_snippets.setdefault(subcat, [])
+                for snippet in _evidence_snippets(evidence.get(subcat)):
+                    if len(bucket) >= 3:
+                        break
+                    if snippet not in bucket:
+                        bucket.append(snippet)
+
+    def _top_items(kind: str, *, snippet_map: Optional[dict[str, list[str]]] = None) -> list[dict]:
+        count_key = "issue_count" if kind == "issue" else "request_count"
+        snippet_key = "issue_snippets" if kind == "issue" else "request_snippets"
+        items: list[dict] = []
+        for entry in subcat_records:
+            count = _weighted_value(entry, count_key)
+            if count <= min_summary_count:
+                continue
+            raw_key = _safe_text(entry.get("subcategory") or entry.get("sub_category") or "").strip()
+            if not raw_key:
+                continue
+            if "/" not in raw_key:
+                main = _safe_text(entry.get("main_category") or "").strip()
+                if main:
+                    raw_key = f"{main}/{raw_key}"
+            label = raw_key.split("/", 1)[1] if "/" in raw_key else raw_key
+            label = label.replace("_", " ").strip().title() or "-"
+            snippets = []
+            if snippet_map:
+                snippets = snippet_map.get(raw_key) or []
+            if not snippets:
+                snippets = entry.get(snippet_key) or []
+            if not isinstance(snippets, list):
+                snippets = []
+            items.append(
+                {
+                    "key": raw_key,
+                    "label": label,
+                    "count": count,
+                    "snippets": [_truncate(_safe_text(snippet), 160) for snippet in snippets if snippet],
+                }
+            )
+        items.sort(key=lambda item: item.get("count", 0), reverse=True)
+        return items[:5]
+
+    issue_items_top = _top_items("issue", snippet_map=issue_summary_snippets)
+    request_items_top = _top_items("request", snippet_map=request_summary_snippets)
+    summaries = _summarize_issue_requests(issue_items_top, request_items_top)
+
+    def _item_summary(item: dict) -> str:
+        summary = summaries.get(item.get("key"))
+        if not summary:
+            summary = summaries.get(_safe_text(item.get("label")).lower())
+        if not summary:
+            summary = _fallback_summary(item)
+        return summary
+
+    def _render_items(items: list[dict]) -> str:
+        if not items:
+            return "<div class='muted'>No data available.</div>"
+        lines = []
+        for item in items:
+            summary = _item_summary(item)
+            count = _safe_text(item.get("count", 0))
+            lines.append(
+                "<div class='card-note'>"
+                f"<strong>{_h(item.get('label'))}</strong> · {_h(count)} {_h(volume_label)}"
+                "</div>"
+                f"<div class='card-quote'>{_h(summary)}</div>"
+            )
+        return "".join(lines)
+
+    issue_request_section_html = (
+        "<div class='section'>"
+        "<div class='section-title'>Issues & feature requests</div>"
+        f"<div class='subsection-note'>{_h(volume_note)}</div>"
         "<table class='grid'><tr>"
         "<td class='grid-cell'>"
         "<div class='card'>"
         f"<div class='accent-bar' style='background:{COL_ACCENT_3};'></div>"
-        "<div class='card-title'>Sentiment</div>"
-        "<table style='width:100%;'><tr>"
-        f"<td style='width:120px; vertical-align:top;'>{donut}</td>"
-        "<td style='vertical-align:top;'>"
-        f"<div class='stat-number'>{_fmt_pct(rec_rate)}</div>"
-        f"<div class='muted'>Recommendation rate</div>"
-        f"<div class='card-note'>Positive {pos} / Negative {neg}</div>"
-        "</td></tr></table>"
+        "<div class='card-title'>Top issues</div>"
+        f"{_render_items(issue_items_top)}"
         "</div>"
         "</td>"
         "<td class='grid-cell'>"
         "<div class='card'>"
-        f"<div class='accent-bar' style='background:{COL_ACCENT};'></div>"
-        "<div class='card-title'>Risk & engagement</div>"
-        f"<div class='card-note'><strong>{_fmt_pct(refund_risk)}</strong> refund risk</div>"
-        "<div class='progress-track'><div class='progress-fill' "
-        f"style='width:{refund_risk * 100:.0f}%; background:{COL_ACCENT_3};'></div></div>"
-        f"<div class='card-note' style='margin-top:8px;'><strong>{_fmt_pct(churn_rate)}</strong> churn rate</div>"
-        "<div class='progress-track'><div class='progress-fill' "
-        f"style='width:{churn_rate * 100:.0f}%; background:{COL_ACCENT};'></div></div>"
-        f"<div class='card-note' style='margin-top:8px;'><strong>{_fmt_pct(core_fan)}</strong> core fan disappointment</div>"
-        "<div class='progress-track'><div class='progress-fill' "
-        f"style='width:{core_fan * 100:.0f}%; background:{COL_ACCENT_2};'></div></div>"
-        f"<div class='card-note' style='margin-top:10px;'><strong>{_h(_fmt_float(playtime.get('median_playtime_hours'), digits=1))}</strong> median hours</div>"
-        f"<div class='card-note'>mean {_h(_fmt_float(playtime.get('mean_playtime_hours'), digits=1))} · recent median {_h(_fmt_float(playtime.get('median_recent_playtime_hours'), digits=1))}</div>"
-        f"<div class='card-note'>avg helpful {_h(helpful_up)} · avg funny {_h(helpful_funny)}</div>"
+        f"<div class='accent-bar' style='background:{COL_ACCENT_2};'></div>"
+        "<div class='card-title'>Top feature requests</div>"
+        f"{_render_items(request_items_top)}"
         "</div>"
         "</td>"
         "</tr></table>"
+        "</div>"
     )
+
+    review_rows: list[dict] = []
+    if reviews and llm_labels:
+        for review in reviews:
+            review_id_value = review.get("recommendationid") or review.get("review_id")
+            if review_id_value is None:
+                continue
+            payload = _label_payload(llm_labels.get(str(review_id_value)))
+            subcats = payload.get("subcategories") or []
+            if not isinstance(subcats, list):
+                subcats = []
+            issue_subcats = payload.get("issue_subcategories") or []
+            if not isinstance(issue_subcats, list):
+                issue_subcats = []
+            request_subcats = payload.get("request_subcategories") or []
+            if not isinstance(request_subcats, list):
+                request_subcats = []
+            evidence = payload.get("evidence") or {}
+            if not isinstance(evidence, dict):
+                evidence = {}
+            author = review.get("author") or {}
+            total_minutes = int(author.get("playtime_forever") or 0)
+            recent_minutes = int(author.get("playtime_last_two_weeks") or 0)
+            created_at = _parse_review_datetime(review.get("timestamp_created") or review.get("created_at"))
+            try:
+                helpful_votes = int(review.get("votes_up", 0) or 0)
+            except Exception:
+                helpful_votes = 0
+            review_rows.append(
+                {
+                    "voted_up": bool(review.get("voted_up")),
+                    "weight": _review_weight(review),
+                    "helpful_votes": helpful_votes,
+                    "playtime_total": total_minutes,
+                    "playtime_recent": recent_minutes,
+                    "created_at": created_at,
+                    "subcategories": [str(item) for item in subcats if isinstance(item, str)],
+                    "issue_subcategories": [str(item) for item in issue_subcats if isinstance(item, str)],
+                    "request_subcategories": [str(item) for item in request_subcats if isinstance(item, str)],
+                    "evidence": evidence,
+                }
+            )
+
+    segmentation_html = ""
+    if review_rows:
+        def _rec_rate(rows: list[dict]) -> Optional[float]:
+            if not rows:
+                return None
+            return float(sum(1 for row in rows if row.get("voted_up")) / len(rows))
+
+        def _request_category_counts(rows: list[dict]) -> dict[str, int]:
+            counts: dict[str, int] = {}
+            for row in rows:
+                weight = int(row.get("weight", 1) or 1)
+                for subcat in row.get("request_subcategories") or []:
+                    main = _main_category(subcat)
+                    counts[main] = counts.get(main, 0) + weight
+            return counts
+
+        def _rows_for_request_category(rows: list[dict], main_key: str) -> list[dict]:
+            return [
+                row
+                for row in rows
+                if any(_main_category(subcat) == main_key for subcat in row.get("request_subcategories") or [])
+            ]
+
+        def _top_request_items(
+            rows: list[dict],
+            *,
+            limit: int = 3,
+            snippet_rows: Optional[list[dict]] = None,
+        ) -> list[dict]:
+            counts: dict[str, int] = {}
+            snippets: dict[str, list[str]] = {}
+            for row in rows:
+                weight = int(row.get("weight", 1) or 1)
+                for subcat in row.get("request_subcategories") or []:
+                    counts[subcat] = counts.get(subcat, 0) + weight
+            snippet_rows = rows if snippet_rows is None else snippet_rows
+            for row in snippet_rows:
+                evidence = row.get("evidence") or {}
+                for subcat in row.get("request_subcategories") or []:
+                    if subcat not in snippets:
+                        snippets[subcat] = []
+                    for snippet in _evidence_snippets(evidence.get(subcat)):
+                        if len(snippets[subcat]) >= 3:
+                            break
+                        if snippet not in snippets[subcat]:
+                            snippets[subcat].append(snippet)
+            items = []
+            for subcat, count in counts.items():
+                if count < segment_min_summary_count:
+                    continue
+                label = subcat.split("/", 1)[1] if "/" in subcat else subcat
+                label = label.replace("_", " ").strip().title() or "-"
+                items.append(
+                    {
+                        "key": subcat,
+                        "label": label,
+                        "count": count,
+                        "snippets": snippets.get(subcat, []),
+                    }
+                )
+            items.sort(key=lambda item: item.get("count", 0), reverse=True)
+            return items[:limit]
+
+        overall_request_cat_rate: dict[str, float] = {}
+        if review_rows:
+            all_request_counts = _request_category_counts(review_rows)
+            for main_key in all_request_counts:
+                cat_rows = _rows_for_request_category(review_rows, main_key)
+                rate = _rec_rate(cat_rows)
+                if rate is not None:
+                    overall_request_cat_rate[main_key] = rate
+
+        def _segment_card(label: str, rows: list[dict], *, accent: str) -> str:
+            if not rows:
+                return (
+                    "<div class='card'>"
+                    f"<div class='accent-bar' style='background:{accent};'></div>"
+                    f"<div class='card-title'>{_h(label)}</div>"
+                    "<div class='muted'>No data available.</div>"
+                    "</div>"
+                )
+            rec_rate = _rec_rate(rows)
+            request_counts = _request_category_counts(rows)
+            top_cat = max(request_counts, key=request_counts.get) if request_counts else ""
+            top_cat_label = MAIN_CATEGORY_LABELS.get(top_cat, top_cat.title() if top_cat else "-")
+            top_cat_volume = request_counts.get(top_cat, 0) if top_cat else 0
+            cat_rows = _rows_for_request_category(rows, top_cat) if top_cat else []
+            cat_rate = _rec_rate(cat_rows)
+            overall_rate = overall_request_cat_rate.get(top_cat)
+            delta = (cat_rate - overall_rate) if (cat_rate is not None and overall_rate is not None) else None
+
+            snippet_rows = rows
+            if summary_review_cap and len(rows) > summary_review_cap:
+                snippet_rows = sorted(
+                    rows,
+                    key=lambda item: int(item.get("helpful_votes", 0) or 0),
+                    reverse=True,
+                )[:summary_review_cap]
+            request_items = _top_request_items(rows, snippet_rows=snippet_rows)
+            segment_summaries = _summarize_issue_requests([], request_items) if request_items else {}
+
+            def _segment_item_summary(item: dict) -> str:
+                summary = segment_summaries.get(item.get("key"))
+                if not summary:
+                    summary = segment_summaries.get(_safe_text(item.get("label")).lower())
+                if not summary:
+                    summary = _fallback_summary(item)
+                return summary
+
+            if request_items:
+                request_lines = []
+                for item in request_items:
+                    summary = _segment_item_summary(item)
+                    request_lines.append(
+                        "<div class='card-note'>"
+                        f"<strong>{_h(item.get('label'))}</strong> · {_h(item.get('count'))} {_h(volume_label)}"
+                        "</div>"
+                        f"<div class='card-quote'>{_h(summary)}</div>"
+                    )
+                requests_html = "".join(request_lines)
+            else:
+                requests_html = "<div class='muted'>No feature requests found.</div>"
+
+            meta_lines = [
+                f"{len(rows)} reviews · rec {_fmt_pct(rec_rate)}",
+            ]
+            if top_cat:
+                meta_lines.append(
+                    f"Top request category: {top_cat_label} ({_safe_text(top_cat_volume)} {volume_label})"
+                )
+            if cat_rate is not None:
+                delta_text = _fmt_pp(delta) if delta is not None else "-"
+                meta_lines.append(f"Category rec rate: {_fmt_pct(cat_rate)} · delta {delta_text} vs overall")
+            meta_html = "".join(f"<div class='card-note'>{_h(line)}</div>" for line in meta_lines)
+
+            return (
+                "<div class='card'>"
+                f"<div class='accent-bar' style='background:{accent};'></div>"
+                f"<div class='card-title'>{_h(label)}</div>"
+                f"{meta_html}{requests_html}"
+                "</div>"
+            )
+
+        playtime_segments = {
+            "<2h": [],
+            "2–20h": [],
+            "20h+": [],
+        }
+        for row in review_rows:
+            playtime_key = _playtime_bucket(int(row.get("playtime_total", 0) or 0))
+            playtime_segments.setdefault(playtime_key, []).append(row)
+
+        playtime_cards = [
+            _segment_card(key, playtime_segments.get(key, []), accent=COL_ACCENT_2)
+            for key in ("<2h", "2–20h", "20h+")
+        ]
+
+        segmentation_html = (
+            "<div class='section'>"
+            "<div class='section-title'>Userbase segmentation</div>"
+            "<div class='subsection-title'>Playtime cohorts</div>"
+            f"<div class='subsection-note'>Top request category + top 3 feature requests per cohort ({segmentation_weight_note}).</div>"
+            f"{_cards_grid(playtime_cards, columns=3)}"
+            "</div>"
+        )
+    else:
+        segmentation_html = (
+            "<div class='section'>"
+            "<div class='section-title'>Userbase segmentation</div>"
+            "<div class='muted'>Segmentation unavailable (missing review data).</div>"
+            "</div>"
+        )
 
     category_scores = {}
     category_has_data = {}
@@ -922,7 +1840,7 @@ def _render_html(
         if entries:
             has_data = True
             try:
-                score = sum(int(item.get("count", 0) or 0) for item in entries)
+                score = sum(_weighted_value(item, "count") for item in entries)
             except Exception:
                 score = 0
         elif isinstance(category_rates, dict):
@@ -981,19 +1899,19 @@ def _render_html(
         label = MAIN_CATEGORY_LABELS.get(main_key, str(main_key).title())
         entries = subcategory_by_main.get(main_key, [])
         subcats = [
-            {"category": _safe_text(item.get("sub_category") or item.get("subcategory", "")), "count": int(item.get("count", 0) or 0)}
+            {"category": _safe_text(item.get("sub_category") or item.get("subcategory", "")), "count": _weighted_value(item, "count")}
             for item in entries
         ]
         subcats = [item for item in subcats if item.get("category")]
         subcats.sort(key=lambda item: int(item.get("count", 0) or 0), reverse=True)
         issue_items = [
-            {"category": _safe_text(item.get("sub_category") or item.get("subcategory", "")), "count": int(item.get("issue_count", 0) or 0)}
+            {"category": _safe_text(item.get("sub_category") or item.get("subcategory", "")), "count": _weighted_value(item, "issue_count")}
             for item in entries
         ]
         issue_items = [item for item in issue_items if item.get("count", 0)]
         issue_items.sort(key=lambda item: int(item.get("count", 0) or 0), reverse=True)
         req_items = [
-            {"category": _safe_text(item.get("sub_category") or item.get("subcategory", "")), "count": int(item.get("request_count", 0) or 0)}
+            {"category": _safe_text(item.get("sub_category") or item.get("subcategory", "")), "count": _weighted_value(item, "request_count")}
             for item in entries
         ]
         req_items = [item for item in req_items if item.get("count", 0)]
@@ -1008,12 +1926,12 @@ def _render_html(
         accent = CATEGORY_ACCENTS.get(main_key, COL_ACCENT)
         cat_total = 0
         try:
-            cat_total = int(rate_payload.get("count", 0) or 0)
+            cat_total = sum(int(item.get("count", 0) or 0) for item in subcats)
         except Exception:
             cat_total = 0
         if not cat_total:
             try:
-                cat_total = sum(int(item.get("count", 0) or 0) for item in subcats)
+                cat_total = int(rate_payload.get("count", 0) or 0)
             except Exception:
                 cat_total = 0
         issue_total = 0
@@ -1027,11 +1945,11 @@ def _render_html(
 
         cat_note = "Structured reviews tagged to this category."
         if cat_total:
-            cat_note = f"{cat_total} tagged reviews in this category"
+            cat_note = f"{cat_total} {volume_label} in this category"
 
         snapshot_lines = []
         if cat_total:
-            snapshot_lines.append(f"{cat_total} tagged reviews")
+            snapshot_lines.append(f"{cat_total} {volume_label}")
         if rate_payload:
             if rate_payload.get("rate") is not None:
                 snapshot_lines.append(f"Recommendation rate {_fmt_pct(rate_payload.get('rate'))}")
@@ -1048,9 +1966,9 @@ def _render_html(
             req_label = _safe_text(top_req.get("category", "")).replace("_", " ").strip() or "-"
             snapshot_lines.append(f"Top request subcategory: {req_label} ({_safe_text(top_req.get('count', 0))})")
         if issue_total:
-            snapshot_lines.append(f"Issue mentions: {issue_total}")
+            snapshot_lines.append(f"Issue volume: {issue_total}")
         if request_total:
-            snapshot_lines.append(f"Request mentions: {request_total}")
+            snapshot_lines.append(f"Request volume: {request_total}")
         if not snapshot_lines:
             snapshot_lines.append("No structured insights yet.")
 
@@ -1401,6 +2319,157 @@ def _render_html(
                 )
                 appendix_blocks.append("</div>")
 
+    reviews_payload = reviews if isinstance(reviews, list) else []
+
+    interactive_html = ""
+    if interactive:
+        interactive_html = f"""
+  <script id="review-data" type="application/json">{_json_script(reviews_payload)}</script>
+  <div id="review-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <div>
+          <div id="review-modal-title" class="modal-title">Subcategory</div>
+          <div id="review-modal-meta" class="modal-meta"></div>
+        </div>
+        <button class="modal-close" type="button" data-close-modal>Close</button>
+      </div>
+      <div id="review-modal-list" class="modal-list"></div>
+    </div>
+  </div>
+  <script>
+  (function() {{
+    const dataEl = document.getElementById('review-data');
+    if (!dataEl) return;
+    let reviews = [];
+    try {{
+      reviews = JSON.parse(dataEl.textContent || '[]');
+    }} catch (err) {{
+      reviews = [];
+    }}
+
+    const modal = document.getElementById('review-modal');
+    const titleEl = document.getElementById('review-modal-title');
+    const metaEl = document.getElementById('review-modal-meta');
+    const listEl = document.getElementById('review-modal-list');
+
+    const closeModal = () => {{
+      if (!modal) return;
+      modal.classList.remove('open');
+      document.body.classList.remove('modal-open');
+    }};
+
+    document.querySelectorAll('[data-close-modal]').forEach((btn) => {{
+      btn.addEventListener('click', closeModal);
+    }});
+
+    if (modal) {{
+      modal.addEventListener('click', (event) => {{
+        if (event.target === modal) {{
+          closeModal();
+        }}
+      }});
+    }}
+
+    document.addEventListener('keydown', (event) => {{
+      if (event.key === 'Escape') {{
+        closeModal();
+      }}
+    }});
+
+    const renderReview = (review) => {{
+      const card = document.createElement('div');
+      card.className = 'review-card';
+
+      const meta = document.createElement('div');
+      meta.className = 'review-meta';
+      const idSpan = document.createElement('span');
+      idSpan.textContent = 'Review ID ' + (review.review_id ?? '—');
+      const helpfulSpan = document.createElement('span');
+      helpfulSpan.textContent = (review.votes_up || 0) + ' helpful';
+      meta.appendChild(idSpan);
+      meta.appendChild(helpfulSpan);
+      card.appendChild(meta);
+
+      const text = document.createElement('p');
+      text.className = 'review-text';
+      text.textContent = review.review || '';
+      card.appendChild(text);
+
+      const footer = document.createElement('div');
+      footer.className = 'review-footer';
+      const badge = document.createElement('span');
+      badge.className = 'pill ' + (review.voted_up ? 'pill-pos' : 'pill-neg');
+      badge.textContent = review.voted_up ? 'Recommended' : 'Not recommended';
+      footer.appendChild(badge);
+      card.appendChild(footer);
+
+      return card;
+    }};
+
+    const openModal = (subcategory, label, mainLabel) => {{
+      if (!modal || !listEl || !titleEl || !metaEl) return;
+      const filtered = reviews.filter((review) =>
+        Array.isArray(review.llm_subcategories) && review.llm_subcategories.includes(subcategory)
+      );
+      filtered.sort((a, b) => (b.votes_up || 0) - (a.votes_up || 0));
+
+      titleEl.textContent = label || subcategory || 'Subcategory';
+      const metaBits = [];
+      if (mainLabel) metaBits.push(mainLabel);
+      metaBits.push(filtered.length + ' reviews');
+      metaEl.textContent = metaBits.join(' · ');
+
+      while (listEl.firstChild) {{
+        listEl.removeChild(listEl.firstChild);
+      }}
+
+      if (!filtered.length) {{
+        const empty = document.createElement('div');
+        empty.className = 'modal-empty';
+        empty.textContent = 'No reviews found for this subcategory.';
+        listEl.appendChild(empty);
+      }} else {{
+        filtered.forEach((review) => {{
+          listEl.appendChild(renderReview(review));
+        }});
+      }}
+
+      modal.classList.add('open');
+      document.body.classList.add('modal-open');
+    }};
+
+    document.querySelectorAll('.sub-row-button').forEach((btn) => {{
+      btn.addEventListener('click', () => {{
+        openModal(btn.dataset.subcategory || '', btn.dataset.label || '', btn.dataset.main || '');
+      }});
+    }});
+
+    document.querySelectorAll('.sub-toggle').forEach((btn) => {{
+      btn.addEventListener('click', () => {{
+        const key = btn.dataset.category;
+        if (!key) return;
+        const card = document.querySelector('.category-card[data-category="' + key + '"]');
+        if (!card) return;
+        const hiddenRows = card.querySelectorAll('.sub-row[data-hidden="true"]');
+        const isExpanded = card.getAttribute('data-expanded') === 'true';
+        hiddenRows.forEach((row) => {{
+          row.hidden = !isExpanded ? false : true;
+        }});
+        card.setAttribute('data-expanded', isExpanded ? 'false' : 'true');
+        btn.textContent = isExpanded ? '+' : '-';
+        const countEl = card.querySelector('.sub-count');
+        if (countEl) {{
+          const total = parseInt(card.getAttribute('data-total') || '0', 10) || 0;
+          const shown = isExpanded ? Math.min(3, total) : total;
+          countEl.textContent = 'Showing ' + shown + ' of ' + total;
+        }}
+      }});
+    }});
+  }})();
+  </script>
+"""
+
     html_doc = f"""<!doctype html>
 <html>
 <head>
@@ -1408,41 +2477,288 @@ def _render_html(
   <style>{css}</style>
 </head>
 <body>
-  <div class="cover">
-    {image_html}
-    <div class="kicker">Insights report</div>
-    <h1>SentiNext report for {_h(game_name)}</h1>
-    <div class="muted">App id {_h(app_id)} &middot; Generated {generated_at}</div>
-    <div class="meta">{_h(meta_line)}</div>
-    <div class="pill-row">{''.join(chip_items)}</div>
+  <div class="screen-wrap">
+    <div class="cover">
+      {image_html}
+      <div class="kicker">Insights report</div>
+      <h1>SentiNext report for {_h(game_name)}</h1>
+      <div class="muted">App id {_h(app_id)} &middot; Generated {generated_at}</div>
+      <div class="meta">{_h(meta_line)}</div>
+      <div class="pill-row">{''.join(chip_items)}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Main KPIs</div>
+      <table class="stat-grid"><tr>{stat_cells}</tr></table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Overall views of categories</div>
+      {category_board_html}
+    </div>
+
+    {issue_request_section_html}
+
+    {segmentation_html}
+
+    <div class="footer-note">
+      Generated by SentiNext.
+    </div>
   </div>
+  {interactive_html}
+</body>
+</html>
+"""
+    return html_doc
 
-  <table class="stat-grid"><tr>{stat_cells}</tr></table>
 
-  <div class="section">
-    <div class="section-title">Overview</div>
-    {summary_row}
-    {sentiment_row}
-  </div>
+def _render_comparison_html(reports: list[dict]) -> str:
+    if not reports:
+        return ""
 
-  <div class="page-break"></div>
-  <div class="section">
-    <div class="section-title">Category insights</div>
-    {category_overview_row}
-    {category_sections_html}
-  </div>
+    font_css, font_stack = _font_css()
+    css = _build_css(font_css, font_stack)
+    generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-  <div class="page-break"></div>
-  <div class="section">
-    <div class="section-title">User segmentation</div>
-    {segments_row_1}
-    {segments_row_2}
-  </div>
+    image_html = ""
+    first_image = reports[0].get("game_image_url") if isinstance(reports[0], dict) else None
+    image_payload = _fetch_steam_header_image(first_image or "")
+    if image_payload:
+        image_bytes, mime = image_payload
+        try:
+            with PILImage.open(BytesIO(image_bytes)) as img:
+                img.verify()
+            image_html = f"<img class='hero-image' src='{_image_data_uri(image_bytes, mime)}' alt='Steam header' />"
+        except Exception:
+            image_html = ""
 
-  {''.join(appendix_blocks)}
+    def _entry_key(entry: dict) -> str:
+        raw_key = _safe_text(entry.get("subcategory") or entry.get("sub_category") or "").strip()
+        if not raw_key:
+            return ""
+        if "/" not in raw_key:
+            main = _safe_text(entry.get("main_category") or "").strip()
+            if main:
+                raw_key = f"{main}/{raw_key}"
+        return raw_key
 
-  <div class="footer-note">
-    Generated by SentiNext.
+    games = []
+    any_weighted = False
+    for report in reports:
+        if not isinstance(report, dict):
+            continue
+        app_id = int(report.get("app_id", 0) or 0)
+        game_name = _safe_text(report.get("game_name", "-")).strip() or "-"
+        metadata = report.get("metadata", {}) if isinstance(report.get("metadata"), dict) else {}
+        insights = report.get("insights", {}) if isinstance(report.get("insights"), dict) else {}
+        reviews = report.get("reviews") if isinstance(report.get("reviews"), list) else []
+        llm_labels = report.get("llm_labels") if isinstance(report.get("llm_labels"), dict) else {}
+        llm_metrics = insights.get("llm", {}) if isinstance(insights, dict) else {}
+        category_rates = insights.get("category_recommendation_rates") or {}
+        if not isinstance(category_rates, dict):
+            category_rates = {}
+        subcat_records = list(insights.get("subcategory_insights") or []) if isinstance(insights, dict) else []
+        weighted_counts = _weighted_subcategory_counts(reviews or [], llm_labels)
+        _apply_weighted_counts(subcat_records, weighted_counts)
+        if weighted_counts:
+            any_weighted = True
+
+        subcategory_by_main: dict[str, list[dict]] = {}
+        subcat_map: dict[str, dict] = {}
+        for entry in subcat_records:
+            if not isinstance(entry, dict):
+                continue
+            key = _entry_key(entry)
+            if key:
+                subcat_map[key] = entry
+            main = _safe_text(entry.get("main_category") or "").strip().lower()
+            if not main:
+                raw = _safe_text(entry.get("subcategory") or "")
+                if "/" in raw:
+                    main = raw.split("/", 1)[0].strip().lower()
+                else:
+                    main = "other"
+            subcategory_by_main.setdefault(main, []).append(entry)
+        for entries in subcategory_by_main.values():
+            entries.sort(key=lambda item: _weighted_value(item, "count"), reverse=True)
+
+        games.append(
+            {
+                "app_id": app_id,
+                "name": game_name,
+                "metadata": metadata,
+                "insights": insights,
+                "llm_metrics": llm_metrics,
+                "subcategory_by_main": subcategory_by_main,
+                "subcat_map": subcat_map,
+                "category_rates": category_rates,
+                "subcat_records": subcat_records,
+            }
+        )
+
+    if not games:
+        return ""
+
+    volume_label = "weighted mentions" if any_weighted else "mentions"
+    game_names = [game["name"] for game in games]
+    game_title = " vs ".join(game_names)
+
+    pills = "".join(
+        f"<span class='pill'>{_h(game['name'])} · {_h(game['metadata'].get('retrieved', '-'))} reviews</span>"
+        for game in games
+    )
+
+    meta_rows = [
+        [
+            _safe_text(game["name"]),
+            _safe_text(game["app_id"]),
+            _safe_text(game["metadata"].get("retrieved", "-")),
+            _safe_text(game["metadata"].get("language", "-")),
+            _safe_text(game["metadata"].get("fetched_at", "-")),
+        ]
+        for game in games
+    ]
+    meta_table = _html_table(["Game", "App id", "Reviews", "Lang", "Fetched"], meta_rows)
+
+    kpi_headers = ["Metric", *game_names]
+    kpi_rows = [
+        ["Recommendation rate", *[_fmt_pct(game["insights"].get("recommendation")) for game in games]],
+        ["Issue rate", *[_fmt_pct(game["llm_metrics"].get("issue_rate")) for game in games]],
+        ["Request rate", *[_fmt_pct(game["llm_metrics"].get("feature_request_rate")) for game in games]],
+        ["Reviews analyzed", *[_safe_text(game["metadata"].get("retrieved", "-")) for game in games]],
+    ]
+    kpi_table = _html_table(kpi_headers, kpi_rows)
+
+    def _top_subcategory(game: dict, key: str) -> str:
+        best_entry = None
+        best_count = 0
+        for entry in game.get("subcat_records", []):
+            count = _weighted_value(entry, key)
+            if count > best_count:
+                best_count = count
+                best_entry = entry
+        if not best_entry or best_count <= 0:
+            return "-"
+        raw = _safe_text(best_entry.get("subcategory") or best_entry.get("sub_category") or "")
+        label = raw.split("/", 1)[1] if "/" in raw else raw
+        label = label.replace("_", " ").strip().title() or "-"
+        return f"{label} ({best_count})"
+
+    issue_rows = [
+        [
+            _safe_text(game["name"]),
+            _top_subcategory(game, "issue_count"),
+            _top_subcategory(game, "request_count"),
+        ]
+        for game in games
+    ]
+    issue_table = _html_table(["Game", "Top issue", "Top request"], issue_rows)
+
+    category_sections = []
+    max_subcats_per_game = 6
+    for main_key in MAIN_CATEGORY_LABELS:
+        if main_key == "other":
+            continue
+        entries_by_game = [game["subcategory_by_main"].get(main_key, []) for game in games]
+        union_keys: list[str] = []
+        seen = set()
+        for entries in entries_by_game:
+            for entry in entries[:max_subcats_per_game]:
+                key = _entry_key(entry)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                union_keys.append(key)
+        if not union_keys:
+            continue
+
+        rows = []
+        for key in union_keys:
+            label = key.split("/", 1)[1] if "/" in key else key
+            label = label.replace("_", " ").strip().title() or "-"
+            row = [label]
+            for game in games:
+                entry = game["subcat_map"].get(key)
+                rate = _fmt_pct(entry.get("recommendation_rate")) if entry else "-"
+                row.append(rate)
+            rows.append(row)
+
+        headers = ["Subcategory", *game_names]
+        table_html = _html_table(headers, rows)
+
+        meta_bits = []
+        for idx, game in enumerate(games):
+            entries = entries_by_game[idx]
+            total = 0
+            try:
+                total = sum(_weighted_value(item, "count") for item in entries)
+            except Exception:
+                total = 0
+            if not total:
+                payload = game["category_rates"].get(main_key) if isinstance(game["category_rates"], dict) else {}
+                if isinstance(payload, dict):
+                    try:
+                        total = int(payload.get("count", 0) or 0)
+                    except Exception:
+                        total = 0
+            rate_payload = game["category_rates"].get(main_key) if isinstance(game["category_rates"], dict) else {}
+            rate_value = rate_payload.get("rate") if isinstance(rate_payload, dict) else None
+            rate_text = _fmt_pct(rate_value) if rate_payload else "-"
+            meta_bits.append(f"{game['name']}: {rate_text} · {total} {volume_label}")
+
+        category_sections.append(
+            f"<div class='subsection-title'>{_h(MAIN_CATEGORY_LABELS.get(main_key, main_key.title()))}</div>"
+            f"<div class='subsection-note'>{_h(' · '.join(meta_bits))}</div>"
+            f"{table_html}"
+        )
+
+    if category_sections:
+        categories_html = "".join(category_sections)
+    else:
+        categories_html = "<div class='muted'>No category insights available yet.</div>"
+
+    html_doc = f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>{css}</style>
+</head>
+<body>
+  <div class="screen-wrap">
+    <div class="cover">
+      {image_html}
+      <div class="kicker">Insights report</div>
+      <h1>SentiNext comparison report</h1>
+      <div class="muted">Generated {generated_at}</div>
+      <div class="meta">{_h(game_title)}</div>
+      <div class="pill-row">{pills}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Games compared</div>
+      {meta_table}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Main KPIs</div>
+      {kpi_table}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Issues & feature requests</div>
+      <div class="subsection-note">Top subcategory by {volume_label}.</div>
+      {issue_table}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Category comparison</div>
+      <div class="subsection-note">Recommendation rate by subcategory. Ordered by {volume_label}.</div>
+      {categories_html}
+    </div>
+
+    <div class="footer-note">
+      Generated by SentiNext.
+    </div>
   </div>
 </body>
 </html>
@@ -1457,6 +2773,8 @@ def render_insights_pdf(
     metadata: Dict[str, Any],
     insights: Dict[str, Any],
     game_image_url: Optional[str] = None,
+    reviews: Optional[list[dict]] = None,
+    llm_labels: Optional[dict] = None,
 ) -> bytes:
     if HTML is None:
         error = _WEASYPRINT_ERROR
@@ -1471,6 +2789,69 @@ def render_insights_pdf(
         metadata=metadata,
         insights=insights,
         game_image_url=game_image_url,
+        reviews=reviews,
+        llm_labels=llm_labels,
     )
     base_url = str(Path(__file__).resolve().parent)
     return HTML(string=html_doc, base_url=base_url).write_pdf()
+
+
+def render_insights_html(
+    *,
+    app_id: int,
+    game_name: str,
+    metadata: Dict[str, Any],
+    insights: Dict[str, Any],
+    game_image_url: Optional[str] = None,
+    reviews: Optional[list[dict]] = None,
+    llm_labels: Optional[dict] = None,
+) -> str:
+    return _render_html(
+        app_id=app_id,
+        game_name=game_name,
+        metadata=metadata,
+        insights=insights,
+        game_image_url=game_image_url,
+        reviews=reviews,
+        llm_labels=llm_labels,
+        interactive=False,
+    )
+
+
+def render_insights_html_interactive(
+    *,
+    app_id: int,
+    game_name: str,
+    metadata: Dict[str, Any],
+    insights: Dict[str, Any],
+    reviews: Optional[list[dict]] = None,
+    game_image_url: Optional[str] = None,
+    llm_labels: Optional[dict] = None,
+) -> str:
+    return _render_html(
+        app_id=app_id,
+        game_name=game_name,
+        metadata=metadata,
+        insights=insights,
+        reviews=reviews,
+        game_image_url=game_image_url,
+        llm_labels=llm_labels,
+        interactive=True,
+    )
+
+
+def render_insights_comparison_pdf(*, reports: list[dict]) -> bytes:
+    if HTML is None:
+        error = _WEASYPRINT_ERROR
+        raise RuntimeError(
+            "WeasyPrint is required for HTML-to-PDF rendering. "
+            "Install it and its system dependencies, then retry."
+        ) from error
+
+    html_doc = _render_comparison_html(reports)
+    base_url = str(Path(__file__).resolve().parent)
+    return HTML(string=html_doc, base_url=base_url).write_pdf()
+
+
+def render_insights_comparison_html(*, reports: list[dict]) -> str:
+    return _render_comparison_html(reports)
