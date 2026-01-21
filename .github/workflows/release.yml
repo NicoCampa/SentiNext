@@ -16,16 +16,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
-    env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,28 +49,46 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install wixtoolset -y
 
-      - name: Build (macOS, signed)
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          if [[ -z "$APPLE_CERTIFICATE" || -z "$APPLE_SIGNING_IDENTITY" ]]; then
+            echo "Signing disabled (missing Apple cert secrets)."
+            unset APPLE_CERTIFICATE
+            unset APPLE_CERTIFICATE_PASSWORD
+            unset APPLE_SIGNING_IDENTITY
+            unset APPLE_ID
+            unset APPLE_PASSWORD
+            unset APPLE_TEAM_ID
+          else
+            echo "Signing enabled."
+          fi
           tauri build --bundles app,dmg
           ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos.zip"
 
-      - name: Build (macOS, unsigned)
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE == ''
-        run: |
-          tauri build --bundles app,dmg
-          ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos.zip"
-
-      - name: Build (Windows, signed)
-        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
         shell: bash
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
         run: |
-          tauri build --bundles msi,nsis
-
-      - name: Build (Windows, unsigned)
-        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE == ''
-        shell: bash
-        run: |
+          if [[ -z "$WINDOWS_CERTIFICATE" ]]; then
+            echo "Signing disabled (missing Windows cert secrets)."
+            unset WINDOWS_CERTIFICATE
+            unset WINDOWS_CERTIFICATE_PASSWORD
+            unset WINDOWS_TIMESTAMP_URL
+          else
+            echo "Signing enabled."
+          fi
           tauri build --bundles msi,nsis
 
       - name: Upload artifacts (macOS)
