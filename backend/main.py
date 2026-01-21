@@ -278,6 +278,18 @@ def require_service_token(request: Request) -> None:
 def healthcheck() -> dict:
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
 
+
+@app.get("/settings/storage")
+def storage_paths() -> dict:
+    db_path = storage.db_path()
+    data_dir = db_path.parent
+    reports_dir = _reports_dir()
+    return {
+        "db_path": str(db_path),
+        "data_dir": str(data_dir),
+        "reports_dir": str(reports_dir),
+    }
+
 @app.get("/license/status", response_model=LicenseStatusResponse)
 def license_status() -> LicenseStatusResponse:
     status = license_guard.get_license_status()

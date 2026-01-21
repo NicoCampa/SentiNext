@@ -15,6 +15,12 @@ export interface AnalyzeMetadata {
   header_image?: string | null;
 }
 
+export interface StoragePaths {
+  db_path: string;
+  data_dir: string;
+  reports_dir: string;
+}
+
 export interface ChatCitation {
   review_id: string;
   subcategory: string;

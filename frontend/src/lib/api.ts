@@ -7,6 +7,7 @@ import {
   AnalysisResultResponse,
   FeedbackItem,
   ChatResponse,
+  StoragePaths,
 } from "@/types";
 
 declare global {
@@ -101,6 +102,13 @@ export async function fetchAnalysisResult(appId: number): Promise<AnalysisResult
     cache: "no-store",
   });
   return handleResponse<AnalysisResultResponse>(response);
+}
+
+export async function fetchStoragePaths(): Promise<StoragePaths> {
+  const response = await fetch(apiUrl("/settings/storage"), {
+    cache: "no-store",
+  });
+  return handleResponse<StoragePaths>(response);
 }
 
 export interface FeedbackOptions {
