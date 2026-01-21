@@ -1,7 +1,7 @@
 {
   "build": {
     "beforeDevCommand": "npm --prefix frontend run dev",
-    "beforeBuildCommand": "npm --prefix frontend run build",
+    "beforeBuildCommand": "python scripts/build_sidecar.py && npm --prefix frontend run build",
     "devPath": "http://localhost:3000",
     "distDir": "../frontend/out"
   },
@@ -15,8 +15,13 @@
       "csp": null
     },
     "bundle": {
+      "active": true,
       "identifier": "ai.sentinext.app",
-      "targets": ["dmg", "msi", "appimage"],
+      "icon": [
+        "icons/icon.icns",
+        "icons/icon.ico",
+        "icons/icon.png"
+      ],
       "externalBin": ["../backend/dist/sentinext-backend"]
     }
   }

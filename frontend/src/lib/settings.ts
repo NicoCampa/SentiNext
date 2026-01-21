@@ -16,6 +16,8 @@ export interface LlmRequestConfig {
 }
 
 const STORAGE_KEY = "sentinext_settings_v1";
+let cachedOpenAiKey: string | null = null;
+let openAiKeyPromise: Promise<string> | null = null;
 
 const DEFAULT_SETTINGS: LlmSettings = {
   provider: "ollama",
@@ -45,6 +47,15 @@ function normalizeSettings(raw: Partial<LlmSettings> | null): LlmSettings {
   };
 }
 
+export function isTauriApp(): boolean {
+  return typeof window !== "undefined" && "__TAURI__" in window;
+}
+
+async function invokeTauri<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/tauri");
+  return invoke<T>(command, args);
+}
+
 export function getDefaultSettings(): LlmSettings {
   return { ...DEFAULT_SETTINGS };
 }
@@ -63,22 +74,72 @@ export function loadSettings(): LlmSettings {
   }
 }
 
-export function saveSettings(settings: LlmSettings): void {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeSettings(settings);
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+export async function loadOpenAiKey(): Promise<string> {
+  if (typeof window === "undefined") return "";
+  if (!isTauriApp()) {
+    return normalizeText(loadSettings().openaiApiKey);
+  }
+  if (cachedOpenAiKey !== null) return cachedOpenAiKey;
+  if (openAiKeyPromise) return openAiKeyPromise;
+  openAiKeyPromise = (async () => {
+    try {
+      const value = await invokeTauri<string | null>("get_openai_api_key");
+      cachedOpenAiKey = normalizeText(value);
+    } catch (err) {
+      console.warn("Failed to load OpenAI key from keychain.", err);
+      cachedOpenAiKey = "";
+    } finally {
+      openAiKeyPromise = null;
+    }
+    return cachedOpenAiKey ?? "";
+  })();
+  return openAiKeyPromise;
 }
 
-export function buildLlmRequestConfig(overrides: Partial<LlmRequestConfig> = {}): LlmRequestConfig {
+export async function saveOpenAiKey(value: string): Promise<void> {
+  const normalized = normalizeText(value);
+  cachedOpenAiKey = normalized;
+  if (!isTauriApp()) return;
+  if (normalized) {
+    await invokeTauri("set_openai_api_key", { apiKey: normalized });
+  } else {
+    await invokeTauri("clear_openai_api_key");
+  }
+}
+
+export async function loadSettingsWithSecrets(): Promise<LlmSettings> {
+  const base = loadSettings();
+  if (!isTauriApp()) return base;
+  const openaiApiKey = await loadOpenAiKey();
+  return { ...base, openaiApiKey };
+}
+
+export async function saveSettings(settings: LlmSettings): Promise<void> {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeSettings(settings);
+  if (isTauriApp()) {
+    const { openaiApiKey, ...rest } = normalized;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, openaiApiKey: "" }));
+    await saveOpenAiKey(openaiApiKey);
+  } else {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  }
+}
+
+export async function buildLlmRequestConfig(overrides: Partial<LlmRequestConfig> = {}): Promise<LlmRequestConfig> {
   const settings = loadSettings();
   const provider = sanitizeProvider(overrides.llm_provider ?? settings.provider);
   const llmModel =
     normalizeText(overrides.llm_model) ||
     (provider === "openai" ? settings.openaiModel : settings.ollamaModel);
-  const openaiKey =
-    provider === "openai"
-      ? normalizeText(overrides.openai_api_key ?? settings.openaiApiKey)
-      : "";
+  let openaiKey = "";
+  if (provider === "openai") {
+    if (typeof overrides.openai_api_key !== "undefined") {
+      openaiKey = normalizeText(overrides.openai_api_key);
+    } else {
+      openaiKey = normalizeText(await loadOpenAiKey()) || normalizeText(settings.openaiApiKey);
+    }
+  }
   const ollamaHost =
     provider === "ollama"
       ? normalizeText(overrides.ollama_host ?? settings.ollamaHost)

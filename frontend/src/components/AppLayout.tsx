@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
+import { FirstRunSetup } from "@/components/FirstRunSetup";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -79,6 +80,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       <main className="flex-1 bg-slate-950/70">
         {children}
       </main>
+      <FirstRunSetup />
     </div>
   );
 }

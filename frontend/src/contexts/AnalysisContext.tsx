@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame } from '@/lib/api';
-import { buildLlmRequestConfig } from '@/lib/settings';
+import { buildLlmRequestConfig, LlmProvider } from '@/lib/settings';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
 interface AnalysisTask {
@@ -16,7 +16,7 @@ interface AnalysisTask {
 interface StartAnalysisOptions {
   refresh?: boolean;
   persist?: boolean;
-  llm_provider?: string;
+  llm_provider?: LlmProvider;
   llm_model?: string;
   openai_api_key?: string | null;
   ollama_host?: string | null;
@@ -126,7 +126,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const appId = game.appid;
     const persist = options.persist ?? true;
     const refresh = options.refresh ?? false;
-    const llmConfig = buildLlmRequestConfig({
+    const llmConfig = await buildLlmRequestConfig({
       llm_provider: options.llm_provider,
       llm_model: options.llm_model,
       openai_api_key: options.openai_api_key,

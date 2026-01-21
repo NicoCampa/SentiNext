@@ -8,7 +8,9 @@ import {
   LlmSettings,
   getDefaultSettings,
   loadSettings,
+  loadSettingsWithSecrets,
   saveSettings,
+  isTauriApp,
 } from "@/lib/settings";
 
 export default function SettingsPage() {
@@ -18,7 +20,20 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setForm(loadSettings());
+    let active = true;
+    async function load() {
+      const base = loadSettings();
+      if (isTauriApp()) {
+        const withSecrets = await loadSettingsWithSecrets();
+        if (active) setForm(withSecrets);
+      } else {
+        setForm(base);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -27,10 +42,14 @@ export default function SettingsPage() {
     return () => clearTimeout(timer);
   }, [saved]);
 
-  function handleSave() {
+  async function handleSave() {
     setError(null);
     try {
-      saveSettings(form);
+      if (form.provider === "openai" && !form.openaiApiKey.trim()) {
+        setError("Add an OpenAI key to use this provider.");
+        return;
+      }
+      await saveSettings(form);
       setSaved(true);
     } catch (err) {
       console.error("Failed to save settings", err);
@@ -46,6 +65,9 @@ export default function SettingsPage() {
           <p className="text-sm text-slate-400">
             Configure your LLM provider and API credentials (stored locally on this device).
           </p>
+          {isTauriApp() ? (
+            <p className="text-xs text-slate-500">OpenAI keys are stored in the OS keychain.</p>
+          ) : null}
         </div>
 
         <Card variant="glass" className="space-y-4 p-6">

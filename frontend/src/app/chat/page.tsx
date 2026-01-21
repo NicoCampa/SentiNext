@@ -71,7 +71,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: "user", content: prompt }]);
 
     try {
-      const llmConfig = buildLlmRequestConfig();
+      const llmConfig = await buildLlmRequestConfig();
       const response: ChatResponse = await chatWithInsights({
         app_id: selectedGame.app_id,
         question: prompt,
@@ -264,7 +264,7 @@ export default function ChatPage() {
                                 <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
                                   {formatSubcategory(citation.subcategory)} · review {citation.review_id}
                                 </p>
-                                <p className="mt-1 text-slate-200">"{citation.snippet}"</p>
+                                <p className="mt-1 text-slate-200">&quot;{citation.snippet}&quot;</p>
                                 <p className="mt-1 text-[11px] text-slate-500">Click to view full review</p>
                               </button>
                             ))}
