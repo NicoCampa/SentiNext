@@ -49,8 +49,8 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install wixtoolset -y
 
-      - name: Build (macOS)
-        if: runner.os == 'macOS'
+      - name: Build (macOS, signed)
+        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -62,13 +62,25 @@ jobs:
           tauri build --bundles app,dmg
           ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos.zip"
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
+      - name: Build (macOS, unsigned)
+        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE == ''
+        run: |
+          tauri build --bundles app,dmg
+          ditto -c -k "src-tauri/target/release/bundle/macos/SentiNext.app" "SentiNext-macos.zip"
+
+      - name: Build (Windows, signed)
+        if: runner.os == 'Windows' && secrets.WINDOWS_CERTIFICATE != ''
         shell: bash
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          tauri build --bundles msi,nsis
+
+      - name: Build (Windows, unsigned)
+        if: runner.os == 'Windows' && secrets.WINDOWS_CERTIFICATE == ''
+        shell: bash
         run: |
           tauri build --bundles msi,nsis
 
