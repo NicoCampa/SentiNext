@@ -4,16 +4,17 @@ export default function SuccessPage() {
   return (
     <div className="container" style={{ maxWidth: 860 }}>
       <div className="callout">
-        <h1 className="calloutTitle">Payment received</h1>
+        <h1 className="calloutTitle">You are ready to launch</h1>
         <p className="calloutText">
-          We’re generating your report now. You’ll receive the PDF by email shortly—keep an eye on your inbox.
+          Download the desktop app and start exploring your local dashboard. If you already have it installed, open the
+          app and set your provider in Settings.
         </p>
         <div className="ctaRow" style={{ marginTop: 6 }}>
-          <Link href="/" className="btn btnPrimary">
-            Back to home →
+          <Link href="/download" className="btn btnPrimary">
+            Download the app →
           </Link>
-          <Link href="/report" className="btn">
-            Buy another report
+          <Link href="/" className="btn">
+            Back to home
           </Link>
         </div>
       </div>

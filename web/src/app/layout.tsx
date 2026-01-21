@@ -9,8 +9,8 @@ const display = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "SentiNext Reports",
-  description: "Pay €10 and receive a Steam review insights PDF report by email.",
+  title: "SentiNext Desktop",
+  description: "Local Steam review intelligence app for issues, requests, segmentation, and evidence-backed insights.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -25,8 +25,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 SentiNext
               </Link>
               <nav className="nav" aria-label="Primary">
-                <Link href="/report" className="btn btnSmall">
-                  Get a report →
+                <Link href="/download" className="btn btnSmall">
+                  Download app →
                 </Link>
               </nav>
             </div>
@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           <footer className="siteFooter">
             <div className="container">
-              SentiNext summarizes public Steam reviews and may contain noise. Not affiliated with Valve.
+              SentiNext analyzes public Steam reviews locally and may contain noise. Not affiliated with Valve.
             </div>
           </footer>
         </div>

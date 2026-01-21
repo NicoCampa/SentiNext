@@ -5,53 +5,45 @@ export default function HomePage() {
     <div className="container">
       <section className="hero">
         <div className="heroIntro stagger">
-          <div className="pill pillPrimary">Steam review insights · PDF delivered to your inbox</div>
+          <div className="pill pillPrimary">Local desktop app · bring your own API key</div>
           <h1 className="headline heroTitle">
-            Turn raw player feedback
+            Turn Steam reviews into a <span className="gradientText">living dashboard</span>.
             <br />
-            into a <span className="gradientText">clear, actionable report</span>.
+            Run it locally, act faster.
           </h1>
           <p className="subhead heroSubhead">
-            Paste a Steam app id, pay €10, and we send you a polished PDF that surfaces sentiment, top issues, feature
-            requests, and what to fix first. No dashboards, no noise - just the signal.
+            SentiNext is a downloadable app that analyzes Steam reviews and highlights issues, feature requests,
+            segmentation, and evidence-backed insights. Your data stays on your machine, and you pick the model provider.
           </p>
           <div className="ctaRow heroActions">
-            <Link href="/report" className="btn btnPrimary">
-              Buy report (€10) →
+            <Link href="/download" className="btn btnPrimary">
+              Download app →
             </Link>
-            <a className="btn" href="https://store.steampowered.com" target="_blank" rel="noreferrer">
-              Find a Steam app id
+            <a className="btn" href="#dashboard">
+              See dashboard tour
             </a>
           </div>
           <div className="chipRow heroMeta">
-            <span className="pill pillGhost">Covers ~100 recent reviews</span>
-            <span className="pill pillGhost">One-time purchase</span>
-            <span className="pill pillGhost">Stripe checkout</span>
-            <span className="pill pillGhost">Delivered by email</span>
+            <span className="pill pillGhost">Ollama + OpenAI</span>
+            <span className="pill pillGhost">Issues + requests tracking</span>
+            <span className="pill pillGhost">Evidence per tag</span>
+            <span className="pill pillGhost">Compare games</span>
           </div>
         </div>
 
         <div className="heroVisual reveal">
           <div className="previewCard">
             <div className="previewHeader">
-              <span className="tag">Report preview</span>
-              <span className="previewMeta">PDF · 9 pages</span>
+              <span className="tag">Dashboard preview</span>
+              <span className="previewMeta">Local insights</span>
             </div>
             <div className="previewSection">
-              <div className="previewTitle">Sentiment split</div>
-              <div className="sentimentBar">
-                <span className="sentimentPositive">62% positive</span>
-                <span className="sentimentNeutral">23% neutral</span>
-                <span className="sentimentNegative">15% negative</span>
-              </div>
-            </div>
-            <div className="previewSection">
-              <div className="previewTitle">Top issues</div>
+              <div className="previewTitle">Issue hotspots</div>
               <div className="previewList">
                 {[
-                  ["Matchmaking drops", "High"],
-                  ["UI friction in menus", "Medium"],
-                  ["Onboarding clarity", "Medium"],
+                  ["Technical/performance", "24 mentions"],
+                  ["UI/UX/menus", "18 mentions"],
+                  ["Onboarding/clarity", "12 mentions"],
                 ].map(([issue, level]) => (
                   <div key={issue} className="previewItem">
                     <span>{issue}</span>
@@ -63,7 +55,7 @@ export default function HomePage() {
             <div className="previewSection">
               <div className="previewTitle">Feature requests</div>
               <div className="previewList">
-                {["Co-op variant", "Controller support", "Photo mode"].map((feature) => (
+                {["Controller support", "Photo mode", "More difficulty options"].map((feature) => (
                   <div key={feature} className="previewItem">
                     <span>{feature}</span>
                     <span className="previewScore">Top ask</span>
@@ -71,17 +63,33 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-            <div className="previewCallout">Priority fix: matchmaking reliability and retry logic.</div>
+            <div className="previewSection">
+              <div className="previewTitle">User segments</div>
+              <div className="previewList">
+                {[
+                  ["Newcomers", "Onboarding friction"],
+                  ["Veterans", "Balance concerns"],
+                ].map(([segment, insight]) => (
+                  <div key={segment} className="previewItem">
+                    <span>{segment}</span>
+                    <span className="previewScore">{insight}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="previewCallout">
+              Priority action: stabilize performance spikes and simplify early missions.
+            </div>
           </div>
         </div>
       </section>
 
       <div className="statGrid stagger sectionTight">
         {[
-          ["4 minutes", "Typical checkout to delivery"],
-          ["100+", "Recent reviews analyzed"],
-          ["€10", "One-time, no subscription"],
-          ["Email", "PDF delivered to your inbox"],
+          ["Local-first", "Runs on your machine, keeps data private"],
+          ["Bring your key", "Use Ollama or OpenAI"],
+          ["Issue tracker", "Issues + requests by subcategory"],
+          ["Evidence", "Every tag has quotes"],
         ].map(([n, label]) => (
           <div key={n} className="stat">
             <div className="statNumber">{n}</div>
@@ -90,16 +98,18 @@ export default function HomePage() {
         ))}
       </div>
 
-      <div className="section">
+      <div className="section" id="dashboard">
         <div className="sectionHeader">
-          <span className="tag">What you get</span>
+          <span className="tag">Dashboard tour</span>
         </div>
         <div className="gridColumns stagger">
           {[
-            ["Key themes", "Positive and negative drivers summarized so you know the real mood."],
-            ["Top issues", "Concrete pain points with severity cues and what to fix first."],
-            ["Feature requests", "Most requested improvements and ideas, organized by frequency."],
-            ["Opportunities", "Quick wins that boost reviews and reduce churn risk."],
+            ["Category heatmap", "See recommendation rates and volume by category and subcategory."],
+            ["Issue + request tracking", "Split complaints and requests, with evidence and counts."],
+            ["Userbase segmentation", "Surface pain points for newcomers, veterans, and playtime segments."],
+            ["Chat with insights", "Ask questions and jump to the cited reviews."],
+            ["Filters everywhere", "Slice by sentiment, helpful votes, and recency across the dashboard."],
+            ["Compare games", "Benchmark two titles with side-by-side metrics."],
           ].map(([title, desc]) => (
             <div key={title} className="panel">
               <div className="panelTitle">{title}</div>
@@ -115,10 +125,10 @@ export default function HomePage() {
         </div>
         <div className="timeline stagger">
           {[
-            ["Enter a Steam app id and your email."],
-            ["Pay securely with Stripe checkout."],
-            ["We analyze recent reviews and build the PDF."],
-            ["You get the report by email and a download link."],
+            ["Download the desktop app."],
+            ["Choose Ollama or OpenAI and paste your API key."],
+            ["Analyze a Steam game and build the local dashboard."],
+            ["Review issues, requests, and evidence. Export what you need."],
           ].map(([text], index) => (
             <div key={text} className="timelineStep">
               <div className="stepNumber">{index + 1}</div>
@@ -131,51 +141,37 @@ export default function HomePage() {
       <div className="section gridColumns">
         <div className="panel">
           <div className="sectionHeader">
-            <span className="tag">Sample excerpt</span>
+            <span className="tag">Why local?</span>
           </div>
           <div className="panelDesc" style={{ lineHeight: 1.6 }}>
-            <strong>Sentiment is mixed-positive</strong>. Players love the core loop and visuals, but highlight rough
-            edges: matchmaking delays, UI friction, and unclear onboarding. Top feature asks: a cooperative mode variant
-            and better controller support. Priority fixes: matchmaking reliability and tooltip clarity.
+            Keep your data and keys on your machine. Run offline after reviews are fetched, and keep full control over
+            storage and export.
           </div>
         </div>
 
         <div className="panel">
           <div className="sectionHeader">
-            <span className="tag">Inside the PDF</span>
+            <span className="tag">Built for action</span>
           </div>
           <ul className="list">
-            <li>Executive summary and sentiment trend</li>
-            <li>Top 5 issues with severity and recurrence</li>
-            <li>Most requested features, grouped by theme</li>
-            <li>Positive highlights to double down on</li>
+            <li>Evidence quotes per tag to validate insights</li>
+            <li>Issue vs request separation for clear prioritization</li>
+            <li>Segments to tailor fixes by player group</li>
+            <li>Chat to answer product questions fast</li>
           </ul>
-        </div>
-      </div>
-
-      <div className="section gridColumns">
-        <div className="panel">
-          <div className="panelTitle">Payments & delivery</div>
-          <div className="panelDesc">Stripe checkout. We do not store cards. PDF is emailed to you automatically.</div>
-        </div>
-        <div className="panel">
-          <div className="panelTitle">Support</div>
-          <div className="panelDesc">
-            If something looks off in your report, reply to the email and we will regenerate it quickly.
-          </div>
         </div>
       </div>
 
       <div className="ctaPanel">
         <div className="sectionHeader" style={{ marginBottom: 8, color: "var(--text)" }}>
-          Ready to see your players clearly?
+          Ready to run SentiNext locally?
         </div>
         <div className="ctaRow" style={{ marginTop: 6 }}>
-          <Link href="/report" className="btn btnPrimary">
-            Buy a report (€10) →
+          <Link href="/download" className="btn btnPrimary">
+            Download the app →
           </Link>
-          <a className="btn" href="https://store.steampowered.com" target="_blank" rel="noreferrer">
-            Find a Steam app id
+          <a className="btn" href="https://github.com/NicoCampa/SentiNext" target="_blank" rel="noreferrer">
+            View on GitHub
           </a>
         </div>
       </div>

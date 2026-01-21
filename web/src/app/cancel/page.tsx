@@ -4,11 +4,11 @@ export default function CancelPage() {
   return (
     <div className="container" style={{ maxWidth: 860 }}>
       <div className="callout">
-        <h1 className="calloutTitle">Checkout canceled</h1>
-        <p className="calloutText">No payment was made. You can try again whenever you’re ready.</p>
+        <h1 className="calloutTitle">Download paused</h1>
+        <p className="calloutText">No worries. You can download the app whenever you are ready.</p>
         <div className="ctaRow" style={{ marginTop: 6 }}>
-          <Link href="/report" className="btn btnPrimary">
-            Try again →
+          <Link href="/download" className="btn btnPrimary">
+            Download the app →
           </Link>
           <Link href="/" className="btn">
             Back to home
