@@ -22,6 +22,7 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [storagePaths, setStoragePaths] = useState<StoragePaths | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -35,6 +36,29 @@ export default function SettingsPage() {
       }
     }
     load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!isTauriApp()) {
+      setAppVersion(null);
+      return () => {
+        active = false;
+      };
+    }
+    (async () => {
+      try {
+        const { getVersion } = await import("@tauri-apps/api/app");
+        const version = await getVersion();
+        if (active) setAppVersion(version);
+      } catch (err) {
+        console.error("Failed to read app version.", err);
+        if (active) setAppVersion("unknown");
+      }
+    })();
     return () => {
       active = false;
     };
@@ -92,13 +116,21 @@ export default function SettingsPage() {
   return (
     <AppLayout>
       <div className="mx-auto max-w-4xl space-y-6 px-6 py-8">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Settings</h1>
-          <p className="text-sm text-slate-400">
-            Configure your LLM provider and API credentials (stored locally on this device).
-          </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">Settings</h1>
+            <p className="text-sm text-slate-400">
+              Configure your LLM provider and API credentials (stored locally on this device).
+            </p>
+            {isTauriApp() ? (
+              <p className="text-xs text-slate-500">OpenAI keys are stored in the OS keychain.</p>
+            ) : null}
+          </div>
           {isTauriApp() ? (
-            <p className="text-xs text-slate-500">OpenAI keys are stored in the OS keychain.</p>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-right">
+              <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">App version</p>
+              <p className="mt-1 font-mono text-xs text-slate-200">{appVersion ?? "Loading..."}</p>
+            </div>
           ) : null}
         </div>
 
