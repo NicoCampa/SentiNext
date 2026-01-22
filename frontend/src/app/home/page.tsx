@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
+import { isTauriApp } from "@/lib/settings";
 import { formatSavedLabel } from "@/utils/format";
 import { getRecommendationBackground, getRecommendationColor } from "@/utils/colors";
 
@@ -105,21 +106,41 @@ export default function HomePage() {
             <Card variant="glass" className="p-8">
               <div className="text-center space-y-4">
                 <div className="text-5xl">⚠️</div>
-                <h3 className="text-xl font-semibold text-white">Backend Not Running</h3>
-                <p className="text-slate-300 max-w-md mx-auto">
-                  The Python backend server is not responding. Please start it in a terminal:
-                </p>
-                <div className="bg-slate-950/50 border border-slate-700 rounded-lg p-4 font-mono text-sm text-left text-slate-300 max-w-xl mx-auto">
-                  <div className="text-slate-500"># In your project directory:</div>
-                  <div className="text-cyan-400">cd /path/to/SentiNext/backend</div>
-                  <div className="text-cyan-400 mt-1">PYTHONPATH=. uvicorn backend.main:app --reload --port 8000 --app-dir .</div>
-                </div>
+                <h3 className="text-xl font-semibold text-white">
+                  {isTauriApp() ? "Local Service Not Responding" : "Backend Not Running"}
+                </h3>
+                {isTauriApp() ? (
+                  <div className="space-y-2">
+                    <p className="text-slate-300 max-w-md mx-auto">
+                      SentiNext could not reach its local analysis service. Please restart the app and try again.
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-xl mx-auto">
+                      If it keeps happening, open <span className="text-slate-300">Settings → Local Data</span> and share the paths with support.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-slate-300 max-w-md mx-auto">
+                      The Python backend server is not responding. Please start it in a terminal:
+                    </p>
+                    <div className="bg-slate-950/50 border border-slate-700 rounded-lg p-4 font-mono text-sm text-left text-slate-300 max-w-xl mx-auto">
+                      <div className="text-slate-500"># In your project directory:</div>
+                      <div className="text-cyan-400">cd /path/to/SentiNext/backend</div>
+                      <div className="text-cyan-400 mt-1">PYTHONPATH=. uvicorn backend.main:app --reload --port 8000 --app-dir .</div>
+                    </div>
+                  </>
+                )}
                 <button
                   onClick={() => window.location.reload()}
                   className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition"
                 >
                   Retry Connection
                 </button>
+                {isTauriApp() ? (
+                  <Link href="/settings" className="block text-sm text-sky-400 hover:text-sky-300">
+                    Open Settings →
+                  </Link>
+                ) : null}
               </div>
             </Card>
           ) : loading ? (
