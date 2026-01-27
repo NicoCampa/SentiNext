@@ -21,6 +21,14 @@ frontend/out/
 .DS_Store
 **/.DS_Store
 
+# Certificates / signing keys (never commit)
+*.cer
+*.crt
+*.csr
+*.p12
+*.pfx
+*.p8
+
 # Python
 __pycache__/
 *.pyc
