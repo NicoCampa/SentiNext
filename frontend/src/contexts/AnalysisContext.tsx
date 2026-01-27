@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame } from '@/lib/api';
 import { buildLlmRequestConfig, LlmProvider } from '@/lib/settings';
+import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
 interface AnalysisTask {
@@ -16,6 +17,11 @@ interface AnalysisTask {
 interface StartAnalysisOptions {
   refresh?: boolean;
   persist?: boolean;
+  review_count?: number;
+  language?: string;
+  filter?: string;
+  day_range?: number | null;
+  refresh_days?: number | null;
   llm_provider?: LlmProvider;
   llm_model?: string;
   openai_api_key?: string | null;
@@ -126,6 +132,11 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const appId = game.appid;
     const persist = options.persist ?? true;
     const refresh = options.refresh ?? false;
+    const reviewCount = options.review_count ?? loadDefaultAnalysisReviewCount();
+    const language = options.language ?? "english";
+    const filter = options.filter ?? "recent";
+    const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
+    const dayRange = options.day_range ?? undefined;
     const llmConfig = await buildLlmRequestConfig({
       llm_provider: options.llm_provider,
       llm_model: options.llm_model,
@@ -154,14 +165,16 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       });
 
     try {
+      saveDefaultAnalysisReviewCount(reviewCount);
       const result = await analyzeGame({
         app_id: appId,
-        review_count: 100,
-        language: 'english',
-        filter: 'recent',
+        review_count: reviewCount,
+        language,
+        filter,
+        day_range: dayRange,
         persist,
         refresh,
-        refresh_days: refresh ? 30 : undefined,
+        refresh_days: refreshDays,
         llm_provider: llmConfig.llm_provider,
         llm_model: llmConfig.llm_model,
         openai_api_key: llmConfig.openai_api_key,

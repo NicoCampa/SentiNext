@@ -3,9 +3,10 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-import { searchGames, fetchStarredGames } from "@/lib/api";
+import { searchGames, fetchStarredGames, estimateAnalysis } from "@/lib/api";
 import type {
   AnalyzeResponse,
+  AnalyzeEstimateResponse,
   CategoryRecommendationRate,
   PlayerSegments,
   ProgressStatus,
@@ -20,9 +21,19 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { useAnalysis } from "@/contexts/AnalysisContext";
+import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
+import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
+import { buildLlmRequestConfig } from "@/lib/settings";
+import {
+  ANALYSIS_REVIEW_COUNT_OPTIONS,
+  loadDefaultAnalysisReviewCount,
+  parseAnalysisReviewCount,
+  saveDefaultAnalysisReviewCount,
+} from "@/lib/analysisDefaults";
 import { getRecommendationColor } from "@/utils/colors";
 
-const REVIEW_COUNT = 100;
+const EMPTY_REVIEWS: ReviewRow[] = [];
 
 const DEFAULT_THEME: ThemeDefinition = {
   name: "Twilight",
@@ -77,6 +88,7 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const gameParam = searchParams.get("game");
+  const reviewsParam = searchParams.get("reviews") || searchParams.get("review_count");
   const { startAnalysis, getTask } = useAnalysis();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,10 +100,27 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [loadingStarred, setLoadingStarred] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
+  const [reviewCount, setReviewCount] = useState<number>(() => loadDefaultAnalysisReviewCount());
+  const [language, setLanguage] = useState<string>("english");
+  const [fetchFilter, setFetchFilter] = useState<string>("recent");
+  const [refreshDays, setRefreshDays] = useState<number>(30);
+  const [estimate, setEstimate] = useState<AnalyzeEstimateResponse | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
 
   const currentTask = selectedGame ? getTask(selectedGame.appid) : undefined;
   const isAnalyzing = currentTask?.status === "analyzing";
   const progress = currentTask?.progress ?? null;
+
+  useEffect(() => {
+    const parsed = parseAnalysisReviewCount(reviewsParam);
+    if (parsed === null) return;
+    setReviewCount(parsed);
+  }, [reviewsParam]);
+
+  useEffect(() => {
+    saveDefaultAnalysisReviewCount(reviewCount);
+  }, [reviewCount]);
 
   useEffect(() => {
     if (!gameParam) return;
@@ -154,14 +183,57 @@ function DashboardContent() {
     setAnalysis(null);
     setError(null);
     setForceRefresh(false);
+    setEstimate(null);
+    setEstimateError(null);
+  }
+
+  useEffect(() => {
+    setEstimate(null);
+    setEstimateError(null);
+  }, [reviewCount, language, fetchFilter, forceRefresh, refreshDays]);
+
+  async function handleEstimate() {
+    if (!selectedGame) return;
+    setEstimating(true);
+    setEstimateError(null);
+    try {
+      const llmConfig = await buildLlmRequestConfig();
+      const result = await estimateAnalysis({
+        app_id: selectedGame.appid,
+        review_count: reviewCount,
+        language,
+        filter: fetchFilter,
+        persist: true,
+        refresh: forceRefresh,
+        refresh_days: forceRefresh ? refreshDays : undefined,
+        llm_provider: llmConfig.llm_provider,
+        llm_model: llmConfig.llm_model,
+      });
+      setEstimate(result);
+    } catch (err) {
+      console.error("Estimate failed", err);
+      setEstimateError((err as Error).message || "Failed to estimate analysis.");
+    } finally {
+      setEstimating(false);
+    }
   }
 
   async function handleAnalyze() {
     if (!selectedGame) return;
     setError(null);
     try {
+      if (estimate && estimate.llm_reviews >= 200) {
+        const ok = confirm(
+          `This run is estimated to make ${estimate.llm_reviews} new LLM calls (plus ${estimate.rules_reviews} rules).\n\nContinue?`,
+        );
+        if (!ok) return;
+      }
       await startAnalysis(selectedGame, {
         refresh: forceRefresh,
+        review_count: reviewCount,
+        language,
+        filter: fetchFilter,
+        refresh_days: forceRefresh ? refreshDays : undefined,
       });
     } catch (err) {
       setError((err as Error).message || "Failed to start analysis");
@@ -271,7 +343,7 @@ function DashboardContent() {
                   <h2 className="text-lg font-bold text-white">{selectedGame.name}</h2>
                   {selectedGame.price && <p className="text-sm text-slate-400">{selectedGame.price}</p>}
                   <p className="mt-3 text-sm text-slate-400">
-                    Run an analysis to classify up to {REVIEW_COUNT.toLocaleString()} recent Steam reviews.
+                    Run an analysis to classify up to {reviewCount.toLocaleString()} Steam reviews.
                   </p>
                 </div>
                 <label className="flex items-center gap-2 text-sm text-slate-300">
@@ -283,8 +355,88 @@ function DashboardContent() {
                   />
                   Refresh from Steam (fetch new reviews)
                 </label>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="flex flex-col gap-2 text-sm text-slate-300">
+                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Reviews</span>
+	                    <select
+	                      value={reviewCount}
+	                      onChange={(event) => setReviewCount(Number(event.target.value))}
+	                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+	                    >
+	                      {ANALYSIS_REVIEW_COUNT_OPTIONS.map((value) => (
+	                        <option key={value} value={value}>
+	                          {value.toLocaleString()}
+	                        </option>
+	                      ))}
+	                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-2 text-sm text-slate-300">
+                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Language</span>
+                    <input
+                      value={language}
+                      onChange={(event) => setLanguage(event.target.value)}
+                      placeholder="english"
+                      list="sentinext-analyze-language"
+                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+                    />
+                    <datalist id="sentinext-analyze-language">
+                      {["english", "german", "french", "spanish", "italian", "polish", "russian", "japanese", "koreana", "schinese", "tchinese"].map(
+                        (item) => (
+                          <option key={item} value={item} />
+                        ),
+                      )}
+                    </datalist>
+                  </label>
+
+                  <label className="flex flex-col gap-2 text-sm text-slate-300">
+                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Steam filter</span>
+                    <select
+                      value={fetchFilter}
+                      onChange={(event) => setFetchFilter(event.target.value)}
+                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+                    >
+                      <option value="recent">Recent</option>
+                      <option value="updated">Recently updated</option>
+                      <option value="best">Most helpful</option>
+                      <option value="all">All</option>
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-2 text-sm text-slate-300">
+                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Fetch window</span>
+                    <select
+                      value={refreshDays}
+                      onChange={(event) => setRefreshDays(Number(event.target.value))}
+                      disabled={!forceRefresh}
+                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 disabled:opacity-40 focus:border-sky-500 focus:outline-none"
+                    >
+                      {[7, 30, 90, 365].map((value) => (
+                        <option key={value} value={value}>
+                          Last {value} days
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button onClick={handleEstimate} disabled={estimating || isAnalyzing} variant="secondary">
+                    {estimating ? "Estimating..." : "Estimate"}
+                  </Button>
+                  {estimate ? (
+                    <p className="text-xs text-slate-400">
+                      LLM calls: <span className="text-slate-200">{estimate.llm_reviews}</span> · cached:{" "}
+                      <span className="text-slate-200">{estimate.cached_reviews}</span> · rules:{" "}
+                      <span className="text-slate-200">{estimate.rules_reviews}</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500">Estimate shows how many reviews need new LLM calls vs cache/rules.</p>
+                  )}
+                </div>
+                {estimateError ? <p className="text-sm text-rose-400">{estimateError}</p> : null}
                 <Button onClick={handleAnalyze} disabled={isAnalyzing} variant="primary" size="lg" className="w-full md:w-auto">
-                  {isAnalyzing ? "Analyzing..." : `Analyze ${REVIEW_COUNT} Reviews`}
+                  {isAnalyzing ? "Analyzing..." : `Analyze ${reviewCount.toLocaleString()} Reviews`}
                 </Button>
                 {isAnalyzing && progress ? <ProgressPill progress={progress} /> : null}
               </div>
@@ -308,6 +460,18 @@ function DashboardContent() {
             onToggleRefresh={setForceRefresh}
             isAnalyzing={isAnalyzing}
             progress={progress}
+            reviewCount={reviewCount}
+            onReviewCountChange={setReviewCount}
+            language={language}
+            onLanguageChange={setLanguage}
+            fetchFilter={fetchFilter}
+            onFetchFilterChange={setFetchFilter}
+            refreshDays={refreshDays}
+            onRefreshDaysChange={setRefreshDays}
+            estimate={estimate}
+            estimating={estimating}
+            estimateError={estimateError}
+            onEstimate={handleEstimate}
           />
         )}
       </div>
@@ -340,6 +504,18 @@ function AnalysisResults({
   onToggleRefresh,
   isAnalyzing,
   progress,
+  reviewCount,
+  onReviewCountChange,
+  language,
+  onLanguageChange,
+  fetchFilter,
+  onFetchFilterChange,
+  refreshDays,
+  onRefreshDaysChange,
+  estimate,
+  estimating,
+  estimateError,
+  onEstimate,
 }: {
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
@@ -348,68 +524,50 @@ function AnalysisResults({
   onToggleRefresh: (value: boolean) => void;
   isAnalyzing: boolean;
   progress: ProgressStatus | null;
+  reviewCount: number;
+  onReviewCountChange: (value: number) => void;
+  language: string;
+  onLanguageChange: (value: string) => void;
+  fetchFilter: string;
+  onFetchFilterChange: (value: string) => void;
+  refreshDays: number;
+  onRefreshDaysChange: (value: number) => void;
+  estimate: AnalyzeEstimateResponse | null;
+  estimating: boolean;
+  estimateError: string | null;
+  onEstimate: () => void;
 }) {
   const router = useRouter();
+  const { filters: globalFilters, filtersActive: globalFiltersActive, resetFilters: resetGlobalFilters } = useGlobalFilters();
   const insights = analysis.insights ?? null;
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => new Set());
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set());
-  const [reviewSentimentFilter, setReviewSentimentFilter] = useState<"all" | "positive" | "negative">("all");
-  const [reviewHelpfulFilter, setReviewHelpfulFilter] = useState<0 | 10 | 25 | 50>(0);
-  const [reviewDateFilter, setReviewDateFilter] = useState<"all" | "30d" | "90d" | "365d">("all");
   const [reviewQuery, setReviewQuery] = useState("");
   const resetFilters = () => {
-    setReviewSentimentFilter("all");
-    setReviewHelpfulFilter(0);
-    setReviewDateFilter("all");
+    resetGlobalFilters();
     setReviewQuery("");
   };
 
   const categoryRates = insights?.category_recommendation_rates;
   const subcategoryInsights = insights?.subcategory_insights;
 
-  const reviewSample = analysis.reviews ?? [];
-  const filtersActive =
-    reviewSentimentFilter !== "all" ||
-    reviewHelpfulFilter > 0 ||
-    reviewDateFilter !== "all" ||
-    reviewQuery.trim().length > 0;
+  const reviewSample = analysis.reviews ?? EMPTY_REVIEWS;
+  const filtersActive = globalFiltersActive || reviewQuery.trim().length > 0;
+
+  const globallyFilteredReviews = useMemo(() => {
+    return applyGlobalReviewFilters(reviewSample, globalFilters);
+  }, [reviewSample, globalFilters]);
 
   const filteredReviewSample = useMemo(() => {
-    if (!reviewSample.length) return [];
-    const now = new Date();
     const query = reviewQuery.trim().toLowerCase();
-    return reviewSample.filter((review) => {
-      if (reviewSentimentFilter !== "all") {
-        const isPositive = Boolean(review.voted_up);
-        if (reviewSentimentFilter === "positive" && !isPositive) return false;
-        if (reviewSentimentFilter === "negative" && isPositive) return false;
-      }
-
-      if (reviewHelpfulFilter > 0) {
-        const helpful = Number(review.votes_up ?? 0);
-        if (helpful < reviewHelpfulFilter) return false;
-      }
-
-      if (reviewDateFilter !== "all") {
-        const raw = review.created_at;
-        if (!raw) return false;
-        const created = new Date(raw);
-        if (Number.isNaN(created.getTime())) return false;
-        const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
-        const maxDays = reviewDateFilter === "30d" ? 30 : reviewDateFilter === "90d" ? 90 : 365;
-        if (diffDays > maxDays) return false;
-      }
-
-      if (query) {
-        const text = (review.review ?? "").toLowerCase();
-        if (!text.includes(query)) return false;
-      }
-
-      return true;
+    if (!query) return globallyFilteredReviews;
+    return globallyFilteredReviews.filter((review) => {
+      const text = (review.review ?? "").toLowerCase();
+      return text.includes(query);
     });
-  }, [reviewDateFilter, reviewHelpfulFilter, reviewQuery, reviewSentimentFilter, reviewSample]);
+  }, [reviewQuery, globallyFilteredReviews]);
 
   const activeSubcategoryInsights = useMemo(() => {
     if (!filtersActive) return subcategoryInsights ?? [];
@@ -563,14 +721,103 @@ function AnalysisResults({
             </Button>
           </div>
         </div>
+
+        <details className="mt-5 rounded-2xl border border-white/10 bg-slate-900/20 p-4">
+          <summary className="cursor-pointer select-none text-xs uppercase tracking-[0.25em] text-slate-300">
+            Analysis settings
+          </summary>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Reviews</span>
+              <select
+                value={reviewCount}
+                onChange={(event) => onReviewCountChange(Number(event.target.value))}
+                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+              >
+                {[100, 200, 500, 1000, 2000].map((value) => (
+                  <option key={value} value={value}>
+                    {value.toLocaleString()}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Language</span>
+              <input
+                value={language}
+                onChange={(event) => onLanguageChange(event.target.value)}
+                placeholder="english"
+                list="sentinext-analyze-language"
+                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+              />
+              <datalist id="sentinext-analyze-language">
+                {["english", "german", "french", "spanish", "italian", "polish", "russian", "japanese", "koreana", "schinese", "tchinese"].map(
+                  (item) => (
+                    <option key={item} value={item} />
+                  ),
+                )}
+              </datalist>
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Steam filter</span>
+              <select
+                value={fetchFilter}
+                onChange={(event) => onFetchFilterChange(event.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+              >
+                <option value="recent">Recent</option>
+                <option value="updated">Recently updated</option>
+                <option value="best">Most helpful</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Fetch window</span>
+              <select
+                value={refreshDays}
+                onChange={(event) => onRefreshDaysChange(Number(event.target.value))}
+                disabled={!forceRefresh}
+                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 disabled:opacity-40 focus:border-sky-500 focus:outline-none"
+              >
+                {[7, 30, 90, 365].map((value) => (
+                  <option key={value} value={value}>
+                    Last {value} days
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button onClick={onEstimate} disabled={estimating || isAnalyzing} variant="secondary" size="sm">
+              {estimating ? "Estimating..." : "Estimate"}
+            </Button>
+            {estimate ? (
+              <p className="text-xs text-slate-400">
+                LLM calls: <span className="text-slate-200">{estimate.llm_reviews}</span> · cached:{" "}
+                <span className="text-slate-200">{estimate.cached_reviews}</span> · rules:{" "}
+                <span className="text-slate-200">{estimate.rules_reviews}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">Estimate shows LLM calls vs cache/rules.</p>
+            )}
+          </div>
+          {estimateError ? <p className="mt-2 text-sm text-rose-400">{estimateError}</p> : null}
+        </details>
+
         {isAnalyzing && progress ? <div className="mt-5"><ProgressPill progress={progress} /></div> : null}
       </Card>
 
       <Card variant="glass" className="p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-white">Filters</h3>
-            <p className="mt-1 text-sm text-slate-400">Apply to categories, issues/requests, and review drilldowns</p>
+            <h3 className="text-lg font-semibold text-white">Review Scope</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Global filters apply to categories, issues/requests, and segmentation. Search narrows review text only.
+            </p>
           </div>
           {filtersActive ? (
             <Button variant="secondary" onClick={resetFilters}>
@@ -579,44 +826,6 @@ function AnalysisResults({
           ) : null}
         </div>
         <div className="mt-4 flex flex-wrap items-end gap-4 text-xs text-slate-300">
-          <label className="flex flex-col gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Sentiment</span>
-            <select
-              value={reviewSentimentFilter}
-              onChange={(event) => setReviewSentimentFilter(event.target.value as "all" | "positive" | "negative")}
-              className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
-            >
-              <option value="all">All</option>
-              <option value="positive">Recommended</option>
-              <option value="negative">Not recommended</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Helpful</span>
-            <select
-              value={reviewHelpfulFilter}
-              onChange={(event) => setReviewHelpfulFilter(Number(event.target.value) as 0 | 10 | 25 | 50)}
-              className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
-            >
-              <option value={0}>All</option>
-              <option value={10}>10+</option>
-              <option value={25}>25+</option>
-              <option value={50}>50+</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Date</span>
-            <select
-              value={reviewDateFilter}
-              onChange={(event) => setReviewDateFilter(event.target.value as "all" | "30d" | "90d" | "365d")}
-              className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
-            >
-              <option value="all">All time</option>
-              <option value="30d">Last 30 days</option>
-              <option value="90d">Last 90 days</option>
-              <option value="365d">Last year</option>
-            </select>
-          </label>
           <label className="flex min-w-[220px] flex-1 flex-col gap-2">
             <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Search</span>
             <input
@@ -1060,165 +1269,6 @@ function listifyStrings(value: unknown): string[] {
   return value
     .map((item) => (typeof item === "string" ? item.trim() : ""))
     .filter((item) => item.length > 0);
-}
-
-function normalizeSnippets(value: unknown): string[] {
-  const rawItems = Array.isArray(value) ? value : value == null ? [] : [value];
-  const cleaned: string[] = [];
-  rawItems.forEach((item) => {
-    if (item === null || item === undefined) return;
-    const text = String(item).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-    if (!text) return;
-    const trimmed = text.slice(0, 160);
-    if (!cleaned.includes(trimmed)) {
-      cleaned.push(trimmed);
-    }
-  });
-  return cleaned;
-}
-
-function buildSubcategoryInsights(reviews: ReviewRow[], maxSnippets = 6): SubcategoryInsight[] {
-  const results = new Map<
-    string,
-    SubcategoryInsight & {
-      recommended: number;
-      not_recommended: number;
-      issue_snippets: string[];
-      request_snippets: string[];
-    }
-  >();
-
-  reviews.forEach((review) => {
-    const subcats = listifyStrings(review.llm_subcategories);
-    if (!subcats.length) return;
-    const issueSet = new Set(listifyStrings(review.llm_issue_subcategories));
-    const requestSet = new Set(listifyStrings(review.llm_request_subcategories));
-    const evidenceRaw = review.llm_subcategory_evidence;
-    const evidence =
-      evidenceRaw && typeof evidenceRaw === "object" && !Array.isArray(evidenceRaw)
-        ? (evidenceRaw as Record<string, unknown>)
-        : {};
-    const votedUp = review.voted_up;
-    const isPositive = votedUp === undefined || votedUp === null ? true : Boolean(votedUp);
-
-    subcats.forEach((subcat) => {
-      const key = subcat.trim();
-      if (!key) return;
-      const entry =
-        results.get(key) ??
-        ({
-          subcategory: key,
-          main_category: "",
-          sub_category: "",
-          count: 0,
-          recommended: 0,
-          not_recommended: 0,
-          issue_count: 0,
-          request_count: 0,
-          issue_snippets: [],
-          request_snippets: [],
-        } as SubcategoryInsight & {
-          recommended: number;
-          not_recommended: number;
-          issue_snippets: string[];
-          request_snippets: string[];
-        });
-
-      entry.count += 1;
-      if (isPositive) {
-        entry.recommended = (entry.recommended ?? 0) + 1;
-      } else {
-        entry.not_recommended = (entry.not_recommended ?? 0) + 1;
-      }
-      if (issueSet.has(key)) {
-        entry.issue_count += 1;
-      }
-      if (requestSet.has(key)) {
-        entry.request_count += 1;
-      }
-
-      const snippets = normalizeSnippets(evidence[key]);
-      if (snippets.length) {
-        if (issueSet.has(key)) {
-          for (const snippet of snippets) {
-            if (entry.issue_snippets.includes(snippet)) continue;
-            if (entry.issue_snippets.length >= maxSnippets) break;
-            entry.issue_snippets.push(snippet);
-          }
-        }
-        if (requestSet.has(key)) {
-          for (const snippet of snippets) {
-            if (entry.request_snippets.includes(snippet)) continue;
-            if (entry.request_snippets.length >= maxSnippets) break;
-            entry.request_snippets.push(snippet);
-          }
-        }
-      }
-
-      results.set(key, entry);
-    });
-  });
-
-  const insights = Array.from(results.values()).map((entry) => {
-    const raw = entry.subcategory ?? "";
-    const [mainRaw, subRaw] = raw.includes("/") ? raw.split("/", 2) : ["other", raw || entry.sub_category || "general"];
-    const count = Number(entry.count ?? 0);
-    const recommended = Number(entry.recommended ?? 0);
-    return {
-      ...entry,
-      main_category: mainRaw || "other",
-      sub_category: subRaw || "general",
-      recommendation_rate: count ? recommended / count : 0,
-      count,
-      recommended,
-      not_recommended: Number(entry.not_recommended ?? 0),
-    };
-  });
-
-  insights.sort((a, b) => Number(b.count ?? 0) - Number(a.count ?? 0));
-  return insights;
-}
-
-function buildCategoryRates(reviews: ReviewRow[]): Record<string, CategoryRecommendationRate> {
-  const buckets = new Map<string, { count: number; recommended: number; not_recommended: number }>();
-
-  reviews.forEach((review) => {
-    const subcats = listifyStrings(review.llm_subcategories);
-    if (!subcats.length) return;
-    const mainSet = new Set<string>();
-    subcats.forEach((subcat) => {
-      const raw = subcat.trim();
-      if (!raw) return;
-      const main = raw.includes("/") ? raw.split("/", 1)[0] : "other";
-      if (!main) return;
-      mainSet.add(main.toLowerCase());
-    });
-    if (mainSet.size === 0) return;
-    const votedUp = review.voted_up;
-    const isPositive = votedUp === undefined || votedUp === null ? true : Boolean(votedUp);
-
-    mainSet.forEach((main) => {
-      const entry = buckets.get(main) ?? { count: 0, recommended: 0, not_recommended: 0 };
-      entry.count += 1;
-      if (isPositive) {
-        entry.recommended += 1;
-      } else {
-        entry.not_recommended += 1;
-      }
-      buckets.set(main, entry);
-    });
-  });
-
-  const result: Record<string, CategoryRecommendationRate> = {};
-  buckets.forEach((entry, main) => {
-    result[main] = {
-      count: entry.count,
-      recommended: entry.recommended,
-      not_recommended: entry.not_recommended,
-      rate: entry.count ? entry.recommended / entry.count : 0,
-    };
-  });
-  return result;
 }
 
 function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {

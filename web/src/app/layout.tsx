@@ -1,32 +1,54 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Space_Grotesk } from "next/font/google";
+import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
 
 const display = Space_Grotesk({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  variable: "--font-display",
 });
 
 export const metadata: Metadata = {
-  title: "SentiNext Desktop",
-  description: "Local Steam review intelligence app for issues, requests, segmentation, and evidence-backed insights.",
+  title: {
+    default: "SentiNext",
+    template: "%s · SentiNext",
+  },
+  description:
+    "Local-first Steam review intelligence: actionable dashboard + chat with sources. Bring your own AI key (OpenAI or Ollama).",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={display.className}>
-        <div className="page">
+    <html lang="en" className={`${inter.variable} ${display.variable}`}>
+      <body>
+        <div className="shell">
           <header className="siteHeader">
-            <div className="container siteHeaderInner">
-              <Link href="/" className="logo" aria-label="SentiNext home">
-                <span className="logoMark" aria-hidden="true" />
-                SentiNext
+            <div className="container headerInner">
+              <Link href="/" className="brand" aria-label="SentiNext home">
+                <span className="brandMark" aria-hidden="true">
+                  <span className="brandMarkInner" />
+                </span>
+                <span className="brandName">SentiNext</span>
               </Link>
+
               <nav className="nav" aria-label="Primary">
-                <Link href="/download" className="btn btnSmall">
-                  Download app →
+                <Link href="/#features" className="navLink">
+                  Features
+                </Link>
+                <Link href="/#workflow" className="navLink">
+                  How it works
+                </Link>
+                <Link href="/docs" className="navLink">
+                  Docs
+                </Link>
+                <Link href="/download" className="btn btnPrimary btnSmall">
+                  Download
                 </Link>
               </nav>
             </div>
@@ -35,8 +57,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="siteMain">{children}</main>
 
           <footer className="siteFooter">
-            <div className="container">
-              SentiNext analyzes public Steam reviews locally and may contain noise. Not affiliated with Valve.
+            <div className="container footerInner">
+              <div className="footerMeta">
+                <p className="footerTitle">SentiNext</p>
+                <p className="footerText">
+                  Local-first Steam review intelligence for game teams. Data stays on your machine.
+                </p>
+              </div>
+              <div className="footerLinks">
+                <Link href="/download" className="footerLink">
+                  Download
+                </Link>
+                <Link href="/docs" className="footerLink">
+                  Docs
+                </Link>
+                <a
+                  className="footerLink"
+                  href="https://github.com/NicoCampa/SentiNext"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  GitHub
+                </a>
+              </div>
+            </div>
+            <div className="container footerFineprint">
+              SentiNext analyzes public Steam reviews. Not affiliated with Valve.{" "}
+              <span className="footerMuted">© {new Date().getFullYear()} SentiNext</span>
             </div>
           </footer>
         </div>

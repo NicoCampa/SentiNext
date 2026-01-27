@@ -7,6 +7,8 @@ import { StarredGameDTO } from "@/types";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 
 export default function ReviewsPage() {
   return (
@@ -19,6 +21,7 @@ export default function ReviewsPage() {
 function ReviewsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { filters, filtersActive } = useGlobalFilters();
 
   // All hooks must be called at the top level
   const [game, setGame] = useState<StarredGameDTO | null>(null);
@@ -56,6 +59,10 @@ function ReviewsContent() {
     loadGame();
   }, [appId, router]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [appId, filterType, filterValue, filters.sentiment, filters.dateRange, filters.minHelpful, filters.playtime, filters.language]);
+
   if (loading) {
     return (
       <AppLayout>
@@ -76,7 +83,8 @@ function ReviewsContent() {
   }
 
   // Filter reviews
-  const filteredReviews = (game.sample || []).filter((review: any) => {
+  const baseReviews = applyGlobalReviewFilters(game.sample || [], filters);
+  const filteredReviews = baseReviews.filter((review: any) => {
     if (filterType === "subcategory") {
       const subcats = Array.isArray(review.llm_subcategories) ? review.llm_subcategories : [];
       if (!subcats.includes(filterValue)) return false;
@@ -127,7 +135,11 @@ function ReviewsContent() {
           <div>
             <h1 className="text-3xl font-bold text-white">{game.name}</h1>
             <p className="mt-1 text-sm text-slate-400">
-              Filtered Reviews: {filteredReviews.length} matching
+              {filtersActive
+                ? `Global filters: ${baseReviews.length} / ${(game.sample || []).length} reviews`
+                : `${(game.sample || []).length} reviews`}
+              {" · "}
+              Showing: {filteredReviews.length}
             </p>
             {filterType === "subcategory" && (
               <p className="mt-1 text-sm text-sky-400">

@@ -1,5 +1,6 @@
 import {
   AnalyzeResponse,
+  AnalyzeEstimateResponse,
   ProgressStatus,
   SearchResult,
   StarredGameDTO,
@@ -7,6 +8,7 @@ import {
   AnalysisResultResponse,
   FeedbackItem,
   ChatResponse,
+  LogTailResponse,
   StoragePaths,
 } from "@/types";
 
@@ -104,11 +106,32 @@ export async function fetchAnalysisResult(appId: number): Promise<AnalysisResult
   return handleResponse<AnalysisResultResponse>(response);
 }
 
+export async function fetchHealth(): Promise<{ status: string; timestamp: string }> {
+  const response = await fetch(apiUrl("/health"), { cache: "no-store" });
+  return handleResponse<{ status: string; timestamp: string }>(response);
+}
+
 export async function fetchStoragePaths(): Promise<StoragePaths> {
   const response = await fetch(apiUrl("/settings/storage"), {
     cache: "no-store",
   });
   return handleResponse<StoragePaths>(response);
+}
+
+export async function fetchLogTail(bytes: number = 20000): Promise<LogTailResponse> {
+  const url = new URL(apiUrl("/logs/tail"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  url.searchParams.set("bytes", String(bytes));
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  return handleResponse<LogTailResponse>(response);
+}
+
+export async function estimateAnalysis(payload: AnalyzePayload): Promise<AnalyzeEstimateResponse> {
+  const response = await fetch(apiUrl("/analyze/estimate"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<AnalyzeEstimateResponse>(response);
 }
 
 export interface FeedbackOptions {
@@ -127,6 +150,8 @@ export interface ChatRequestPayload {
   sentiment?: "all" | "positive" | "negative";
   min_helpful?: number;
   max_days?: number | null;
+  playtime_bucket?: string;
+  language?: string;
   max_reviews?: number;
   max_snippets?: number;
   llm_provider?: string | null;

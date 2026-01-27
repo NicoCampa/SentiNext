@@ -6,7 +6,7 @@ import os
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from platformdirs import user_data_dir
 
@@ -27,6 +27,7 @@ def _default_db_path() -> Path:
 
 
 _DB_PATH = _default_db_path()
+_FTS_ENABLED = True
 
 def db_path() -> Path:
     return _DB_PATH
@@ -40,6 +41,7 @@ def _get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    global _FTS_ENABLED
     with _get_connection() as conn:
         conn.execute(
             """
@@ -58,6 +60,75 @@ def init_db() -> None:
             ON reviews (app_id, timestamp_created DESC)
             """
         )
+        # Optional: full-text search index over review text for chat retrieval.
+        try:
+            desired_definition = (
+                "CREATE VIRTUAL TABLE IF NOT EXISTS reviews_fts USING fts5("
+                "review_id UNINDEXED, "
+                "app_id UNINDEXED, "
+                "language UNINDEXED, "
+                "review_text, "
+                "tokenize='porter'"
+                ")"
+            )
+            fallback_definition = (
+                "CREATE VIRTUAL TABLE IF NOT EXISTS reviews_fts USING fts5("
+                "review_id UNINDEXED, "
+                "app_id UNINDEXED, "
+                "language UNINDEXED, "
+                "review_text"
+                ")"
+            )
+
+            try:
+                existing = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reviews_fts'"
+                ).fetchone()
+            except sqlite3.OperationalError:
+                existing = None
+
+            def _supports_porter() -> bool:
+                try:
+                    conn.execute("DROP TABLE IF EXISTS _sentinext_fts_probe")
+                    conn.execute("CREATE VIRTUAL TABLE _sentinext_fts_probe USING fts5(x, tokenize='porter')")
+                    conn.execute("DROP TABLE IF EXISTS _sentinext_fts_probe")
+                    return True
+                except sqlite3.OperationalError:
+                    try:
+                        conn.execute("DROP TABLE IF EXISTS _sentinext_fts_probe")
+                    except sqlite3.OperationalError:
+                        pass
+                    return False
+
+            should_create = True
+            porter_supported: Optional[bool] = None
+
+            if existing is not None and existing["sql"]:
+                existing_sql = (
+                    str(existing["sql"])
+                    .lower()
+                    .replace(" ", "")
+                    .replace("\n", "")
+                    .replace("\t", "")
+                    .replace("\r", "")
+                )
+                has_porter = "tokenize='porter'" in existing_sql or 'tokenize="porter"' in existing_sql
+                if not has_porter:
+                    porter_supported = _supports_porter()
+                    if porter_supported:
+                        conn.execute("DROP TABLE IF EXISTS reviews_fts")
+                    else:
+                        # Keep the existing FTS table (still better than disabling retrieval).
+                        should_create = False
+
+            if should_create:
+                if porter_supported is None:
+                    porter_supported = _supports_porter()
+                conn.execute(desired_definition if porter_supported else fallback_definition)
+
+            _FTS_ENABLED = True
+        except sqlite3.OperationalError:
+            _FTS_ENABLED = False
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS review_labels (
@@ -155,6 +226,7 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
 
     with _get_connection() as conn:
         cursor = conn.cursor()
+        fts_enabled = _FTS_ENABLED
         for review in rows:
             review_id = str(review.get("recommendationid"))
             if not review_id:
@@ -172,6 +244,17 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
                 """,
                 (review_id, app_id, payload, timestamp_created, timestamp_updated),
             )
+            if fts_enabled:
+                try:
+                    review_text = str(review.get("review") or "")
+                    review_language = str(review.get("language") or "").strip().lower()
+                    cursor.execute("DELETE FROM reviews_fts WHERE review_id = ?", (review_id,))
+                    cursor.execute(
+                        "INSERT INTO reviews_fts (review_id, app_id, language, review_text) VALUES (?, ?, ?, ?)",
+                        (review_id, int(app_id), review_language, review_text),
+                    )
+                except sqlite3.OperationalError:
+                    fts_enabled = False
         conn.commit()
         return cursor.rowcount or 0
 
@@ -187,6 +270,106 @@ def load_reviews(app_id: int, limit: Optional[int] = None) -> List[dict]:
         rows = conn.execute(query, params).fetchall()
 
     return [json.loads(row["data"]) for row in rows]
+
+
+def load_reviews_by_ids(app_id: int, review_ids: Sequence[str]) -> List[dict]:
+    ids = [str(item) for item in review_ids if item]
+    if not ids:
+        return []
+
+    result_map: Dict[str, dict] = {}
+    chunk_size = 900  # keep well under SQLite variable limit
+    with _get_connection() as conn:
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start : start + chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            query = f"SELECT review_id, data FROM reviews WHERE app_id = ? AND review_id IN ({placeholders})"
+            params: list = [int(app_id), *chunk]
+            rows = conn.execute(query, params).fetchall()
+            for row in rows:
+                try:
+                    result_map[row["review_id"]] = json.loads(row["data"]) if row["data"] else {}
+                except json.JSONDecodeError:
+                    continue
+
+    # Preserve ranking/order of the input ids.
+    return [result_map[item] for item in ids if item in result_map]
+
+
+def _rebuild_reviews_fts(conn: sqlite3.Connection, app_id: int) -> None:
+    """Rebuild the FTS index for one app id using the canonical reviews table."""
+    rows = conn.execute("SELECT review_id, data FROM reviews WHERE app_id = ?", (int(app_id),)).fetchall()
+    conn.execute("DELETE FROM reviews_fts WHERE app_id = ?", (int(app_id),))
+    for row in rows:
+        review_id = row["review_id"]
+        try:
+            payload = json.loads(row["data"]) if row["data"] else {}
+        except json.JSONDecodeError:
+            payload = {}
+        review_text = str(payload.get("review") or "")
+        review_language = str(payload.get("language") or "").strip().lower()
+        conn.execute(
+            "INSERT INTO reviews_fts (review_id, app_id, language, review_text) VALUES (?, ?, ?, ?)",
+            (review_id, int(app_id), review_language, review_text),
+        )
+
+
+def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Optional[str] = None) -> List[str]:
+    """Return review ids matching the full-text query, ranked by relevance (best first).
+
+    If FTS5 is unavailable, returns an empty list so callers can fall back to other strategies.
+    """
+    raw = (query or "").strip()
+    if not raw:
+        return []
+
+    with _get_connection() as conn:
+        try:
+            conn.execute("SELECT 1 FROM reviews_fts LIMIT 1").fetchone()
+        except sqlite3.OperationalError:
+            return []
+
+        try:
+            fts_count = int(
+                conn.execute("SELECT COUNT(*) FROM reviews_fts WHERE app_id = ?", (int(app_id),)).fetchone()[0]
+            )
+            review_count = int(
+                conn.execute("SELECT COUNT(*) FROM reviews WHERE app_id = ?", (int(app_id),)).fetchone()[0]
+            )
+            if review_count and fts_count != review_count:
+                _rebuild_reviews_fts(conn, app_id)
+                conn.commit()
+        except sqlite3.OperationalError:
+            return []
+
+        lang = (language or "").strip().lower()
+        try:
+            if lang and lang != "all":
+                rows = conn.execute(
+                    """
+                    SELECT review_id
+                    FROM reviews_fts
+                    WHERE app_id = ? AND language = ? AND reviews_fts MATCH ?
+                    ORDER BY bm25(reviews_fts)
+                    LIMIT ?
+                    """,
+                    (int(app_id), lang, raw, int(limit)),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT review_id
+                    FROM reviews_fts
+                    WHERE app_id = ? AND reviews_fts MATCH ?
+                    ORDER BY bm25(reviews_fts)
+                    LIMIT ?
+                    """,
+                    (int(app_id), raw, int(limit)),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+    return [str(row["review_id"]) for row in rows if row["review_id"]]
 
 
 def count_reviews(app_id: int) -> int:
@@ -347,6 +530,11 @@ def delete_all_game_data(app_id: int) -> None:
     """Delete all data associated with a game: reviews, labels, progress, and starred entry."""
     with _get_connection() as conn:
         conn.execute("DELETE FROM reviews WHERE app_id = ?", (app_id,))
+        if _FTS_ENABLED:
+            try:
+                conn.execute("DELETE FROM reviews_fts WHERE app_id = ?", (int(app_id),))
+            except sqlite3.OperationalError:
+                pass
         conn.execute("DELETE FROM review_labels WHERE app_id = ?", (app_id,))
         conn.execute("DELETE FROM classification_progress WHERE app_id = ?", (app_id,))
         conn.execute("DELETE FROM starred_games WHERE app_id = ?", (app_id,))

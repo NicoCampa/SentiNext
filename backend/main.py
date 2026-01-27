@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import secrets
 from datetime import datetime
 import hashlib
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 
 import pandas as pd
@@ -63,6 +64,43 @@ SERVICE_TOKEN = os.getenv("SENTINEXT_SERVICE_TOKEN")
 
 storage.init_db()
 
+def _log_file_path() -> Path:
+    raw = os.getenv("SENTINEXT_LOG_FILE")
+    if raw:
+        return Path(raw).expanduser()
+    return storage.db_path().parent / "logs" / "backend.log"
+
+
+def _configure_file_logging() -> None:
+    """Write backend logs to a rotating file in the local data directory."""
+    log_file = _log_file_path()
+    try:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return
+
+    level_name = os.getenv("SENTINEXT_LOG_LEVEL", "INFO").strip().upper()
+    level = getattr(logging, level_name, logging.INFO)
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    for handler in root.handlers:
+        if isinstance(handler, RotatingFileHandler) and getattr(handler, "baseFilename", "") == str(log_file):
+            return
+
+    handler = RotatingFileHandler(
+        log_file,
+        maxBytes=int(os.getenv("SENTINEXT_LOG_MAX_BYTES", "2000000")),
+        backupCount=int(os.getenv("SENTINEXT_LOG_BACKUPS", "3")),
+        encoding="utf-8",
+    )
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root.addHandler(handler)
+
+
+_configure_file_logging()
+
 app = FastAPI(title="SentiNext API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -110,6 +148,24 @@ class AnalyzeResponse(BaseModel):
     insights: Optional[dict]
     reviews: List[dict]
 
+class AnalyzeEstimateResponse(BaseModel):
+    app_id: int
+    will_fetch: bool
+    will_persist: bool
+    review_count_requested: int
+    reviews_considered: int
+    cached_labels_total: int
+    cached_reviews: int
+    needs_refresh_reviews: int
+    empty_reviews: int
+    short_reviews: int
+    rules_reviews: int
+    llm_reviews: int
+    prompt_version: str
+    model_id: str
+    labeling_strategy: str
+    reasons: Dict[str, int] = Field(default_factory=dict)
+
 
 class StarredGamePayload(BaseModel):
     app_id: int
@@ -155,6 +211,8 @@ class ChatRequest(BaseModel):
     sentiment: str = Field("all")
     min_helpful: int = Field(0, ge=0)
     max_days: Optional[int] = Field(None, ge=1, le=365)
+    playtime_bucket: str = Field("all")
+    language: str = Field("all")
     max_reviews: int = Field(500, ge=1, le=5000)
     max_snippets: int = Field(8, ge=1, le=20)
     llm_provider: Optional[str] = Field(None, description="LLM provider override (ollama or openai)")
@@ -284,11 +342,32 @@ def storage_paths() -> dict:
     db_path = storage.db_path()
     data_dir = db_path.parent
     reports_dir = _reports_dir()
+    log_file = _log_file_path()
     return {
         "db_path": str(db_path),
         "data_dir": str(data_dir),
         "reports_dir": str(reports_dir),
+        "logs_dir": str(log_file.parent),
+        "log_file": str(log_file),
     }
+
+@app.get("/logs/tail")
+def logs_tail(bytes: int = 20000) -> dict:
+    """Return the last N bytes of the backend log file (best-effort)."""
+    limit = max(0, min(int(bytes or 0), 200000))
+    path = _log_file_path()
+    if not path.exists():
+        return {"log_file": str(path), "tail": ""}
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - limit))
+            chunk = handle.read()
+        return {"log_file": str(path), "tail": chunk.decode("utf-8", errors="replace")}
+    except Exception as exc:
+        logger.warning("Failed to read log file: %s", exc)
+        return {"log_file": str(path), "tail": ""}
 
 @app.get("/license/status", response_model=LicenseStatusResponse)
 def license_status() -> LicenseStatusResponse:
@@ -653,6 +732,62 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> Analy
 
     return AnalyzeResponse(metadata=metadata, insights=None, reviews=[])
 
+@app.post("/analyze/estimate", response_model=AnalyzeEstimateResponse, dependencies=[Depends(require_license)])
+def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
+    """Estimate how many labels will be reused vs require new work (no LLM calls)."""
+    filter_type = (request.filter or "recent").lower()
+    if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
+        filter_type = "recent"
+
+    stored_reviews: List[dict] = []
+    if request.persist:
+        stored_reviews = storage.load_reviews(request.app_id)
+
+    should_fetch = not stored_reviews or request.refresh or not request.persist
+    fetched_reviews: List[dict] = []
+    if should_fetch:
+        try:
+            fetched_reviews = fetch_reviews(
+                request.app_id,
+                count=request.review_count,
+                language=request.language,
+                filter_type=filter_type,
+                day_range=request.refresh_days or request.day_range,
+            )
+        except SteamAPIError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    all_reviews = stored_reviews if stored_reviews else fetched_reviews
+    if request.review_count and len(all_reviews) > request.review_count:
+        all_reviews = all_reviews[: request.review_count]
+
+    cached_labels = storage.load_review_labels(request.app_id)
+    estimate = llm.estimate_review_labeling(
+        request.app_id,
+        all_reviews,
+        provider=request.llm_provider,
+        model=request.llm_model,
+    )
+
+    return AnalyzeEstimateResponse(
+        app_id=request.app_id,
+        will_fetch=bool(should_fetch),
+        will_persist=bool(request.persist),
+        review_count_requested=int(request.review_count or 0),
+        reviews_considered=len(all_reviews),
+        cached_labels_total=len(cached_labels),
+        cached_reviews=int(estimate.get("cached_reviews", 0) or 0),
+        needs_refresh_reviews=int(estimate.get("needs_refresh_reviews", 0) or 0),
+        empty_reviews=int(estimate.get("empty_reviews", 0) or 0),
+        short_reviews=int(estimate.get("short_reviews", 0) or 0),
+        rules_reviews=int(estimate.get("rules_reviews", 0) or 0),
+        llm_reviews=int(estimate.get("llm_reviews", 0) or 0),
+        prompt_version=str(estimate.get("prompt_version") or ""),
+        model_id=str(estimate.get("model_id") or ""),
+        labeling_strategy=str(estimate.get("labeling_strategy") or ""),
+        reasons={str(key): int(value) for key, value in (estimate.get("reasons") or {}).items() if key},
+    )
+
 
 @app.get("/analysis/{app_id}", response_model=AnalysisStatusResponse, dependencies=[Depends(require_license)])
 def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
@@ -718,6 +853,8 @@ def chat_insights(request: ChatRequest) -> ChatResponse:
             sentiment=sentiment,
             min_helpful=request.min_helpful,
             max_days=request.max_days,
+            playtime_bucket=request.playtime_bucket,
+            language=request.language,
             max_reviews=request.max_reviews,
             max_snippets=request.max_snippets,
             llm_provider=request.llm_provider,

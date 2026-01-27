@@ -5,14 +5,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { FirstRunSetup } from "@/components/FirstRunSetup";
+import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
 
 interface AppLayoutProps {
   children: ReactNode;
   showSidebar?: boolean;
   sidebarContent?: ReactNode;
+  showGlobalFilters?: boolean;
 }
 
-export function AppLayout({ children, showSidebar = true, sidebarContent }: AppLayoutProps) {
+export function AppLayout({ children, showSidebar = true, sidebarContent, showGlobalFilters = true }: AppLayoutProps) {
   const pathname = usePathname();
 
   const navItems = [
@@ -78,6 +80,13 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       )}
 
       <main className="flex-1 bg-slate-950/70">
+        {showGlobalFilters ? (
+          <div className="sticky top-0 z-40 border-b border-white/5 bg-slate-950/80 backdrop-blur">
+            <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-6">
+              <GlobalFiltersBar />
+            </div>
+          </div>
+        ) : null}
         {children}
       </main>
       <FirstRunSetup />

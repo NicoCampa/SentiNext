@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AnalysisProvider } from "@/contexts/AnalysisContext";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
+import { GlobalFiltersProvider } from "@/contexts/GlobalFiltersContext";
 
 export const metadata: Metadata = {
   title: "SentiNext",
@@ -21,8 +22,10 @@ export default function RootLayout({
     <html lang="en" className="bg-slate-950">
       <body className={clsx(inter.variable, "min-h-screen bg-transparent text-slate-100 antialiased")}>
         <AnalysisProvider>
-          {children}
-          <AnalysisWidget />
+          <GlobalFiltersProvider>
+            {children}
+            <AnalysisWidget />
+          </GlobalFiltersProvider>
         </AnalysisProvider>
       </body>
     </html>

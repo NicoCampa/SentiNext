@@ -12,12 +12,18 @@ import { SteamImage } from "@/components/SteamImage";
 import { isTauriApp } from "@/lib/settings";
 import { formatSavedLabel } from "@/utils/format";
 import { getRecommendationBackground, getRecommendationColor } from "@/utils/colors";
+import { ANALYSIS_REVIEW_COUNT_OPTIONS, loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from "@/lib/analysisDefaults";
 
 export default function HomePage() {
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [backendError, setBackendError] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [reviewCount, setReviewCount] = useState<number>(() => loadDefaultAnalysisReviewCount());
+
+  useEffect(() => {
+    saveDefaultAnalysisReviewCount(reviewCount);
+  }, [reviewCount]);
 
   useEffect(() => {
     async function loadStarredGames() {
@@ -60,7 +66,7 @@ export default function HomePage() {
   }
 
   return (
-    <AppLayout showSidebar>
+    <AppLayout showSidebar showGlobalFilters={false}>
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-10">
         {/* Hero Section */}
         <div className="mb-12 rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-900/30 via-slate-900/40 to-slate-950/50 p-12 shadow-2xl backdrop-blur">
@@ -76,8 +82,22 @@ export default function HomePage() {
               Analyze Steam reviews with AI-powered sentiment analysis. Track player sentiment,
               identify pain points, and discover actionable insights to improve your game.
             </p>
-            <div className="flex gap-4 pt-4">
-              <Link href="/dashboard">
+            <div className="flex flex-wrap items-end gap-4 pt-4">
+              <div className="min-w-[150px]">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Reviews</p>
+                <select
+                  value={reviewCount}
+                  onChange={(event) => setReviewCount(Number(event.target.value))}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+                >
+                  {ANALYSIS_REVIEW_COUNT_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {value.toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Link href={`/dashboard?reviews=${reviewCount}`}>
                 <Button variant="primary" size="lg">
                   Start Analyzing →
                 </Button>

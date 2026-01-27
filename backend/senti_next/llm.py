@@ -1087,6 +1087,116 @@ def ensure_review_labels(
     return results
 
 
+def estimate_review_labeling(
+    app_id: int,
+    reviews: Sequence[Mapping[str, Any]],
+    *,
+    force_refresh: bool = False,
+    cache_enabled: bool = True,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Estimate how many reviews will require LLM calls vs cache/rules.
+
+    This mirrors the cache/refresh logic from `ensure_review_labels` but never calls an LLM.
+    """
+    if not reviews:
+        return {
+            "total_reviews": 0,
+            "cached_reviews": 0,
+            "needs_refresh_reviews": 0,
+            "empty_reviews": 0,
+            "short_reviews": 0,
+            "rules_reviews": 0,
+            "llm_reviews": 0,
+            "reasons": {},
+            "prompt_version": ACTIVE_PROMPT_VERSION,
+            "model_id": "",
+            "labeling_strategy": _labeling_strategy_from_env(),
+        }
+
+    existing = storage.load_review_labels(app_id) if cache_enabled else {}
+    effective_provider = (provider or _provider_from_env()).strip().lower()
+    effective_model = _effective_model(effective_provider, model)
+    expected_llm_model_id = _model_id(
+        "openai" if effective_provider in {"openai", "chatgpt", "gpt"} else "ollama",
+        effective_model,
+    )
+
+    hybrid_enabled = _hybrid_rules_enabled()
+    rules_model_id = _hybrid_rules_model_id() if hybrid_enabled else ""
+    valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
+    if rules_model_id:
+        valid_cached_models.add(rules_model_id)
+
+    counts = {
+        "total_reviews": len(reviews),
+        "cached_reviews": 0,
+        "needs_refresh_reviews": 0,
+        "empty_reviews": 0,
+        "short_reviews": 0,
+        "rules_reviews": 0,
+        "llm_reviews": 0,
+    }
+    reasons: Dict[str, int] = {}
+
+    for review in reviews:
+        review_id_value = review.get("recommendationid") or review.get("review_id")
+        if review_id_value is None:
+            reasons["missing_review_id"] = reasons.get("missing_review_id", 0) + 1
+            continue
+
+        review_id = str(review_id_value)
+        review_text = (review.get("review") or "").strip()
+        review_hash = hashlib.sha256(review_text.encode("utf-8")).hexdigest()
+
+        cached = existing.get(review_id)
+        needs_refresh = force_refresh or cached is None
+        if cached is None:
+            reasons["missing_label"] = reasons.get("missing_label", 0) + 1
+        else:
+            if cached.get("review_hash") != review_hash:
+                needs_refresh = True
+                reasons["hash_mismatch"] = reasons.get("hash_mismatch", 0) + 1
+            if cached.get("prompt_version") != ACTIVE_PROMPT_VERSION:
+                needs_refresh = True
+                reasons["prompt_version_mismatch"] = reasons.get("prompt_version_mismatch", 0) + 1
+            cached_model = cached.get("model")
+            if cached_model not in valid_cached_models:
+                needs_refresh = True
+                reasons["model_mismatch"] = reasons.get("model_mismatch", 0) + 1
+
+        if not needs_refresh:
+            counts["cached_reviews"] += 1
+            continue
+
+        counts["needs_refresh_reviews"] += 1
+
+        if not review_text:
+            counts["empty_reviews"] += 1
+            continue
+
+        if _review_word_count(review_text) < MIN_REVIEW_WORDS:
+            counts["short_reviews"] += 1
+            continue
+
+        if hybrid_enabled:
+            reviewer_voted_up = bool(review.get("voted_up", True))
+            if _classify_review_rules(review_text, reviewer_voted_up=reviewer_voted_up) is not None:
+                counts["rules_reviews"] += 1
+                continue
+
+        counts["llm_reviews"] += 1
+
+    return {
+        **counts,
+        "reasons": reasons,
+        "prompt_version": ACTIVE_PROMPT_VERSION,
+        "model_id": expected_llm_model_id,
+        "labeling_strategy": _labeling_strategy_from_env(),
+    }
+
+
 def apply_review_labels(df: pd.DataFrame, labels: Mapping[str, Mapping[str, Any]]) -> pd.DataFrame:
     if df is None:
         return df

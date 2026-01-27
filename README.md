@@ -1,11 +1,13 @@
-# SentiNext (minimal)
+# SentiNext
 
-SentiNext turns raw Steam reviews into clear, actionable insights. It ingests recent reviews, clusters themes, highlights top issues and feature requests, and can email a polished PDF report to buyers via Stripe checkout.
+SentiNext turns raw Steam reviews into clear, actionable insights. It ingests Steam reviews, classifies them into a consistent taxonomy, surfaces top issues and feature requests, and supports local exports (PDF/HTML).
 
 ## Structure
 - `backend/` – FastAPI app (`backend/main.py`) and shared package (`senti_next/`)
 - `frontend/` – Next.js app (static export UI)
 - `data/` – SQLite database (created at runtime)
+- `web/` – Marketing site (landing, docs, download)
+- `src-tauri/` – Tauri desktop wrapper (builds macOS/Windows apps)
 
 ## Local app (recommended)
 Build the UI once, then run a single local server that serves both UI and API.

@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { fetchStoragePaths } from "@/lib/api";
+import { fetchLogTail, fetchStoragePaths } from "@/lib/api";
 import {
   LlmSettings,
   getDefaultSettings,
@@ -13,6 +13,7 @@ import {
   saveSettings,
   isTauriApp,
 } from "@/lib/settings";
+import { useBackendHealth } from "@/hooks/useBackendHealth";
 import type { StoragePaths } from "@/types";
 
 export default function SettingsPage() {
@@ -22,7 +23,12 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [storagePaths, setStoragePaths] = useState<StoragePaths | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const { health, refresh: refreshHealth } = useBackendHealth();
+  const [logTail, setLogTail] = useState<string>("");
+  const [logTailError, setLogTailError] = useState<string | null>(null);
+  const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -88,13 +94,51 @@ export default function SettingsPage() {
     };
   }, []);
 
+  const loadLogTail = useCallback(async () => {
+    try {
+      const result = await fetchLogTail(20000);
+      setLogTail(result.tail || "");
+      setLogTailError(null);
+    } catch (err) {
+      console.error("Failed to fetch log tail", err);
+      setLogTailError("Failed to load logs.");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLogTail();
+  }, [loadLogTail]);
+
   async function handleCopy(value: string) {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
+      setCopyError(null);
     } catch (err) {
       console.error("Failed to copy value", err);
-      setStorageError("Copy failed. Please copy manually.");
+      setCopyError("Copy failed. Please copy manually.");
+    }
+  }
+
+  async function handleCopyDiagnostics() {
+    try {
+      const payload = {
+        timestamp: new Date().toISOString(),
+        app_version: appVersion,
+        api_base: typeof window !== "undefined" ? window.__SENTINEXT_API_BASE__ ?? null : null,
+        backend_health: health,
+        storage: storagePaths,
+        log_file: storagePaths?.log_file ?? null,
+        log_tail: logTail ? logTail.slice(-20000) : "",
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      };
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setCopiedDiagnostics(true);
+      setTimeout(() => setCopiedDiagnostics(false), 2000);
+      setCopyError(null);
+    } catch (err) {
+      console.error("Failed to copy diagnostics", err);
+      setCopyError("Failed to copy diagnostics.");
     }
   }
 
@@ -114,7 +158,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppLayout>
+    <AppLayout showGlobalFilters={false}>
       <div className="mx-auto max-w-4xl space-y-6 px-6 py-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
@@ -240,9 +284,9 @@ export default function SettingsPage() {
             <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Local Data</p>
             <p className="mt-2 text-sm text-slate-300">Stored on this device only.</p>
           </div>
-          {storageError ? (
-            <p className="text-xs text-rose-400">{storageError}</p>
-          ) : (
+          {storageError ? <p className="text-xs text-rose-400">{storageError}</p> : null}
+          {copyError ? <p className="text-xs text-rose-400">{copyError}</p> : null}
+          {!storageError ? (
             <div className="space-y-3 text-xs text-slate-300">
               <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Database</span>
@@ -276,8 +320,62 @@ export default function SettingsPage() {
                   </Button>
                 </div>
               </div>
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Logs</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="break-all rounded-lg bg-slate-950/40 px-3 py-2 font-mono text-[11px] text-slate-200">
+                    {storagePaths?.log_file || "Loading..."}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleCopy(storagePaths?.log_file || "")}
+                    disabled={!storagePaths?.log_file}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
             </div>
-          )}
+          ) : null}
+        </Card>
+
+        <Card variant="glass" className="space-y-4 p-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Diagnostics</p>
+            <p className="mt-2 text-sm text-slate-300">Use this when the backend is slow or unresponsive.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
+              Recheck backend
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => loadLogTail()}>
+              Refresh logs
+            </Button>
+            <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
+              Copy diagnostics
+            </Button>
+            {copiedDiagnostics ? <span className="text-sm text-emerald-400">Copied.</span> : null}
+          </div>
+
+          <div className="text-xs text-slate-400">
+            Backend status:{" "}
+            <span className="text-slate-200">
+              {health.state === "online" ? "online" : health.state === "offline" ? "offline" : "checking"}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Log tail</p>
+            {logTailError ? (
+              <p className="text-xs text-rose-400">{logTailError}</p>
+            ) : (
+              <pre className="max-h-64 overflow-auto rounded-xl border border-white/10 bg-slate-950/40 p-3 text-[11px] text-slate-200">
+                {logTail || "No logs yet."}
+              </pre>
+            )}
+          </div>
         </Card>
       </div>
     </AppLayout>

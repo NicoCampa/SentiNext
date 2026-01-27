@@ -1,86 +1,137 @@
 import Link from "next/link";
 
-const DOWNLOAD_URL = "https://github.com/NicoCampa/SentiNext/releases";
+const RELEASES_URL = "https://github.com/NicoCampa/SentiNext/releases/latest";
 
 export default function DownloadPage() {
   return (
-    <div className="container" style={{ maxWidth: 980 }}>
-      <div className="pill pillPrimary">Download SentiNext</div>
-      <h1 className="headline" style={{ fontSize: "clamp(30px, 3.4vw, 46px)", marginTop: 16 }}>
-        Get the local desktop app
+    <div className="container">
+      <span className="eyebrow">Download</span>
+      <h1 className="title" style={{ fontSize: "clamp(34px, 4.1vw, 54px)" }}>
+        Get the SentiNext desktop app
       </h1>
-      <p className="subhead">
-        Pick your platform and run SentiNext locally. You control the data, you select the LLM provider, and the
-        dashboard stays on your machine.
+      <p className="lead">
+        Install SentiNext locally and bring your own model provider (OpenAI or Ollama). Your insights database stays on
+        your machine.
       </p>
 
-      <div className="cardGrid sectionTight">
-        {[
-          ["macOS", "DMG installer", "Download for macOS"],
-          ["Windows", "MSI installer", "Download for Windows"],
-          ["Linux", "AppImage", "Download for Linux"],
-        ].map(([title, meta, cta]) => (
-          <div key={title} className="card">
-            <div className="cardTitle">{title}</div>
-            <div className="cardDesc">{meta}</div>
-            <div className="ctaRow" style={{ marginTop: 12 }}>
-              <a className="btn btnPrimary" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">
-                {cta} →
+      <section className="section" style={{ marginTop: 34 }}>
+        <div className="sectionHeader">
+          <div>
+            <h2 className="sectionTitle">Choose your platform</h2>
+            <p className="sectionLead">
+              Downloads are published on GitHub Releases. Pick the installer for your OS and architecture.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid3">
+          <div className="card">
+            <p className="cardTitle">macOS (Apple Silicon)</p>
+            <p className="cardText">
+              Look for a <span className="mono">.dmg</span> with{" "}
+              <span className="mono">aarch64</span> in the name.
+            </p>
+            <div className="heroActions" style={{ marginTop: 14 }}>
+              <a className="btn btnPrimary" href={RELEASES_URL} target="_blank" rel="noreferrer">
+                Open Releases →
               </a>
             </div>
           </div>
-        ))}
-      </div>
 
-      <div className="section">
-        <div className="sectionHeader">
-          <span className="tag">Setup</span>
+          <div className="card">
+            <p className="cardTitle">macOS (Intel)</p>
+            <p className="cardText">
+              Look for a <span className="mono">.dmg</span> with <span className="mono">x64</span> in the name.
+            </p>
+            <div className="heroActions" style={{ marginTop: 14 }}>
+              <a className="btn btnPrimary" href={RELEASES_URL} target="_blank" rel="noreferrer">
+                Open Releases →
+              </a>
+            </div>
+          </div>
+
+          <div className="card">
+            <p className="cardTitle">Windows</p>
+            <p className="cardText">
+              Use the installer (<span className="mono">.msi</span>) or setup (<span className="mono">.exe</span>) from
+              the latest release.
+            </p>
+            <div className="heroActions" style={{ marginTop: 14 }}>
+              <a className="btn btnPrimary" href={RELEASES_URL} target="_blank" rel="noreferrer">
+                Open Releases →
+              </a>
+            </div>
+          </div>
         </div>
-        <div className="timeline stagger">
+      </section>
+
+      <section className="section">
+        <div className="sectionHeader">
+          <div>
+            <h2 className="sectionTitle">Quick setup</h2>
+            <p className="sectionLead">From download to insights in a couple of minutes.</p>
+          </div>
+        </div>
+
+        <div className="steps">
           {[
-            ["Install the app and launch it."],
-            ["Open Settings and choose Ollama or OpenAI."],
-            ["Paste your API key and pick a model."],
-            ["Analyze a Steam game and explore the dashboard."],
-          ].map(([text], index) => (
-            <div key={text} className="timelineStep">
+            "Install and launch the app.",
+            "Open Settings and choose OpenAI or Ollama.",
+            "Paste your API key / host and pick a model.",
+            "Analyze a game and explore dashboard + chat.",
+          ].map((text, index) => (
+            <div key={text} className="step">
               <div className="stepNumber">{index + 1}</div>
               <div className="stepText">{text}</div>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="section gridColumns">
-        <div className="panel">
-          <div className="panelTitle">Providers</div>
-          <div className="panelDesc">
-            Use Ollama for local models or OpenAI for hosted models. SentiNext stores the key locally and only uses it
-            when you run an analysis.
+      <section className="section">
+        <div className="sectionHeader">
+          <div>
+            <h2 className="sectionTitle">Need help?</h2>
+            <p className="sectionLead">Docs cover providers, where data is stored, exports, and troubleshooting.</p>
           </div>
         </div>
-        <div className="panel">
-          <div className="panelTitle">Local data</div>
-          <div className="panelDesc">
-            Reviews, labels, and evidence live in a local database on your machine. Export when you need to share.
-          </div>
-        </div>
-        <div className="panel">
-          <div className="panelTitle">Need help?</div>
-          <div className="panelDesc">
-            Build instructions and release notes are available on GitHub. Use the Releases page for the latest builds.
-          </div>
-        </div>
-      </div>
 
-      <div className="ctaRow" style={{ marginTop: 18 }}>
-        <Link href="/" className="btn">
-          ← Back to home
-        </Link>
-        <a className="btn" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">
-          View releases →
-        </a>
-      </div>
+        <div className="grid2">
+          <div className="card">
+            <p className="cardTitle">Docs</p>
+            <p className="cardText">Quickstart, providers, chat sources, and common troubleshooting steps.</p>
+            <div className="heroActions" style={{ marginTop: 14 }}>
+              <Link href="/docs" className="btn">
+                Open docs →
+              </Link>
+            </div>
+          </div>
+          <div className="card">
+            <p className="cardTitle">Release notes</p>
+            <p className="cardText">See what changed in the latest build and download older versions if needed.</p>
+            <div className="heroActions" style={{ marginTop: 14 }}>
+              <a className="btn" href={RELEASES_URL} target="_blank" rel="noreferrer">
+                View releases →
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="cta" style={{ marginTop: 62 }}>
+        <p className="ctaTitle">After installing, head to Settings first</p>
+        <p className="ctaText">
+          Pick your provider (OpenAI or Ollama). Then run an analysis and use chat to answer questions with citations.
+        </p>
+        <div className="ctaActions">
+          <a className="btn btnPrimary" href={RELEASES_URL} target="_blank" rel="noreferrer">
+            Download from Releases →
+          </a>
+          <Link className="btn" href="/">
+            Back to home
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

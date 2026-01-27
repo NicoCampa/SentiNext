@@ -8,6 +8,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
+import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
+import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
 import { formatPercentage } from "@/utils/format";
 import { getRecommendationColor } from "@/utils/colors";
 
@@ -29,6 +32,7 @@ const MAIN_CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_KEYS = Object.keys(MAIN_CATEGORY_LABELS).filter((key) => key !== "other");
 
 export default function ComparePage() {
+  const { filters, filtersActive } = useGlobalFilters();
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,14 +84,34 @@ export default function ComparePage() {
   }
 
   function downloadSummary() {
-    const summary = selectedGames.map((g) => ({
-      app_id: g.app_id,
-      name: g.name,
-      recommendation_rate: g.insights?.recommendation ?? 0,
-      feature_request_rate: g.insights?.llm?.feature_request_rate ?? 0,
-      issue_rate: g.insights?.llm?.issue_rate ?? 0,
-      category_recommendation_rates: g.insights?.category_recommendation_rates ?? {},
-    }));
+    const summary = selectedGames.map((g) => {
+      const filteredSample = applyGlobalReviewFilters(g.sample ?? [], filters);
+      const total = filteredSample.length || 1;
+      const recommendation_rate =
+        filteredSample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / total;
+      const feature_request_rate =
+        filteredSample.reduce(
+          (sum, review) => sum + (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length ? 1 : 0),
+          0,
+        ) / total;
+      const issue_rate =
+        filteredSample.reduce(
+          (sum, review) => sum + (Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length ? 1 : 0),
+          0,
+        ) / total;
+
+      return {
+        app_id: g.app_id,
+        name: g.name,
+        filters,
+        sample_reviews: g.sample?.length ?? 0,
+        filtered_reviews: filteredSample.length,
+        recommendation_rate,
+        feature_request_rate,
+        issue_rate,
+        category_recommendation_rates: buildCategoryRates(filteredSample),
+      };
+    });
     const blob = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -139,6 +163,7 @@ export default function ComparePage() {
           <h1 className="text-3xl font-bold text-white">Game Comparison</h1>
           <p className="mt-1 text-sm text-slate-400">
             Compare two games side-by-side • {selectedIds.length} selected
+            {filtersActive ? " · global filters applied" : ""}
           </p>
           {selectedGames.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -159,6 +184,10 @@ export default function ComparePage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {starredGames.map((game) => {
               const isSelected = selectedIds.includes(game.app_id);
+              const previewSample = applyGlobalReviewFilters(game.sample ?? [], filters);
+              const previewRecommendation = previewSample.length
+                ? previewSample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / previewSample.length
+                : 0;
               return (
                 <button
                   key={game.app_id}
@@ -182,14 +211,14 @@ export default function ComparePage() {
                     <h3 className="line-clamp-1 text-sm font-semibold text-white">
                       {game.name}
                     </h3>
-                    {game.insights && (
+                    {game.sample?.length ? (
                       <p
                         className="mt-1 text-xs"
-                        style={{ color: getRecommendationColor(game.insights.recommendation) }}
+                        style={{ color: getRecommendationColor(previewRecommendation) }}
                       >
-                        {formatPercentage(game.insights.recommendation)} recommend
+                        {formatPercentage(previewRecommendation)} recommend{filtersActive ? " (filtered)" : ""}
                       </p>
-                    )}
+                    ) : null}
                   </div>
                   {isSelected && (
                     <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white">
@@ -224,10 +253,13 @@ function ComparisonDashboard({
   games: StarredGameDTO[];
   onRemove: (appId: number) => void;
 }) {
+  const { filters, filtersActive } = useGlobalFilters();
+
   const gameData = useMemo(() => {
     return games.map((game) => {
-      const insights = game.insights ?? null;
-      const subcategoryInsights = (insights?.subcategory_insights ?? []) as SubcategoryInsight[];
+      const sample = game.sample ?? [];
+      const filteredSample = applyGlobalReviewFilters(sample, filters);
+      const subcategoryInsights = buildSubcategoryInsights(filteredSample) as SubcategoryInsight[];
       const subcategoriesByMain = new Map<string, SubcategoryInsight[]>();
       subcategoryInsights.forEach((entry) => {
         const main = mainCategoryForEntry(entry);
@@ -239,16 +271,23 @@ function ComparisonDashboard({
         list.sort((a, b) => Number(b.count ?? 0) - Number(a.count ?? 0));
         subcategoriesByMain.set(key, list);
       }
+
+      const recommendation = filteredSample.length
+        ? filteredSample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / filteredSample.length
+        : 0;
+
       return {
         appId: game.app_id,
         name: game.name,
         metadata: game.metadata,
-        recommendation: insights?.recommendation ?? 0,
-        categoryRates: insights?.category_recommendation_rates ?? {},
+        recommendation,
+        categoryRates: buildCategoryRates(filteredSample),
         subcategoriesByMain,
+        sampleCount: sample.length,
+        filteredCount: filteredSample.length,
       };
     });
-  }, [games]);
+  }, [games, filters]);
 
   const categories = useMemo(() => {
     return CATEGORY_KEYS.map((key) => {
@@ -344,7 +383,9 @@ function ComparisonDashboard({
                   </button>
                 </div>
                 <p className="text-xs text-slate-400">
-                  {game.metadata.retrieved.toLocaleString()} / {game.metadata.requested.toLocaleString()} reviews
+                  {filtersActive
+                    ? `${game.filteredCount.toLocaleString()} / ${game.sampleCount.toLocaleString()} reviews match filters`
+                    : `${game.sampleCount.toLocaleString()} reviews`}
                 </p>
                 <p
                   className="text-2xl font-semibold"

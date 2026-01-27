@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { chatWithInsights, fetchStarredGames } from "@/lib/api";
 import { buildLlmRequestConfig } from "@/lib/settings";
+import { maxDaysFromDateRange, useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import type { ChatCitation, ChatResponse, StarredGameDTO } from "@/types";
 
 type ChatMessage = {
@@ -20,6 +21,25 @@ type ChatMessage = {
   model?: string;
 };
 
+function highlightSnippet(text: string, snippet: string | null | undefined) {
+  const rawSnippet = (snippet || "").trim();
+  if (!rawSnippet) return text;
+  const haystack = text.toLowerCase();
+  const needle = rawSnippet.toLowerCase();
+  const index = haystack.indexOf(needle);
+  if (index === -1) return text;
+  const before = text.slice(0, index);
+  const match = text.slice(index, index + rawSnippet.length);
+  const after = text.slice(index + rawSnippet.length);
+  return (
+    <>
+      {before}
+      <mark className="rounded bg-sky-500/20 px-1 text-sky-100">{match}</mark>
+      {after}
+    </>
+  );
+}
+
 const DEFAULT_QUESTIONS = [
   "What are customers talking about in the AI category?",
   "What are the top issues players mention recently?",
@@ -27,15 +47,13 @@ const DEFAULT_QUESTIONS = [
 ];
 
 export default function ChatPage() {
+  const { filters } = useGlobalFilters();
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sentiment, setSentiment] = useState<"all" | "positive" | "negative">("all");
-  const [helpful, setHelpful] = useState<0 | 10 | 25 | 50>(0);
-  const [dateFilter, setDateFilter] = useState<"all" | "30d" | "90d" | "365d">("all");
   const [selectedCitation, setSelectedCitation] = useState<ChatCitation | null>(null);
 
   const selectedGame = useMemo(
@@ -48,9 +66,11 @@ export default function ChatPage() {
       try {
         const games = await fetchStarredGames();
         setStarredGames(games);
-        if (games.length && selectedGameId === null) {
-          setSelectedGameId(games[0].app_id);
-        }
+        setSelectedGameId((previous) => {
+          if (previous !== null) return previous;
+          if (!games.length) return previous;
+          return games[0].app_id;
+        });
       } catch (err) {
         console.error("Failed to load starred games", err);
         setError("Failed to load starred games. Is the backend running?");
@@ -75,9 +95,11 @@ export default function ChatPage() {
       const response: ChatResponse = await chatWithInsights({
         app_id: selectedGame.app_id,
         question: prompt,
-        sentiment,
-        min_helpful: helpful,
-        max_days: dateFilter === "all" ? null : dateFilter === "30d" ? 30 : dateFilter === "90d" ? 90 : 365,
+        sentiment: filters.sentiment,
+        min_helpful: filters.minHelpful,
+        max_days: maxDaysFromDateRange(filters.dateRange),
+        playtime_bucket: filters.playtime,
+        language: filters.language,
         ...llmConfig,
       });
 
@@ -152,47 +174,17 @@ export default function ChatPage() {
             </div>
 
             <div className="min-w-[260px] flex-1">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Filters</p>
-              <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-300">
-                <label className="flex flex-col gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Sentiment</span>
-                  <select
-                    value={sentiment}
-                    onChange={(event) => setSentiment(event.target.value as "all" | "positive" | "negative")}
-                    className="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
-                  >
-                    <option value="all">All</option>
-                    <option value="positive">Recommended</option>
-                    <option value="negative">Not recommended</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Helpful</span>
-                  <select
-                    value={helpful}
-                    onChange={(event) => setHelpful(Number(event.target.value) as 0 | 10 | 25 | 50)}
-                    className="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
-                  >
-                    <option value={0}>All</option>
-                    <option value={10}>10+</option>
-                    <option value={25}>25+</option>
-                    <option value={50}>50+</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Date</span>
-                  <select
-                    value={dateFilter}
-                    onChange={(event) => setDateFilter(event.target.value as "all" | "30d" | "90d" | "365d")}
-                    className="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
-                  >
-                    <option value="all">All time</option>
-                    <option value="30d">Last 30 days</option>
-                    <option value="90d">Last 90 days</option>
-                    <option value="365d">Last year</option>
-                  </select>
-                </label>
-              </div>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Scope</p>
+              <p className="mt-2 text-sm text-slate-300">
+                Chat respects the global filters above.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Sentiment: {filters.sentiment === "positive" ? "Recommended" : filters.sentiment === "negative" ? "Not recommended" : "All"} ·{" "}
+                Date: {filters.dateRange === "30d" ? "Last 30 days" : filters.dateRange === "90d" ? "Last 90 days" : filters.dateRange === "365d" ? "Last year" : "All time"} ·{" "}
+                Helpful: {filters.minHelpful ? `${filters.minHelpful}+` : "All"} ·{" "}
+                Playtime: {filters.playtime === "lt2h" ? "<2h" : filters.playtime === "2to20h" ? "2–20h" : filters.playtime === "20hplus" ? "20h+" : "All"} ·{" "}
+                Language: {filters.language && filters.language !== "all" ? filters.language : "All"}
+              </p>
             </div>
 
             <div className="min-w-[200px] flex-1">
@@ -333,9 +325,11 @@ export default function ChatPage() {
                 </span>
               ) : null}
             </div>
-            <p className="mt-4 whitespace-pre-line text-sm text-slate-100">
-              {selectedCitation.review_text || "Review text unavailable."}
-            </p>
+            <div className="mt-4 whitespace-pre-line text-sm text-slate-100">
+              {selectedCitation.review_text
+                ? highlightSnippet(selectedCitation.review_text, selectedCitation.snippet)
+                : "Review text unavailable."}
+            </div>
           </div>
         </div>
       ) : null}

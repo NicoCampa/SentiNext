@@ -58,6 +58,125 @@ def _question_flags(question: str) -> tuple[bool, bool]:
     return wants_issue, wants_request
 
 
+_FTS_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "but",
+    "by",
+    "for",
+    "from",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+    "game",
+    "games",
+    "player",
+    "players",
+    "review",
+    "reviews",
+    "steam",
+    "you",
+    "your",
+}
+
+
+def _fts_query_from_question(question: str) -> str:
+    """Build a safe FTS5 query from free-form text.
+
+    We avoid passing raw user strings into MATCH because punctuation can break the query parser.
+    """
+    tokens = re.findall(r"[a-z0-9]{2,}", (question or "").lower())
+    if not tokens:
+        return ""
+    filtered: List[str] = []
+    for token in tokens:
+        if token in _FTS_STOPWORDS:
+            continue
+        if token not in filtered:
+            filtered.append(token)
+        if len(filtered) >= 12:
+            break
+    if not filtered:
+        filtered = tokens[:6]
+    return " OR ".join([f'"{token}"' for token in filtered if token])
+
+
+def _top_subcategories_from_reviews(
+    *,
+    reviews: Sequence[dict],
+    labels: Dict[str, Dict[str, Any]],
+    available_subcats: Sequence[str],
+    wants_issue: bool,
+    wants_request: bool,
+    sentiment: str,
+    min_helpful: int,
+    max_days: Optional[int],
+    playtime_bucket: str,
+    language: str,
+    now_ts: float,
+    limit: int = 5,
+) -> List[str]:
+    allowed = {key for key in available_subcats if isinstance(key, str)}
+    counts: Dict[str, int] = {}
+    for review in reviews:
+        review_id = _review_id(review)
+        if not review_id:
+            continue
+        label = labels.get(review_id)
+        if not label:
+            continue
+        if not _passes_filters(
+            review,
+            sentiment=sentiment,
+            min_helpful=min_helpful,
+            max_days=max_days,
+            playtime_bucket=playtime_bucket,
+            language=language,
+            now_ts=now_ts,
+        ):
+            continue
+
+        payload = label.get("payload") or {}
+        subcats = payload.get("subcategories") or []
+        issue_subcats = set(payload.get("issue_subcategories") or [])
+        request_subcats = set(payload.get("request_subcategories") or [])
+
+        for subcat in subcats:
+            if not isinstance(subcat, str) or not subcat:
+                continue
+            if subcat not in allowed:
+                continue
+            if wants_issue and not wants_request and subcat not in issue_subcats:
+                continue
+            if wants_request and not wants_issue and subcat not in request_subcats:
+                continue
+            counts[subcat] = counts.get(subcat, 0) + 1
+
+    ranked = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    return [key for key, _ in ranked[:limit] if key]
+
+
 def _review_id(review: dict) -> Optional[str]:
     value = review.get("recommendationid") or review.get("review_id")
     if value is None:
@@ -71,6 +190,8 @@ def _passes_filters(
     sentiment: str,
     min_helpful: int,
     max_days: Optional[int],
+    playtime_bucket: str,
+    language: str,
     now_ts: float,
 ) -> bool:
     if sentiment in {"positive", "negative"}:
@@ -95,6 +216,28 @@ def _passes_filters(
         if age_days > max_days:
             return False
 
+    lang = (language or "").strip().lower()
+    if lang and lang != "all":
+        review_lang = str(review.get("language") or "").strip().lower()
+        if not review_lang:
+            return False
+        if review_lang != lang:
+            return False
+
+    bucket = (playtime_bucket or "").strip().lower()
+    if bucket and bucket != "all":
+        author = review.get("author") or {}
+        minutes = int(author.get("playtime_forever") or 0)
+        if bucket in {"lt2h", "<2h"}:
+            if minutes >= 120:
+                return False
+        elif bucket in {"2to20h", "2-20h", "2–20h"}:
+            if minutes < 120 or minutes >= 1200:
+                return False
+        elif bucket in {"20hplus", "20h+", "20h"}:
+            if minutes < 1200:
+                return False
+
     return True
 
 
@@ -117,6 +260,8 @@ def _collect_evidence(
     sentiment: str,
     min_helpful: int,
     max_days: Optional[int],
+    playtime_bucket: str,
+    language: str,
     max_reviews: int,
     max_snippets: int,
 ) -> tuple[List[ChatEvidence], int]:
@@ -135,7 +280,15 @@ def _collect_evidence(
             continue
         if review_id not in labels:
             continue
-        if not _passes_filters(review, sentiment=sentiment, min_helpful=min_helpful, max_days=max_days, now_ts=now_ts):
+        if not _passes_filters(
+            review,
+            sentiment=sentiment,
+            min_helpful=min_helpful,
+            max_days=max_days,
+            playtime_bucket=playtime_bucket,
+            language=language,
+            now_ts=now_ts,
+        ):
             continue
         filtered_review_count += 1
 
@@ -206,6 +359,8 @@ def build_chat_context(
     sentiment: str,
     min_helpful: int,
     max_days: Optional[int],
+    playtime_bucket: str,
+    language: str,
     max_reviews: int,
     max_snippets: int,
 ) -> Dict[str, Any]:
@@ -217,6 +372,16 @@ def build_chat_context(
     subcategory_insights = insights.get("subcategory_insights") or []
     available_subcats = [entry.get("subcategory") for entry in subcategory_insights if entry.get("subcategory")]
     available_subcats = [key for key in available_subcats if isinstance(key, str)]
+
+    wants_issue, wants_request = _question_flags(question)
+    labels = storage.load_review_labels(app_id)
+
+    query = _fts_query_from_question(question)
+    ranked_ids = storage.search_review_ids(app_id, query, limit=max_reviews, language=language) if query else []
+    if ranked_ids:
+        raw_reviews = storage.load_reviews_by_ids(app_id, ranked_ids)
+    else:
+        raw_reviews = storage.load_reviews(app_id, limit=max_reviews)
 
     matched = _match_subcategories(question, available_subcats)
     if not matched:
@@ -230,18 +395,33 @@ def build_chat_context(
             ]
 
     if not matched:
-        subcategory_insights = sorted(
-            subcategory_insights,
-            key=lambda entry: int(entry.get("count") or 0),
-            reverse=True,
+        now_ts = time.time()
+        derived = _top_subcategories_from_reviews(
+            reviews=raw_reviews,
+            labels=labels,
+            available_subcats=available_subcats,
+            wants_issue=wants_issue,
+            wants_request=wants_request,
+            sentiment=sentiment,
+            min_helpful=min_helpful,
+            max_days=max_days,
+            playtime_bucket=playtime_bucket,
+            language=language,
+            now_ts=now_ts,
+            limit=5,
         )
-        matched = [entry.get("subcategory") for entry in subcategory_insights[:5] if entry.get("subcategory")]
+        if derived:
+            matched = derived
+        else:
+            subcategory_insights = sorted(
+                subcategory_insights,
+                key=lambda entry: int(entry.get("count") or 0),
+                reverse=True,
+            )
+            matched = [entry.get("subcategory") for entry in subcategory_insights[:5] if entry.get("subcategory")]
 
     matched = [key for key in matched if key]
 
-    wants_issue, wants_request = _question_flags(question)
-    labels = storage.load_review_labels(app_id)
-    raw_reviews = storage.load_reviews(app_id, limit=max_reviews)
     review_map: Dict[str, dict] = {}
     for review in raw_reviews:
         review_id = _review_id(review)
@@ -258,9 +438,47 @@ def build_chat_context(
         sentiment=sentiment,
         min_helpful=min_helpful,
         max_days=max_days,
+        playtime_bucket=playtime_bucket,
+        language=language,
         max_reviews=max_reviews,
         max_snippets=max_snippets,
     )
+
+    if not evidence and ranked_ids:
+        # If keyword matching missed, fall back to the most common subcategories
+        # among the retrieved reviews.
+        now_ts = time.time()
+        fallback = _top_subcategories_from_reviews(
+            reviews=raw_reviews,
+            labels=labels,
+            available_subcats=available_subcats,
+            wants_issue=wants_issue,
+            wants_request=wants_request,
+            sentiment=sentiment,
+            min_helpful=min_helpful,
+            max_days=max_days,
+            playtime_bucket=playtime_bucket,
+            language=language,
+            now_ts=now_ts,
+            limit=5,
+        )
+        fallback = [key for key in fallback if key and key not in matched]
+        if fallback:
+            matched = fallback
+            evidence, filtered_review_count = _collect_evidence(
+                labels=labels,
+                reviews=review_map,
+                candidate_subcategories=matched,
+                wants_issue=wants_issue,
+                wants_request=wants_request,
+                sentiment=sentiment,
+                min_helpful=min_helpful,
+                max_days=max_days,
+                playtime_bucket=playtime_bucket,
+                language=language,
+                max_reviews=max_reviews,
+                max_snippets=max_snippets,
+            )
 
     subcat_index = {entry.get("subcategory"): entry for entry in subcategory_insights if entry.get("subcategory")}
     stats = []
@@ -292,6 +510,8 @@ def build_chat_context(
         "sentiment": sentiment,
         "min_helpful": min_helpful,
         "max_days": max_days,
+        "playtime_bucket": playtime_bucket,
+        "language": language,
     }
 
 
@@ -316,7 +536,7 @@ def build_chat_prompt(context: Dict[str, Any]) -> str:
         "Return JSON only with fields: answer (string), used_subcategories (list), citations (list of {review_id, subcategory, snippet}).\n\n"
         f"Game: {context['game_name']}\n"
         f"Question: {context['question']}\n"
-        f"Filters: sentiment={context['sentiment']}, min_helpful={context['min_helpful']}, max_days={context['max_days']}\n"
+        f"Filters: sentiment={context['sentiment']}, min_helpful={context['min_helpful']}, max_days={context['max_days']}, playtime_bucket={context.get('playtime_bucket')}, language={context.get('language')}\n"
         f"Matched subcategories: {context['matched_subcategories']}\n"
         f"Subcategory stats (count, recommendation_rate, issue_count, request_count): {stats_json}\n"
         f"Evidence snippets: {evidence_json}\n"
@@ -335,6 +555,8 @@ def answer_chat(
     sentiment: str,
     min_helpful: int,
     max_days: Optional[int],
+    playtime_bucket: str = "all",
+    language: str = "all",
     max_reviews: int,
     max_snippets: int,
     llm_provider: Optional[str] = None,
@@ -348,6 +570,8 @@ def answer_chat(
         sentiment=sentiment,
         min_helpful=min_helpful,
         max_days=max_days,
+        playtime_bucket=playtime_bucket,
+        language=language,
         max_reviews=max_reviews,
         max_snippets=max_snippets,
     )

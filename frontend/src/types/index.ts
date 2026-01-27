@@ -19,6 +19,13 @@ export interface StoragePaths {
   db_path: string;
   data_dir: string;
   reports_dir: string;
+  logs_dir: string;
+  log_file: string;
+}
+
+export interface LogTailResponse {
+  log_file: string;
+  tail: string;
 }
 
 export interface ChatCitation {
@@ -249,6 +256,25 @@ export interface AnalyzeResponse {
   metadata: AnalyzeMetadata;
   insights: InsightsResponse | null;
   reviews: ReviewRow[];
+}
+
+export interface AnalyzeEstimateResponse {
+  app_id: number;
+  will_fetch: boolean;
+  will_persist: boolean;
+  review_count_requested: number;
+  reviews_considered: number;
+  cached_labels_total: number;
+  cached_reviews: number;
+  needs_refresh_reviews: number;
+  empty_reviews: number;
+  short_reviews: number;
+  rules_reviews: number;
+  llm_reviews: number;
+  prompt_version: string;
+  model_id: string;
+  labeling_strategy: string;
+  reasons: Record<string, number>;
 }
 
 export interface StarredGame {
