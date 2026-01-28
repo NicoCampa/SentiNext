@@ -5,6 +5,8 @@ import "./globals.css";
 import { AnalysisProvider } from "@/contexts/AnalysisContext";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 import { GlobalFiltersProvider } from "@/contexts/GlobalFiltersContext";
+import { GameProvider } from "@/contexts/GameContext";
+import { UiPreferencesProvider } from "@/contexts/UiPreferencesContext";
 
 export const metadata: Metadata = {
   title: "SentiNext",
@@ -23,8 +25,12 @@ export default function RootLayout({
       <body className={clsx(inter.variable, "min-h-screen bg-transparent text-slate-100 antialiased")}>
         <AnalysisProvider>
           <GlobalFiltersProvider>
-            {children}
-            <AnalysisWidget />
+            <UiPreferencesProvider>
+              <GameProvider>
+                {children}
+                <AnalysisWidget />
+              </GameProvider>
+            </UiPreferencesProvider>
           </GlobalFiltersProvider>
         </AnalysisProvider>
       </body>

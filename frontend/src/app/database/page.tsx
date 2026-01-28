@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { fetchDatabaseStats } from '@/lib/api';
 import type { DatabaseStats } from '@/lib/api';
 
@@ -52,7 +54,7 @@ export default function DatabasePage() {
         {/* Database Statistics */}
         <Card variant="glass" className="p-6">
           <h2 className="mb-4 text-lg font-medium">Database Statistics</h2>
-          {stats && (
+          {stats ? (
             <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
               <div className="space-y-1">
                 <p className="text-xs uppercase tracking-wider text-slate-400">Games</p>
@@ -71,6 +73,18 @@ export default function DatabasePage() {
                 <p className="text-2xl font-semibold text-sky-300">{stats.labels.toLocaleString()}</p>
               </div>
             </div>
+          ) : (
+            <EmptyState
+              title="No local data yet"
+              description="Run your first analysis to populate the database."
+              icon="◫"
+              variant="info"
+              action={
+                <a href="/dashboard">
+                  <Button variant="primary">Analyze a Game</Button>
+                </a>
+              }
+            />
           )}
         </Card>
 

@@ -1,6 +1,6 @@
 # SentiNext
 
-SentiNext turns raw Steam reviews into clear, actionable insights. It ingests Steam reviews, classifies them into a consistent taxonomy, surfaces top issues and feature requests, and supports local exports (PDF/HTML).
+SentiNext turns raw Steam reviews into clear, actionable insights. It ingests Steam reviews, classifies them into a consistent taxonomy, and surfaces top issues and feature requests.
 
 ## Structure
 - `backend/` – FastAPI app (`backend/main.py`) and shared package (`senti_next/`)
@@ -74,27 +74,3 @@ npm run dev  # http://localhost:3000
 - The API persists reviews/labels to `data/senti_next.db`. Set `SENTINEXT_DB_PATH` to override.
 - LLM settings via env: `SENTINEXT_OLLAMA_MODEL` (default `gpt-oss:20b-cloud`), `SENTINEXT_CLUSTER_LABELS`, `SENTINEXT_CLUSTER_SIMILARITY`.
 - Destructive admin actions (delete game data / clear DB) are disabled by default. To enable them set `SENTINEXT_ENABLE_DESTRUCTIVE=1` and `SENTINEXT_ADMIN_TOKEN` on the backend, then unlock via the **Admin** box in the UI sidebar.
-
-## PDF email reports (testing)
-- Endpoint: `POST /report/pdf` (hard-caps `review_count` to 100 for now).
-- Poll status: `GET /report/pdf/status/{job_id}`.
-- Generated PDFs are saved under `SENTINEXT_REPORTS_DIR` (or next to the DB under `reports/`) and emailed as an attachment.
-- For production, set `SENTINEXT_SERVICE_TOKEN` and send it as `x-service-token` from your website/webhook.
-- For local testing without email/LLM:
-  - Set `SENTINEXT_DISABLE_EMAIL=1` to skip SMTP sending (PDF still gets written to disk).
-  - If your network can’t reach Steam, set `SENTINEXT_PDF_USE_CACHE=1` to generate PDFs from cached DB reviews (run an analysis first to populate the cache).
-
-### PDF CLI (local testing)
-Generate a PDF directly from the terminal:
-
-```bash
-conda activate SentiNext
-python -m backend.generate_pdf --app-id 1091500 --review-count 100 --use-cache
-```
-
-### SMTP env vars
-- `SENTINEXT_SMTP_HOST` (required)
-- `SENTINEXT_SMTP_PORT` (default `587`)
-- `SENTINEXT_SMTP_USER` / `SENTINEXT_SMTP_PASS` (optional, if your SMTP requires auth)
-- `SENTINEXT_SMTP_FROM` (required)
-- `SENTINEXT_SMTP_TLS` (default `true`)

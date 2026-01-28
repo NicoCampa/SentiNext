@@ -325,22 +325,6 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-1">
-                <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Reports</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="break-all rounded-lg bg-slate-950/40 px-3 py-2 font-mono text-[11px] text-slate-200">
-                    {storagePaths?.reports_dir || "Loading..."}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleCopy(storagePaths?.reports_dir || "")}
-                    disabled={!storagePaths?.reports_dir}
-                  >
-                    Copy
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-1">
                 <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Logs</span>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="break-all rounded-lg bg-slate-950/40 px-3 py-2 font-mono text-[11px] text-slate-200">

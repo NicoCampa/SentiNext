@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-import { searchGames, fetchStarredGames, estimateAnalysis } from "@/lib/api";
+import { searchGames, estimateAnalysis } from "@/lib/api";
 import type {
   AnalyzeResponse,
   AnalyzeEstimateResponse,
@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { useAnalysis } from "@/contexts/AnalysisContext";
+import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
@@ -90,6 +91,7 @@ function DashboardContent() {
   const gameParam = searchParams.get("game");
   const reviewsParam = searchParams.get("reviews") || searchParams.get("review_count");
   const { startAnalysis, getTask } = useAnalysis();
+  const { games, loading: gamesLoading, refreshGames, selectGameById, setTemporaryGame, selectedStarredGame } = useGameContext();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -98,7 +100,6 @@ function DashboardContent() {
 
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadingStarred, setLoadingStarred] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
   const [reviewCount, setReviewCount] = useState<number>(() => loadDefaultAnalysisReviewCount());
   const [language, setLanguage] = useState<string>("english");
@@ -127,38 +128,53 @@ function DashboardContent() {
     const appId = parseInt(gameParam, 10);
     if (Number.isNaN(appId)) return;
 
-    async function loadStarredGame() {
-      setLoadingStarred(true);
-      try {
-        const starred = await fetchStarredGames();
-        const game = starred.find((entry) => entry.app_id === appId);
-          if (game && game.insights) {
-            setSelectedGame({
-              appid: game.app_id,
-              name: game.name,
-              price: null,
-              url: `https://store.steampowered.com/app/${game.app_id}`,
-              image_url: game.metadata.header_image ?? null,
-            });
-            setAnalysis({ metadata: game.metadata, insights: game.insights, reviews: game.sample ?? [] });
-            setForceRefresh(false);
-          }
-      } catch (err) {
-        console.error("Failed to load starred game", err);
-        setError("Failed to load saved analysis");
-      } finally {
-        setLoadingStarred(false);
-      }
+    const game = games.find((entry) => entry.app_id === appId);
+    if (game && game.insights) {
+      setSelectedGame({
+        appid: game.app_id,
+        name: game.name,
+        price: null,
+        url: `https://store.steampowered.com/app/${game.app_id}`,
+        image_url: game.metadata.header_image ?? null,
+      });
+      setAnalysis({ metadata: game.metadata, insights: game.insights, reviews: game.sample ?? [] });
+      setForceRefresh(false);
+      selectGameById(appId);
     }
+    if (!gamesLoading && !game) {
+      setError("Saved analysis not found for this game.");
+    }
+  }, [gameParam, games, gamesLoading, selectGameById]);
 
-    loadStarredGame();
-  }, [gameParam]);
+  useEffect(() => {
+    if (!selectedStarredGame) return;
+    if (selectedGame?.appid === selectedStarredGame.app_id && analysis?.metadata?.app_id === selectedStarredGame.app_id) {
+      return;
+    }
+    setSelectedGame({
+      appid: selectedStarredGame.app_id,
+      name: selectedStarredGame.name,
+      price: null,
+      url: `https://store.steampowered.com/app/${selectedStarredGame.app_id}`,
+      image_url: selectedStarredGame.metadata.header_image ?? null,
+    });
+    setAnalysis({
+      metadata: selectedStarredGame.metadata,
+      insights: selectedStarredGame.insights,
+      reviews: selectedStarredGame.sample ?? [],
+    });
+    setForceRefresh(false);
+  }, [selectedStarredGame, selectedGame, analysis]);
 
   useEffect(() => {
     if (currentTask?.status === "completed" && currentTask.result) {
       setAnalysis(currentTask.result);
+      refreshGames().catch(() => null);
+      if (selectedGame) {
+        selectGameById(selectedGame.appid);
+      }
     }
-  }, [currentTask]);
+  }, [currentTask, refreshGames, selectGameById, selectedGame]);
 
   async function handleSearch() {
     if (!searchQuery.trim()) return;
@@ -179,6 +195,7 @@ function DashboardContent() {
 
   function handleSelectGame(game: SearchResult) {
     setSelectedGame(game);
+    setTemporaryGame(game);
     setSearchResults([]);
     setAnalysis(null);
     setError(null);
@@ -247,7 +264,10 @@ function DashboardContent() {
     setSearchResults([]);
     setError(null);
     setForceRefresh(false);
+    setTemporaryGame(null);
   }
+
+  const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
 
   if (loadingStarred) {
     return (

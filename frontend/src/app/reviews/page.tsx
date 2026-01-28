@@ -1,14 +1,82 @@
 'use client';
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
-import { fetchStarredGames } from "@/lib/api";
-import { StarredGameDTO } from "@/types";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { useGameContext } from "@/contexts/GameContext";
+import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
+
+const MAIN_CATEGORY_LABELS: Record<string, string> = {
+  gameplay: "Gameplay",
+  technical: "Technical",
+  content_design: "Content & Design",
+  ui_ux_accessibility: "UI/UX & Accessibility",
+  onboarding: "Onboarding",
+  presentation: "Presentation",
+  online_community: "Online & Community",
+  developer_updates: "Developer & Updates",
+  monetization_value: "Monetization & Value",
+  other: "Other / Meta",
+};
+
+function titleize(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (lower === "ui") return "UI";
+      if (lower === "ux") return "UX";
+      if (lower === "ugc") return "UGC";
+      if (lower === "ai") return "AI";
+      if (lower === "dlc") return "DLC";
+      if (lower === "p2w") return "P2W";
+      if (lower === "ctd") return "CTD";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+function formatTaxonomyLabel(value: string | undefined | null): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const normalized = trimmed.toLowerCase();
+  const direct = MAIN_CATEGORY_LABELS[normalized];
+  if (direct) return direct;
+  if (trimmed.includes("/")) {
+    const [mainRaw, subRaw] = trimmed.split("/", 2);
+    const main = MAIN_CATEGORY_LABELS[mainRaw.toLowerCase()] ?? titleize(mainRaw);
+    return `${main} / ${titleize(subRaw)}`;
+  }
+  return titleize(trimmed);
+}
+
+function hasIssue(review: any): boolean {
+  return (
+    review.llm_has_issue === true ||
+    (Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0)
+  );
+}
+
+function hasRequest(review: any): boolean {
+  return (
+    review.llm_has_request === true ||
+    (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0)
+  );
+}
+
+function formatReviewDate(value?: string | null): string {
+  if (!value) return "Date unknown";
+  const parsed = Number(value);
+  const date = Number.isFinite(parsed) ? new Date(parsed * 1000) : new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unknown";
+  return date.toLocaleDateString();
+}
 
 export default function ReviewsPage() {
   return (
@@ -22,48 +90,138 @@ function ReviewsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { filters, filtersActive } = useGlobalFilters();
+  const { games, loading: gamesLoading, selectGameById } = useGameContext();
+  const { density } = useUiPreferences();
 
-  // All hooks must be called at the top level
-  const [game, setGame] = useState<StarredGameDTO | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [quickSentiment, setQuickSentiment] = useState<"all" | "positive" | "negative">("all");
+  const [quickType, setQuickType] = useState<"all" | "issue" | "request">("all");
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
 
   const appId = parseInt(searchParams.get("appId") || "0");
   const filterType = searchParams.get("filterType") || "";
   const filterValue = searchParams.get("filterValue") || "";
 
+  const game = useMemo(() => {
+    if (!appId) return null;
+    return games.find((entry) => entry.app_id === appId) || null;
+  }, [appId, games]);
+
   useEffect(() => {
-    async function loadGame() {
-      if (!appId) {
-        router.push("/dashboard");
-        return;
+    if (!appId) {
+      router.push("/dashboard");
+      return;
+    }
+    selectGameById(appId);
+  }, [appId, router, selectGameById]);
+
+  useEffect(() => {
+    if (gamesLoading) return;
+    if (!appId) return;
+    if (!game) {
+      router.push("/dashboard");
+    }
+  }, [appId, game, gamesLoading, router]);
+
+  const compact = density === "compact";
+
+  const sample = game?.sample ?? [];
+  const baseReviews = useMemo(() => applyGlobalReviewFilters(sample, filters), [sample, filters]);
+  const scopedReviews = useMemo(() => {
+    return baseReviews.filter((review: any) => {
+      if (filterType === "subcategory") {
+        const subcats = Array.isArray(review.llm_subcategories) ? review.llm_subcategories : [];
+        if (!subcats.includes(filterValue)) return false;
       }
 
-      try {
-        const starred = await fetchStarredGames();
-        const found = starred.find((g) => g.app_id === appId);
+      if (filterType === "main_category") {
+        if (review.llm_main_category !== filterValue) return false;
+      }
 
-        if (found) {
-          setGame(found);
-        } else {
-          router.push("/dashboard");
-        }
-      } catch (error) {
-        console.error("Failed to load game:", error);
-        router.push("/dashboard");
-      } finally {
-        setLoading(false);
+      if (filterType === "voted_up") {
+        if (filterValue === "positive" && !review.voted_up) return false;
+        if (filterValue === "negative" && review.voted_up) return false;
+      }
+
+      if (filterType === "feature_request" || filterType === "request") {
+        const hasRequestFlag = review.llm_has_request ?? (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0);
+        if (filterValue === "yes" && !hasRequestFlag) return false;
+      }
+
+      if (filterType === "risk_refund") {
+        if (review.voted_up || (review.author_playtime_forever || 0) >= 120) return false;
+      }
+
+      if (filterType === "risk_core_fan") {
+        if (review.voted_up || (review.author_playtime_forever || 0) < 3000) return false;
+      }
+
+      if (filterType === "risk_churn") {
+        if (review.voted_up || (review.author_playtime_last_two_weeks || 0) > 0) return false;
+      }
+
+      return true;
+    });
+  }, [baseReviews, filterType, filterValue]);
+
+  const quickFilteredReviews = useMemo(() => {
+    return scopedReviews.filter((review: any) => {
+      if (quickSentiment === "positive" && !review.voted_up) return false;
+      if (quickSentiment === "negative" && review.voted_up) return false;
+      if (quickType === "issue" && !hasIssue(review)) return false;
+      if (quickType === "request" && !hasRequest(review)) return false;
+      return true;
+    });
+  }, [quickSentiment, quickType, scopedReviews]);
+
+  useEffect(() => {
+    if (quickFilteredReviews.length === 0) {
+      setSelectedIndex(null);
+      return;
+    }
+    setSelectedIndex((prev) => {
+      if (prev === null) return 0;
+      return prev < quickFilteredReviews.length ? prev : 0;
+    });
+  }, [quickFilteredReviews]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.isContentEditable) return;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!quickFilteredReviews.length) return;
+
+      if (event.key === "ArrowDown" || event.key === "j") {
+        event.preventDefault();
+        setSelectedIndex((prev) => {
+          if (prev === null) return 0;
+          return Math.min(prev + 1, quickFilteredReviews.length - 1);
+        });
+      }
+      if (event.key === "ArrowUp" || event.key === "k") {
+        event.preventDefault();
+        setSelectedIndex((prev) => {
+          if (prev === null) return 0;
+          return Math.max(prev - 1, 0);
+        });
       }
     }
 
-    loadGame();
-  }, [appId, router]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [quickFilteredReviews]);
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [appId, filterType, filterValue, filters.sentiment, filters.dateRange, filters.minHelpful, filters.playtime, filters.language]);
+    if (selectedIndex === null) return;
+    const item = document.getElementById(`review-item-${selectedIndex}`);
+    item?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
-  if (loading) {
+  const selectedReview = selectedIndex !== null ? quickFilteredReviews[selectedIndex] : null;
+
+  if (gamesLoading) {
     return (
       <AppLayout>
         <div className="mx-auto max-w-7xl px-4 py-10">
@@ -82,64 +240,17 @@ function ReviewsContent() {
     return null;
   }
 
-  // Filter reviews
-  const baseReviews = applyGlobalReviewFilters(game.sample || [], filters);
-  const filteredReviews = baseReviews.filter((review: any) => {
-    if (filterType === "subcategory") {
-      const subcats = Array.isArray(review.llm_subcategories) ? review.llm_subcategories : [];
-      if (!subcats.includes(filterValue)) return false;
-    }
-
-    if (filterType === "main_category") {
-      if (review.llm_main_category !== filterValue) return false;
-    }
-
-    if (filterType === "voted_up") {
-      if (filterValue === "positive" && !review.voted_up) return false;
-      if (filterValue === "negative" && review.voted_up) return false;
-    }
-
-    if (filterType === "feature_request" || filterType === "request") {
-      const hasRequest = review.llm_has_request ?? (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0);
-      if (filterValue === "yes" && !hasRequest) return false;
-    }
-
-    if (filterType === "risk_refund") {
-      if (review.voted_up || (review.author_playtime_forever || 0) >= 120) return false;
-    }
-
-    if (filterType === "risk_core_fan") {
-      if (review.voted_up || (review.author_playtime_forever || 0) < 3000) return false;
-    }
-
-    if (filterType === "risk_churn") {
-      if (review.voted_up || (review.author_playtime_last_two_weeks || 0) > 0) return false;
-    }
-
-    return true;
-  });
-
-  // Pagination
-  const reviewsPerPage = 20;
-  const totalPages = Math.ceil(filteredReviews.length / reviewsPerPage);
-  const paginatedReviews = filteredReviews.slice(
-    (currentPage - 1) * reviewsPerPage,
-    currentPage * reviewsPerPage
-  );
-
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl px-4 py-10 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold text-white">{game.name}</h1>
             <p className="mt-1 text-sm text-slate-400">
               {filtersActive
                 ? `Global filters: ${baseReviews.length} / ${(game.sample || []).length} reviews`
-                : `${(game.sample || []).length} reviews`}
-              {" · "}
-              Showing: {filteredReviews.length}
+                : `${(game.sample || []).length} reviews`}{" "}
+              · Showing: {quickFilteredReviews.length}
             </p>
             {filterType === "subcategory" && (
               <p className="mt-1 text-sm text-sky-400">
@@ -152,130 +263,221 @@ function ReviewsContent() {
           </Button>
         </div>
 
-        {/* Reviews List */}
-        <Card variant="glass" className="p-6">
-          <div className="space-y-4">
-            {paginatedReviews.map((review: any, idx: number) => (
-              <div
-                key={idx}
-                className="rounded-lg border border-white/10 bg-slate-900/30 p-4"
-              >
-                {/* Header */}
-                <div className="mb-3 flex items-start justify-between">
-                  <div className="flex flex-wrap gap-2">
-                    <span className={`rounded px-2 py-1 text-xs font-semibold ${
-                      review.voted_up
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : 'bg-rose-500/20 text-rose-400'
-                    }`}>
-                      {review.voted_up ? 'Recommended' : 'Not Recommended'}
-                    </span>
-                    {review.llm_main_category && (
-                      <span className="rounded bg-purple-500/20 px-2 py-1 text-xs font-semibold text-purple-300">
-                        {review.llm_main_category}
-                      </span>
-                    )}
-                    {(review.llm_has_issue ?? (Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0)) && (
-                      <span className="rounded bg-rose-500/20 px-2 py-1 text-xs font-semibold text-rose-300">
-                        Issue
-                      </span>
-                    )}
-                    {(review.llm_has_request ?? (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0)) && (
-                      <span className="rounded bg-cyan-500/20 px-2 py-1 text-xs font-semibold text-cyan-300">
-                        Request
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-right text-xs text-slate-400">
-                    {((review.author_playtime_forever || 0) / 60).toFixed(1)}h played
-                  </div>
-                </div>
-
-                {/* Review Text */}
-                <p className="mb-3 text-sm text-slate-200 leading-relaxed">{review.review}</p>
-
-                {/* Issue & Request Subcategories */}
-                {(Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0) ||
-                (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0) ? (
-                  <div className="mb-2 space-y-2">
-                    {Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-400">Issues:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {review.llm_issue_subcategories.map((issue: string, issueIdx: number) => (
-                            <span
-                              key={issueIdx}
-                              className="rounded bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-300"
-                            >
-                              {issue.replace(/_/g, " ").replace("/", " / ")}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-400">Requests:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {review.llm_request_subcategories.map((request: string, requestIdx: number) => (
-                            <span
-                              key={requestIdx}
-                              className="rounded bg-cyan-500/10 px-2 py-1 text-xs font-semibold text-cyan-300"
-                            >
-                              {request.replace(/_/g, " ").replace("/", " / ")}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* Footer */}
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <div>
-                    {review.votes_up > 0 && <span>{review.votes_up} helpful</span>}
-                    {review.votes_funny > 0 && <span className="ml-3">{review.votes_funny} funny</span>}
-                  </div>
-                  <div>
-                    {review.created_at && new Date(review.created_at).toLocaleDateString()}
-                  </div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <Card variant="glass" className="flex flex-col p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Reviews</h2>
+                <p className="text-xs text-slate-400">Use ↑/↓ or J/K to move</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Quick filters</span>
+                <div className="flex flex-wrap gap-2">
+                  {(["all", "positive", "negative"] as const).map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => setQuickSentiment(value)}
+                      className={`rounded-full border px-3 py-1 text-xs ${
+                        quickSentiment === value
+                          ? "border-sky-400 bg-sky-500/20 text-white"
+                          : "border-white/10 bg-white/5 text-slate-300 hover:border-sky-400/40 hover:text-white"
+                      }`}
+                      type="button"
+                    >
+                      {value === "all" ? "All sentiment" : value === "positive" ? "Recommended" : "Not recommended"}
+                    </button>
+                  ))}
+                  {(["all", "issue", "request"] as const).map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => setQuickType(value)}
+                      className={`rounded-full border px-3 py-1 text-xs ${
+                        quickType === value
+                          ? "border-purple-400 bg-purple-500/20 text-white"
+                          : "border-white/10 bg-white/5 text-slate-300 hover:border-purple-400/40 hover:text-white"
+                      }`}
+                      type="button"
+                    >
+                      {value === "all" ? "All labels" : value === "issue" ? "Issues" : "Requests"}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-              >
-                ← Previous
-              </Button>
-              <span className="text-sm text-slate-400">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next →
-              </Button>
             </div>
-          )}
 
-        {filteredReviews.length === 0 && (
-          <div className="py-12 text-center">
-            <p className="text-lg text-slate-400">No reviews match the current filters</p>
-          </div>
-        )}
-      </Card>
+            <div className="mt-4 flex-1 overflow-auto pr-1">
+              {quickFilteredReviews.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-center text-sm text-slate-400">
+                  No reviews match these filters. Try clearing quick filters or global filters above.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {quickFilteredReviews.map((review: any, idx: number) => {
+                    const isActive = idx === selectedIndex;
+                    const playtime = review.author_playtime_hours ?? (review.author_playtime_forever || 0) / 60;
+                    return (
+                      <button
+                        key={`${review.review_id}-${idx}`}
+                        id={`review-item-${idx}`}
+                        type="button"
+                        onClick={() => setSelectedIndex(idx)}
+                        className={`w-full rounded-2xl border text-left transition ${
+                          isActive
+                            ? "border-sky-400/60 bg-sky-500/10"
+                            : "border-white/10 bg-slate-900/30 hover:border-sky-500/40"
+                        } ${compact ? "p-3" : "p-4"}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full px-2 py-1 text-[11px] ${
+                                review.voted_up ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
+                              }`}
+                            >
+                              {review.voted_up ? "Recommended" : "Not recommended"}
+                            </span>
+                            {review.llm_main_category ? (
+                              <span className="rounded-full bg-indigo-500/15 px-2 py-1 text-[11px] text-indigo-200">
+                                {formatTaxonomyLabel(review.llm_main_category)}
+                              </span>
+                            ) : null}
+                            {hasIssue(review) ? (
+                              <span className="rounded-full bg-rose-500/15 px-2 py-1 text-[11px] text-rose-200">
+                                Issue
+                              </span>
+                            ) : null}
+                            {hasRequest(review) ? (
+                              <span className="rounded-full bg-cyan-500/15 px-2 py-1 text-[11px] text-cyan-200">
+                                Request
+                              </span>
+                            ) : null}
+                          </div>
+                          <span>{playtime.toFixed(1)}h</span>
+                        </div>
+                        <p className={`mt-2 line-clamp-3 text-sm text-slate-100 ${compact ? "leading-snug" : "leading-relaxed"}`}>
+                          {review.review}
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                          <span>{formatReviewDate(review.created_at)}</span>
+                          {review.votes_up ? <span>{review.votes_up} helpful</span> : <span>—</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card variant="glass" className="flex flex-col p-6">
+            {selectedReview ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-white">Review details</h2>
+                    <p className="text-xs text-slate-400">
+                      {formatReviewDate(selectedReview.created_at)} · {selectedReview.votes_up || 0} helpful
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs ${
+                        selectedReview.voted_up ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"
+                      }`}
+                    >
+                      {selectedReview.voted_up ? "Recommended" : "Not recommended"}
+                    </span>
+                    {selectedReview.llm_main_category ? (
+                      <span className="rounded-full bg-indigo-500/15 px-3 py-1 text-xs text-indigo-200">
+                        {formatTaxonomyLabel(selectedReview.llm_main_category)}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
+                  <p className="whitespace-pre-line">{selectedReview.review}</p>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Labels</p>
+                    {selectedReview.llm_subcategories?.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedReview.llm_subcategories.map((value: string, idx: number) => (
+                          <span key={`${value}-${idx}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">
+                            {formatTaxonomyLabel(value)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">No subcategories tagged.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Issues & Requests</p>
+                    <div className="space-y-3 text-xs text-slate-300">
+                      {selectedReview.llm_issue_subcategories?.length ? (
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300">Issues</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedReview.llm_issue_subcategories.map((value: string, idx: number) => (
+                              <span key={`${value}-${idx}`} className="rounded-full bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
+                                {formatTaxonomyLabel(value)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500">No issues tagged.</p>
+                      )}
+                      {selectedReview.llm_request_subcategories?.length ? (
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">Requests</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedReview.llm_request_subcategories.map((value: string, idx: number) => (
+                              <span key={`${value}-${idx}`} className="rounded-full bg-cyan-500/15 px-2 py-1 text-xs text-cyan-200">
+                                {formatTaxonomyLabel(value)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Evidence</p>
+                  {selectedReview.llm_subcategory_evidence && Object.keys(selectedReview.llm_subcategory_evidence).length ? (
+                    <div className="mt-3 space-y-3 text-sm text-slate-200">
+                      {Object.entries(selectedReview.llm_subcategory_evidence).map(([subcategory, snippets]) => (
+                        <div key={subcategory} className="rounded-xl border border-white/5 bg-white/5 p-3">
+                          <p className="text-xs font-semibold text-slate-300">{formatTaxonomyLabel(subcategory)}</p>
+                          <div className="mt-2 space-y-2 text-xs text-slate-200">
+                            {snippets.map((snippet, idx) => (
+                              <p key={`${subcategory}-${idx}`} className="rounded-lg bg-slate-950/40 px-3 py-2">
+                                {snippet}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">No evidence snippets saved for this review.</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-slate-400">
+                <p>Select a review to see labels and evidence.</p>
+                <p className="text-xs text-slate-500">Tip: use ↑/↓ or J/K to move quickly.</p>
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
     </AppLayout>
   );

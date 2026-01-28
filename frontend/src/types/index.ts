@@ -18,7 +18,6 @@ export interface AnalyzeMetadata {
 export interface StoragePaths {
   db_path: string;
   data_dir: string;
-  reports_dir: string;
   logs_dir: string;
   log_file: string;
 }

@@ -3,20 +3,16 @@
 
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_submodules
 
 project_root = Path(os.getcwd())
 
 hiddenimports = [
     "backend.main",
-    "backend.reports",
-    "backend.html_pdf",
-    "backend.pdf_report",
-    "backend.emailer",
 ]
 hiddenimports += collect_submodules("backend.senti_next")
 
-datas = collect_data_files("backend", includes=["assets/**"])
+datas = []
 
 a = Analysis(
     ["backend/tauri_backend.py"],

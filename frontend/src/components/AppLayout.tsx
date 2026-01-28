@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { FirstRunSetup } from "@/components/FirstRunSetup";
 import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
+import { GameContextBar } from "@/components/GameContextBar";
+import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -16,6 +18,8 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, showSidebar = true, sidebarContent, showGlobalFilters = true }: AppLayoutProps) {
   const pathname = usePathname();
+  const { density } = useUiPreferences();
+  const compact = density === "compact";
 
   const navItems = [
     { href: "/home", label: "Home", icon: "●" },
@@ -29,7 +33,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent, showGl
   return (
     <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-950 text-slate-100">
       {showSidebar && (
-        <aside className="hidden w-80 flex-shrink-0 border-r border-white/5 bg-slate-900/40 px-7 py-10 backdrop-blur lg:block">
+        <aside className="hidden w-80 flex-shrink-0 border-r border-white/10 bg-slate-900/70 px-7 py-10 backdrop-blur lg:block">
           <div className="flex h-full flex-col gap-8 text-sm">
             {/* Logo */}
             <div className="space-y-3 text-left">
@@ -57,10 +61,11 @@ export function AppLayout({ children, showSidebar = true, sidebarContent, showGl
                     key={item.href}
                     href={item.href}
                     className={clsx(
-                      "flex items-center gap-3 rounded-full border px-4 py-2 text-center transition",
+                      "flex items-center gap-3 rounded-2xl border px-4 text-center transition",
+                      compact ? "py-2 text-[11px]" : "py-3 text-xs",
                       pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
-                        ? "border-white/10 bg-white/10 text-slate-200 shadow-lg shadow-indigo-900/20"
-                        : "border-white/10 bg-transparent text-slate-300 hover:border-sky-400/50 hover:text-white"
+                        ? "border-white/20 bg-white/10 text-slate-100 shadow-lg shadow-indigo-900/20"
+                        : "border-white/15 bg-transparent text-slate-300 hover:border-sky-400/60 hover:text-white"
                     )}
                   >
                     <span>{item.icon}</span>
@@ -82,7 +87,8 @@ export function AppLayout({ children, showSidebar = true, sidebarContent, showGl
       <main className="flex-1 bg-slate-950/70">
         {showGlobalFilters ? (
           <div className="sticky top-0 z-40 border-b border-white/5 bg-slate-950/80 backdrop-blur">
-            <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-6">
+            <div className="mx-auto max-w-7xl space-y-3 px-4 py-4 sm:px-6 lg:px-6">
+              <GameContextBar />
               <GlobalFiltersBar />
             </div>
           </div>

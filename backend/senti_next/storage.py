@@ -201,20 +201,6 @@ def init_db() -> None:
                 conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
                 pass
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS pdf_jobs (
-                job_id TEXT PRIMARY KEY,
-                app_id INTEGER NOT NULL,
-                email TEXT NOT NULL,
-                status TEXT NOT NULL,
-                error TEXT,
-                file_path TEXT,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-            """
-        )
         conn.commit()
 
 
@@ -761,62 +747,3 @@ def load_analysis_result(app_id: int) -> Optional[Dict[str, Any]]:
         "stale_reason": row["stale_reason"],
     }
 
-
-def create_pdf_job(job_id: str, app_id: int, email: str) -> None:
-    timestamp = int(time.time())
-    with _get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO pdf_jobs (job_id, app_id, email, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (job_id, int(app_id), email, "queued", timestamp, timestamp),
-        )
-        conn.commit()
-
-
-def update_pdf_job(
-    job_id: str,
-    *,
-    status: str,
-    error: Optional[str] = None,
-    file_path: Optional[str] = None,
-) -> None:
-    timestamp = int(time.time())
-    with _get_connection() as conn:
-        conn.execute(
-            """
-            UPDATE pdf_jobs
-            SET status = ?,
-                error = COALESCE(?, error),
-                file_path = COALESCE(?, file_path),
-                updated_at = ?
-            WHERE job_id = ?
-            """,
-            (status, error, file_path, timestamp, job_id),
-        )
-        conn.commit()
-
-
-def load_pdf_job(job_id: str) -> Optional[Dict[str, Any]]:
-    with _get_connection() as conn:
-        row = conn.execute(
-            """
-            SELECT job_id, app_id, email, status, error, file_path, created_at, updated_at
-            FROM pdf_jobs
-            WHERE job_id = ?
-            """,
-            (job_id,),
-        ).fetchone()
-    if row is None:
-        return None
-    return {
-        "job_id": row["job_id"],
-        "app_id": int(row["app_id"]),
-        "email": row["email"],
-        "status": row["status"],
-        "error": row["error"],
-        "file_path": row["file_path"],
-        "created_at": int(row["created_at"] or 0),
-        "updated_at": int(row["updated_at"] or 0),
-    }

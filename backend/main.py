@@ -9,7 +9,6 @@ from datetime import datetime
 import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import uuid
 
 import pandas as pd
 
@@ -31,15 +30,11 @@ from .senti_next import storage
 from .senti_next import llm
 from .senti_next import license as license_guard
 from .senti_next import chat
-from .reports import render_single_report, render_compare_report
-from .html_pdf import render_insights_pdf
-from .emailer import EmailConfigError, send_pdf_email
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_LIMIT = 1000
 FETCH_LIMIT = 2000
-PDF_REVIEW_LIMIT = 100  # hard cap for testing
 
 APP_ORIGINS = [
     "http://localhost:3000",
@@ -60,7 +55,6 @@ ALLOWED_ORIGINS = _parse_allowed_origins()
 
 ADMIN_TOKEN = os.getenv("SENTINEXT_ADMIN_TOKEN")
 DESTRUCTIVE_ENABLED = os.getenv("SENTINEXT_ENABLE_DESTRUCTIVE", "false").lower() in {"1", "true", "yes"}
-SERVICE_TOKEN = os.getenv("SENTINEXT_SERVICE_TOKEN")
 
 storage.init_db()
 
@@ -253,30 +247,6 @@ class FeedbackItem(BaseModel):
     context: Optional[dict] = None
 
 
-class PdfReportRequest(BaseModel):
-    app_id: int = Field(..., gt=0)
-    email: str = Field(..., min_length=3, max_length=320)
-    review_count: int = Field(PDF_REVIEW_LIMIT, ge=1, le=PDF_REVIEW_LIMIT)
-    language: str = Field("english", min_length=2, max_length=32)
-    filter: str = Field("recent")
-    day_range: Optional[int] = Field(None, ge=1, le=365)
-
-
-class PdfReportJobResponse(BaseModel):
-    job_id: str
-    status: str
-    created_at: str
-
-
-class PdfReportStatusResponse(BaseModel):
-    job_id: str
-    app_id: int
-    email: str
-    status: str
-    error: Optional[str] = None
-    updated_at: str
-
-
 REVIEW_EXPORT_COLUMNS = [
     # Review content
     "review_id",
@@ -323,14 +293,6 @@ def require_license() -> None:
     except PermissionError as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
-def require_service_token(request: Request) -> None:
-    """Optional shared-secret auth for website-to-backend calls."""
-    if not SERVICE_TOKEN:
-        return
-    provided = request.headers.get("x-service-token") or ""
-    if not secrets.compare_digest(provided, SERVICE_TOKEN):
-        raise HTTPException(status_code=401, detail="Invalid service token.")
-
 
 @app.get("/health")
 def healthcheck() -> dict:
@@ -341,12 +303,10 @@ def healthcheck() -> dict:
 def storage_paths() -> dict:
     db_path = storage.db_path()
     data_dir = db_path.parent
-    reports_dir = _reports_dir()
     log_file = _log_file_path()
     return {
         "db_path": str(db_path),
         "data_dir": str(data_dir),
-        "reports_dir": str(reports_dir),
         "logs_dir": str(log_file.parent),
         "log_file": str(log_file),
     }
@@ -511,141 +471,6 @@ def _run_analysis_job(
         if progress_active:
             storage.update_progress(app_id, total_reviews, total_reviews)
             storage.clear_progress(app_id)
-
-
-def _reports_dir() -> Path:
-    raw = os.getenv("SENTINEXT_REPORTS_DIR")
-    if raw:
-        return Path(raw).expanduser()
-
-    # If we're running from a git checkout, prefer a local repo `reports/` folder
-    # (more intuitive during development than writing to OS app-data directories).
-    try:
-        cwd = Path.cwd().resolve()
-        for candidate in [cwd, *cwd.parents]:
-            if (candidate / ".git").exists():
-                return candidate / "reports"
-    except Exception:
-        pass
-
-    # Default to the same data dir root as the DB (works well for packaged desktop builds).
-    return storage.db_path().parent / "reports"
-
-
-def _safe_report_dir_name(name: str, app_id: int) -> str:
-    raw = (name or "").strip()
-    if not raw:
-        return str(app_id)
-    allowed = set(" -_().[]")
-    cleaned = []
-    for char in raw:
-        if ord(char) >= 128:
-            cleaned.append("-")
-            continue
-        if char.isalnum() or char in allowed:
-            cleaned.append(char)
-        elif char.isspace():
-            cleaned.append(" ")
-        else:
-            cleaned.append("-")
-    compact = " ".join("".join(cleaned).split())
-    compact = compact.strip(" .-_")
-    return compact or str(app_id)
-
-
-def _run_pdf_report_job(job_id: str, request: PdfReportRequest) -> None:
-    storage.update_pdf_job(job_id, status="running")
-    try:
-        app_id = int(request.app_id)
-        use_cache = os.getenv("SENTINEXT_PDF_USE_CACHE", "false").lower() in {"1", "true", "yes"}
-        game_context = fetch_app_details(app_id) or {} if not use_cache else {}
-        game_name = game_context.get("name", str(app_id))
-
-        filter_type = (request.filter or "recent").lower()
-        if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
-            filter_type = "recent"
-
-        if use_cache:
-            reviews = storage.load_reviews(app_id, limit=min(int(request.review_count), PDF_REVIEW_LIMIT))
-            if not reviews:
-                raise RuntimeError(
-                    "No cached reviews available (SENTINEXT_PDF_USE_CACHE=1). "
-                    "Run an analysis with persistence enabled first, or disable cache mode."
-                )
-        else:
-            reviews = fetch_reviews(
-                app_id,
-                count=min(int(request.review_count), PDF_REVIEW_LIMIT),
-                language=request.language,
-                filter_type=filter_type,
-                day_range=request.day_range,
-            )
-
-        metadata = AnalyzeMetadata(
-            app_id=app_id,
-            requested=min(int(request.review_count), PDF_REVIEW_LIMIT),
-            retrieved=len(reviews),
-            language=request.language,
-            fetched_at=datetime.utcnow().isoformat() + "Z",
-        )
-
-        # No caching: always re-label with fresh prompt/model and skip cache writes via env.
-        llm_labels = llm.ensure_review_labels(
-            app_id=app_id,
-            reviews=reviews,
-            force_refresh=True,
-            game_context=game_context,
-            cache_enabled=False,
-        )
-
-        df = build_reviews_dataframe(reviews)
-        df = llm.apply_review_labels(df, llm_labels)
-        if df is None or df.empty:
-            raise RuntimeError("No reviews available to analyze.")
-
-        insights = prepare_insights(df)
-        pdf_bytes = render_insights_pdf(
-            app_id=app_id,
-            game_name=game_name,
-            metadata=metadata.dict(),
-            insights=insights or {},
-            reviews=reviews,
-            llm_labels=llm_labels,
-            game_image_url=(
-                game_context.get("header_image")
-                or f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/header.jpg"
-            ),
-        )
-
-        reports_dir = _reports_dir()
-        game_dir = reports_dir / _safe_report_dir_name(game_name, app_id)
-        pdf_dir = game_dir / "PDF report"
-        html_dir = game_dir / "HTML report"
-        pdf_dir.mkdir(parents=True, exist_ok=True)
-        html_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"sentinext-report-{app_id}-{job_id}.pdf"
-        path = pdf_dir / filename
-        path.write_bytes(pdf_bytes)
-
-        send_pdf_email(
-            to_email=request.email,
-            subject=f"SentiNext report for {game_name} (app {app_id})",
-            body_text=(
-                f"Your SentiNext report is attached.\n\n"
-                f"Game: {game_name} (app {app_id})\n"
-                f"Generated: {datetime.utcnow().isoformat()}Z\n"
-                f"Reviews analyzed: {len(reviews)}\n"
-            ),
-            pdf_bytes=pdf_bytes,
-            filename=filename,
-        )
-
-        storage.update_pdf_job(job_id, status="completed", file_path=str(path))
-    except EmailConfigError as exc:
-        storage.update_pdf_job(job_id, status="failed", error=str(exc))
-    except Exception as exc:
-        logger.exception("PDF job failed: %s", exc)
-        storage.update_pdf_job(job_id, status="failed", error=str(exc))
 
 
 @app.post("/analyze", response_model=AnalyzeResponse, status_code=202, dependencies=[Depends(require_license)])
@@ -900,81 +725,6 @@ def aggregate_feedback(
     )
     return [FeedbackItem(**item) for item in combined]
 
-
-@app.get("/report/{app_id}", dependencies=[Depends(require_license)])
-def export_report(app_id: int, format: str = "html"):
-    result = storage.load_analysis_result(app_id)
-    if not result or not result.get("insights"):
-        raise HTTPException(status_code=404, detail="No analysis result available for this app.")
-    metadata = result.get("metadata") or {}
-    insights = result.get("insights") or {}
-    name = fetch_app_details(app_id).get("name", str(app_id)) if fetch_app_details(app_id) else str(app_id)
-    if format == "json":
-        return {"app_id": app_id, "name": name, "metadata": metadata, "insights": insights}
-    return render_single_report(app_id, name, metadata, insights)
-
-
-@app.get("/compare/export", dependencies=[Depends(require_license)])
-def export_comparison(app_ids: Optional[str] = None, format: str = "html"):
-    ids = []
-    if app_ids:
-        try:
-            ids = [int(x) for x in app_ids.split(",") if x.strip()]
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid app_ids")
-
-    entries = storage.load_starred_games()
-    if ids:
-        entries = [e for e in entries if e.get("app_id") in ids]
-    if not entries:
-        raise HTTPException(status_code=404, detail="No matching starred games")
-
-    games_payload = []
-    for item in entries:
-        games_payload.append(
-            {
-                "app_id": item["app_id"],
-                "name": item["name"],
-                "metadata": item.get("metadata"),
-                "insights": item.get("insights"),
-            }
-        )
-
-    if format == "json":
-        return games_payload
-    return render_compare_report(games_payload)
-
-
-@app.post("/report/pdf", response_model=PdfReportJobResponse, status_code=202, dependencies=[Depends(require_license)])
-def request_pdf_report(
-    payload: PdfReportRequest,
-    background_tasks: BackgroundTasks,
-    _: None = Depends(require_service_token),
-) -> PdfReportJobResponse:
-    job_id = uuid.uuid4().hex
-    storage.create_pdf_job(job_id, payload.app_id, payload.email)
-    background_tasks.add_task(_run_pdf_report_job, job_id, payload)
-    return PdfReportJobResponse(
-        job_id=job_id,
-        status="queued",
-        created_at=datetime.utcnow().isoformat() + "Z",
-    )
-
-
-@app.get("/report/pdf/status/{job_id}", response_model=PdfReportStatusResponse, dependencies=[Depends(require_license)])
-def pdf_report_status(job_id: str, _: None = Depends(require_service_token)) -> PdfReportStatusResponse:
-    job = storage.load_pdf_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    updated_at = datetime.utcfromtimestamp(job["updated_at"]).isoformat() + "Z" if job.get("updated_at") else None
-    return PdfReportStatusResponse(
-        job_id=job["job_id"],
-        app_id=job["app_id"],
-        email=job["email"],
-        status=job["status"],
-        error=job.get("error"),
-        updated_at=updated_at or "",
-    )
 
 @app.get("/reviews/{app_id}", dependencies=[Depends(require_license)])
 def export_reviews(app_id: int, limit: Optional[int] = None, format: str = "csv", refresh: bool = False):
