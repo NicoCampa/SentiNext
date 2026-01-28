@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "SentiNext",
-    "version": "0.2.5"
+    "version": "0.2.6"
   },
   "tauri": {
     "windows": [],
@@ -16,6 +16,9 @@
     },
     "bundle": {
       "active": true,
+      "macOS": {
+        "entitlements": "entitlements.plist"
+      },
       "identifier": "ai.sentinext.app",
       "icon": [
         "icons/icon.icns",
