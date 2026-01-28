@@ -664,6 +664,21 @@ function AnalysisResults({
   const selectedMainLabel = selectedSubcategory
     ? MAIN_CATEGORY_LABELS[selectedSubcategory.split("/", 1)[0]?.toLowerCase() ?? ""] ?? toTitleCase(selectedSubcategory)
     : "";
+  const summaryTotal = filteredReviewSample.length;
+  const summaryRecommendationRate =
+    summaryTotal > 0
+      ? filteredReviewSample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / summaryTotal
+      : null;
+  const summaryIssueRate =
+    summaryTotal > 0
+      ? filteredReviewSample.reduce((sum, review) => sum + (listifyStrings(review.llm_issue_subcategories).length ? 1 : 0), 0) /
+        summaryTotal
+      : null;
+  const summaryRequestRate =
+    summaryTotal > 0
+      ? filteredReviewSample.reduce((sum, review) => sum + (listifyStrings(review.llm_request_subcategories).length ? 1 : 0), 0) /
+        summaryTotal
+      : null;
 
   useEffect(() => {
     if (!selectedSubcategory) return;
@@ -695,10 +710,10 @@ function AnalysisResults({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Card variant="glass" className="p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex gap-5">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap items-center gap-5">
             {selectedGame ? (
               <SteamImage
                 appId={selectedGame.appid}
@@ -709,16 +724,25 @@ function AnalysisResults({
               />
             ) : null}
             <div className="space-y-2">
-              <h2 className="text-2xl font-semibold text-white">{selectedGame?.name ?? "Analysis"}</h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-2xl font-semibold text-white">{selectedGame?.name ?? "Analysis"}</h2>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                  {filtersActive ? "Filtered sample" : "Review sample"}:{" "}
+                  {filteredReviewSample.length.toLocaleString()} / {reviewSample.length.toLocaleString()}
+                </span>
+              </div>
               <p className="text-sm text-slate-400">
-                {new Date(analysis.metadata.fetched_at).toLocaleString()} · {analysis.metadata.retrieved.toLocaleString()} /{" "}
-                {analysis.metadata.requested.toLocaleString()} reviews
+                Last run {new Date(analysis.metadata.fetched_at).toLocaleString()} · language{" "}
+                {analysis.metadata.language || "unknown"}
+              </p>
+              <p className="text-xs text-slate-500">
+                Retrieved {analysis.metadata.retrieved.toLocaleString()} / {analysis.metadata.requested.toLocaleString()} reviews
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3">
-            <label className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-slate-300">
+            <label className="flex items-center gap-2 text-[11px] uppercase tracking-[0.25em] text-slate-300">
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border border-white/30 bg-slate-900 text-sky-500 focus:ring-sky-500"
@@ -742,7 +766,22 @@ function AnalysisResults({
           </div>
         </div>
 
-        <details className="mt-5 rounded-2xl border border-white/10 bg-slate-900/20 p-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Recommendation</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRecommendationRate)}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Issue rate</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Request rate</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
+          </div>
+        </div>
+
+        <details className="mt-6 rounded-2xl border border-white/10 bg-slate-900/20 p-4">
           <summary className="cursor-pointer select-none text-xs uppercase tracking-[0.25em] text-slate-300">
             Analysis settings
           </summary>
@@ -828,26 +867,30 @@ function AnalysisResults({
           {estimateError ? <p className="mt-2 text-sm text-rose-400">{estimateError}</p> : null}
         </details>
 
-        {isAnalyzing && progress ? <div className="mt-5"><ProgressPill progress={progress} /></div> : null}
+        {isAnalyzing && progress ? (
+          <div className="mt-5">
+            <ProgressPill progress={progress} />
+          </div>
+        ) : null}
       </Card>
 
       <Card variant="glass" className="p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-white">Review Scope</h3>
+            <h3 className="text-lg font-semibold text-white">Review search</h3>
             <p className="mt-1 text-sm text-slate-400">
-              Global filters apply to categories, issues/requests, and segmentation. Search narrows review text only.
+              Search within the filtered sample. Global filters apply to all insights below.
             </p>
           </div>
           {filtersActive ? (
             <Button variant="secondary" onClick={resetFilters}>
-              Reset filters
+              Clear filters
             </Button>
           ) : null}
         </div>
         <div className="mt-4 flex flex-wrap items-end gap-4 text-xs text-slate-300">
-          <label className="flex min-w-[220px] flex-1 flex-col gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Search</span>
+          <label className="flex min-w-[240px] flex-1 flex-col gap-2">
+            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Search reviews</span>
             <input
               value={reviewQuery}
               onChange={(event) => setReviewQuery(event.target.value)}
@@ -863,324 +906,333 @@ function AnalysisResults({
         </div>
       </Card>
 
-      <Card variant="glass" className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Category recommendation</h3>
-            <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
-          </div>
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Insights</h3>
+          <p className="text-sm text-slate-400">Category health, issues & requests, and userbase segmentation.</p>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {categories.map((category) => {
-            const rateText = formatPercentOrDash(category.rate);
-            const rateColor = getRecommendationColor(category.rate);
-            const isExpanded = expandedCategories.has(category.key);
-            const visibleSubcategories = isExpanded ? category.subcategories : category.subcategories.slice(0, 3);
-            return (
-              <div
-                key={category.key}
-                className="rounded-2xl border border-white/10 bg-slate-900/30 p-5"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{category.label}</p>
-                    <p className="mt-1 text-xs text-slate-500">{category.count.toLocaleString()} tagged reviews</p>
-                  </div>
-                  <p className="text-3xl font-semibold" style={{ color: rateColor }}>
-                    {rateText}
-                  </p>
-                </div>
+        <Card variant="glass" className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-lg font-semibold text-white">Category recommendation</h4>
+              <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
+            </div>
+          </div>
 
-                <div className="mt-4 space-y-2">
-                  {category.subcategories.length === 0 ? (
-                    <p className="text-sm text-slate-500">No tagged subcategories.</p>
-                  ) : (
-                    visibleSubcategories.map((sub) => (
-                      <button
-                        key={sub.subcategory}
-                        type="button"
-                        onClick={() =>
-                          setSelectedSubcategory((prev) => (prev === sub.subcategory ? null : sub.subcategory))
-                        }
-                        className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${
-                          selectedSubcategory === sub.subcategory
-                            ? "border-sky-400/50 bg-sky-500/10"
-                            : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm text-slate-200">
-                            {toSubcategoryLabel(sub.subcategory, sub.sub_category)}
-                          </p>
-                          <p className="text-xs text-slate-500">{Number(sub.count ?? 0).toLocaleString()} tags</p>
-                        </div>
-                        <p
-                          className="text-sm font-semibold"
-                          style={{ color: getRecommendationColor(sub.recommendation_rate) }}
-                        >
-                          {formatPercentOrDash(sub.recommendation_rate)}
-                        </p>
-                      </button>
-                    ))
-                  )}
-                </div>
-                {category.subcategories.length > 3 ? (
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                    <span>
-                      Showing {Math.min(visibleSubcategories.length, category.subcategories.length)} of{" "}
-                      {category.subcategories.length}
-                    </span>
-                    {isExpanded ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleCategoryExpand(category.key, false)}
-                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
-                        aria-label={`Collapse ${category.label} subcategories`}
-                      >
-                        −
-                      </button>
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {categories.map((category) => {
+              const rateText = formatPercentOrDash(category.rate);
+              const rateColor = getRecommendationColor(category.rate);
+              const isExpanded = expandedCategories.has(category.key);
+              const visibleSubcategories = isExpanded ? category.subcategories : category.subcategories.slice(0, 3);
+              return (
+                <div
+                  key={category.key}
+                  className="rounded-2xl border border-white/10 bg-slate-900/30 p-5"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{category.label}</p>
+                      <p className="mt-1 text-xs text-slate-500">{category.count.toLocaleString()} tagged reviews</p>
+                    </div>
+                    <p className="text-3xl font-semibold" style={{ color: rateColor }}>
+                      {rateText}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {category.subcategories.length === 0 ? (
+                      <p className="text-sm text-slate-500">No tagged subcategories.</p>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => toggleCategoryExpand(category.key, true)}
-                        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
-                        aria-label={`Expand ${category.label} subcategories`}
-                      >
-                        +
-                      </button>
+                      visibleSubcategories.map((sub) => (
+                        <button
+                          key={sub.subcategory}
+                          type="button"
+                          onClick={() =>
+                            setSelectedSubcategory((prev) => (prev === sub.subcategory ? null : sub.subcategory))
+                          }
+                          className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${
+                            selectedSubcategory === sub.subcategory
+                              ? "border-sky-400/50 bg-sky-500/10"
+                              : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm text-slate-200">
+                              {toSubcategoryLabel(sub.subcategory, sub.sub_category)}
+                            </p>
+                            <p className="text-xs text-slate-500">{Number(sub.count ?? 0).toLocaleString()} tags</p>
+                          </div>
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: getRecommendationColor(sub.recommendation_rate) }}
+                          >
+                            {formatPercentOrDash(sub.recommendation_rate)}
+                          </p>
+                        </button>
+                      ))
                     )}
                   </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-
-      <Card variant="glass" className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Issues & feature requests</h3>
-            <p className="mt-1 text-sm text-slate-400">Top subcategories by issue and request volume</p>
+                  {category.subcategories.length > 3 ? (
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                      <span>
+                        Showing {Math.min(visibleSubcategories.length, category.subcategories.length)} of{" "}
+                        {category.subcategories.length}
+                      </span>
+                      {isExpanded ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleCategoryExpand(category.key, false)}
+                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
+                          aria-label={`Collapse ${category.label} subcategories`}
+                        >
+                          −
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleCategoryExpand(category.key, true)}
+                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
+                          aria-label={`Expand ${category.label} subcategories`}
+                        >
+                          +
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-        </div>
+        </Card>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <Card variant="glass" className="p-6">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-white">Top issues</h4>
-              <span className="text-xs text-slate-500">{issueItems.length} items</span>
+              <div>
+                <h4 className="text-lg font-semibold text-white">Issues & feature requests</h4>
+                <p className="mt-1 text-sm text-slate-400">Top subcategories by issue and request volume</p>
+              </div>
             </div>
-            {issueItems.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No issue tags found yet.</p>
+
+            <div className="mt-5 grid gap-4">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                <div className="flex items-center justify-between">
+                  <h5 className="text-sm font-semibold text-white">Top issues</h5>
+                  <span className="text-xs text-slate-500">{issueItems.length} items</span>
+                </div>
+                {issueItems.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">No issue tags found yet.</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {issueItems.map((entry) => {
+                      const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
+                      const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
+                      const count = Number(entry.issue_count ?? 0).toLocaleString();
+                      const snippet = entry.issue_snippets?.[0] ?? "";
+                      return (
+                        <button
+                          key={subcategoryKey}
+                          type="button"
+                          onClick={() =>
+                            setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
+                          }
+                          className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
+                            selectedSubcategory === subcategoryKey
+                              ? "border-sky-400/50 bg-sky-500/10"
+                              : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <p className="truncate text-sm text-slate-200">{label}</p>
+                            <p className="text-xs text-slate-500">{count} issues</p>
+                            {snippet ? (
+                              <p className="text-xs text-slate-400">{snippet}</p>
+                            ) : (
+                              <p className="text-xs text-slate-600">No evidence captured yet.</p>
+                            )}
+                          </div>
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: getRecommendationColor(entry.recommendation_rate) }}
+                          >
+                            {formatPercentOrDash(entry.recommendation_rate)}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                <div className="flex items-center justify-between">
+                  <h5 className="text-sm font-semibold text-white">Top feature requests</h5>
+                  <span className="text-xs text-slate-500">{requestItems.length} items</span>
+                </div>
+                {requestItems.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">No feature requests tagged yet.</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {requestItems.map((entry) => {
+                      const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
+                      const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
+                      const count = Number(entry.request_count ?? 0).toLocaleString();
+                      const snippet = entry.request_snippets?.[0] ?? "";
+                      return (
+                        <button
+                          key={subcategoryKey}
+                          type="button"
+                          onClick={() =>
+                            setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
+                          }
+                          className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
+                            selectedSubcategory === subcategoryKey
+                              ? "border-sky-400/50 bg-sky-500/10"
+                              : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <p className="truncate text-sm text-slate-200">{label}</p>
+                            <p className="text-xs text-slate-500">{count} requests</p>
+                            {snippet ? (
+                              <p className="text-xs text-slate-400">{snippet}</p>
+                            ) : (
+                              <p className="text-xs text-slate-600">No evidence captured yet.</p>
+                            )}
+                          </div>
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: getRecommendationColor(entry.recommendation_rate) }}
+                          >
+                            {formatPercentOrDash(entry.recommendation_rate)}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card variant="glass" className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-lg font-semibold text-white">Userbase segmentation</h4>
+                <p className="mt-1 text-sm text-slate-400">Who is reviewing and what they care about</p>
+              </div>
+            </div>
+
+            {!playerSegments ? (
+              <p className="mt-4 text-sm text-slate-500">Segmentation data is not available for this analysis.</p>
             ) : (
-              <div className="mt-3 space-y-3">
-                {issueItems.map((entry) => {
-                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
-                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
-                  const count = Number(entry.issue_count ?? 0).toLocaleString();
-                  const snippet = entry.issue_snippets?.[0] ?? "";
-                  return (
-                    <button
-                      key={subcategoryKey}
-                      type="button"
-                      onClick={() =>
-                        setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                  <h5 className="text-sm font-semibold text-white">Purchase pathways</h5>
+                  <div className="mt-3 space-y-2 text-sm text-slate-200">
+                    {[
+                      { label: "Steam buyers", data: playerSegments.purchase_type?.steam_buyers },
+                      { label: "Key users", data: playerSegments.purchase_type?.key_users },
+                      { label: "Free users", data: playerSegments.purchase_type?.free_users },
+                    ].map((row) => {
+                      const count = Number(row.data?.count ?? 0).toLocaleString();
+                      const rec = formatPercentOrDash(row.data?.recommendation_rate);
+                      const req = formatPercentOrDash(row.data?.feature_request_rate);
+                      return (
+                        <div key={row.label} className="flex items-center justify-between gap-3">
+                          <span>{row.label}</span>
+                          <span className="text-xs text-slate-400">
+                            {count} reviews · rec {rec} · requests {req}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                  <h5 className="text-sm font-semibold text-white">Experience cohorts</h5>
+                  <div className="mt-3 space-y-2 text-sm text-slate-200">
+                    {[
+                      { label: "Newcomers (<2h)", data: playerSegments.experience_level?.newcomers },
+                      { label: "Casual (2-20h)", data: playerSegments.experience_level?.casual },
+                      { label: "Experienced (20-100h)", data: playerSegments.experience_level?.experienced },
+                      { label: "Veterans (100h+)", data: playerSegments.experience_level?.veterans },
+                    ].map((row) => {
+                      const count = Number(row.data?.count ?? 0).toLocaleString();
+                      const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
+                      const topIssueRaw = row.data?.top_issues?.[0]?.category;
+                      const topIssue = topIssueRaw ? toSubcategoryLabel(topIssueRaw) : "";
+                      const meta = [`${count} reviews`, `issues ${issueCount}`];
+                      if (topIssue) {
+                        meta.push(`top ${topIssue}`);
                       }
-                      className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
-                        selectedSubcategory === subcategoryKey
-                          ? "border-sky-400/50 bg-sky-500/10"
-                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                      }`}
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <p className="truncate text-sm text-slate-200">{label}</p>
-                        <p className="text-xs text-slate-500">{count} issues</p>
-                        {snippet ? (
-                          <p className="text-xs text-slate-400">{snippet}</p>
-                        ) : (
-                          <p className="text-xs text-slate-600">No evidence captured yet.</p>
-                        )}
-                      </div>
-                      <p
-                        className="text-sm font-semibold"
-                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
-                      >
-                        {formatPercentOrDash(entry.recommendation_rate)}
-                      </p>
-                    </button>
-                  );
-                })}
+                      return (
+                        <div key={row.label} className="flex items-center justify-between gap-3">
+                          <span>{row.label}</span>
+                          <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                  <h5 className="text-sm font-semibold text-white">Engagement topics</h5>
+                  <div className="mt-3 space-y-2 text-sm text-slate-200">
+                    {[
+                      { label: "Highly engaged", data: playerSegments.engagement_topics?.highly_engaged },
+                      { label: "Moderately engaged", data: playerSegments.engagement_topics?.moderately_engaged },
+                      { label: "Low engagement", data: playerSegments.engagement_topics?.low_engagement },
+                    ].map((row) => {
+                      const count = Number(row.data?.count ?? 0).toLocaleString();
+                      const topics = (row.data?.top_topics ?? [])
+                        .slice(0, 3)
+                        .map((topic) => formatMainCategoryLabel(topic.topic))
+                        .filter(Boolean);
+                      const meta = [`${count} reviews`];
+                      if (topics.length) {
+                        meta.push(`topics ${topics.join(", ")}`);
+                      }
+                      return (
+                        <div key={row.label} className="flex items-center justify-between gap-3">
+                          <span>{row.label}</span>
+                          <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                  <h5 className="text-sm font-semibold text-white">Activity status</h5>
+                  <div className="mt-3 space-y-2 text-sm text-slate-200">
+                    {[
+                      { label: "Currently active", data: playerSegments.activity_status?.currently_active },
+                      { label: "Recently stopped", data: playerSegments.activity_status?.recently_stopped },
+                      { label: "Inactive", data: playerSegments.activity_status?.inactive },
+                    ].map((row) => {
+                      const count = Number(row.data?.count ?? 0).toLocaleString();
+                      const rec = formatPercentOrDash(row.data?.recommendation_rate);
+                      const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
+                      return (
+                        <div key={row.label} className="flex items-center justify-between gap-3">
+                          <span>{row.label}</span>
+                          <span className="text-xs text-slate-400">
+                            {count} reviews · rec {rec} · issues {issueCount}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-white">Top feature requests</h4>
-              <span className="text-xs text-slate-500">{requestItems.length} items</span>
-            </div>
-            {requestItems.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No feature requests tagged yet.</p>
-            ) : (
-              <div className="mt-3 space-y-3">
-                {requestItems.map((entry) => {
-                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
-                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
-                  const count = Number(entry.request_count ?? 0).toLocaleString();
-                  const snippet = entry.request_snippets?.[0] ?? "";
-                  return (
-                    <button
-                      key={subcategoryKey}
-                      type="button"
-                      onClick={() =>
-                        setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
-                      }
-                      className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
-                        selectedSubcategory === subcategoryKey
-                          ? "border-sky-400/50 bg-sky-500/10"
-                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                      }`}
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <p className="truncate text-sm text-slate-200">{label}</p>
-                        <p className="text-xs text-slate-500">{count} requests</p>
-                        {snippet ? (
-                          <p className="text-xs text-slate-400">{snippet}</p>
-                        ) : (
-                          <p className="text-xs text-slate-600">No evidence captured yet.</p>
-                        )}
-                      </div>
-                      <p
-                        className="text-sm font-semibold"
-                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
-                      >
-                        {formatPercentOrDash(entry.recommendation_rate)}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          </Card>
         </div>
-      </Card>
-
-      <Card variant="glass" className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Userbase segmentation</h3>
-            <p className="mt-1 text-sm text-slate-400">Who is reviewing and what they care about</p>
-          </div>
-        </div>
-
-        {!playerSegments ? (
-          <p className="mt-4 text-sm text-slate-500">Segmentation data is not available for this analysis.</p>
-        ) : (
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-              <h4 className="text-sm font-semibold text-white">Purchase pathways</h4>
-              <div className="mt-3 space-y-2 text-sm text-slate-200">
-                {[
-                  { label: "Steam buyers", data: playerSegments.purchase_type?.steam_buyers },
-                  { label: "Key users", data: playerSegments.purchase_type?.key_users },
-                  { label: "Free users", data: playerSegments.purchase_type?.free_users },
-                ].map((row) => {
-                  const count = Number(row.data?.count ?? 0).toLocaleString();
-                  const rec = formatPercentOrDash(row.data?.recommendation_rate);
-                  const req = formatPercentOrDash(row.data?.feature_request_rate);
-                  return (
-                    <div key={row.label} className="flex items-center justify-between gap-3">
-                      <span>{row.label}</span>
-                      <span className="text-xs text-slate-400">
-                        {count} reviews · rec {rec} · requests {req}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-              <h4 className="text-sm font-semibold text-white">Experience cohorts</h4>
-              <div className="mt-3 space-y-2 text-sm text-slate-200">
-                {[
-                  { label: "Newcomers (<2h)", data: playerSegments.experience_level?.newcomers },
-                  { label: "Casual (2-20h)", data: playerSegments.experience_level?.casual },
-                  { label: "Experienced (20-100h)", data: playerSegments.experience_level?.experienced },
-                  { label: "Veterans (100h+)", data: playerSegments.experience_level?.veterans },
-                ].map((row) => {
-                  const count = Number(row.data?.count ?? 0).toLocaleString();
-                  const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
-                  const topIssueRaw = row.data?.top_issues?.[0]?.category;
-                  const topIssue = topIssueRaw ? toSubcategoryLabel(topIssueRaw) : "";
-                  const meta = [`${count} reviews`, `issues ${issueCount}`];
-                  if (topIssue) {
-                    meta.push(`top ${topIssue}`);
-                  }
-                  return (
-                    <div key={row.label} className="flex items-center justify-between gap-3">
-                      <span>{row.label}</span>
-                      <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-              <h4 className="text-sm font-semibold text-white">Engagement topics</h4>
-              <div className="mt-3 space-y-2 text-sm text-slate-200">
-                {[
-                  { label: "Highly engaged", data: playerSegments.engagement_topics?.highly_engaged },
-                  { label: "Moderately engaged", data: playerSegments.engagement_topics?.moderately_engaged },
-                  { label: "Low engagement", data: playerSegments.engagement_topics?.low_engagement },
-                ].map((row) => {
-                  const count = Number(row.data?.count ?? 0).toLocaleString();
-                  const topics = (row.data?.top_topics ?? [])
-                    .slice(0, 3)
-                    .map((topic) => formatMainCategoryLabel(topic.topic))
-                    .filter(Boolean);
-                  const meta = [`${count} reviews`];
-                  if (topics.length) {
-                    meta.push(`topics ${topics.join(", ")}`);
-                  }
-                  return (
-                    <div key={row.label} className="flex items-center justify-between gap-3">
-                      <span>{row.label}</span>
-                      <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-              <h4 className="text-sm font-semibold text-white">Activity status</h4>
-              <div className="mt-3 space-y-2 text-sm text-slate-200">
-                {[
-                  { label: "Currently active", data: playerSegments.activity_status?.currently_active },
-                  { label: "Recently stopped", data: playerSegments.activity_status?.recently_stopped },
-                  { label: "Inactive", data: playerSegments.activity_status?.inactive },
-                ].map((row) => {
-                  const count = Number(row.data?.count ?? 0).toLocaleString();
-                  const rec = formatPercentOrDash(row.data?.recommendation_rate);
-                  const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
-                  return (
-                    <div key={row.label} className="flex items-center justify-between gap-3">
-                      <span>{row.label}</span>
-                      <span className="text-xs text-slate-400">
-                        {count} reviews · rec {rec} · issues {issueCount}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-      </Card>
+      </div>
 
       {selectedSubcategory ? (
         <div
