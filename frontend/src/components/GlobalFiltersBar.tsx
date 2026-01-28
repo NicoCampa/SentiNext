@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BackendStatusIndicator } from "@/components/BackendStatusIndicator";
@@ -11,7 +11,6 @@ import {
   DateRangeFilter,
   useGlobalFilters,
 } from "@/contexts/GlobalFiltersContext";
-import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 
 const LANGUAGE_SUGGESTIONS = [
   "english",
@@ -31,19 +30,11 @@ const LANGUAGE_SUGGESTIONS = [
 ];
 
 export function GlobalFiltersBar() {
-  const { filters, updateFilters, resetFilters, filtersActive, presets, savePreset, applyPreset, deletePreset } = useGlobalFilters();
-  const { density, setDensity } = useUiPreferences();
-  const [selectedPreset, setSelectedPreset] = useState<string>("");
+  const { filters, updateFilters, resetFilters, filtersActive } = useGlobalFilters();
 
   const languageValue = useMemo(() => {
     return filters.language && filters.language !== "all" ? filters.language : "";
   }, [filters.language]);
-
-  function handleSavePreset() {
-    const name = typeof window !== "undefined" ? window.prompt("Save this filter view as:") : null;
-    if (!name) return;
-    savePreset(name);
-  }
 
   return (
     <Card variant="glass" className="p-4">
@@ -123,26 +114,6 @@ export function GlobalFiltersBar() {
 
         <div className="flex flex-wrap items-center justify-end gap-3">
           <BackendStatusIndicator />
-          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2 py-1">
-            <button
-              type="button"
-              onClick={() => setDensity("compact")}
-              className={`rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
-                density === "compact" ? "bg-white/10 text-white" : "text-slate-400"
-              }`}
-            >
-              Compact
-            </button>
-            <button
-              type="button"
-              onClick={() => setDensity("comfortable")}
-              className={`rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
-                density === "comfortable" ? "bg-white/10 text-white" : "text-slate-400"
-              }`}
-            >
-              Comfortable
-            </button>
-          </div>
           {filtersActive ? (
             <Button variant="secondary" size="sm" onClick={resetFilters}>
               Reset
@@ -153,40 +124,6 @@ export function GlobalFiltersBar() {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/5 pt-3 text-xs text-slate-400">
-        <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Saved views</span>
-        <select
-          value={selectedPreset}
-          onChange={(event) => {
-            const value = event.target.value;
-            setSelectedPreset(value);
-            if (value) applyPreset(value);
-          }}
-          className="min-w-[180px] rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:border-sky-500 focus:outline-none"
-        >
-          <option value="">Select a view…</option>
-          {presets.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.name}
-            </option>
-          ))}
-        </select>
-        <Button variant="secondary" size="sm" onClick={handleSavePreset}>
-          Save current view
-        </Button>
-        {selectedPreset ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              deletePreset(selectedPreset);
-              setSelectedPreset("");
-            }}
-          >
-            Delete view
-          </Button>
-        ) : null}
-      </div>
     </Card>
   );
 }

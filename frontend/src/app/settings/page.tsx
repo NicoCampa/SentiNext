@@ -165,7 +165,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppLayout showGlobalFilters={false}>
+    <AppLayout>
       <div className="mx-auto max-w-4xl space-y-6 px-6 py-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">

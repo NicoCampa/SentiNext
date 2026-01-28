@@ -10,6 +10,8 @@ import {
   ChatResponse,
   LogTailResponse,
   StoragePaths,
+  DatabaseReviewsResponse,
+  DatabaseGameOption,
 } from "@/types";
 
 declare global {
@@ -259,6 +261,30 @@ export interface DatabaseStats {
   labels_new_schema: number;
   labels_old_schema: number;
   starred_games: number;
+}
+
+export interface DatabaseReviewsParams {
+  limit?: number;
+  offset?: number;
+  app_id?: number | null;
+  language?: string | null;
+  query?: string | null;
+}
+
+export async function fetchDatabaseReviews(params: DatabaseReviewsParams = {}): Promise<DatabaseReviewsResponse> {
+  const url = new URL(apiUrl("/database/reviews"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (params.limit) url.searchParams.set("limit", String(params.limit));
+  if (params.offset) url.searchParams.set("offset", String(params.offset));
+  if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
+  if (params.language) url.searchParams.set("language", params.language);
+  if (params.query) url.searchParams.set("query", params.query);
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  return handleResponse<DatabaseReviewsResponse>(response);
+}
+
+export async function fetchDatabaseGames(): Promise<DatabaseGameOption[]> {
+  const response = await fetch(apiUrl("/database/games"), { cache: "no-store" });
+  return handleResponse<DatabaseGameOption[]>(response);
 }
 
 export async function fetchDatabaseStats(): Promise<DatabaseStats> {

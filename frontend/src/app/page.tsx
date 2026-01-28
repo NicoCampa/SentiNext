@@ -13,9 +13,9 @@ export default function RootPage() {
       setDots(prev => prev.length >= 3 ? '' : prev + '.');
     }, 500);
 
-    // Redirect to home
+    // Redirect to dashboard
     const timeout = setTimeout(() => {
-      router.replace('/home');
+      router.replace('/dashboard');
     }, 500);
 
     return () => {

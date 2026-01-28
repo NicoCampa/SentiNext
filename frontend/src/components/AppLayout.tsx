@@ -5,24 +5,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { FirstRunSetup } from "@/components/FirstRunSetup";
-import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
-import { GameContextBar } from "@/components/GameContextBar";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 
 interface AppLayoutProps {
   children: ReactNode;
   showSidebar?: boolean;
   sidebarContent?: ReactNode;
-  showGlobalFilters?: boolean;
 }
 
-export function AppLayout({ children, showSidebar = true, sidebarContent, showGlobalFilters = true }: AppLayoutProps) {
+export function AppLayout({ children, showSidebar = true, sidebarContent }: AppLayoutProps) {
   const pathname = usePathname();
   const { density } = useUiPreferences();
   const compact = density === "compact";
 
   const navItems = [
-    { href: "/home", label: "Home", icon: "●" },
     { href: "/dashboard", label: "Analyze", icon: "▶" },
     { href: "/chat", label: "Chat", icon: "?" },
     { href: "/compare", label: "Compare", icon: "≈" },
@@ -85,14 +81,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent, showGl
       )}
 
       <main className="flex-1 bg-slate-950/70">
-        {showGlobalFilters ? (
-          <div className="sticky top-0 z-40 border-b border-white/5 bg-slate-950/80 backdrop-blur">
-            <div className="mx-auto max-w-7xl space-y-3 px-4 py-4 sm:px-6 lg:px-6">
-              <GameContextBar />
-              <GlobalFiltersBar />
-            </div>
-          </div>
-        ) : null}
         {children}
       </main>
       <FirstRunSetup />

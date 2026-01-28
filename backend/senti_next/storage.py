@@ -665,6 +665,104 @@ def load_starred_games() -> list[Dict[str, Any]]:
     return results
 
 
+def list_database_games() -> List[Dict[str, Any]]:
+    with _get_connection() as conn:
+        review_rows = conn.execute("SELECT DISTINCT app_id FROM reviews ORDER BY app_id").fetchall()
+        starred_rows = conn.execute("SELECT app_id, name FROM starred_games").fetchall()
+
+    name_map = {int(row["app_id"]): row["name"] for row in starred_rows if row["app_id"] is not None}
+    return [{"app_id": int(row["app_id"]), "name": name_map.get(int(row["app_id"]))} for row in review_rows]
+
+
+def load_database_reviews(
+    limit: int,
+    offset: int,
+    app_id: Optional[int] = None,
+    language: Optional[str] = None,
+    query: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], int]:
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+    lang = (language or "").strip().lower()
+    raw_query = (query or "").strip()
+
+    with _get_connection() as conn:
+        if raw_query:
+            if not _FTS_ENABLED:
+                return [], 0
+
+            where_parts = ["reviews_fts MATCH ?"]
+            params: list[Any] = [raw_query]
+            if app_id:
+                where_parts.append("reviews.app_id = ?")
+                params.append(int(app_id))
+            if lang and lang != "all":
+                where_parts.append("reviews_fts.language = ?")
+                params.append(lang)
+            where_sql = " AND ".join(where_parts)
+
+            total_query = f"""
+                SELECT COUNT(*)
+                FROM reviews
+                JOIN reviews_fts ON reviews.review_id = reviews_fts.review_id
+                WHERE {where_sql}
+            """
+            total = conn.execute(total_query, params).fetchone()[0]
+
+            query_sql = f"""
+                SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
+                       review_labels.payload AS label_payload
+                FROM reviews
+                JOIN reviews_fts ON reviews.review_id = reviews_fts.review_id
+                LEFT JOIN review_labels
+                  ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
+                WHERE {where_sql}
+                ORDER BY bm25(reviews_fts)
+                LIMIT ? OFFSET ?
+            """
+            rows = conn.execute(query_sql, [*params, limit, offset]).fetchall()
+        else:
+            where_parts = []
+            params = []
+            if app_id:
+                where_parts.append("reviews.app_id = ?")
+                params.append(int(app_id))
+            if lang and lang != "all":
+                where_parts.append("json_extract(reviews.data, '$.language') = ?")
+                params.append(lang)
+            where_sql = " AND ".join(where_parts)
+            where_clause = f"WHERE {where_sql}" if where_sql else ""
+
+            total_query = f"SELECT COUNT(*) FROM reviews {where_clause}"
+            total = conn.execute(total_query, params).fetchone()[0]
+
+            query_sql = f"""
+                SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
+                       review_labels.payload AS label_payload
+                FROM reviews
+                LEFT JOIN review_labels
+                  ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
+                {where_clause}
+                ORDER BY reviews.timestamp_created DESC
+                LIMIT ? OFFSET ?
+            """
+            rows = conn.execute(query_sql, [*params, limit, offset]).fetchall()
+
+    items: List[Dict[str, Any]] = []
+    for row in rows:
+        items.append(
+            {
+                "review_id": row["review_id"],
+                "app_id": row["app_id"],
+                "data": row["data"],
+                "timestamp_created": row["timestamp_created"],
+                "label_payload": row["label_payload"],
+            }
+        )
+
+    return items, int(total)
+
+
 def save_analysis_result(
     app_id: int,
     metadata: Optional[Dict],
@@ -746,4 +844,3 @@ def load_analysis_result(app_id: int) -> Optional[Dict[str, Any]]:
         "context_hash": row["context_hash"],
         "stale_reason": row["stale_reason"],
     }
-

@@ -247,6 +247,44 @@ class FeedbackItem(BaseModel):
     context: Optional[dict] = None
 
 
+class DatabaseReviewItem(BaseModel):
+    review_id: str
+    app_id: int
+    app_name: Optional[str] = None
+    review: str
+    language: Optional[str] = None
+    voted_up: bool
+    votes_up: int = 0
+    votes_funny: int = 0
+    author_num_games_owned: int = 0
+    author_num_reviews: int = 0
+    author_playtime_forever: int = 0
+    author_playtime_last_two_weeks: int = 0
+    author_playtime_hours: Optional[float] = None
+    author_recent_playtime_hours: Optional[float] = None
+    created_at: Optional[str] = None
+    llm_main_category: Optional[str] = None
+    llm_subcategory: Optional[str] = None
+    llm_subcategories: List[str] = Field(default_factory=list)
+    llm_issue_subcategories: List[str] = Field(default_factory=list)
+    llm_request_subcategories: List[str] = Field(default_factory=list)
+    llm_subcategory_evidence: Dict[str, List[str]] = Field(default_factory=dict)
+    llm_has_issue: bool = False
+    llm_has_request: bool = False
+
+
+class DatabaseReviewsResponse(BaseModel):
+    items: List[DatabaseReviewItem]
+    total: int
+    offset: int
+    limit: int
+
+
+class DatabaseGameOption(BaseModel):
+    app_id: int
+    name: Optional[str] = None
+
+
 REVIEW_EXPORT_COLUMNS = [
     # Review content
     "review_id",
@@ -888,6 +926,87 @@ def clear_database(_: None = Depends(require_admin)) -> dict:
     """Clear entire database (all games, reviews, labels, progress, starred)."""
     counts = storage.clear_entire_database()
     return {"deleted": counts, "scope": "entire_database"}
+
+
+@app.get("/database/games", response_model=List[DatabaseGameOption], dependencies=[Depends(require_license)])
+def database_games() -> List[DatabaseGameOption]:
+    entries = storage.list_database_games()
+    return [DatabaseGameOption(**entry) for entry in entries]
+
+
+@app.get("/database/reviews", response_model=DatabaseReviewsResponse, dependencies=[Depends(require_license)])
+def database_reviews(
+    limit: int = 200,
+    offset: int = 0,
+    app_id: Optional[int] = None,
+    language: Optional[str] = None,
+    query: Optional[str] = None,
+) -> DatabaseReviewsResponse:
+    rows, total = storage.load_database_reviews(
+        limit=limit,
+        offset=offset,
+        app_id=app_id,
+        language=language,
+        query=query,
+    )
+    games_map = {entry["app_id"]: entry.get("name") for entry in storage.list_database_games()}
+    items: List[DatabaseReviewItem] = []
+
+    for row in rows:
+        try:
+            payload = json.loads(row.get("data") or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        try:
+            label_payload = json.loads(row.get("label_payload") or "{}")
+        except json.JSONDecodeError:
+            label_payload = {}
+
+        author = payload.get("author", {}) or {}
+        playtime_forever = int(author.get("playtime_forever") or 0)
+        playtime_recent = int(author.get("playtime_last_two_weeks") or 0)
+        created_ts = payload.get("timestamp_created")
+        created_at = (
+            datetime.utcfromtimestamp(created_ts).isoformat() + "Z"
+            if isinstance(created_ts, (int, float))
+            else None
+        )
+
+        issue_subcats = label_payload.get("issue_subcategories") or []
+        request_subcats = label_payload.get("request_subcategories") or []
+        evidence = label_payload.get("evidence")
+        if not isinstance(evidence, dict):
+            evidence = {}
+
+        items.append(
+            DatabaseReviewItem(
+                review_id=str(payload.get("recommendationid") or row.get("review_id") or ""),
+                app_id=int(row.get("app_id") or payload.get("app_id") or 0),
+                app_name=games_map.get(int(row.get("app_id") or 0)),
+                review=payload.get("review") or "",
+                language=payload.get("language"),
+                voted_up=bool(payload.get("voted_up")),
+                votes_up=int(payload.get("votes_up") or 0),
+                votes_funny=int(payload.get("votes_funny") or 0),
+                author_num_games_owned=int(author.get("num_games_owned") or 0),
+                author_num_reviews=int(author.get("num_reviews") or 0),
+                author_playtime_forever=playtime_forever,
+                author_playtime_last_two_weeks=playtime_recent,
+                author_playtime_hours=playtime_forever / 60.0 if playtime_forever else 0.0,
+                author_recent_playtime_hours=playtime_recent / 60.0 if playtime_recent else 0.0,
+                created_at=created_at,
+                llm_main_category=label_payload.get("main_category"),
+                llm_subcategory=label_payload.get("subcategory"),
+                llm_subcategories=list(label_payload.get("subcategories") or []),
+                llm_issue_subcategories=list(issue_subcats) if isinstance(issue_subcats, list) else [],
+                llm_request_subcategories=list(request_subcats) if isinstance(request_subcats, list) else [],
+                llm_subcategory_evidence=evidence,
+                llm_has_issue=bool(issue_subcats),
+                llm_has_request=bool(request_subcats),
+            )
+        )
+
+    return DatabaseReviewsResponse(items=items, total=int(total), offset=int(offset), limit=int(limit))
 
 
 if __name__ == "__main__":

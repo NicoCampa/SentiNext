@@ -347,3 +347,20 @@ export interface StarredGameDTO {
   categories?: string[];
   updated_at: string;
 }
+
+export interface DatabaseReviewItem extends ReviewRow {
+  app_id: number;
+  app_name?: string | null;
+}
+
+export interface DatabaseReviewsResponse {
+  items: DatabaseReviewItem[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface DatabaseGameOption {
+  app_id: number;
+  name?: string | null;
+}

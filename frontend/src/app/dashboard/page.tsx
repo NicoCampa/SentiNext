@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
+import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
@@ -33,6 +34,7 @@ import {
   saveDefaultAnalysisReviewCount,
 } from "@/lib/analysisDefaults";
 import { getRecommendationColor } from "@/utils/colors";
+import { formatSavedLabel } from "@/utils/format";
 
 const EMPTY_REVIEWS: ReviewRow[] = [];
 
@@ -268,6 +270,7 @@ function DashboardContent() {
   }
 
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
+  const recentAnalyses = games.slice(0, 6);
 
   if (loadingStarred) {
     return (
@@ -289,8 +292,12 @@ function DashboardContent() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-white">Game Analysis</h1>
-            <p className="text-xs text-slate-400">Category insights, top issues/requests, and user segmentation</p>
+            <h1 className="text-xl font-bold text-white">{selectedGame ? "Game Analysis" : "Analyze Games"}</h1>
+            <p className="text-xs text-slate-400">
+              {selectedGame
+                ? "Category insights, top issues/requests, and user segmentation"
+                : "Search Steam, run an analysis, and review your latest insights."}
+            </p>
           </div>
           {selectedGame && (
             <Button onClick={handleReset} variant="secondary">
@@ -300,52 +307,119 @@ function DashboardContent() {
         </div>
 
         {!selectedGame && (
-          <Card variant="glass" className="p-5">
-            <div className="space-y-4">
-              <div className="flex gap-4">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && handleSearch()}
-                  placeholder="Search for a game (e.g., Baldur's Gate 3)"
-                  className="flex-1 rounded-xl border border-white/20 bg-slate-900/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-                />
-                <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()} variant="primary" size="lg">
-                  {searching ? "Searching..." : "Search"}
-                </Button>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <Card variant="glass" className="p-5">
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    onKeyDown={(event) => event.key === "Enter" && handleSearch()}
+                    placeholder="Search for a game (e.g., Baldur's Gate 3)"
+                    className="flex-1 rounded-xl border border-white/20 bg-slate-900/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                  />
+                  <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()} variant="primary" size="lg">
+                    {searching ? "Searching..." : "Search"}
+                  </Button>
+                </div>
+
+                {error && searchResults.length === 0 && <p className="text-sm text-rose-400">{error}</p>}
+
+                {searchResults.length > 0 && (
+                  <div className="mt-6 space-y-3">
+                    <p className="text-sm text-slate-400">{searchResults.length} games found</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {searchResults.map((game) => (
+                        <button
+                          key={game.appid}
+                          onClick={() => handleSelectGame(game)}
+                          className="flex gap-4 rounded-xl border border-white/10 bg-slate-900/30 p-4 text-left transition hover:border-sky-500/50 hover:bg-slate-900/50"
+                        >
+                          <SteamImage
+                            appId={game.appid}
+                            variant="capsule"
+                            alt={game.name}
+                            className="h-16 w-28 rounded-lg object-cover"
+                            imageUrl={game.image_url}
+                          />
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-white">{game.name}</h3>
+                            {game.price && <p className="mt-1 text-sm text-slate-400">{game.price}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <Card variant="glass" className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Recent analyses</h2>
+                  <p className="text-xs text-slate-400">Jump back into your latest games.</p>
+                </div>
+                {recentAnalyses.length > 0 ? (
+                  <a href="/compare" className="text-xs text-sky-400 hover:text-sky-300">
+                    View all ->
+                  </a>
+                ) : null}
               </div>
 
-              {error && searchResults.length === 0 && <p className="text-sm text-rose-400">{error}</p>}
-
-              {searchResults.length > 0 && (
-                <div className="mt-6 space-y-3">
-                  <p className="text-sm text-slate-400">{searchResults.length} games found</p>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {searchResults.map((game) => (
-                      <button
-                        key={game.appid}
-                        onClick={() => handleSelectGame(game)}
-                        className="flex gap-4 rounded-xl border border-white/10 bg-slate-900/30 p-4 text-left transition hover:border-sky-500/50 hover:bg-slate-900/50"
-                      >
-                        <SteamImage
-                          appId={game.appid}
-                          variant="capsule"
-                          alt={game.name}
-                          className="h-16 w-28 rounded-lg object-cover"
-                          imageUrl={game.image_url}
-                        />
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-white">{game.name}</h3>
-                          {game.price && <p className="mt-1 text-sm text-slate-400">{game.price}</p>}
-                        </div>
-                      </button>
+              <div className="mt-4 space-y-3">
+                {gamesLoading ? (
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, idx) => (
+                      <div key={idx} className="h-20 animate-pulse rounded-2xl border border-white/10 bg-slate-900/40" />
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </Card>
+                ) : recentAnalyses.length === 0 ? (
+                  <EmptyState
+                    title="No analyses yet"
+                    description="Search for a game to start your first analysis."
+                    icon="▣"
+                    variant="info"
+                  />
+                ) : (
+                  recentAnalyses.map((game) => {
+                    const sample = game.sample ?? [];
+                    const rate = sample.length
+                      ? sample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / sample.length
+                      : null;
+                    return (
+                      <button
+                        key={game.app_id}
+                        onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/30 p-3 text-left transition hover:border-sky-500/40 hover:bg-slate-900/50"
+                      >
+                        <SteamImage
+                          appId={game.app_id}
+                          variant="header"
+                          alt={game.name}
+                          className="h-14 w-24 rounded-xl object-cover"
+                          imageUrl={game.metadata.header_image}
+                        />
+                        <div className="flex-1 space-y-1">
+                          <p className="text-sm font-semibold text-white line-clamp-1">{game.name}</p>
+                          <p className="text-xs text-slate-400">
+                            {sample.length.toLocaleString()} reviews · {formatSavedLabel(game.updated_at)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
+                            {formatPercentOrDash(rate)}
+                          </p>
+                          <p className="text-[11px] text-slate-500">recommend</p>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </Card>
+          </div>
         )}
 
         {selectedGame && !analysis && (
@@ -726,10 +800,6 @@ function AnalysisResults({
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-2xl font-semibold text-white">{selectedGame?.name ?? "Analysis"}</h2>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                  {filtersActive ? "Filtered sample" : "Review sample"}:{" "}
-                  {filteredReviewSample.length.toLocaleString()} / {reviewSample.length.toLocaleString()}
-                </span>
               </div>
               <p className="text-sm text-slate-400">
                 Last run {new Date(analysis.metadata.fetched_at).toLocaleString()} · language{" "}
@@ -757,13 +827,17 @@ function AnalysisResults({
             <Button
               onClick={() => {
                 if (!selectedGame) return;
-                router.push(`/home?game=${selectedGame.appid}`);
+                router.push(`/reviews?appId=${selectedGame.appid}`);
               }}
               variant="secondary"
             >
-              View in Home
+              Open reviews
             </Button>
           </div>
+        </div>
+
+        <div className="mt-4">
+          <GlobalFiltersBar />
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -1007,231 +1081,226 @@ function AnalysisResults({
           </div>
         </Card>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid gap-6 xl:grid-cols-2">
           <Card variant="glass" className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-lg font-semibold text-white">Issues & feature requests</h4>
-                <p className="mt-1 text-sm text-slate-400">Top subcategories by issue and request volume</p>
+                <h4 className="text-lg font-semibold text-white">Top issues</h4>
+                <p className="mt-1 text-sm text-slate-400">Subcategories with the most reported issues</p>
               </div>
+              <span className="text-xs text-slate-500">{issueItems.length} items</span>
             </div>
-
-            <div className="mt-5 grid gap-4">
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                <div className="flex items-center justify-between">
-                  <h5 className="text-sm font-semibold text-white">Top issues</h5>
-                  <span className="text-xs text-slate-500">{issueItems.length} items</span>
-                </div>
-                {issueItems.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500">No issue tags found yet.</p>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    {issueItems.map((entry) => {
-                      const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
-                      const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
-                      const count = Number(entry.issue_count ?? 0).toLocaleString();
-                      const snippet = entry.issue_snippets?.[0] ?? "";
-                      return (
-                        <button
-                          key={subcategoryKey}
-                          type="button"
-                          onClick={() =>
-                            setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
-                          }
-                          className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
-                            selectedSubcategory === subcategoryKey
-                              ? "border-sky-400/50 bg-sky-500/10"
-                              : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                          }`}
-                        >
-                          <div className="min-w-0 space-y-1">
-                            <p className="truncate text-sm text-slate-200">{label}</p>
-                            <p className="text-xs text-slate-500">{count} issues</p>
-                            {snippet ? (
-                              <p className="text-xs text-slate-400">{snippet}</p>
-                            ) : (
-                              <p className="text-xs text-slate-600">No evidence captured yet.</p>
-                            )}
-                          </div>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: getRecommendationColor(entry.recommendation_rate) }}
-                          >
-                            {formatPercentOrDash(entry.recommendation_rate)}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+            {issueItems.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No issue tags found yet.</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {issueItems.map((entry) => {
+                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
+                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
+                  const count = Number(entry.issue_count ?? 0).toLocaleString();
+                  const snippet = entry.issue_snippets?.[0] ?? "";
+                  return (
+                    <button
+                      key={subcategoryKey}
+                      type="button"
+                      onClick={() =>
+                        setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
+                      }
+                      className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
+                        selectedSubcategory === subcategoryKey
+                          ? "border-sky-400/50 bg-sky-500/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-sm text-slate-200">{label}</p>
+                        <p className="text-xs text-slate-500">{count} issues</p>
+                        {snippet ? (
+                          <p className="text-xs text-slate-400">{snippet}</p>
+                        ) : (
+                          <p className="text-xs text-slate-600">No evidence captured yet.</p>
+                        )}
+                      </div>
+                      <p
+                        className="text-sm font-semibold"
+                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
+                      >
+                        {formatPercentOrDash(entry.recommendation_rate)}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
-
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                <div className="flex items-center justify-between">
-                  <h5 className="text-sm font-semibold text-white">Top feature requests</h5>
-                  <span className="text-xs text-slate-500">{requestItems.length} items</span>
-                </div>
-                {requestItems.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500">No feature requests tagged yet.</p>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    {requestItems.map((entry) => {
-                      const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
-                      const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
-                      const count = Number(entry.request_count ?? 0).toLocaleString();
-                      const snippet = entry.request_snippets?.[0] ?? "";
-                      return (
-                        <button
-                          key={subcategoryKey}
-                          type="button"
-                          onClick={() =>
-                            setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
-                          }
-                          className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
-                            selectedSubcategory === subcategoryKey
-                              ? "border-sky-400/50 bg-sky-500/10"
-                              : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                          }`}
-                        >
-                          <div className="min-w-0 space-y-1">
-                            <p className="truncate text-sm text-slate-200">{label}</p>
-                            <p className="text-xs text-slate-500">{count} requests</p>
-                            {snippet ? (
-                              <p className="text-xs text-slate-400">{snippet}</p>
-                            ) : (
-                              <p className="text-xs text-slate-600">No evidence captured yet.</p>
-                            )}
-                          </div>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: getRecommendationColor(entry.recommendation_rate) }}
-                          >
-                            {formatPercentOrDash(entry.recommendation_rate)}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </Card>
 
           <Card variant="glass" className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-lg font-semibold text-white">Userbase segmentation</h4>
-                <p className="mt-1 text-sm text-slate-400">Who is reviewing and what they care about</p>
+                <h4 className="text-lg font-semibold text-white">Top feature requests</h4>
+                <p className="mt-1 text-sm text-slate-400">Most requested improvements and additions</p>
               </div>
+              <span className="text-xs text-slate-500">{requestItems.length} items</span>
             </div>
-
-            {!playerSegments ? (
-              <p className="mt-4 text-sm text-slate-500">Segmentation data is not available for this analysis.</p>
+            {requestItems.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No feature requests tagged yet.</p>
             ) : (
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                  <h5 className="text-sm font-semibold text-white">Purchase pathways</h5>
-                  <div className="mt-3 space-y-2 text-sm text-slate-200">
-                    {[
-                      { label: "Steam buyers", data: playerSegments.purchase_type?.steam_buyers },
-                      { label: "Key users", data: playerSegments.purchase_type?.key_users },
-                      { label: "Free users", data: playerSegments.purchase_type?.free_users },
-                    ].map((row) => {
-                      const count = Number(row.data?.count ?? 0).toLocaleString();
-                      const rec = formatPercentOrDash(row.data?.recommendation_rate);
-                      const req = formatPercentOrDash(row.data?.feature_request_rate);
-                      return (
-                        <div key={row.label} className="flex items-center justify-between gap-3">
-                          <span>{row.label}</span>
-                          <span className="text-xs text-slate-400">
-                            {count} reviews · rec {rec} · requests {req}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                  <h5 className="text-sm font-semibold text-white">Experience cohorts</h5>
-                  <div className="mt-3 space-y-2 text-sm text-slate-200">
-                    {[
-                      { label: "Newcomers (<2h)", data: playerSegments.experience_level?.newcomers },
-                      { label: "Casual (2-20h)", data: playerSegments.experience_level?.casual },
-                      { label: "Experienced (20-100h)", data: playerSegments.experience_level?.experienced },
-                      { label: "Veterans (100h+)", data: playerSegments.experience_level?.veterans },
-                    ].map((row) => {
-                      const count = Number(row.data?.count ?? 0).toLocaleString();
-                      const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
-                      const topIssueRaw = row.data?.top_issues?.[0]?.category;
-                      const topIssue = topIssueRaw ? toSubcategoryLabel(topIssueRaw) : "";
-                      const meta = [`${count} reviews`, `issues ${issueCount}`];
-                      if (topIssue) {
-                        meta.push(`top ${topIssue}`);
+              <div className="mt-4 space-y-3">
+                {requestItems.map((entry) => {
+                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
+                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
+                  const count = Number(entry.request_count ?? 0).toLocaleString();
+                  const snippet = entry.request_snippets?.[0] ?? "";
+                  return (
+                    <button
+                      key={subcategoryKey}
+                      type="button"
+                      onClick={() =>
+                        setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey))
                       }
-                      return (
-                        <div key={row.label} className="flex items-center justify-between gap-3">
-                          <span>{row.label}</span>
-                          <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                  <h5 className="text-sm font-semibold text-white">Engagement topics</h5>
-                  <div className="mt-3 space-y-2 text-sm text-slate-200">
-                    {[
-                      { label: "Highly engaged", data: playerSegments.engagement_topics?.highly_engaged },
-                      { label: "Moderately engaged", data: playerSegments.engagement_topics?.moderately_engaged },
-                      { label: "Low engagement", data: playerSegments.engagement_topics?.low_engagement },
-                    ].map((row) => {
-                      const count = Number(row.data?.count ?? 0).toLocaleString();
-                      const topics = (row.data?.top_topics ?? [])
-                        .slice(0, 3)
-                        .map((topic) => formatMainCategoryLabel(topic.topic))
-                        .filter(Boolean);
-                      const meta = [`${count} reviews`];
-                      if (topics.length) {
-                        meta.push(`topics ${topics.join(", ")}`);
-                      }
-                      return (
-                        <div key={row.label} className="flex items-center justify-between gap-3">
-                          <span>{row.label}</span>
-                          <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                  <h5 className="text-sm font-semibold text-white">Activity status</h5>
-                  <div className="mt-3 space-y-2 text-sm text-slate-200">
-                    {[
-                      { label: "Currently active", data: playerSegments.activity_status?.currently_active },
-                      { label: "Recently stopped", data: playerSegments.activity_status?.recently_stopped },
-                      { label: "Inactive", data: playerSegments.activity_status?.inactive },
-                    ].map((row) => {
-                      const count = Number(row.data?.count ?? 0).toLocaleString();
-                      const rec = formatPercentOrDash(row.data?.recommendation_rate);
-                      const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
-                      return (
-                        <div key={row.label} className="flex items-center justify-between gap-3">
-                          <span>{row.label}</span>
-                          <span className="text-xs text-slate-400">
-                            {count} reviews · rec {rec} · issues {issueCount}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                      className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
+                        selectedSubcategory === subcategoryKey
+                          ? "border-sky-400/50 bg-sky-500/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-sm text-slate-200">{label}</p>
+                        <p className="text-xs text-slate-500">{count} requests</p>
+                        {snippet ? (
+                          <p className="text-xs text-slate-400">{snippet}</p>
+                        ) : (
+                          <p className="text-xs text-slate-600">No evidence captured yet.</p>
+                        )}
+                      </div>
+                      <p
+                        className="text-sm font-semibold"
+                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
+                      >
+                        {formatPercentOrDash(entry.recommendation_rate)}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </Card>
         </div>
+
+        <Card variant="glass" className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-lg font-semibold text-white">Userbase segmentation</h4>
+              <p className="mt-1 text-sm text-slate-400">Who is reviewing and what they care about</p>
+            </div>
+          </div>
+
+          {!playerSegments ? (
+            <p className="mt-4 text-sm text-slate-500">Segmentation data is not available for this analysis.</p>
+          ) : (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                <h5 className="text-sm font-semibold text-white">Purchase pathways</h5>
+                <div className="mt-3 space-y-2 text-sm text-slate-200">
+                  {[
+                    { label: "Steam buyers", data: playerSegments.purchase_type?.steam_buyers },
+                    { label: "Key users", data: playerSegments.purchase_type?.key_users },
+                    { label: "Free users", data: playerSegments.purchase_type?.free_users },
+                  ].map((row) => {
+                    const count = Number(row.data?.count ?? 0).toLocaleString();
+                    const rec = formatPercentOrDash(row.data?.recommendation_rate);
+                    const req = formatPercentOrDash(row.data?.feature_request_rate);
+                    return (
+                      <div key={row.label} className="flex items-center justify-between gap-3">
+                        <span>{row.label}</span>
+                        <span className="text-xs text-slate-400">
+                          {count} reviews · rec {rec} · requests {req}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                <h5 className="text-sm font-semibold text-white">Experience cohorts</h5>
+                <div className="mt-3 space-y-2 text-sm text-slate-200">
+                  {[
+                    { label: "Newcomers (<2h)", data: playerSegments.experience_level?.newcomers },
+                    { label: "Casual (2-20h)", data: playerSegments.experience_level?.casual },
+                    { label: "Experienced (20-100h)", data: playerSegments.experience_level?.experienced },
+                    { label: "Veterans (100h+)", data: playerSegments.experience_level?.veterans },
+                  ].map((row) => {
+                    const count = Number(row.data?.count ?? 0).toLocaleString();
+                    const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
+                    const topIssueRaw = row.data?.top_issues?.[0]?.category;
+                    const topIssue = topIssueRaw ? toSubcategoryLabel(topIssueRaw) : "";
+                    const meta = [`${count} reviews`, `issues ${issueCount}`];
+                    if (topIssue) {
+                      meta.push(`top ${topIssue}`);
+                    }
+                    return (
+                      <div key={row.label} className="flex items-center justify-between gap-3">
+                        <span>{row.label}</span>
+                        <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                <h5 className="text-sm font-semibold text-white">Engagement topics</h5>
+                <div className="mt-3 space-y-2 text-sm text-slate-200">
+                  {[
+                    { label: "Highly engaged", data: playerSegments.engagement_topics?.highly_engaged },
+                    { label: "Moderately engaged", data: playerSegments.engagement_topics?.moderately_engaged },
+                    { label: "Low engagement", data: playerSegments.engagement_topics?.low_engagement },
+                  ].map((row) => {
+                    const count = Number(row.data?.count ?? 0).toLocaleString();
+                    const topics = (row.data?.top_topics ?? [])
+                      .slice(0, 3)
+                      .map((topic) => formatMainCategoryLabel(topic.topic))
+                      .filter(Boolean);
+                    const meta = [`${count} reviews`];
+                    if (topics.length) {
+                      meta.push(`topics ${topics.join(", ")}`);
+                    }
+                    return (
+                      <div key={row.label} className="flex items-center justify-between gap-3">
+                        <span>{row.label}</span>
+                        <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+                <h5 className="text-sm font-semibold text-white">Activity status</h5>
+                <div className="mt-3 space-y-2 text-sm text-slate-200">
+                  {[
+                    { label: "Currently active", data: playerSegments.activity_status?.currently_active },
+                    { label: "Recently stopped", data: playerSegments.activity_status?.recently_stopped },
+                    { label: "Inactive", data: playerSegments.activity_status?.inactive },
+                  ].map((row) => {
+                    const count = Number(row.data?.count ?? 0).toLocaleString();
+                    const rec = formatPercentOrDash(row.data?.recommendation_rate);
+                    const issueCount = Number(row.data?.issue_count ?? 0).toLocaleString();
+                    return (
+                      <div key={row.label} className="flex items-center justify-between gap-3">
+                        <span>{row.label}</span>
+                        <span className="text-xs text-slate-400">
+                          {count} reviews · rec {rec} · issues {issueCount}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
 
       {selectedSubcategory ? (
