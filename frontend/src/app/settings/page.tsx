@@ -30,6 +30,11 @@ export default function SettingsPage() {
   const [logTailError, setLogTailError] = useState<string | null>(null);
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
 
+  const backendBootError =
+    typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
+  const backendBootLogFile =
+    typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_LOG_FILE__ ?? null : null;
+
   useEffect(() => {
     let active = true;
     async function load() {
@@ -126,6 +131,8 @@ export default function SettingsPage() {
         timestamp: new Date().toISOString(),
         app_version: appVersion,
         api_base: typeof window !== "undefined" ? window.__SENTINEXT_API_BASE__ ?? null : null,
+        backend_boot_error: backendBootError,
+        backend_boot_log_file: backendBootLogFile,
         backend_health: health,
         storage: storagePaths,
         log_file: storagePaths?.log_file ?? null,
@@ -286,6 +293,19 @@ export default function SettingsPage() {
           </div>
           {storageError ? <p className="text-xs text-rose-400">{storageError}</p> : null}
           {copyError ? <p className="text-xs text-rose-400">{copyError}</p> : null}
+          {backendBootLogFile ? (
+            <div className="space-y-1 text-xs text-slate-300">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Backend boot log</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="break-all rounded-lg bg-slate-950/40 px-3 py-2 font-mono text-[11px] text-slate-200">
+                  {backendBootLogFile}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => handleCopy(backendBootLogFile)}>
+                  Copy
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {!storageError ? (
             <div className="space-y-3 text-xs text-slate-300">
               <div className="space-y-1">
@@ -365,6 +385,20 @@ export default function SettingsPage() {
               {health.state === "online" ? "online" : health.state === "offline" ? "offline" : "checking"}
             </span>
           </div>
+
+          {backendBootError ? (
+            <div className="space-y-2 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 text-xs text-rose-200">
+              <p className="font-semibold">Backend failed to start</p>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950/40 p-3 text-[11px] text-rose-100">
+                {backendBootError}
+              </pre>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
+                  Copy error
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Log tail</p>

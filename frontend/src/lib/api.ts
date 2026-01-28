@@ -15,6 +15,8 @@ import {
 declare global {
   interface Window {
     __SENTINEXT_API_BASE__?: string;
+    __SENTINEXT_BACKEND_LOG_FILE__?: string;
+    __SENTINEXT_BACKEND_BOOT_ERROR__?: string | null;
   }
 }
 
