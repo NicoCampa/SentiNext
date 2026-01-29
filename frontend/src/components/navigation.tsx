@@ -46,7 +46,7 @@ export function Navigation({ comparisonCount = 0 }: NavigationProps) {
   return (
     <nav className="space-y-2">
       {navItems.map((item) => {
-        const isActive = item.active ?? (pathname === item.href || pathname.startsWith(item.href));
+        const isActive = pathname === item.href || pathname.startsWith(item.href);
         
         return (
           <Link
