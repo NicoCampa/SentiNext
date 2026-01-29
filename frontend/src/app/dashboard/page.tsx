@@ -363,7 +363,7 @@ function DashboardContent() {
                 </div>
                 {recentAnalyses.length > 0 ? (
                   <a href="/compare" className="text-xs text-sky-400 hover:text-sky-300">
-                    View all ->
+                    View all
                   </a>
                 ) : null}
               </div>
