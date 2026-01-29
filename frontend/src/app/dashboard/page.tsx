@@ -290,76 +290,93 @@ function DashboardContent() {
   return (
     <AppLayout>
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-white">{selectedGame ? "Game Analysis" : "Analyze Games"}</h1>
-            <p className="text-xs text-slate-400">
-              {selectedGame
-                ? "Category insights, top issues/requests, and user segmentation"
-                : "Search Steam, run an analysis, and review your latest insights."}
-            </p>
-          </div>
-          {selectedGame && (
+        {selectedGame ? (
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-white">Game Analysis</h1>
+              <p className="text-xs text-slate-400">Category insights, top issues/requests, and user segmentation.</p>
+            </div>
             <Button onClick={handleReset} variant="secondary">
-              ← New Search
+              New Search
             </Button>
-          )}
-        </div>
+          </div>
+        ) : null}
 
         {!selectedGame && (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-            <Card variant="glass" className="p-5">
-              <div className="space-y-4">
-                <div className="flex gap-4">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    onKeyDown={(event) => event.key === "Enter" && handleSearch()}
-                    placeholder="Search for a game (e.g., Baldur's Gate 3)"
-                    className="flex-1 rounded-xl border border-white/20 bg-slate-900/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-                  />
-                  <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()} variant="primary" size="lg">
-                    {searching ? "Searching..." : "Search"}
-                  </Button>
+          <>
+            <Card variant="glass" className="p-6">
+              <div className="space-y-3">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">Welcome</p>
+                <div>
+                  <h1 className="text-2xl font-semibold text-white">Welcome to SentiNext</h1>
+                  <p className="mt-2 text-sm text-slate-400">
+                    Understand what players really think. Start with a new Steam analysis or jump back into a recent report.
+                  </p>
                 </div>
-
-                {error && searchResults.length === 0 && <p className="text-sm text-rose-400">{error}</p>}
-
-                {searchResults.length > 0 && (
-                  <div className="mt-6 space-y-3">
-                    <p className="text-sm text-slate-400">{searchResults.length} games found</p>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {searchResults.map((game) => (
-                        <button
-                          key={game.appid}
-                          onClick={() => handleSelectGame(game)}
-                          className="flex gap-4 rounded-xl border border-white/10 bg-slate-900/30 p-4 text-left transition hover:border-sky-500/50 hover:bg-slate-900/50"
-                        >
-                          <SteamImage
-                            appId={game.appid}
-                            variant="capsule"
-                            alt={game.name}
-                            className="h-16 w-28 rounded-lg object-cover"
-                            imageUrl={game.image_url}
-                          />
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-white">{game.name}</h3>
-                            {game.price && <p className="mt-1 text-sm text-slate-400">{game.price}</p>}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </Card>
+
+            <div id="new-analysis">
+              <Card variant="glass" className="p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-white">New game analysis</h2>
+                    <p className="text-xs text-slate-400">Search Steam to begin a fresh review classification run.</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-4">
+                  <div className="flex gap-4">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      onKeyDown={(event) => event.key === "Enter" && handleSearch()}
+                      placeholder="Search for a game (e.g., Baldur's Gate 3)"
+                      className="flex-1 rounded-xl border border-white/20 bg-slate-900/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                    />
+                    <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()} variant="primary" size="lg">
+                      {searching ? "Searching..." : "Search"}
+                    </Button>
+                  </div>
+
+                  {error && searchResults.length === 0 && <p className="text-sm text-rose-400">{error}</p>}
+
+                  {searchResults.length > 0 && (
+                    <div className="mt-6 space-y-3">
+                      <p className="text-sm text-slate-400">{searchResults.length} games found</p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {searchResults.map((game) => (
+                          <button
+                            key={game.appid}
+                            onClick={() => handleSelectGame(game)}
+                            className="flex gap-4 rounded-xl border border-white/10 bg-slate-900/30 p-4 text-left transition hover:border-sky-500/50 hover:bg-slate-900/50"
+                          >
+                            <SteamImage
+                              appId={game.appid}
+                              variant="capsule"
+                              alt={game.name}
+                              className="h-16 w-28 rounded-lg object-cover"
+                              imageUrl={game.image_url}
+                            />
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-white">{game.name}</h3>
+                              {game.price && <p className="mt-1 text-sm text-slate-400">{game.price}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
 
             <Card variant="glass" className="p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Recent analyses</h2>
-                  <p className="text-xs text-slate-400">Jump back into your latest games.</p>
+                  <p className="text-xs text-slate-400">Open a saved dashboard from your latest runs.</p>
                 </div>
                 {recentAnalyses.length > 0 ? (
                   <a href="/compare" className="text-xs text-sky-400 hover:text-sky-300">
@@ -419,7 +436,7 @@ function DashboardContent() {
                 )}
               </div>
             </Card>
-          </div>
+          </>
         )}
 
         {selectedGame && !analysis && (
