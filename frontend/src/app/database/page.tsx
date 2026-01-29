@@ -464,7 +464,7 @@ export default function DatabasePage() {
                   onClick={() => setOffset(Math.max(0, offset - limit))}
                   disabled={offset === 0 || loadingReviews}
                 >
-                  <- Previous
+                  Previous
                 </Button>
                 <Button
                   variant="secondary"
@@ -472,7 +472,7 @@ export default function DatabasePage() {
                   onClick={() => setOffset(offset + limit)}
                   disabled={offset + limit >= pageTotal || loadingReviews}
                 >
-                  Next ->
+                  Next
                 </Button>
               </div>
             </div>
