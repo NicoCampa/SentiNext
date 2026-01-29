@@ -566,23 +566,6 @@ function DashboardContent() {
           <AnalysisResults
             analysis={analysis}
             selectedGame={selectedGame}
-            onReanalyze={handleAnalyze}
-            forceRefresh={forceRefresh}
-            onToggleRefresh={setForceRefresh}
-            isAnalyzing={isAnalyzing}
-            progress={progress}
-            reviewCount={reviewCount}
-            onReviewCountChange={setReviewCount}
-            language={language}
-            onLanguageChange={setLanguage}
-            fetchFilter={fetchFilter}
-            onFetchFilterChange={setFetchFilter}
-            refreshDays={refreshDays}
-            onRefreshDaysChange={setRefreshDays}
-            estimate={estimate}
-            estimating={estimating}
-            estimateError={estimateError}
-            onEstimate={handleEstimate}
           />
         )}
       </div>
@@ -610,43 +593,9 @@ function ProgressPill({ progress }: { progress: ProgressStatus }) {
 function AnalysisResults({
   analysis,
   selectedGame,
-  onReanalyze,
-  forceRefresh,
-  onToggleRefresh,
-  isAnalyzing,
-  progress,
-  reviewCount,
-  onReviewCountChange,
-  language,
-  onLanguageChange,
-  fetchFilter,
-  onFetchFilterChange,
-  refreshDays,
-  onRefreshDaysChange,
-  estimate,
-  estimating,
-  estimateError,
-  onEstimate,
 }: {
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
-  onReanalyze: () => void;
-  forceRefresh: boolean;
-  onToggleRefresh: (value: boolean) => void;
-  isAnalyzing: boolean;
-  progress: ProgressStatus | null;
-  reviewCount: number;
-  onReviewCountChange: (value: number) => void;
-  language: string;
-  onLanguageChange: (value: string) => void;
-  fetchFilter: string;
-  onFetchFilterChange: (value: string) => void;
-  refreshDays: number;
-  onRefreshDaysChange: (value: number) => void;
-  estimate: AnalyzeEstimateResponse | null;
-  estimating: boolean;
-  estimateError: string | null;
-  onEstimate: () => void;
 }) {
   const router = useRouter();
   const { filters: globalFilters, filtersActive: globalFiltersActive, resetFilters: resetGlobalFilters } = useGlobalFilters();
@@ -828,30 +777,18 @@ function AnalysisResults({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <label className="flex items-center gap-2 text-[11px] uppercase tracking-[0.25em] text-slate-300">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border border-white/30 bg-slate-900 text-sky-500 focus:ring-sky-500"
-                checked={forceRefresh}
-                onChange={(event) => onToggleRefresh(event.target.checked)}
-              />
-              Refresh
-            </label>
-            <Button onClick={onReanalyze} disabled={isAnalyzing} variant="primary">
-              {isAnalyzing ? "Running..." : "Re-run analysis"}
-            </Button>
-            <Button
-              onClick={() => {
-                if (!selectedGame) return;
-                router.push(`/reviews?appId=${selectedGame.appid}`);
-              }}
-              variant="secondary"
-            >
-              Open reviews
-            </Button>
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Button
+            onClick={() => {
+              if (!selectedGame) return;
+              router.push(`/reviews?appId=${selectedGame.appid}`);
+            }}
+            variant="secondary"
+          >
+            Open reviews
+          </Button>
         </div>
+      </div>
 
         <div className="mt-4">
           <GlobalFiltersBar />
@@ -872,97 +809,7 @@ function AnalysisResults({
           </div>
         </div>
 
-        <details className="mt-6 rounded-2xl border border-white/10 bg-slate-900/20 p-4">
-          <summary className="cursor-pointer select-none text-xs uppercase tracking-[0.25em] text-slate-300">
-            Analysis settings
-          </summary>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Reviews</span>
-              <select
-                value={reviewCount}
-                onChange={(event) => onReviewCountChange(Number(event.target.value))}
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-              >
-                {[100, 200, 500, 1000, 2000].map((value) => (
-                  <option key={value} value={value}>
-                    {value.toLocaleString()}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Language</span>
-              <input
-                value={language}
-                onChange={(event) => onLanguageChange(event.target.value)}
-                placeholder="english"
-                list="sentinext-analyze-language"
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-              />
-              <datalist id="sentinext-analyze-language">
-                {["english", "german", "french", "spanish", "italian", "polish", "russian", "japanese", "koreana", "schinese", "tchinese"].map(
-                  (item) => (
-                    <option key={item} value={item} />
-                  ),
-                )}
-              </datalist>
-            </label>
-
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Steam filter</span>
-              <select
-                value={fetchFilter}
-                onChange={(event) => onFetchFilterChange(event.target.value)}
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-              >
-                <option value="recent">Recent</option>
-                <option value="updated">Recently updated</option>
-                <option value="best">Most helpful</option>
-                <option value="all">All</option>
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Fetch window</span>
-              <select
-                value={refreshDays}
-                onChange={(event) => onRefreshDaysChange(Number(event.target.value))}
-                disabled={!forceRefresh}
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 disabled:opacity-40 focus:border-sky-500 focus:outline-none"
-              >
-                {[7, 30, 90, 365].map((value) => (
-                  <option key={value} value={value}>
-                    Last {value} days
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button onClick={onEstimate} disabled={estimating || isAnalyzing} variant="secondary" size="sm">
-              {estimating ? "Estimating..." : "Estimate"}
-            </Button>
-            {estimate ? (
-              <p className="text-xs text-slate-400">
-                LLM calls: <span className="text-slate-200">{estimate.llm_reviews}</span> · cached:{" "}
-                <span className="text-slate-200">{estimate.cached_reviews}</span> · rules:{" "}
-                <span className="text-slate-200">{estimate.rules_reviews}</span>
-              </p>
-            ) : (
-              <p className="text-xs text-slate-500">Estimate shows LLM calls vs cache/rules.</p>
-            )}
-          </div>
-          {estimateError ? <p className="mt-2 text-sm text-rose-400">{estimateError}</p> : null}
-        </details>
-
-        {isAnalyzing && progress ? (
-          <div className="mt-5">
-            <ProgressPill progress={progress} />
-          </div>
-        ) : null}
+        
       </Card>
 
       <Card variant="glass" className="p-6">
