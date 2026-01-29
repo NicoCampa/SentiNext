@@ -849,11 +849,7 @@ function AnalysisResults({
                 </div>
               </div>
             </>
-          ) : (
-            <div className="mt-4 text-xs text-slate-500">
-              {filtersActive ? "Filters active. Open to review or reset them." : "Filters are hidden. Open to refine insights."}
-            </div>
-          )}
+          ) : null}
         </Card>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
