@@ -17,7 +17,7 @@ function matchesPlaytime(minutes: number, filter: PlaytimeFilter): boolean {
   return true;
 }
 
-export function applyGlobalReviewFilters(reviews: ReviewRow[], filters: GlobalFilters): ReviewRow[] {
+export function applyGlobalReviewFilters<T extends ReviewRow>(reviews: T[], filters: GlobalFilters): T[] {
   if (!reviews.length) return [];
 
   const now = new Date();
@@ -60,4 +60,3 @@ export function applyGlobalReviewFilters(reviews: ReviewRow[], filters: GlobalFi
     return true;
   });
 }
-
