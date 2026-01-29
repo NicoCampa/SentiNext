@@ -57,16 +57,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const entries = await fetchStarredGames();
       setGames(entries);
       setError(null);
-      if (!selectedGameId && entries.length) {
-        setSelectedGameId(entries[0].app_id);
-      }
     } catch (err) {
       console.error("Failed to load starred games", err);
       setError("Failed to load saved games.");
     } finally {
       setLoading(false);
     }
-  }, [selectedGameId]);
+  }, []);
 
   useEffect(() => {
     refreshGames();
@@ -154,4 +151,3 @@ export function useGameContext(): GameContextValue {
   }
   return ctx;
 }
-
