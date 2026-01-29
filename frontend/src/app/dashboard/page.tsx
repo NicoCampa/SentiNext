@@ -794,9 +794,42 @@ function AnalysisResults({
         </div>
       </div>
 
-        <div className="mt-4">
-          <GlobalFiltersBar />
-        </div>
+        <Card variant="glass" className="mt-4 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Filters</h3>
+              <p className="mt-1 text-sm text-slate-400">
+                Global filters and text search apply to every insight below.
+              </p>
+            </div>
+            {filtersActive ? (
+              <Button variant="secondary" onClick={resetFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="mt-4">
+            <GlobalFiltersBar />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-end gap-4 text-xs text-slate-300">
+            <label className="flex min-w-[240px] flex-1 flex-col gap-2">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Search reviews</span>
+              <input
+                value={reviewQuery}
+                onChange={(event) => setReviewQuery(event.target.value)}
+                placeholder="Search review text"
+                className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+              />
+            </label>
+            <div className="flex flex-1 justify-end text-[11px] text-slate-500">
+              <span>
+                {filteredReviewSample.length.toLocaleString()} / {reviewSample.length.toLocaleString()} reviews
+              </span>
+            </div>
+          </div>
+        </Card>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
@@ -810,40 +843,6 @@ function AnalysisResults({
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
             <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Request rate</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
-          </div>
-        </div>
-
-        
-      </Card>
-
-      <Card variant="glass" className="p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Review search</h3>
-            <p className="mt-1 text-sm text-slate-400">
-              Search within the filtered sample. Global filters apply to all insights below.
-            </p>
-          </div>
-          {filtersActive ? (
-            <Button variant="secondary" onClick={resetFilters}>
-              Clear filters
-            </Button>
-          ) : null}
-        </div>
-        <div className="mt-4 flex flex-wrap items-end gap-4 text-xs text-slate-300">
-          <label className="flex min-w-[240px] flex-1 flex-col gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Search reviews</span>
-            <input
-              value={reviewQuery}
-              onChange={(event) => setReviewQuery(event.target.value)}
-              placeholder="Search review text"
-              className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-            />
-          </label>
-          <div className="flex flex-1 justify-end text-[11px] text-slate-500">
-            <span>
-              {filteredReviewSample.length.toLocaleString()} / {reviewSample.length.toLocaleString()} reviews
-            </span>
           </div>
         </div>
       </Card>
