@@ -267,6 +267,10 @@ function DashboardContent() {
     setError(null);
     setForceRefresh(false);
     setTemporaryGame(null);
+    setEstimate(null);
+    setEstimateError(null);
+    selectGameById(null);
+    router.replace("/dashboard");
   }
 
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);

@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BackendStatusIndicator } from "@/components/BackendStatusIndicator";
 import {
   HelpfulFilter,
   PlaytimeFilter,
@@ -113,7 +112,6 @@ export function GlobalFiltersBar() {
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <BackendStatusIndicator />
           {filtersActive ? (
             <Button variant="secondary" size="sm" onClick={resetFilters}>
               Reset
