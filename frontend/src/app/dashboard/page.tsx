@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 import { searchGames, estimateAnalysis } from "@/lib/api";
@@ -91,6 +91,7 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const gameParam = searchParams.get("game");
+  const viewParam = searchParams.get("view");
   const reviewsParam = searchParams.get("reviews") || searchParams.get("review_count");
   const { startAnalysis, getTask } = useAnalysis();
   const { games, loading: gamesLoading, refreshGames, selectGameById, setTemporaryGame, selectedStarredGame } = useGameContext();
@@ -259,7 +260,7 @@ function DashboardContent() {
     }
   }
 
-  function handleReset() {
+  const handleReset = useCallback(() => {
     setSelectedGame(null);
     setAnalysis(null);
     setSearchQuery("");
@@ -271,7 +272,13 @@ function DashboardContent() {
     setEstimateError(null);
     selectGameById(null);
     router.replace("/dashboard");
-  }
+  }, [router, selectGameById, setTemporaryGame]);
+
+  useEffect(() => {
+    if (viewParam === "home") {
+      handleReset();
+    }
+  }, [handleReset, viewParam]);
 
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
   const recentAnalyses = games.slice(0, 6);
@@ -609,6 +616,7 @@ function AnalysisResults({
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set());
   const [reviewQuery, setReviewQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const resetFilters = () => {
     resetGlobalFilters();
     setReviewQuery("");
@@ -802,33 +810,50 @@ function AnalysisResults({
                 Global filters and text search apply to every insight below.
               </p>
             </div>
-            {filtersActive ? (
-              <Button variant="secondary" onClick={resetFilters}>
-                Clear filters
+            <div className="flex flex-wrap items-center gap-2">
+              {filtersActive ? (
+                <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-emerald-300">
+                  Active
+                </span>
+              ) : null}
+              {filtersActive ? (
+                <Button variant="secondary" size="sm" onClick={resetFilters}>
+                  Reset filters
+                </Button>
+              ) : null}
+              <Button variant="secondary" size="sm" onClick={() => setFiltersOpen((prev) => !prev)}>
+                {filtersOpen ? "Hide filters" : "Show filters"}
               </Button>
-            ) : null}
-          </div>
-
-          <div className="mt-4">
-            <GlobalFiltersBar />
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-end gap-4 text-xs text-slate-300">
-            <label className="flex min-w-[240px] flex-1 flex-col gap-2">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Search reviews</span>
-              <input
-                value={reviewQuery}
-                onChange={(event) => setReviewQuery(event.target.value)}
-                placeholder="Search review text"
-                className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-              />
-            </label>
-            <div className="flex flex-1 justify-end text-[11px] text-slate-500">
-              <span>
-                {filteredReviewSample.length.toLocaleString()} / {reviewSample.length.toLocaleString()} reviews
-              </span>
             </div>
           </div>
+          {filtersOpen ? (
+            <>
+              <div className="mt-4">
+                <GlobalFiltersBar />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-end gap-4 text-sm text-slate-200">
+                <label className="flex min-w-[240px] flex-1 flex-col gap-2">
+                  <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Search reviews</span>
+                  <input
+                    value={reviewQuery}
+                    onChange={(event) => setReviewQuery(event.target.value)}
+                    placeholder="Search review text"
+                    className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
+                  />
+                </label>
+                <div className="flex flex-1 justify-end text-xs text-slate-400">
+                  <span>
+                    {filteredReviewSample.length.toLocaleString()} / {reviewSample.length.toLocaleString()} reviews
+                  </span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 text-xs text-slate-500">
+              {filtersActive ? "Filters active. Open to review or reset them." : "Filters are hidden. Open to refine insights."}
+            </div>
+          )}
         </Card>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">

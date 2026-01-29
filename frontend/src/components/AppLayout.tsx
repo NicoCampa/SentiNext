@@ -19,7 +19,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const compact = density === "compact";
 
   const navItems = [
-    { href: "/dashboard", label: "Analyze", icon: "▶" },
+    { href: "/dashboard?view=home", label: "Home", icon: "▶" },
     { href: "/chat", label: "Chat", icon: "?" },
     { href: "/compare", label: "Compare", icon: "≈" },
     { href: "/database", label: "Database", icon: "◫" },

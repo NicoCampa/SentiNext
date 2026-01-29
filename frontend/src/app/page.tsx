@@ -15,7 +15,7 @@ export default function RootPage() {
 
     // Redirect to dashboard
     const timeout = setTimeout(() => {
-      router.replace('/dashboard');
+      router.replace('/dashboard?view=home');
     }, 500);
 
     return () => {
