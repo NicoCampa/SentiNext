@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { SignedIn, UserButton } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
+import { AnalysisWidget } from "@/components/AnalysisWidget";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -111,6 +112,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       <main className="min-w-0 flex-1 bg-slate-950/70 pb-24 lg:pb-0">
         {children}
       </main>
+      <AnalysisWidget />
       {showSidebar && (
         <nav
           aria-label="Primary"

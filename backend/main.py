@@ -544,21 +544,10 @@ def _run_analysis_job(
 
     if progress_active:
         storage.reset_progress(user_id, app_id, total_reviews)
-        last_update = [0]
 
         def _progress_callback(processed: int, total: int) -> None:
             try:
-                if total <= 20:
-                    storage.update_progress(user_id, app_id, processed, total)
-                    last_update[0] = processed
-                elif total <= 100:
-                    if processed == total or processed - last_update[0] >= 5:
-                        storage.update_progress(user_id, app_id, processed, total)
-                        last_update[0] = processed
-                else:
-                    if processed == total or processed - last_update[0] >= 10:
-                        storage.update_progress(user_id, app_id, processed, total)
-                        last_update[0] = processed
+                storage.update_progress(user_id, app_id, processed, total)
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning("Progress update failed: %s", exc)
     else:
