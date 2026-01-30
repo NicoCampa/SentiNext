@@ -24,10 +24,11 @@ logger = logging.getLogger(__name__)
 OPENAI_BASE_URL = os.getenv("SENTINEXT_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 PROMPT_VERSION = "steam_review_insights_v13_subcategories_primary_json"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
+OPENAI_MODEL = "gpt-5-mini"
+OPENAI_BATCH_SIZE = 10
 MAX_REVIEW_CHARS = 3000
 MIN_REVIEW_WORDS = 2
 _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
-OPENAI_MODEL = "gpt-5-mini"
 
 
 def _maybe_load_dotenv() -> None:
@@ -151,6 +152,75 @@ _PROMPT_TEMPLATE = Template(
         <<<BEGIN REVIEW>>>
         $review_text
         <<<END REVIEW>>>
+        """
+    )
+)
+
+_BATCH_PROMPT_TEMPLATE = Template(
+    dedent(
+        """Extract actionable developer insights from Steam reviews by labeling each review with the taxonomy below.
+
+        Reply with STRICT JSON only (a single JSON object). No prose, no markdown, no code fences.
+
+        GAME CONTEXT:
+        Name: $game_name
+        Type: $game_type
+        Genres: $game_genres
+        Categories: $game_categories
+        Description: $game_description
+
+        OUTPUT JSON SCHEMA:
+        - The top-level JSON MUST be an object.
+        - Each key MUST be a review_id from the input (as a string).
+        - Each value MUST be an object with these exact keys (no extras):
+        {
+          "<review_id>": {
+            "subcategories": ["<main>/<sub>", "..."],
+            "issue_subcategories": ["<main>/<sub>", "..."],
+            "request_subcategories": ["<main>/<sub>", "..."],
+            "evidence": { "<main>/<sub>": ["<verbatim quote>", "..."] }
+          }
+        }
+
+        FIELD CONSTRAINTS (apply per review):
+        - subcategories: 1-6 unique items
+        - subcategories[0]: primary label (dominant theme)
+        - issue_subcategories: subset of subcategories
+        - request_subcategories: subset of subcategories
+        - evidence: keys must match subcategories
+
+        RULES:
+        - For EVERY review_id provided, include EXACTLY one output entry.
+        - Do not add any top-level keys besides the review_id keys.
+        - Choose 1-6 unique subcategories from the taxonomy below, each formatted as "<main>/<sub>".
+        - Put the primary label first: subcategories[0] MUST be the dominant theme of the review.
+        - issue_subcategories: only problems/complaints (subset of subcategories).
+        - request_subcategories: only explicit requests (subset of subcategories; e.g., "please add", "can you", "I wish").
+        - evidence: for EVERY tag in subcategories, include 1-3 short verbatim quotes from THAT SAME review (<=160 chars).
+          Do not invent quotes. Use double quotes in JSON strings and escape as needed.
+        - If review is vague/generic: subcategories=["other/general"], issue_subcategories=[], request_subcategories=[],
+          evidence={"other/general":["short quote from review"]}.
+        - JSON MUST be valid: double quotes only, no trailing commas, no comments, no code fences.
+        - Fill with real values only. Do not output placeholders like "<main>/<sub>", "<verbatim quote>", or "...".
+
+        TAXONOMY (allowed main/sub):
+        - gameplay: mechanics (combat/movement/core loop), controls (input/controller), balance, difficulty, progression, ai
+        - technical: performance, bugs, stability, crashes, compatibility (deck/ultrawide/VR/HDR), networking,
+          installation (launcher/DRM/account linking/cloud saves)
+        - content_design: amount_variety, level_design, quests_modes, narrative_characters, replayability, pacing, customization
+        - ui_ux_accessibility: menus_hud, readability, quality_of_life, controller_support, accessibility_options
+        - onboarding: tutorial, learning_curve, clarity, tooltips
+        - presentation: visuals_art_style, animation, audio_music_voice, atmosphere, localization
+        - online_community: multiplayer_experience (non-technical), matchmaking, social_features, toxicity_moderation, mods_ugc,
+          cheating_anti_cheat
+        - developer_updates: patch_quality, update_frequency, roadmap_events, communication, customer_support
+        - monetization_value: price, regional_pricing, dlc, microtransactions, pay_to_win_grind, value_for_money
+        - other: general, mixed, meta, unclear
+
+        REVIEWS (each block is independent; do not mix evidence across blocks):
+        <<<BEGIN REVIEWS>>>
+        $reviews_text
+        <<<END REVIEWS>>>
         """
     )
 )
@@ -789,7 +859,10 @@ def _parse_payload(raw: str) -> Dict[str, Any]:
         raise ValueError("Empty response from LLM")
 
     payload = _load_json_mapping(raw)
+    return _parse_payload_mapping(payload)
 
+
+def _parse_payload_mapping(payload: Mapping[str, Any]) -> Dict[str, Any]:
     # Multi-label subcategories (canonical format "main/sub").
     # `subcategories[0]` is treated as the primary label; main/sub are derived from it.
     candidate_subcategories = _parse_subcategory_list(payload.get("subcategories"))
@@ -829,6 +902,85 @@ def _parse_payload(raw: str) -> Dict[str, Any]:
     }
 
 
+def _build_batch_prompt(
+    items: Sequence[Mapping[str, Any]],
+    *,
+    game_context: Optional[Dict[str, Any]] = None,
+) -> str:
+    # Build game context strings (same shape as `_build_prompt`, but once per batch).
+    if game_context:
+        game_name = game_context.get("name", "Unknown")
+        game_type = game_context.get("type", "game")
+        genres = game_context.get("genres", [])
+        categories = game_context.get("categories", [])
+        description = game_context.get("short_description", "")[:200]
+
+        game_genres = ", ".join(genres) if genres else "Unknown"
+        game_categories = ", ".join(categories[:5]) if categories else "Unknown"
+        game_description = description if description else "Not available"
+    else:
+        game_name = "Unknown"
+        game_type = "game"
+        game_genres = "Unknown"
+        game_categories = "Unknown"
+        game_description = "Not available"
+
+    blocks: list[str] = []
+    for item in items:
+        review_id = str(item.get("review_id") or "")
+        review_text = str(item.get("review_text") or "")
+        reviewer_playtime = float(item.get("reviewer_playtime") or 0)
+        reviewer_voted_up = bool(item.get("reviewer_voted_up", True))
+        truncated = (review_text or "")[:MAX_REVIEW_CHARS]
+        playtime_hours = round(reviewer_playtime / 60, 1) if reviewer_playtime else 0
+        recommendation = "Positive" if reviewer_voted_up else "Negative"
+        blocks.append(
+            dedent(
+                f"""[review_id={review_id}]
+                Playtime_hours: {playtime_hours}
+                Recommendation: {recommendation}
+                <<<BEGIN REVIEW>>>
+                {truncated}
+                <<<END REVIEW>>>"""
+            ).strip()
+        )
+
+    return _BATCH_PROMPT_TEMPLATE.substitute(
+        game_name=game_name,
+        game_type=game_type,
+        game_genres=game_genres,
+        game_categories=game_categories,
+        game_description=game_description,
+        reviews_text="\n\n".join(blocks),
+    )
+
+
+def classify_reviews_batch(
+    items: Sequence[Mapping[str, Any]],
+    *,
+    game_context: Optional[Dict[str, Any]] = None,
+) -> tuple[Dict[str, Dict[str, Any]], str]:
+    if not items:
+        return {}, _model_id("openai", OPENAI_MODEL)
+
+    expected_ids = [str(item.get("review_id") or "") for item in items]
+    if any(not rid for rid in expected_ids):
+        raise ValueError("Missing review_id in batch input.")
+
+    prompt = _build_batch_prompt(items, game_context=game_context)
+    raw, model_used = _run_llm(prompt)
+    payload = _load_json_mapping(raw)
+
+    results: Dict[str, Dict[str, Any]] = {}
+    for review_id in expected_ids:
+        entry = payload.get(review_id)
+        if not isinstance(entry, dict):
+            raise ValueError(f"Missing/invalid payload for review_id={review_id}.")
+        results[review_id] = _parse_payload_mapping(entry)
+
+    return results, model_used
+
+
 def classify_review(
     review_text: str,
     game_context: Optional[Dict[str, Any]] = None,
@@ -863,9 +1015,36 @@ def ensure_review_labels(
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
     processed_count = 0
+    pending: list[Dict[str, Any]] = []
 
     if progress_callback is not None:
         progress_callback(0, total_reviews)
+
+    def _flush_pending() -> None:
+        nonlocal processed_count
+        if not pending:
+            return
+        batch_labels, model_used = classify_reviews_batch(pending, game_context=game_context)
+        for item in pending:
+            review_id = str(item["review_id"])
+            review_hash = str(item["review_hash"])
+            payload = batch_labels[review_id]
+            payload["_label_source"] = "llm"
+            payload["_label_model"] = model_used
+            if cache_enabled:
+                storage.upsert_review_label(
+                    app_id,
+                    review_id,
+                    review_hash,
+                    payload,
+                    model_used,
+                    ACTIVE_PROMPT_VERSION,
+                )
+            results[review_id] = payload
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_reviews)
+        pending.clear()
 
     for review in reviews:
         review_id_value = review.get("recommendationid") or review.get("review_id")
@@ -944,20 +1123,19 @@ def ensure_review_labels(
         reviewer_playtime = review.get("author", {}).get("playtime_forever", 0)
         reviewer_voted_up = review.get("voted_up", True)
 
-        payload, model_used = classify_review(
-            review_text,
-            game_context=game_context,
-            reviewer_playtime=reviewer_playtime,
-            reviewer_voted_up=reviewer_voted_up,
+        pending.append(
+            {
+                "review_id": review_id,
+                "review_text": review_text,
+                "review_hash": review_hash,
+                "reviewer_playtime": reviewer_playtime,
+                "reviewer_voted_up": reviewer_voted_up,
+            }
         )
-        payload["_label_source"] = "llm"
-        payload["_label_model"] = model_used
-        if cache_enabled:
-            storage.upsert_review_label(app_id, review_id, review_hash, payload, model_used, ACTIVE_PROMPT_VERSION)
-        results[review_id] = payload
-        processed_count += 1
-        if progress_callback is not None:
-            progress_callback(processed_count, total_reviews)
+        if len(pending) >= OPENAI_BATCH_SIZE:
+            _flush_pending()
+
+    _flush_pending()
 
     if progress_callback is not None and processed_count < total_reviews:
         progress_callback(total_reviews, total_reviews)
