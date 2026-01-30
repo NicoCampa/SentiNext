@@ -72,7 +72,8 @@ npm run dev  # http://localhost:3000
 
 ## Deploy (web)
 Deploy the API and UI as separate services:
-- Frontend: use `Dockerfile.frontend` (Next.js server). Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL and add Clerk keys.
+- Frontend (recommended): use Render's **Node** runtime with `Root Directory=frontend`, `Build Command=npm install && npm run build`, `Start Command=npm run start`. Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL and add Clerk keys.
+- Frontend (Docker alternative): use `Dockerfile.frontend` (Next.js server) if you prefer Docker.
 - Backend: use `Dockerfile.backend` (FastAPI API-only). Attach a persistent disk and set `SENTINEXT_DB_PATH` to its mount path.
 
 ## Authentication (Clerk)
