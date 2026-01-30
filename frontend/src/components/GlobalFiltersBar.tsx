@@ -35,7 +35,7 @@ export function GlobalFiltersBar() {
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-5 sm:gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Sentiment</p>
           <select

@@ -242,7 +242,7 @@ function ReviewsContent() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-10">
+      <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold text-white">{game.name}</h1>

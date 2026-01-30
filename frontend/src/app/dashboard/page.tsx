@@ -300,7 +300,7 @@ function DashboardContent() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-6">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-8 sm:space-y-6">
         {selectedGame ? (
           <div className="flex items-center justify-end">
             <Button onClick={handleReset} variant="secondary">
@@ -854,7 +854,7 @@ function AnalysisResults({
           ) : null}
         </Card>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-4 sm:gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
             <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Recommendation</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRecommendationRate)}</p>

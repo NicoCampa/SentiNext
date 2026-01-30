@@ -118,7 +118,7 @@ export default function ChatPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-6">
+      <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-6 sm:px-6 lg:px-6">
         <div>
           <h1 className="text-xl font-bold text-white">Chat with Insights</h1>
           <p className="text-xs text-slate-400">Ask questions grounded in your tagged reviews and evidence snippets.</p>

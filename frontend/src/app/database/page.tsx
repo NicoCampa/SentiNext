@@ -223,7 +223,7 @@ export default function DatabasePage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-7xl space-y-10 sm:space-y-8 px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">
             <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
