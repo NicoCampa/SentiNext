@@ -333,7 +333,7 @@ function DashboardContent() {
                 </div>
 
                 <div className="mt-4 space-y-4">
-                  <div className="flex gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row">
                     <input
                       type="text"
                       value={searchQuery}
@@ -342,7 +342,13 @@ function DashboardContent() {
                       placeholder="Search for a game (e.g., Baldur's Gate 3)"
                       className="flex-1 rounded-xl border border-white/20 bg-slate-900/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
                     />
-                    <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()} variant="primary" size="lg">
+                    <Button
+                      onClick={handleSearch}
+                      disabled={searching || !searchQuery.trim()}
+                      variant="primary"
+                      size="lg"
+                      className="w-full sm:w-auto"
+                    >
                       {searching ? "Searching..." : "Search"}
                     </Button>
                   </div>
@@ -829,7 +835,7 @@ function AnalysisResults({
               </div>
 
               <div className="mt-4 flex flex-wrap items-end gap-4 text-sm text-slate-200">
-                <label className="flex min-w-[240px] flex-1 flex-col gap-2">
+                <label className="flex min-w-0 w-full flex-1 flex-col gap-2 sm:min-w-[240px]">
                   <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Search reviews</span>
                   <input
                     value={reviewQuery}

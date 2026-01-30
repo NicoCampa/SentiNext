@@ -26,6 +26,11 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     { href: "/settings", label: "Settings", icon: "⚙" },
   ];
 
+  const isActiveRoute = (href: string) => {
+    const path = href.split("?")[0];
+    return pathname === path || (path !== "/" && pathname.startsWith(path));
+  };
+
   return (
     <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-950 text-slate-100">
       {showSidebar && (
@@ -56,7 +61,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                     className={clsx(
                       "flex items-center gap-3 rounded-2xl border px-4 text-center transition",
                       compact ? "py-2 text-[11px]" : "py-3 text-xs",
-                      pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+                      isActiveRoute(item.href)
                         ? "border-white/20 bg-white/10 text-slate-100 shadow-lg shadow-indigo-900/20"
                         : "border-white/15 bg-transparent text-slate-300 hover:border-sky-400/60 hover:text-white"
                     )}
@@ -77,9 +82,38 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
         </aside>
       )}
 
-      <main className="flex-1 bg-slate-950/70">
+      <main className="min-w-0 flex-1 bg-slate-950/70 pb-24 lg:pb-0">
         {children}
       </main>
+      {showSidebar && (
+        <nav
+          aria-label="Primary"
+          className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-slate-950/90 backdrop-blur lg:hidden"
+          style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+        >
+          <div className="mx-auto flex max-w-md items-center justify-between gap-2 px-4 pt-2">
+            {navItems.map((item) => {
+              const active = isActiveRoute(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "flex flex-1 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[9px] uppercase tracking-[0.2em] transition",
+                    active
+                      ? "bg-white/10 text-sky-200"
+                      : "text-slate-400 hover:bg-white/5 hover:text-white"
+                  )}
+                >
+                  <span className="text-base">{item.icon}</span>
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
       <FirstRunSetup />
     </div>
   );

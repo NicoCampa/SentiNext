@@ -35,8 +35,8 @@ export function GlobalFiltersBar() {
 
   return (
     <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="min-w-[140px]">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Sentiment</p>
           <select
             value={filters.sentiment}
@@ -49,7 +49,7 @@ export function GlobalFiltersBar() {
           </select>
         </div>
 
-        <div className="min-w-[160px]">
+        <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Date</p>
           <select
             value={filters.dateRange}
@@ -63,7 +63,7 @@ export function GlobalFiltersBar() {
           </select>
         </div>
 
-        <div className="min-w-[120px]">
+        <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Helpful</p>
           <select
             value={filters.minHelpful}
@@ -77,7 +77,7 @@ export function GlobalFiltersBar() {
           </select>
         </div>
 
-        <div className="min-w-[140px]">
+        <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Playtime</p>
           <select
             value={filters.playtime}
@@ -91,7 +91,7 @@ export function GlobalFiltersBar() {
           </select>
         </div>
 
-        <div className="min-w-[180px]">
+        <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Language</p>
           <input
             value={languageValue}

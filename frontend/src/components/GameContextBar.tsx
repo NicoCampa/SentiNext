@@ -51,8 +51,8 @@ export function GameContextBar() {
 
   return (
     <Card variant="glass" className="p-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex min-w-[260px] flex-1 items-center gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col gap-4 sm:min-w-[260px] sm:flex-1 sm:flex-row sm:items-center">
           {selectedGame?.appId ? (
             <SteamImage
               appId={selectedGame.appId}
@@ -72,7 +72,7 @@ export function GameContextBar() {
               <select
                 value={selectedGameId ?? ""}
                 onChange={(event) => selectGameById(event.target.value ? Number(event.target.value) : null)}
-                className="min-w-[220px] rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none sm:min-w-[220px]"
               >
                 {!hasStarredSelection && selectedGame ? (
                   <option value={selectedGame.appId}>
@@ -100,7 +100,7 @@ export function GameContextBar() {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:flex-1 sm:justify-end">
           {activeChips.length ? (
             <>
               <span className="text-xs text-slate-500">Active filters:</span>
@@ -134,4 +134,3 @@ export function GameContextBar() {
     </Card>
   );
 }
-

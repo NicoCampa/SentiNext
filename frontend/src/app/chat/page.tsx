@@ -126,9 +126,9 @@ export default function ChatPage() {
 
         <Card variant="glass" className="p-6">
           <div className="flex flex-wrap items-start gap-6">
-            <div className="min-w-[220px] flex-1">
+            <div className="min-w-0 w-full sm:min-w-[220px] sm:flex-1">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Game</p>
-              <div className="mt-2 flex items-center gap-4">
+              <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
                 {selectedGame ? (
                   <SteamImage
                     appId={selectedGame.app_id}
@@ -141,7 +141,7 @@ export default function ChatPage() {
                 <select
                   value={selectedGameId ?? ""}
                   onChange={(event) => selectGameById(event.target.value ? Number(event.target.value) : null)}
-                  className="flex-1 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
+                  className="w-full flex-1 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
                 >
                   {games.map((game) => (
                     <option key={game.app_id} value={game.app_id}>
@@ -152,7 +152,7 @@ export default function ChatPage() {
               </div>
             </div>
 
-            <div className="min-w-[260px] flex-1">
+            <div className="min-w-0 w-full sm:min-w-[260px] sm:flex-1">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Scope</p>
               <p className="mt-2 text-sm text-slate-300">
                 Chat respects the global filters above.
@@ -166,7 +166,7 @@ export default function ChatPage() {
               </p>
             </div>
 
-            <div className="min-w-[200px] flex-1">
+            <div className="min-w-0 w-full sm:min-w-[200px] sm:flex-1">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Ideas</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {DEFAULT_QUESTIONS.map((item) => (
