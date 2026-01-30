@@ -302,11 +302,7 @@ function DashboardContent() {
     <AppLayout>
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-6">
         {selectedGame ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-white">Game Analysis</h1>
-              <p className="text-xs text-slate-400">Category insights, top issues/requests, and user segmentation.</p>
-            </div>
+          <div className="flex items-center justify-end">
             <Button onClick={handleReset} variant="secondary">
               New Search
             </Button>
@@ -869,10 +865,6 @@ function AnalysisResults({
       </Card>
 
       <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold text-white">Insights</h3>
-          <p className="text-sm text-slate-400">Category health, issues & requests, and userbase segmentation.</p>
-        </div>
 
         <Card variant="glass" className="p-6">
           <div className="flex items-center justify-between">

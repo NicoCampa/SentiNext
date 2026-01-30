@@ -42,9 +42,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                 <p className="text-[10px] uppercase tracking-[0.5em] text-slate-400">
                   Game review analytics
                 </p>
-                <p className="text-xs text-slate-400/85">
-                  Understand what players really think.
-                </p>
               </div>
             </div>
 
