@@ -9,8 +9,8 @@ export interface LlmSettings {
 }
 
 export interface LlmRequestConfig {
-  llm_provider: LlmProvider;
-  llm_model: string;
+  llm_provider?: LlmProvider | null;
+  llm_model?: string | null;
   openai_api_key?: string | null;
   ollama_host?: string | null;
 }
@@ -26,6 +26,24 @@ const DEFAULT_SETTINGS: LlmSettings = {
   ollamaHost: "",
   ollamaModel: "gpt-oss:20b-cloud",
 };
+
+function hasCustomSettings(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (!stored) return false;
+    const normalized = normalizeSettings(JSON.parse(stored));
+    return (
+      normalized.provider !== DEFAULT_SETTINGS.provider ||
+      normalized.openaiApiKey !== DEFAULT_SETTINGS.openaiApiKey ||
+      normalized.openaiModel !== DEFAULT_SETTINGS.openaiModel ||
+      normalized.ollamaHost !== DEFAULT_SETTINGS.ollamaHost ||
+      normalized.ollamaModel !== DEFAULT_SETTINGS.ollamaModel
+    );
+  } catch {
+    return false;
+  }
+}
 
 function sanitizeProvider(value: unknown): LlmProvider {
   return value === "openai" ? "openai" : "ollama";
@@ -127,6 +145,23 @@ export async function saveSettings(settings: LlmSettings): Promise<void> {
 }
 
 export async function buildLlmRequestConfig(overrides: Partial<LlmRequestConfig> = {}): Promise<LlmRequestConfig> {
+  const shouldDeferToBackend =
+    !isTauriApp() &&
+    !hasCustomSettings() &&
+    typeof overrides.llm_provider === "undefined" &&
+    typeof overrides.llm_model === "undefined" &&
+    typeof overrides.openai_api_key === "undefined" &&
+    typeof overrides.ollama_host === "undefined";
+
+  if (shouldDeferToBackend) {
+    return {
+      llm_provider: null,
+      llm_model: null,
+      openai_api_key: null,
+      ollama_host: null,
+    };
+  }
+
   const settings = loadSettings();
   const provider = sanitizeProvider(overrides.llm_provider ?? settings.provider);
   const llmModel =
