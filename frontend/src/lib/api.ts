@@ -50,6 +50,36 @@ function apiUrl(pathname: string): string {
   return `${base}${pathname}`;
 }
 
+function mergeHeaders(base: HeadersInit | undefined, extra: HeadersInit): Headers {
+  const headers = new Headers(base || {});
+  const extraHeaders = new Headers(extra);
+  extraHeaders.forEach((value, key) => {
+    headers.set(key, value);
+  });
+  return headers;
+}
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  if (typeof window === "undefined") return {};
+  const clerk = (window as Window & {
+    Clerk?: { session?: { getToken: () => Promise<string | null> } };
+  }).Clerk;
+  if (!clerk?.session) return {};
+  try {
+    const token = await clerk.session.getToken();
+    if (!token) return {};
+    return { Authorization: `Bearer ${token}` };
+  } catch {
+    return {};
+  }
+}
+
+async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const auth = await getAuthHeaders();
+  const headers = mergeHeaders(init.headers, auth);
+  return fetch(input, { ...init, headers });
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await response.text();
@@ -61,7 +91,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 export async function searchGames(query: string): Promise<SearchResult[]> {
   const url = new URL(apiUrl("/search"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
   url.searchParams.set("query", query);
-  const response = await fetch(url.toString(), { cache: "no-store" });
+  const response = await authFetch(url.toString(), { cache: "no-store" });
   return handleResponse<SearchResult[]>(response);
 }
 
@@ -81,7 +111,7 @@ export interface AnalyzePayload {
 }
 
 export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeResponse> {
-  const response = await fetch(apiUrl("/analyze"), {
+  const response = await authFetch(apiUrl("/analyze"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -90,33 +120,33 @@ export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeRespo
 }
 
 export async function fetchProgress(appId: number): Promise<ProgressStatus> {
-  const response = await fetch(apiUrl(`/progress/${appId}`), {
+  const response = await authFetch(apiUrl(`/progress/${appId}`), {
     cache: "no-store",
   });
   return handleResponse<ProgressStatus>(response);
 }
 
 export async function fetchStarredGames(): Promise<StarredGameDTO[]> {
-  const response = await fetch(apiUrl("/starred"), {
+  const response = await authFetch(apiUrl("/starred"), {
     cache: "no-store",
   });
   return handleResponse<StarredGameDTO[]>(response);
 }
 
 export async function fetchAnalysisResult(appId: number): Promise<AnalysisResultResponse> {
-  const response = await fetch(apiUrl(`/analysis/${appId}`), {
+  const response = await authFetch(apiUrl(`/analysis/${appId}`), {
     cache: "no-store",
   });
   return handleResponse<AnalysisResultResponse>(response);
 }
 
 export async function fetchHealth(): Promise<{ status: string; timestamp: string }> {
-  const response = await fetch(apiUrl("/health"), { cache: "no-store" });
+  const response = await authFetch(apiUrl("/health"), { cache: "no-store" });
   return handleResponse<{ status: string; timestamp: string }>(response);
 }
 
 export async function fetchStoragePaths(): Promise<StoragePaths> {
-  const response = await fetch(apiUrl("/settings/storage"), {
+  const response = await authFetch(apiUrl("/settings/storage"), {
     cache: "no-store",
   });
   return handleResponse<StoragePaths>(response);
@@ -125,12 +155,12 @@ export async function fetchStoragePaths(): Promise<StoragePaths> {
 export async function fetchLogTail(bytes: number = 20000): Promise<LogTailResponse> {
   const url = new URL(apiUrl("/logs/tail"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
   url.searchParams.set("bytes", String(bytes));
-  const response = await fetch(url.toString(), { cache: "no-store" });
+  const response = await authFetch(url.toString(), { cache: "no-store" });
   return handleResponse<LogTailResponse>(response);
 }
 
 export async function estimateAnalysis(payload: AnalyzePayload): Promise<AnalyzeEstimateResponse> {
-  const response = await fetch(apiUrl("/analyze/estimate"), {
+  const response = await authFetch(apiUrl("/analyze/estimate"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -165,7 +195,7 @@ export interface ChatRequestPayload {
 }
 
 export async function chatWithInsights(payload: ChatRequestPayload): Promise<ChatResponse> {
-  const response = await fetch(apiUrl("/chat"), {
+  const response = await authFetch(apiUrl("/chat"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -183,20 +213,19 @@ export async function fetchFeedback(appId: number, options: FeedbackOptions = {}
   if (options.discord_limit) url.searchParams.set("discord_limit", String(options.discord_limit));
   if (options.forum_limit) url.searchParams.set("forum_limit", String(options.forum_limit));
 
-  const response = await fetch(url.toString(), { cache: "no-store" });
+  const response = await authFetch(url.toString(), { cache: "no-store" });
   return handleResponse<FeedbackItem[]>(response);
 }
 
 export async function saveStarredGame(payload: StarredGamePayload): Promise<void> {
-  await fetch(apiUrl("/starred"), {
+  const response = await authFetch(apiUrl("/starred"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-  }).then((response) => {
-    if (!response.ok) {
-      throw new Error(`Failed to save starred game (status ${response.status})`);
-    }
   });
+  if (!response.ok) {
+    throw new Error(`Failed to save starred game (status ${response.status})`);
+  }
 }
 
 const ADMIN_TOKEN_STORAGE_KEY = "sentinext_admin_token";
@@ -216,7 +245,7 @@ export function setAdminToken(token: string | null): void {
 }
 
 export async function verifyAdminToken(token: string): Promise<void> {
-  const response = await fetch(apiUrl("/admin/verify"), {
+  const response = await authFetch(apiUrl("/admin/verify"), {
     method: "POST",
     headers: { "x-admin-token": token },
     cache: "no-store",
@@ -233,25 +262,23 @@ function requireAdminHeaders(): HeadersInit {
 }
 
 export async function removeStarredGame(appId: number): Promise<void> {
-  await fetch(apiUrl(`/starred/${appId}`), {
+  const response = await authFetch(apiUrl(`/starred/${appId}`), {
     method: "DELETE",
     headers: requireAdminHeaders(),
-  }).then((response) => {
-    if (!response.ok) {
-      throw new Error(`Failed to remove starred game (status ${response.status})`);
-    }
   });
+  if (!response.ok) {
+    throw new Error(`Failed to remove starred game (status ${response.status})`);
+  }
 }
 
 export async function deleteGame(appId: number): Promise<void> {
-  await fetch(apiUrl(`/games/${appId}`), {
+  const response = await authFetch(apiUrl(`/games/${appId}`), {
     method: "DELETE",
     headers: requireAdminHeaders(),
-  }).then((response) => {
-    if (!response.ok) {
-      throw new Error(`Failed to delete game data (status ${response.status})`);
-    }
   });
+  if (!response.ok) {
+    throw new Error(`Failed to delete game data (status ${response.status})`);
+  }
 }
 
 export interface DatabaseStats {
@@ -278,17 +305,17 @@ export async function fetchDatabaseReviews(params: DatabaseReviewsParams = {}): 
   if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
   if (params.language) url.searchParams.set("language", params.language);
   if (params.query) url.searchParams.set("query", params.query);
-  const response = await fetch(url.toString(), { cache: "no-store" });
+  const response = await authFetch(url.toString(), { cache: "no-store" });
   return handleResponse<DatabaseReviewsResponse>(response);
 }
 
 export async function fetchDatabaseGames(): Promise<DatabaseGameOption[]> {
-  const response = await fetch(apiUrl("/database/games"), { cache: "no-store" });
+  const response = await authFetch(apiUrl("/database/games"), { cache: "no-store" });
   return handleResponse<DatabaseGameOption[]>(response);
 }
 
 export async function fetchDatabaseStats(): Promise<DatabaseStats> {
-  const response = await fetch(apiUrl("/database/stats"), {
+  const response = await authFetch(apiUrl("/database/stats"), {
     cache: "no-store",
   });
   return handleResponse<DatabaseStats>(response);
@@ -300,7 +327,7 @@ export interface BackendAdminStatus {
 }
 
 export async function fetchBackendAdminStatus(): Promise<BackendAdminStatus> {
-  const response = await fetch(apiUrl("/admin/status"), {
+  const response = await authFetch(apiUrl("/admin/status"), {
     cache: "no-store",
   });
   return handleResponse<BackendAdminStatus>(response);
@@ -310,7 +337,7 @@ export async function clearLabels(oldSchemaOnly: boolean = false): Promise<{ del
   const url = oldSchemaOnly
     ? apiUrl("/database/labels") + "?old_schema_only=true"
     : apiUrl("/database/labels");
-  const response = await fetch(url, {
+  const response = await authFetch(url, {
     method: "DELETE",
     headers: requireAdminHeaders(),
   });
@@ -318,7 +345,7 @@ export async function clearLabels(oldSchemaOnly: boolean = false): Promise<{ del
 }
 
 export async function clearEntireDatabase(): Promise<{ deleted: Record<string, number>; scope: string }> {
-  const response = await fetch(apiUrl("/database/clear"), {
+  const response = await authFetch(apiUrl("/database/clear"), {
     method: "DELETE",
     headers: requireAdminHeaders(),
   });

@@ -70,6 +70,16 @@ cp .env.example .env.local  # set NEXT_PUBLIC_API_BASE_URL if different
 npm run dev  # http://localhost:3000
 ```
 
+## Authentication (Clerk)
+Frontend (Next.js):
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+
+Backend (FastAPI):
+- `SENTINEXT_AUTH_ENABLED=1`
+- `SENTINEXT_CLERK_JWKS_URL` (from Clerk dashboard)
+- `SENTINEXT_AUTH_ISSUER` (Clerk issuer)
+- `SENTINEXT_AUTH_AUDIENCE` (Clerk client id, optional)
+
 ## Notes
 - The API persists reviews/labels to `data/senti_next.db`. Set `SENTINEXT_DB_PATH` to override.
 - LLM settings via env: `SENTINEXT_OLLAMA_MODEL` (default `gpt-oss:20b-cloud`), `SENTINEXT_CLUSTER_LABELS`, `SENTINEXT_CLUSTER_SIMILARITY`.

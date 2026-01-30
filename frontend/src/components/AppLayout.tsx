@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
+import { SignedIn, UserButton } from "@clerk/clerk-react";
 import { FirstRunSetup } from "@/components/FirstRunSetup";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 
@@ -38,15 +39,26 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
           <div className="flex h-full flex-col gap-8 text-sm">
             {/* Logo */}
             <div className="space-y-3 text-left">
-              <div className="space-y-1">
-                <h1 className="text-3xl font-semibold tracking-tight">
-                  <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                    SentiNext
-                  </span>
-                </h1>
-                <p className="text-[10px] uppercase tracking-[0.5em] text-slate-400">
-                  Game review analytics
-                </p>
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <h1 className="text-3xl font-semibold tracking-tight">
+                    <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                      SentiNext
+                    </span>
+                  </h1>
+                  <p className="text-[10px] uppercase tracking-[0.5em] text-slate-400">
+                    Game review analytics
+                  </p>
+                </div>
+                <SignedIn>
+                  <UserButton
+                    appearance={{
+                      elements: {
+                        userButtonAvatarBox: "h-9 w-9",
+                      },
+                    }}
+                  />
+                </SignedIn>
               </div>
             </div>
 

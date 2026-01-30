@@ -11,10 +11,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+import jwt
+from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .senti_next import (
@@ -55,6 +58,12 @@ ALLOWED_ORIGINS = _parse_allowed_origins()
 
 ADMIN_TOKEN = os.getenv("SENTINEXT_ADMIN_TOKEN")
 DESTRUCTIVE_ENABLED = os.getenv("SENTINEXT_ENABLE_DESTRUCTIVE", "false").lower() in {"1", "true", "yes"}
+AUTH_ENABLED = os.getenv("SENTINEXT_AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}
+AUTH_JWKS_URL = os.getenv("SENTINEXT_AUTH_JWKS_URL") or os.getenv("SENTINEXT_CLERK_JWKS_URL")
+AUTH_ISSUER = os.getenv("SENTINEXT_AUTH_ISSUER", "").strip() or None
+AUTH_AUDIENCE = os.getenv("SENTINEXT_AUTH_AUDIENCE", "").strip() or None
+
+_JWKS_CLIENT: Optional[PyJWKClient] = None
 
 storage.init_db()
 
@@ -103,6 +112,60 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+
+
+def _get_jwks_client() -> PyJWKClient:
+    global _JWKS_CLIENT
+    if _JWKS_CLIENT is None:
+        if not AUTH_JWKS_URL:
+            raise RuntimeError("Auth enabled but SENTINEXT_CLERK_JWKS_URL is not configured.")
+        _JWKS_CLIENT = PyJWKClient(AUTH_JWKS_URL)
+    return _JWKS_CLIENT
+
+
+def _decode_auth_token(token: str) -> dict:
+    jwks_client = _get_jwks_client()
+    signing_key = jwks_client.get_signing_key_from_jwt(token).key
+    options = {"verify_aud": bool(AUTH_AUDIENCE), "verify_iss": bool(AUTH_ISSUER)}
+    return jwt.decode(
+        token,
+        signing_key,
+        algorithms=["RS256"],
+        audience=AUTH_AUDIENCE,
+        issuer=AUTH_ISSUER,
+        options=options,
+    )
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if not AUTH_ENABLED:
+        return await call_next(request)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if request.url.path in AUTH_EXEMPT_PATHS:
+        return await call_next(request)
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Missing bearer token."})
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return JSONResponse(status_code=401, content={"detail": "Missing bearer token."})
+    try:
+        payload = _decode_auth_token(token)
+    except RuntimeError as exc:
+        logger.error("Auth configuration error: %s", exc)
+        return JSONResponse(status_code=500, content={"detail": "Auth is misconfigured."})
+    except InvalidTokenError as exc:
+        logger.warning("Auth token rejected: %s", exc)
+        return JSONResponse(status_code=401, content={"detail": "Invalid or expired token."})
+    except Exception as exc:
+        logger.error("Auth verification failed: %s", exc)
+        return JSONResponse(status_code=401, content={"detail": "Invalid or expired token."})
+    request.state.user = payload
+    return await call_next(request)
 
 
 class SearchResult(BaseModel):

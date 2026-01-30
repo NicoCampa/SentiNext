@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
+import { SignedIn, UserButton } from "@clerk/clerk-react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -184,6 +185,22 @@ export default function SettingsPage() {
             </div>
           ) : null}
         </div>
+
+        <SignedIn>
+          <Card variant="glass" className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Account</p>
+              <p className="mt-2 text-sm text-slate-300">Manage your session and sign out.</p>
+            </div>
+            <UserButton
+              appearance={{
+                elements: {
+                  userButtonAvatarBox: "h-10 w-10",
+                },
+              }}
+            />
+          </Card>
+        </SignedIn>
 
         <Card variant="glass" className="space-y-4 p-6">
           <div>
