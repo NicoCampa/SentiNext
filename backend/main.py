@@ -224,10 +224,6 @@ class AnalyzeRequest(BaseModel):
     persist: bool = Field(True)
     refresh: bool = Field(False)
     refresh_days: Optional[int] = Field(None, ge=1, le=365, description="Only fetch reviews from the last N days")
-    llm_provider: Optional[str] = Field(None, description="LLM provider override (ollama or openai)")
-    llm_model: Optional[str] = Field(None, description="LLM model override for the selected provider")
-    openai_api_key: Optional[str] = Field(None, description="OpenAI API key override")
-    ollama_host: Optional[str] = Field(None, description="Ollama host override")
 
 
 class AnalyzeMetadata(BaseModel):
@@ -311,10 +307,6 @@ class ChatRequest(BaseModel):
     language: str = Field("all")
     max_reviews: int = Field(500, ge=1, le=5000)
     max_snippets: int = Field(8, ge=1, le=20)
-    llm_provider: Optional[str] = Field(None, description="LLM provider override (ollama or openai)")
-    llm_model: Optional[str] = Field(None, description="LLM model override for the selected provider")
-    openai_api_key: Optional[str] = Field(None, description="OpenAI API key override")
-    ollama_host: Optional[str] = Field(None, description="Ollama host override")
 
 
 class ChatCitation(BaseModel):
@@ -544,10 +536,6 @@ def _run_analysis_job(
     all_reviews: List[dict],
     metadata: AnalyzeMetadata,
     game_context: Optional[dict],
-    llm_provider: Optional[str] = None,
-    llm_model: Optional[str] = None,
-    openai_api_key: Optional[str] = None,
-    ollama_host: Optional[str] = None,
 ) -> None:
     run_id = hashlib.sha256(f"{app_id}-{datetime.utcnow().isoformat()}".encode("utf-8")).hexdigest()[:16]
     snapshot_hash = hashlib.sha256(json.dumps(all_reviews, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
@@ -583,10 +571,6 @@ def _run_analysis_job(
             all_reviews,
             progress_callback=_progress_callback if progress_active else None,
             game_context=game_context,
-            provider=llm_provider,
-            model=llm_model,
-            openai_api_key=openai_api_key,
-            ollama_host=ollama_host,
         )
 
         df = build_reviews_dataframe(all_reviews)
@@ -723,10 +707,6 @@ def analyze(
         all_reviews,
         metadata,
         game_context,
-        request.llm_provider,
-        request.llm_model,
-        request.openai_api_key,
-        request.ollama_host,
     )
 
     return AnalyzeResponse(metadata=metadata, insights=None, reviews=[])
@@ -765,8 +745,6 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
     estimate = llm.estimate_review_labeling(
         request.app_id,
         all_reviews,
-        provider=request.llm_provider,
-        model=request.llm_model,
     )
 
     return AnalyzeEstimateResponse(
@@ -861,10 +839,6 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
             language=request.language,
             max_reviews=request.max_reviews,
             max_snippets=request.max_snippets,
-            llm_provider=request.llm_provider,
-            llm_model=request.llm_model,
-            openai_api_key=request.openai_api_key,
-            ollama_host=request.ollama_host,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

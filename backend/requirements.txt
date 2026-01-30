@@ -3,7 +3,6 @@ pandas>=2.2
 numpy>=1.26
 fastapi>=0.111
 uvicorn[standard]>=0.30
-ollama>=0.2
 platformdirs>=4.2
 cryptography>=42.0
 PyJWT[crypto]>=2.8

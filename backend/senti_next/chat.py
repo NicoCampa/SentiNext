@@ -561,10 +561,6 @@ def answer_chat(
     language: str = "all",
     max_reviews: int,
     max_snippets: int,
-    llm_provider: Optional[str] = None,
-    llm_model: Optional[str] = None,
-    openai_api_key: Optional[str] = None,
-    ollama_host: Optional[str] = None,
 ) -> Dict[str, Any]:
     context = build_chat_context(
         user_id=user_id,
@@ -580,13 +576,7 @@ def answer_chat(
     )
 
     prompt = build_chat_prompt(context)
-    raw, model_id = llm.run_chat_completion(
-        prompt,
-        provider_override=llm_provider,
-        model_override=llm_model,
-        openai_api_key=openai_api_key,
-        ollama_host=ollama_host,
-    )
+    raw, model_id = llm.run_chat_completion(prompt)
 
     try:
         payload = llm._load_json_mapping(raw)

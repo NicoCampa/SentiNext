@@ -6,8 +6,6 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - SENTINEXT_OLLAMA_MODEL=${SENTINEXT_OLLAMA_MODEL:-gpt-oss:20b-cloud}
       - SENTINEXT_CLUSTER_LABELS=${SENTINEXT_CLUSTER_LABELS:-true}
       - SENTINEXT_CLUSTER_SIMILARITY=${SENTINEXT_CLUSTER_SIMILARITY:-0.82}
       - SENTINEXT_DB_PATH=/app/data/senti_next.db
@@ -17,15 +15,3 @@ services:
       - ./data:/app/data
     ports:
       - "8000:8000"
-    depends_on:
-      - ollama
-
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama:/root/.ollama
-
-volumes:
-  ollama:

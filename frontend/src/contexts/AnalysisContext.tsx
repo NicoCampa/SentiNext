@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame } from '@/lib/api';
-import { buildLlmRequestConfig, LlmProvider } from '@/lib/settings';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
@@ -22,10 +21,6 @@ interface StartAnalysisOptions {
   filter?: string;
   day_range?: number | null;
   refresh_days?: number | null;
-  llm_provider?: LlmProvider;
-  llm_model?: string;
-  openai_api_key?: string | null;
-  ollama_host?: string | null;
 }
 
 interface AnalysisContextType {
@@ -137,13 +132,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const filter = options.filter ?? "recent";
     const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
     const dayRange = options.day_range ?? undefined;
-    const llmConfig = await buildLlmRequestConfig({
-      llm_provider: options.llm_provider,
-      llm_model: options.llm_model,
-      openai_api_key: options.openai_api_key,
-      ollama_host: options.ollama_host,
-    });
-
     // Check if already analyzing
     const existing = tasks.get(appId);
     if (existing && existing.status === 'analyzing') {
@@ -175,10 +163,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         persist,
         refresh,
         refresh_days: refreshDays,
-        llm_provider: llmConfig.llm_provider,
-        llm_model: llmConfig.llm_model,
-        openai_api_key: llmConfig.openai_api_key,
-        ollama_host: llmConfig.ollama_host,
       });
 
       // Update task metadata but leave status as analyzing (LLM runs in background)

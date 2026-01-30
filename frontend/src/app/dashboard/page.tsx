@@ -26,7 +26,6 @@ import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
-import { buildLlmRequestConfig } from "@/lib/settings";
 import {
   ANALYSIS_REVIEW_COUNT_OPTIONS,
   loadDefaultAnalysisReviewCount,
@@ -217,7 +216,6 @@ function DashboardContent() {
     setEstimating(true);
     setEstimateError(null);
     try {
-      const llmConfig = await buildLlmRequestConfig();
       const result = await estimateAnalysis({
         app_id: selectedGame.appid,
         review_count: reviewCount,
@@ -226,8 +224,6 @@ function DashboardContent() {
         persist: true,
         refresh: forceRefresh,
         refresh_days: forceRefresh ? refreshDays : undefined,
-        llm_provider: llmConfig.llm_provider,
-        llm_model: llmConfig.llm_model,
       });
       setEstimate(result);
     } catch (err) {
@@ -244,7 +240,7 @@ function DashboardContent() {
     try {
       if (estimate && estimate.llm_reviews >= 200) {
         const ok = confirm(
-          `This run is estimated to make ${estimate.llm_reviews} new LLM calls (plus ${estimate.rules_reviews} rules).\n\nContinue?`,
+          `This run is estimated to make ${estimate.llm_reviews} new LLM calls.\n\nContinue?`,
         );
         if (!ok) return;
       }
@@ -551,11 +547,10 @@ function DashboardContent() {
                   {estimate ? (
                     <p className="text-xs text-slate-400">
                       LLM calls: <span className="text-slate-200">{estimate.llm_reviews}</span> · cached:{" "}
-                      <span className="text-slate-200">{estimate.cached_reviews}</span> · rules:{" "}
-                      <span className="text-slate-200">{estimate.rules_reviews}</span>
+                      <span className="text-slate-200">{estimate.cached_reviews}</span>
                     </p>
                   ) : (
-                    <p className="text-xs text-slate-500">Estimate shows how many reviews need new LLM calls vs cache/rules.</p>
+                    <p className="text-xs text-slate-500">Estimate shows how many reviews need new LLM calls vs cache.</p>
                   )}
                 </div>
                 {estimateError ? <p className="text-sm text-rose-400">{estimateError}</p> : null}

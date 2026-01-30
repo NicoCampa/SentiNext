@@ -108,10 +108,6 @@ export interface AnalyzePayload {
   persist?: boolean;
   refresh?: boolean;
   refresh_days?: number | null;
-  llm_provider?: string | null;
-  llm_model?: string | null;
-  openai_api_key?: string | null;
-  ollama_host?: string | null;
 }
 
 export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeResponse> {
@@ -192,10 +188,6 @@ export interface ChatRequestPayload {
   language?: string;
   max_reviews?: number;
   max_snippets?: number;
-  llm_provider?: string | null;
-  llm_model?: string | null;
-  openai_api_key?: string | null;
-  ollama_host?: string | null;
 }
 
 export async function chatWithInsights(payload: ChatRequestPayload): Promise<ChatResponse> {

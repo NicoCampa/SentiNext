@@ -1,4 +1,4 @@
-"""Review classification helpers (default Ollama, optional OpenAI)."""
+"""Review classification helpers (OpenAI only)."""
 from __future__ import annotations
 
 import hashlib
@@ -27,7 +27,7 @@ ACTIVE_PROMPT_VERSION = PROMPT_VERSION
 MAX_REVIEW_CHARS = 3000
 MIN_REVIEW_WORDS = 2
 _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
-HYBRID_RULES_VERSION = "v1"
+OPENAI_MODEL = "gpt-5-mini"
 
 
 def _maybe_load_dotenv() -> None:
@@ -662,44 +662,6 @@ def _build_prompt(
     )
 
 
-def _run_ollama(prompt: str, model: str, host_override: Optional[str] = None) -> str:
-    try:
-        import ollama  # lazy import so OpenAI-only runs don't require Ollama
-        host_value = (host_override or "").strip()
-        if host_value:
-            client = ollama.Client(host=host_value)
-            response = client.chat(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                stream=False,
-            )
-        else:
-            response = ollama.chat(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                stream=False,
-            )
-    except ollama.ResponseError as exc:  # pragma: no cover - defensive
-        logger.error("Ollama chat failed: %s", exc)
-        raise
-
-    if isinstance(response, dict):
-        message = response.get("message")
-    else:
-        message = getattr(response, "message", None)
-
-    content = ""
-    if isinstance(message, dict):
-        content = (message.get("content") or "").strip()
-    elif message is not None:
-        content_value = getattr(message, "content", "")
-        content = (content_value or "").strip()
-
-    if not content:
-        raise ValueError("Empty response from LLM")
-
-    return content
-
 
 def _openai_timeout_seconds() -> Optional[float]:
     raw = os.getenv("SENTINEXT_OPENAI_TIMEOUT_SEC")
@@ -731,11 +693,9 @@ def _retry_backoff_seconds(attempt: int) -> float:
     return float(base) + random.random()
 
 
-def _run_openai(prompt: str, model: str, api_key_override: Optional[str] = None) -> str:
+def _run_openai(prompt: str, model: str) -> str:
     _maybe_load_dotenv()
-    api_key = (api_key_override or "").strip()
-    if not api_key:
-        api_key = os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY is not set.")
 
@@ -818,53 +778,21 @@ def _run_openai(prompt: str, model: str, api_key_override: Optional[str] = None)
     return content
 
 
-def _provider_from_env() -> str:
-    value = os.getenv("SENTINEXT_LLM_PROVIDER", "ollama").strip().lower()
-    return value or "ollama"
-
-
-def _effective_model(provider: str, model_override: Optional[str]) -> str:
-    if model_override:
-        return model_override
-    if provider in {"openai", "chatgpt", "gpt"}:
-        return os.getenv("SENTINEXT_OPENAI_MODEL", "gpt-5-mini")
-    return os.getenv("SENTINEXT_OLLAMA_MODEL", "gpt-oss:20b-cloud")
-
-
 def _model_id(provider: str, model: str) -> str:
     return f"{provider}:{model}"
 
 
 def _run_llm(
     prompt: str,
-    provider_override: Optional[str] = None,
-    model_override: Optional[str] = None,
-    openai_api_key: Optional[str] = None,
-    ollama_host: Optional[str] = None,
 ) -> tuple[str, str]:
-    provider = (provider_override or _provider_from_env()).strip().lower()
-    model = _effective_model(provider, model_override)
-    if provider in {"openai", "chatgpt", "gpt"}:
-        return _run_openai(prompt, model, api_key_override=openai_api_key), _model_id("openai", model)
-    return _run_ollama(prompt, model, host_override=ollama_host), _model_id("ollama", model)
+    return _run_openai(prompt, OPENAI_MODEL), _model_id("openai", OPENAI_MODEL)
 
 
 def run_chat_completion(
     prompt: str,
-    *,
-    provider_override: Optional[str] = None,
-    model_override: Optional[str] = None,
-    openai_api_key: Optional[str] = None,
-    ollama_host: Optional[str] = None,
 ) -> tuple[str, str]:
     """Run a chat completion with a pre-built prompt and return (content, model_id)."""
-    return _run_llm(
-        prompt,
-        provider_override=provider_override,
-        model_override=model_override,
-        openai_api_key=openai_api_key,
-        ollama_host=ollama_host,
-    )
+    return _run_llm(prompt)
 
 
 def _parse_payload(raw: str) -> Dict[str, Any]:
@@ -917,29 +845,14 @@ def classify_review(
     game_context: Optional[Dict[str, Any]] = None,
     reviewer_playtime: float = 0,
     reviewer_voted_up: bool = True,
-    provider: Optional[str] = None,
-    model: Optional[str] = None,
-    openai_api_key: Optional[str] = None,
-    ollama_host: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], str]:
     clean_text = (review_text or "").strip()
     if not clean_text:
-        return _DEFAULT_LABEL.copy(), "fallback"
-
+        raise ValueError("Empty review text.")
     prompt = _build_prompt(clean_text, game_context, reviewer_playtime, reviewer_voted_up)
-    try:
-        raw, model_used = _run_llm(
-            prompt,
-            provider_override=provider,
-            model_override=model,
-            openai_api_key=openai_api_key,
-            ollama_host=ollama_host,
-        )
-        payload = _parse_payload(raw)
-        return payload, model_used
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Falling back to default label due to classification error: %s", exc)
-        return _DEFAULT_LABEL.copy(), "fallback"
+    raw, model_used = _run_llm(prompt)
+    payload = _parse_payload(raw)
+    return payload, model_used
 
 
 def ensure_review_labels(
@@ -949,10 +862,6 @@ def ensure_review_labels(
     progress_callback: Optional[Callable[[int, int], None]] = None,
     game_context: Optional[Dict[str, Any]] = None,
     cache_enabled: bool = True,
-    provider: Optional[str] = None,
-    model: Optional[str] = None,
-    openai_api_key: Optional[str] = None,
-    ollama_host: Optional[str] = None,
 ) -> Dict[str, Dict[str, Any]]:
     if not reviews:
         if progress_callback is not None:
@@ -960,17 +869,8 @@ def ensure_review_labels(
         return {}
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    effective_provider = (provider or _provider_from_env()).strip().lower()
-    effective_model = _effective_model(effective_provider, model)
-    expected_llm_model_id = _model_id(
-        "openai" if effective_provider in {"openai", "chatgpt", "gpt"} else "ollama",
-        effective_model,
-    )
-    hybrid_enabled = _hybrid_rules_enabled()
-    rules_model_id = _hybrid_rules_model_id() if hybrid_enabled else ""
+    expected_llm_model_id = _model_id("openai", OPENAI_MODEL)
     valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
-    if rules_model_id:
-        valid_cached_models.add(rules_model_id)
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
     processed_count = 0
@@ -1055,25 +955,14 @@ def ensure_review_labels(
         reviewer_playtime = review.get("author", {}).get("playtime_forever", 0)
         reviewer_voted_up = review.get("voted_up", True)
 
-        payload = None
-        model_used = ""
-        if hybrid_enabled:
-            payload = _classify_review_rules(review_text, reviewer_voted_up=bool(reviewer_voted_up))
-            if payload is not None:
-                model_used = rules_model_id
-        if payload is None:
-            payload, model_used = classify_review(
-                review_text,
-                game_context=game_context,
-                reviewer_playtime=reviewer_playtime,
-                reviewer_voted_up=reviewer_voted_up,
-                provider=effective_provider,
-                model=model,
-                openai_api_key=openai_api_key,
-                ollama_host=ollama_host,
-            )
-            payload["_label_source"] = "llm"
-            payload["_label_model"] = model_used
+        payload, model_used = classify_review(
+            review_text,
+            game_context=game_context,
+            reviewer_playtime=reviewer_playtime,
+            reviewer_voted_up=reviewer_voted_up,
+        )
+        payload["_label_source"] = "llm"
+        payload["_label_model"] = model_used
         if cache_enabled:
             storage.upsert_review_label(app_id, review_id, review_hash, payload, model_used, ACTIVE_PROMPT_VERSION)
         results[review_id] = payload
@@ -1093,8 +982,6 @@ def estimate_review_labeling(
     *,
     force_refresh: bool = False,
     cache_enabled: bool = True,
-    provider: Optional[str] = None,
-    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Estimate how many reviews will require LLM calls vs cache/rules.
 
@@ -1112,22 +999,12 @@ def estimate_review_labeling(
             "reasons": {},
             "prompt_version": ACTIVE_PROMPT_VERSION,
             "model_id": "",
-            "labeling_strategy": _labeling_strategy_from_env(),
+            "labeling_strategy": "openai",
         }
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    effective_provider = (provider or _provider_from_env()).strip().lower()
-    effective_model = _effective_model(effective_provider, model)
-    expected_llm_model_id = _model_id(
-        "openai" if effective_provider in {"openai", "chatgpt", "gpt"} else "ollama",
-        effective_model,
-    )
-
-    hybrid_enabled = _hybrid_rules_enabled()
-    rules_model_id = _hybrid_rules_model_id() if hybrid_enabled else ""
+    expected_llm_model_id = _model_id("openai", OPENAI_MODEL)
     valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
-    if rules_model_id:
-        valid_cached_models.add(rules_model_id)
 
     counts = {
         "total_reviews": len(reviews),
@@ -1180,12 +1057,6 @@ def estimate_review_labeling(
             counts["short_reviews"] += 1
             continue
 
-        if hybrid_enabled:
-            reviewer_voted_up = bool(review.get("voted_up", True))
-            if _classify_review_rules(review_text, reviewer_voted_up=reviewer_voted_up) is not None:
-                counts["rules_reviews"] += 1
-                continue
-
         counts["llm_reviews"] += 1
 
     return {
@@ -1193,7 +1064,7 @@ def estimate_review_labeling(
         "reasons": reasons,
         "prompt_version": ACTIVE_PROMPT_VERSION,
         "model_id": expected_llm_model_id,
-        "labeling_strategy": _labeling_strategy_from_env(),
+        "labeling_strategy": "openai",
     }
 
 

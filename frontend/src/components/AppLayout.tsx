@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { SignedIn, UserButton } from "@clerk/nextjs";
-import { FirstRunSetup } from "@/components/FirstRunSetup";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 
 interface AppLayoutProps {
@@ -141,7 +140,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
           </div>
         </nav>
       )}
-      <FirstRunSetup />
     </div>
   );
 }

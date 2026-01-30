@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { chatWithInsights } from "@/lib/api";
-import { buildLlmRequestConfig } from "@/lib/settings";
 import { maxDaysFromDateRange, useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useGameContext } from "@/contexts/GameContext";
 import type { ChatCitation, ChatResponse } from "@/types";
@@ -70,7 +69,6 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: "user", content: prompt }]);
 
     try {
-      const llmConfig = await buildLlmRequestConfig();
       const response: ChatResponse = await chatWithInsights({
         app_id: selectedGame.app_id,
         question: prompt,
@@ -79,7 +77,6 @@ export default function ChatPage() {
         max_days: maxDaysFromDateRange(filters.dateRange),
         playtime_bucket: filters.playtime,
         language: filters.language,
-        ...llmConfig,
       });
 
       setMessages((prev) => [
