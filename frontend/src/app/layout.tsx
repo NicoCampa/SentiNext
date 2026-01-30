@@ -10,6 +10,7 @@ import {
   UserButton,
 } from "@clerk/nextjs";
 import "./globals.css";
+import { AuthGate } from "@/components/AuthGate";
 import { ClerkTokenProvider } from "@/components/ClerkTokenProvider";
 import { ClientProviders } from "@/components/ClientProviders";
 
@@ -63,7 +64,9 @@ export default function RootLayout({
               </SignedIn>
             </div>
           </header>
-          <ClientProviders>{children}</ClientProviders>
+          <AuthGate>
+            <ClientProviders>{children}</ClientProviders>
+          </AuthGate>
         </body>
       </html>
     </ClerkProvider>
