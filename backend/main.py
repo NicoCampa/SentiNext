@@ -63,6 +63,12 @@ AUTH_JWKS_URL = os.getenv("SENTINEXT_AUTH_JWKS_URL") or os.getenv("SENTINEXT_CLE
 AUTH_ISSUER = os.getenv("SENTINEXT_AUTH_ISSUER", "").strip() or None
 AUTH_AUDIENCE = os.getenv("SENTINEXT_AUTH_AUDIENCE", "").strip() or None
 
+def _parse_admin_user_ids() -> set[str]:
+    raw = os.getenv("SENTINEXT_ADMIN_USER_IDS", "")
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+ADMIN_USER_IDS = _parse_admin_user_ids()
+
 _JWKS_CLIENT: Optional[PyJWKClient] = None
 
 storage.init_db()
@@ -180,6 +186,25 @@ def _resolve_user_id(request: Request) -> str:
 
 def require_user_id(request: Request) -> str:
     return _resolve_user_id(request)
+
+
+def is_admin_user_id(user_id: str) -> bool:
+    return bool(user_id and user_id in ADMIN_USER_IDS)
+
+
+def _resolve_admin_user_id(request: Request) -> Optional[str]:
+    try:
+        return _resolve_user_id(request)
+    except HTTPException:
+        return None
+
+
+def resolve_scope_user_id(scope: Optional[str], user_id: str) -> Optional[str]:
+    if scope and scope.strip().lower() == "all":
+        if not is_admin_user_id(user_id):
+            raise HTTPException(status_code=403, detail="Admin access required.")
+        return None
+    return user_id
 
 
 class SearchResult(BaseModel):
@@ -392,14 +417,27 @@ REVIEW_EXPORT_COLUMNS = [
 ]
 
 def require_admin(request: Request) -> None:
-    """Guard destructive endpoints behind an admin token + feature flag."""
+    """Guard destructive endpoints behind an admin token or admin user allowlist."""
     if not DESTRUCTIVE_ENABLED:
         raise HTTPException(status_code=403, detail="Destructive endpoints are disabled. Set SENTINEXT_ENABLE_DESTRUCTIVE=1 to allow.")
-    if not ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Admin token not configured. Set SENTINEXT_ADMIN_TOKEN.")
+
     provided = request.headers.get("x-admin-token") or ""
-    if not secrets.compare_digest(provided, ADMIN_TOKEN):
-        raise HTTPException(status_code=401, detail="Invalid admin token.")
+    if provided:
+        if not ADMIN_TOKEN:
+            raise HTTPException(status_code=403, detail="Admin token not configured. Set SENTINEXT_ADMIN_TOKEN.")
+        if not secrets.compare_digest(provided, ADMIN_TOKEN):
+            raise HTTPException(status_code=401, detail="Invalid admin token.")
+        return
+
+    user_id = _resolve_admin_user_id(request)
+    if user_id and is_admin_user_id(user_id):
+        return
+
+    if ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Admin token required.")
+    if ADMIN_USER_IDS:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    raise HTTPException(status_code=403, detail="Admin access not configured.")
 
 
 def require_license() -> None:
@@ -462,12 +500,23 @@ def admin_status() -> dict:
     return {
         "destructive_enabled": DESTRUCTIVE_ENABLED,
         "token_configured": bool(ADMIN_TOKEN),
+        "admin_user_ids_configured": bool(ADMIN_USER_IDS),
     }
 
 @app.post("/admin/verify")
 def admin_verify(_: None = Depends(require_admin)) -> dict:
     """Non-destructive endpoint to validate admin auth."""
     return {"ok": True}
+
+
+class AuthStatusResponse(BaseModel):
+    user_id: str
+    is_admin: bool
+
+
+@app.get("/auth/status", response_model=AuthStatusResponse)
+def auth_status(user_id: str = Depends(require_user_id)) -> AuthStatusResponse:
+    return AuthStatusResponse(user_id=user_id, is_admin=is_admin_user_id(user_id))
 
 
 @app.get("/search", response_model=List[SearchResult])
@@ -1017,9 +1066,10 @@ def delete_game_data(app_id: int, _: None = Depends(require_admin)) -> Response:
 
 
 @app.get("/database/stats", dependencies=[Depends(require_license)])
-def database_stats(user_id: str = Depends(require_user_id)) -> dict:
+def database_stats(scope: Optional[str] = None, user_id: str = Depends(require_user_id)) -> dict:
     """Get database statistics (games, reviews, labels counts)."""
-    return storage.get_database_stats(user_id)
+    scope_user_id = resolve_scope_user_id(scope, user_id)
+    return storage.get_database_stats(scope_user_id)
 
 
 @app.delete("/database/labels", status_code=200)
@@ -1041,8 +1091,12 @@ def clear_database(_: None = Depends(require_admin)) -> dict:
 
 
 @app.get("/database/games", response_model=List[DatabaseGameOption], dependencies=[Depends(require_license)])
-def database_games(user_id: str = Depends(require_user_id)) -> List[DatabaseGameOption]:
-    entries = storage.list_database_games(user_id)
+def database_games(scope: Optional[str] = None, user_id: str = Depends(require_user_id)) -> List[DatabaseGameOption]:
+    scope_user_id = resolve_scope_user_id(scope, user_id)
+    if scope_user_id is None:
+        entries = storage.list_database_games_all()
+    else:
+        entries = storage.list_database_games(scope_user_id)
     return [DatabaseGameOption(**entry) for entry in entries]
 
 
@@ -1053,10 +1107,16 @@ def database_reviews(
     app_id: Optional[int] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
+    scope: Optional[str] = None,
     user_id: str = Depends(require_user_id),
 ) -> DatabaseReviewsResponse:
-    user_games = storage.list_database_games(user_id)
-    user_app_ids = [entry["app_id"] for entry in user_games]
+    scope_user_id = resolve_scope_user_id(scope, user_id)
+    if scope_user_id is None:
+        user_games = storage.list_database_games_all()
+        user_app_ids = None
+    else:
+        user_games = storage.list_database_games(scope_user_id)
+        user_app_ids = [entry["app_id"] for entry in user_games]
     rows, total = storage.load_database_reviews(
         limit=limit,
         offset=offset,

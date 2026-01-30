@@ -268,17 +268,21 @@ function requireAdminHeaders(): HeadersInit {
 export async function removeStarredGame(appId: number): Promise<void> {
   const response = await authFetch(apiUrl(`/starred/${appId}`), {
     method: "DELETE",
-    headers: requireAdminHeaders(),
   });
   if (!response.ok) {
     throw new Error(`Failed to remove starred game (status ${response.status})`);
   }
 }
 
+function optionalAdminHeaders(): HeadersInit {
+  const token = getAdminToken();
+  return token ? { "x-admin-token": token } : {};
+}
+
 export async function deleteGame(appId: number): Promise<void> {
   const response = await authFetch(apiUrl(`/games/${appId}`), {
     method: "DELETE",
-    headers: requireAdminHeaders(),
+    headers: optionalAdminHeaders(),
   });
   if (!response.ok) {
     throw new Error(`Failed to delete game data (status ${response.status})`);
@@ -294,12 +298,15 @@ export interface DatabaseStats {
   starred_games: number;
 }
 
+export type DatabaseScope = "me" | "all";
+
 export interface DatabaseReviewsParams {
   limit?: number;
   offset?: number;
   app_id?: number | null;
   language?: string | null;
   query?: string | null;
+  scope?: DatabaseScope;
 }
 
 export async function fetchDatabaseReviews(params: DatabaseReviewsParams = {}): Promise<DatabaseReviewsResponse> {
@@ -309,17 +316,22 @@ export async function fetchDatabaseReviews(params: DatabaseReviewsParams = {}): 
   if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
   if (params.language) url.searchParams.set("language", params.language);
   if (params.query) url.searchParams.set("query", params.query);
+  if (params.scope === "all") url.searchParams.set("scope", "all");
   const response = await authFetch(url.toString(), { cache: "no-store" });
   return handleResponse<DatabaseReviewsResponse>(response);
 }
 
-export async function fetchDatabaseGames(): Promise<DatabaseGameOption[]> {
-  const response = await authFetch(apiUrl("/database/games"), { cache: "no-store" });
+export async function fetchDatabaseGames(scope: DatabaseScope = "me"): Promise<DatabaseGameOption[]> {
+  const url = new URL(apiUrl("/database/games"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (scope === "all") url.searchParams.set("scope", "all");
+  const response = await authFetch(url.toString(), { cache: "no-store" });
   return handleResponse<DatabaseGameOption[]>(response);
 }
 
-export async function fetchDatabaseStats(): Promise<DatabaseStats> {
-  const response = await authFetch(apiUrl("/database/stats"), {
+export async function fetchDatabaseStats(scope: DatabaseScope = "me"): Promise<DatabaseStats> {
+  const url = new URL(apiUrl("/database/stats"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (scope === "all") url.searchParams.set("scope", "all");
+  const response = await authFetch(url.toString(), {
     cache: "no-store",
   });
   return handleResponse<DatabaseStats>(response);
@@ -328,6 +340,7 @@ export async function fetchDatabaseStats(): Promise<DatabaseStats> {
 export interface BackendAdminStatus {
   destructive_enabled: boolean;
   token_configured: boolean;
+  admin_user_ids_configured?: boolean;
 }
 
 export async function fetchBackendAdminStatus(): Promise<BackendAdminStatus> {
@@ -343,7 +356,7 @@ export async function clearLabels(oldSchemaOnly: boolean = false): Promise<{ del
     : apiUrl("/database/labels");
   const response = await authFetch(url, {
     method: "DELETE",
-    headers: requireAdminHeaders(),
+    headers: optionalAdminHeaders(),
   });
   return handleResponse<{ deleted: number; scope: string }>(response);
 }
@@ -351,7 +364,17 @@ export async function clearLabels(oldSchemaOnly: boolean = false): Promise<{ del
 export async function clearEntireDatabase(): Promise<{ deleted: Record<string, number>; scope: string }> {
   const response = await authFetch(apiUrl("/database/clear"), {
     method: "DELETE",
-    headers: requireAdminHeaders(),
+    headers: optionalAdminHeaders(),
   });
   return handleResponse<{ deleted: Record<string, number>; scope: string }>(response);
+}
+
+export interface AuthStatus {
+  user_id: string;
+  is_admin: boolean;
+}
+
+export async function fetchAuthStatus(): Promise<AuthStatus> {
+  const response = await authFetch(apiUrl("/auth/status"), { cache: "no-store" });
+  return handleResponse<AuthStatus>(response);
 }

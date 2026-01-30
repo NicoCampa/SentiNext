@@ -8,9 +8,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useGlobalFilters } from '@/contexts/GlobalFiltersContext';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
 import { applyGlobalReviewFilters } from '@/lib/reviewFilters';
-import { fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
+import { deleteGame, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
 import type { DatabaseReviewsResponse, DatabaseReviewItem, DatabaseGameOption } from '@/types';
-import type { DatabaseStats } from '@/lib/api';
+import type { AuthStatus, DatabaseScope, DatabaseStats } from '@/lib/api';
 
 const MAIN_CATEGORY_LABELS: Record<string, string> = {
   gameplay: 'Gameplay',
@@ -86,6 +86,8 @@ export default function DatabasePage() {
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [games, setGames] = useState<DatabaseGameOption[]>([]);
   const [reviewsResponse, setReviewsResponse] = useState<DatabaseReviewsResponse | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [scope, setScope] = useState<DatabaseScope>('me');
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,14 +100,29 @@ export default function DatabasePage() {
   const [quickSentiment, setQuickSentiment] = useState<'all' | 'positive' | 'negative'>('all');
   const [quickType, setQuickType] = useState<'all' | 'issue' | 'request'>('all');
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
+  const [adminBusy, setAdminBusy] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
 
   const compact = density === 'compact';
+  const isAdmin = authStatus?.is_admin ?? false;
 
   useEffect(() => {
+    async function loadAuthStatus() {
+      try {
+        const data = await fetchAuthStatus();
+        setAuthStatus(data);
+        if (!data.is_admin) {
+          setScope('me');
+        }
+      } catch (err) {
+        console.error('Failed to load auth status:', err);
+      }
+    }
+
     async function loadStats() {
       setLoadingStats(true);
       try {
-        const data = await fetchDatabaseStats();
+        const data = await fetchDatabaseStats(scope);
         setStats(data);
       } catch (err) {
         console.error('Failed to load database stats:', err);
@@ -116,16 +133,17 @@ export default function DatabasePage() {
 
     async function loadGames() {
       try {
-        const data = await fetchDatabaseGames();
+        const data = await fetchDatabaseGames(scope);
         setGames(data);
       } catch (err) {
         console.error('Failed to load database games:', err);
       }
     }
 
+    loadAuthStatus();
     loadStats();
     loadGames();
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     async function loadReviews() {
@@ -138,6 +156,7 @@ export default function DatabasePage() {
           app_id: selectedAppId,
           language: languageFilter === 'all' ? null : languageFilter,
           query: activeQuery || null,
+          scope,
         });
         setReviewsResponse(response);
       } catch (err) {
@@ -149,7 +168,7 @@ export default function DatabasePage() {
     }
 
     loadReviews();
-  }, [activeQuery, languageFilter, limit, offset, selectedAppId]);
+  }, [activeQuery, languageFilter, limit, offset, selectedAppId, scope]);
 
   const pageItems = reviewsResponse?.items ?? [];
   const pageTotal = reviewsResponse?.total ?? 0;
@@ -218,6 +237,35 @@ export default function DatabasePage() {
     setOffset(0);
   }
 
+  async function handleAdminDelete() {
+    if (!selectedAppId) {
+      setAdminError('Select a game to delete.');
+      return;
+    }
+    const confirmDelete = window.confirm(
+      `Delete all stored data for app ${selectedAppId}? This removes reviews, labels, and analysis results.`,
+    );
+    if (!confirmDelete) return;
+
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      await deleteGame(selectedAppId);
+      setSelectedAppId(null);
+      setOffset(0);
+      const [newStats, newGames] = await Promise.all([
+        fetchDatabaseStats(scope),
+        fetchDatabaseGames(scope),
+      ]);
+      setStats(newStats);
+      setGames(newGames);
+    } catch (err) {
+      setAdminError((err as Error).message || 'Failed to delete game data.');
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(pageTotal / limit));
   const currentPage = Math.floor(offset / limit) + 1;
 
@@ -230,11 +278,43 @@ export default function DatabasePage() {
               Database Explorer
             </span>
           </h1>
-          <p className="text-sm text-slate-400">Browse every stored review across your local dataset.</p>
+          <p className="text-sm text-slate-400">
+            {scope === 'all'
+              ? 'Browse every stored review across all accounts.'
+              : 'Browse every stored review across your dataset.'}
+          </p>
         </div>
 
         <Card variant="glass" className="p-6">
-          <h2 className="mb-4 text-lg font-medium">Database Statistics</h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-medium">Database Statistics</h2>
+            {isAdmin && (
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-[10px] uppercase tracking-[0.25em] text-slate-400">
+                <button
+                  type="button"
+                  onClick={() => setScope('me')}
+                  className={`rounded-full px-3 py-1 transition ${
+                    scope === 'me'
+                      ? 'bg-sky-500/20 text-sky-200'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  My data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('all')}
+                  className={`rounded-full px-3 py-1 transition ${
+                    scope === 'all'
+                      ? 'bg-amber-500/20 text-amber-200'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  All users
+                </button>
+              </div>
+            )}
+          </div>
           {loadingStats ? (
             <p className="text-sm text-slate-400">Loading stats...</p>
           ) : stats ? (
@@ -365,6 +445,29 @@ export default function DatabasePage() {
             ))}
           </div>
         </Card>
+
+        {isAdmin && (
+          <Card variant="glass" className="p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Admin actions</h2>
+                <p className="text-xs text-slate-400">
+                  Manage the shared database across all accounts.
+                </p>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={adminBusy}
+                onClick={handleAdminDelete}
+                disabled={adminBusy}
+              >
+                Delete selected game
+              </Button>
+            </div>
+            {adminError ? <p className="mt-3 text-xs text-rose-300">{adminError}</p> : null}
+          </Card>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <Card variant="glass" className="flex flex-col p-5">

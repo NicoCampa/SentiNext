@@ -819,6 +819,22 @@ def user_has_game(user_id: str, app_id: int) -> bool:
     return row is not None
 
 
+def list_database_games_all() -> List[Dict[str, Any]]:
+    with _get_connection() as conn:
+        review_rows = conn.execute("SELECT DISTINCT app_id FROM reviews ORDER BY app_id").fetchall()
+        starred_rows = conn.execute("SELECT app_id, name FROM starred_games").fetchall()
+
+    name_map = {
+        int(row["app_id"]): row["name"]
+        for row in starred_rows
+        if row["app_id"] is not None
+    }
+    review_ids = {int(row["app_id"]) for row in review_rows if row["app_id"] is not None}
+    starred_ids = {int(row["app_id"]) for row in starred_rows if row["app_id"] is not None}
+    all_ids = sorted(review_ids | starred_ids)
+    return [{"app_id": app_id, "name": name_map.get(app_id)} for app_id in all_ids]
+
+
 def list_database_games(user_id: str) -> List[Dict[str, Any]]:
     with _get_connection() as conn:
         starred_rows = conn.execute(
