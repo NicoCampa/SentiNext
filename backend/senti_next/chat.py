@@ -354,6 +354,7 @@ def _collect_evidence(
 
 def build_chat_context(
     *,
+    user_id: str,
     app_id: int,
     question: str,
     sentiment: str,
@@ -364,7 +365,7 @@ def build_chat_context(
     max_reviews: int,
     max_snippets: int,
 ) -> Dict[str, Any]:
-    result = storage.load_analysis_result(app_id)
+    result = storage.load_analysis_result(user_id, app_id)
     if not result or not result.get("insights"):
         raise ValueError("No analysis insights available for this game.")
 
@@ -550,6 +551,7 @@ def build_chat_prompt(context: Dict[str, Any]) -> str:
 
 def answer_chat(
     *,
+    user_id: str,
     app_id: int,
     question: str,
     sentiment: str,
@@ -565,6 +567,7 @@ def answer_chat(
     ollama_host: Optional[str] = None,
 ) -> Dict[str, Any]:
     context = build_chat_context(
+        user_id=user_id,
         app_id=app_id,
         question=question,
         sentiment=sentiment,

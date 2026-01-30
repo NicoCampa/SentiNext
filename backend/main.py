@@ -168,6 +168,20 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+def _resolve_user_id(request: Request) -> str:
+    if not AUTH_ENABLED:
+        return "local"
+    payload = getattr(request.state, "user", None) or {}
+    user_id = payload.get("sub") or payload.get("user_id") or payload.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Missing user identity.")
+    return str(user_id)
+
+
+def require_user_id(request: Request) -> str:
+    return _resolve_user_id(request)
+
+
 class SearchResult(BaseModel):
     appid: int
     name: str
@@ -476,6 +490,7 @@ def search(query: str) -> List[SearchResult]:
 
 
 def _run_analysis_job(
+    user_id: str,
     app_id: int,
     all_reviews: List[dict],
     metadata: AnalyzeMetadata,
@@ -492,26 +507,26 @@ def _run_analysis_job(
     progress_active = total_reviews > 0
 
     if progress_active:
-        storage.reset_progress(app_id, total_reviews)
+        storage.reset_progress(user_id, app_id, total_reviews)
         last_update = [0]
 
         def _progress_callback(processed: int, total: int) -> None:
             try:
                 if total <= 20:
-                    storage.update_progress(app_id, processed, total)
+                    storage.update_progress(user_id, app_id, processed, total)
                     last_update[0] = processed
                 elif total <= 100:
                     if processed == total or processed - last_update[0] >= 5:
-                        storage.update_progress(app_id, processed, total)
+                        storage.update_progress(user_id, app_id, processed, total)
                         last_update[0] = processed
                 else:
                     if processed == total or processed - last_update[0] >= 10:
-                        storage.update_progress(app_id, processed, total)
+                        storage.update_progress(user_id, app_id, processed, total)
                         last_update[0] = processed
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning("Progress update failed: %s", exc)
     else:
-        storage.clear_progress(app_id)
+        storage.clear_progress(user_id, app_id)
 
     try:
         llm_labels = llm.ensure_review_labels(
@@ -529,7 +544,7 @@ def _run_analysis_job(
         df = llm.apply_review_labels(df, llm_labels)
 
         if df is None or df.empty:
-            storage.save_analysis_result(app_id, metadata.dict(), None, [], status="completed", run_id=run_id, snapshot_hash=snapshot_hash, context_hash=context_hash)
+            storage.save_analysis_result(user_id, app_id, metadata.dict(), None, [], status="completed", run_id=run_id, snapshot_hash=snapshot_hash, context_hash=context_hash)
             return
 
         insights = prepare_insights(df)
@@ -546,6 +561,7 @@ def _run_analysis_job(
             reviews_payload = []
 
         storage.save_analysis_result(
+            user_id=user_id,
             app_id=app_id,
             metadata=metadata.dict(),
             insights=insights,
@@ -558,6 +574,7 @@ def _run_analysis_job(
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("Analysis job failed: %s", exc)
         storage.save_analysis_result(
+            user_id=user_id,
             app_id=app_id,
             metadata=metadata.dict(),
             insights=None,
@@ -570,12 +587,16 @@ def _run_analysis_job(
         )
     finally:
         if progress_active:
-            storage.update_progress(app_id, total_reviews, total_reviews)
-            storage.clear_progress(app_id)
+            storage.update_progress(user_id, app_id, total_reviews, total_reviews)
+            storage.clear_progress(user_id, app_id)
 
 
 @app.post("/analyze", response_model=AnalyzeResponse, status_code=202, dependencies=[Depends(require_license)])
-def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> AnalyzeResponse:
+def analyze(
+    request: AnalyzeRequest,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(require_user_id),
+) -> AnalyzeResponse:
     filter_type = (request.filter or "recent").lower()
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
         filter_type = "recent"
@@ -584,7 +605,8 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> Analy
     if request.persist:
         stored_reviews = storage.load_reviews(request.app_id)
 
-    should_fetch = not stored_reviews or request.refresh or not request.persist
+    has_enough_cached = len(stored_reviews) >= int(request.review_count or 0)
+    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
     fetched_reviews: List[dict] = []
     if should_fetch:
@@ -630,6 +652,7 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> Analy
 
     # Persist placeholder result and kick off background job
     storage.save_analysis_result(
+        user_id=user_id,
         app_id=request.app_id,
         metadata=metadata.dict(),
         insights=None,
@@ -639,13 +662,14 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks) -> Analy
         snapshot_hash=None,
         stale=False,
     )
-    storage.clear_progress(request.app_id)
+    storage.clear_progress(user_id, request.app_id)
 
     if game_context:
         logger.info(f"Fetched game context for {game_context.get('name', request.app_id)}")
 
     background_tasks.add_task(
         _run_analysis_job,
+        user_id,
         request.app_id,
         all_reviews,
         metadata,
@@ -669,7 +693,8 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
     if request.persist:
         stored_reviews = storage.load_reviews(request.app_id)
 
-    should_fetch = not stored_reviews or request.refresh or not request.persist
+    has_enough_cached = len(stored_reviews) >= int(request.review_count or 0)
+    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
     fetched_reviews: List[dict] = []
     if should_fetch:
         try:
@@ -716,8 +741,11 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
 
 
 @app.get("/analysis/{app_id}", response_model=AnalysisStatusResponse, dependencies=[Depends(require_license)])
-def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
-    result = storage.load_analysis_result(app_id)
+def get_analysis_result(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+) -> AnalysisStatusResponse:
+    result = storage.load_analysis_result(user_id, app_id)
     if not result:
         raise HTTPException(status_code=404, detail="No analysis result available for this app.")
 
@@ -763,7 +791,7 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_license)])
-def chat_insights(request: ChatRequest) -> ChatResponse:
+def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id)) -> ChatResponse:
     question = (request.question or "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
@@ -774,6 +802,7 @@ def chat_insights(request: ChatRequest) -> ChatResponse:
 
     try:
         payload = chat.answer_chat(
+            user_id=user_id,
             app_id=request.app_id,
             question=question,
             sentiment=sentiment,
@@ -807,8 +836,11 @@ def aggregate_feedback(
     reddit_limit: int = 50,
     discord_limit: int = 50,
     forum_limit: int = 30,
+    user_id: str = Depends(require_user_id),
 ) -> List[FeedbackItem]:
     """Aggregate normalized feedback across Steam reviews, Reddit, Discord, and Steam forums."""
+    if not storage.user_has_game(user_id, app_id):
+        raise HTTPException(status_code=404, detail="No analysis available for this game.")
     game_context = fetch_app_details(app_id) or {}
     app_name = game_context.get("name", str(app_id))
 
@@ -828,7 +860,15 @@ def aggregate_feedback(
 
 
 @app.get("/reviews/{app_id}", dependencies=[Depends(require_license)])
-def export_reviews(app_id: int, limit: Optional[int] = None, format: str = "csv", refresh: bool = False):
+def export_reviews(
+    app_id: int,
+    limit: Optional[int] = None,
+    format: str = "csv",
+    refresh: bool = False,
+    user_id: str = Depends(require_user_id),
+):
+    if not storage.user_has_game(user_id, app_id):
+        raise HTTPException(status_code=404, detail="No analysis available for this game.")
     rows = storage.load_reviews(app_id, limit)
     if not rows:
         raise HTTPException(
@@ -876,8 +916,11 @@ def export_reviews(app_id: int, limit: Optional[int] = None, format: str = "csv"
 
 
 @app.get("/progress/{app_id}", dependencies=[Depends(require_license)])
-def classification_progress(app_id: int) -> dict:
-    progress = storage.load_progress(app_id)
+def classification_progress(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+) -> dict:
+    progress = storage.load_progress(user_id, app_id)
     if not progress:
         return {
             "app_id": app_id,
@@ -906,8 +949,10 @@ def classification_progress(app_id: int) -> dict:
 
 
 @app.get("/starred", response_model=List[StarredGameResponse], dependencies=[Depends(require_license)])
-def list_starred_games() -> List[StarredGameResponse]:
-    entries = storage.load_starred_games()
+def list_starred_games(
+    user_id: str = Depends(require_user_id),
+) -> List[StarredGameResponse]:
+    entries = storage.load_starred_games(user_id)
     response: List[StarredGameResponse] = []
     for item in entries:
         metadata_payload = item.get("metadata") or {}
@@ -931,7 +976,10 @@ def list_starred_games() -> List[StarredGameResponse]:
 
 
 @app.post("/starred", status_code=204, dependencies=[Depends(require_license)])
-def save_starred_game(payload: StarredGamePayload) -> Response:
+def save_starred_game(
+    payload: StarredGamePayload,
+    user_id: str = Depends(require_user_id),
+) -> Response:
     sample = payload.sample[:SAMPLE_LIMIT]
 
     # Fetch game details to get genres and categories
@@ -943,6 +991,7 @@ def save_starred_game(payload: StarredGamePayload) -> Response:
         metadata_payload["header_image"] = game_details["header_image"]
 
     storage.save_starred_game(
+        user_id=user_id,
         app_id=payload.app_id,
         name=payload.name,
         metadata=metadata_payload,
@@ -954,9 +1003,9 @@ def save_starred_game(payload: StarredGamePayload) -> Response:
     return Response(status_code=204)
 
 
-@app.delete("/starred/{app_id}", status_code=204)
-def remove_starred_game(app_id: int, _: None = Depends(require_admin)) -> Response:
-    storage.delete_starred_game(app_id)
+@app.delete("/starred/{app_id}", status_code=204, dependencies=[Depends(require_license)])
+def remove_starred_game(app_id: int, user_id: str = Depends(require_user_id)) -> Response:
+    storage.delete_starred_game(user_id, app_id)
     return Response(status_code=204)
 
 
@@ -968,9 +1017,9 @@ def delete_game_data(app_id: int, _: None = Depends(require_admin)) -> Response:
 
 
 @app.get("/database/stats", dependencies=[Depends(require_license)])
-def database_stats() -> dict:
+def database_stats(user_id: str = Depends(require_user_id)) -> dict:
     """Get database statistics (games, reviews, labels counts)."""
-    return storage.get_database_stats()
+    return storage.get_database_stats(user_id)
 
 
 @app.delete("/database/labels", status_code=200)
@@ -992,8 +1041,8 @@ def clear_database(_: None = Depends(require_admin)) -> dict:
 
 
 @app.get("/database/games", response_model=List[DatabaseGameOption], dependencies=[Depends(require_license)])
-def database_games() -> List[DatabaseGameOption]:
-    entries = storage.list_database_games()
+def database_games(user_id: str = Depends(require_user_id)) -> List[DatabaseGameOption]:
+    entries = storage.list_database_games(user_id)
     return [DatabaseGameOption(**entry) for entry in entries]
 
 
@@ -1004,15 +1053,19 @@ def database_reviews(
     app_id: Optional[int] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
+    user_id: str = Depends(require_user_id),
 ) -> DatabaseReviewsResponse:
+    user_games = storage.list_database_games(user_id)
+    user_app_ids = [entry["app_id"] for entry in user_games]
     rows, total = storage.load_database_reviews(
         limit=limit,
         offset=offset,
         app_id=app_id,
         language=language,
         query=query,
+        app_ids=user_app_ids,
     )
-    games_map = {entry["app_id"]: entry.get("name") for entry in storage.list_database_games()}
+    games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
     items: List[DatabaseReviewItem] = []
 
     for row in rows:

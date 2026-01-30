@@ -39,6 +39,7 @@ def _default_db_path() -> Path:
 
 _DB_PATH = _default_db_path()
 _FTS_ENABLED = True
+_DEFAULT_USER_ID = "local"
 
 def db_path() -> Path:
     return _DB_PATH
@@ -49,6 +50,14 @@ def _get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    return {row["name"] for row in rows if row["name"]}
 
 
 def init_db() -> None:
@@ -159,49 +168,132 @@ def init_db() -> None:
             ON review_labels (app_id)
             """
         )
+        progress_columns = _table_columns(conn, "classification_progress")
+        if progress_columns and "user_id" not in progress_columns:
+            conn.execute("DROP TABLE IF EXISTS classification_progress")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS classification_progress (
-                app_id INTEGER PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                app_id INTEGER NOT NULL,
                 total INTEGER NOT NULL,
                 processed INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS starred_games (
-                app_id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                metadata TEXT NOT NULL,
-                insights TEXT,
-                sample TEXT,
-                genres TEXT,
-                categories TEXT,
-                updated_at INTEGER NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS analysis_results (
-                app_id INTEGER PRIMARY KEY,
-                metadata TEXT,
-                insights TEXT,
-                reviews TEXT,
-                status TEXT NOT NULL DEFAULT 'pending',
-                error TEXT,
                 updated_at INTEGER NOT NULL,
-                run_id TEXT,
-                snapshot_hash TEXT,
-                stale INTEGER DEFAULT 0,
-                context_hash TEXT,
-                stale_reason TEXT
+                PRIMARY KEY (user_id, app_id)
             )
             """
         )
-        # Backfill new columns if table existed
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_classification_progress_app
+            ON classification_progress (app_id)
+            """
+        )
+        starred_columns = _table_columns(conn, "starred_games")
+        if starred_columns and "user_id" not in starred_columns:
+            conn.execute("ALTER TABLE starred_games RENAME TO starred_games_legacy")
+            conn.execute(
+                """
+                CREATE TABLE starred_games (
+                    user_id TEXT NOT NULL,
+                    app_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    insights TEXT,
+                    sample TEXT,
+                    genres TEXT,
+                    categories TEXT,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, app_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO starred_games (user_id, app_id, name, metadata, insights, sample, genres, categories, updated_at)
+                SELECT ?, app_id, name, metadata, insights, sample, genres, categories, updated_at
+                FROM starred_games_legacy
+                """,
+                (_DEFAULT_USER_ID,),
+            )
+            conn.execute("DROP TABLE starred_games_legacy")
+        else:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS starred_games (
+                    user_id TEXT NOT NULL,
+                    app_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    insights TEXT,
+                    sample TEXT,
+                    genres TEXT,
+                    categories TEXT,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, app_id)
+                )
+                """
+            )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_starred_games_user
+            ON starred_games (user_id, updated_at DESC)
+            """
+        )
+
+        analysis_columns = _table_columns(conn, "analysis_results")
+        if analysis_columns and "user_id" not in analysis_columns:
+            conn.execute("ALTER TABLE analysis_results RENAME TO analysis_results_legacy")
+            conn.execute(
+                """
+                CREATE TABLE analysis_results (
+                    user_id TEXT NOT NULL,
+                    app_id INTEGER NOT NULL,
+                    metadata TEXT,
+                    insights TEXT,
+                    reviews TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    error TEXT,
+                    updated_at INTEGER NOT NULL,
+                    run_id TEXT,
+                    snapshot_hash TEXT,
+                    stale INTEGER DEFAULT 0,
+                    context_hash TEXT,
+                    stale_reason TEXT,
+                    PRIMARY KEY (user_id, app_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
+                SELECT ?, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason
+                FROM analysis_results_legacy
+                """,
+                (_DEFAULT_USER_ID,),
+            )
+            conn.execute("DROP TABLE analysis_results_legacy")
+        else:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analysis_results (
+                    user_id TEXT NOT NULL,
+                    app_id INTEGER NOT NULL,
+                    metadata TEXT,
+                    insights TEXT,
+                    reviews TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    error TEXT,
+                    updated_at INTEGER NOT NULL,
+                    run_id TEXT,
+                    snapshot_hash TEXT,
+                    stale INTEGER DEFAULT 0,
+                    context_hash TEXT,
+                    stale_reason TEXT,
+                    PRIMARY KEY (user_id, app_id)
+                )
+                """
+            )
         for col in ["context_hash", "stale_reason"]:
             try:
                 conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col} TEXT")
@@ -428,49 +520,49 @@ def load_review_labels(app_id: int) -> Dict[str, Dict]:
     return labels
 
 
-def reset_progress(app_id: int, total: int) -> None:
+def reset_progress(user_id: str, app_id: int, total: int) -> None:
     timestamp = int(time.time())
     with _get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO classification_progress (app_id, total, processed, updated_at)
-            VALUES (?, ?, 0, ?)
-            ON CONFLICT(app_id) DO UPDATE SET
+            INSERT INTO classification_progress (user_id, app_id, total, processed, updated_at)
+            VALUES (?, ?, ?, 0, ?)
+            ON CONFLICT(user_id, app_id) DO UPDATE SET
                 total = excluded.total,
                 processed = excluded.processed,
                 updated_at = excluded.updated_at
             """,
-            (app_id, int(total), timestamp),
+            (user_id, app_id, int(total), timestamp),
         )
         conn.commit()
 
 
-def update_progress(app_id: int, processed: int, total: Optional[int] = None) -> None:
+def update_progress(user_id: str, app_id: int, processed: int, total: Optional[int] = None) -> None:
     timestamp = int(time.time())
     query = """
         UPDATE classification_progress
         SET processed = ?,
             updated_at = ?,
             total = COALESCE(?, total)
-        WHERE app_id = ?
+        WHERE user_id = ? AND app_id = ?
     """
     new_total = int(total) if total is not None else None
     with _get_connection() as conn:
-        conn.execute(query, (int(processed), timestamp, new_total, app_id))
+        conn.execute(query, (int(processed), timestamp, new_total, user_id, app_id))
         conn.commit()
 
 
-def clear_progress(app_id: int) -> None:
+def clear_progress(user_id: str, app_id: int) -> None:
     with _get_connection() as conn:
-        conn.execute("DELETE FROM classification_progress WHERE app_id = ?", (app_id,))
+        conn.execute("DELETE FROM classification_progress WHERE user_id = ? AND app_id = ?", (user_id, app_id))
         conn.commit()
 
 
-def load_progress(app_id: int) -> Optional[Dict[str, int]]:
+def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, int]]:
     with _get_connection() as conn:
         row = conn.execute(
-            "SELECT total, processed, updated_at FROM classification_progress WHERE app_id = ?",
-            (app_id,),
+            "SELECT total, processed, updated_at FROM classification_progress WHERE user_id = ? AND app_id = ?",
+            (user_id, app_id),
         ).fetchone()
 
     if row is None:
@@ -484,6 +576,7 @@ def load_progress(app_id: int) -> Optional[Dict[str, int]]:
 
 
 def save_starred_game(
+    user_id: str,
     app_id: int,
     name: str,
     metadata: Dict,
@@ -501,9 +594,9 @@ def save_starred_game(
     with _get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO starred_games (app_id, name, metadata, insights, sample, genres, categories, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(app_id) DO UPDATE SET
+            INSERT INTO starred_games (user_id, app_id, name, metadata, insights, sample, genres, categories, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, app_id) DO UPDATE SET
                 name = excluded.name,
                 metadata = excluded.metadata,
                 insights = excluded.insights,
@@ -512,14 +605,14 @@ def save_starred_game(
                 categories = excluded.categories,
                 updated_at = excluded.updated_at
             """,
-            (app_id, name, payload_metadata, payload_insights, payload_sample, payload_genres, payload_categories, timestamp),
+            (user_id, app_id, name, payload_metadata, payload_insights, payload_sample, payload_genres, payload_categories, timestamp),
         )
         conn.commit()
 
 
-def delete_starred_game(app_id: int) -> None:
+def delete_starred_game(user_id: str, app_id: int) -> None:
     with _get_connection() as conn:
-        conn.execute("DELETE FROM starred_games WHERE app_id = ?", (app_id,))
+        conn.execute("DELETE FROM starred_games WHERE user_id = ? AND app_id = ?", (user_id, app_id))
         conn.commit()
 
 
@@ -535,50 +628,76 @@ def delete_all_game_data(app_id: int) -> None:
         conn.execute("DELETE FROM review_labels WHERE app_id = ?", (app_id,))
         conn.execute("DELETE FROM classification_progress WHERE app_id = ?", (app_id,))
         conn.execute("DELETE FROM starred_games WHERE app_id = ?", (app_id,))
+        conn.execute("DELETE FROM analysis_results WHERE app_id = ?", (app_id,))
         conn.commit()
 
 
-def get_database_stats() -> Dict[str, Any]:
+def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
     """Get database statistics: counts of games, reviews, labels."""
     with _get_connection() as conn:
-        # Count unique games across all tables
-        games_count = conn.execute(
-            """
-            SELECT COUNT(DISTINCT app_id) FROM (
-                SELECT app_id FROM reviews
-                UNION
-                SELECT app_id FROM starred_games
-            )
-            """
-        ).fetchone()[0]
-
-        # Count total reviews
-        reviews_count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
-
-        # Count total labels
-        labels_count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
-
-        # Count labels with new schema (has main_category field)
-        new_schema_count = conn.execute(
-            """
-            SELECT COUNT(*) FROM review_labels
-            WHERE json_extract(payload, '$.main_category') IS NOT NULL
-            """
-        ).fetchone()[0]
-
-        # Count labels with old schema (missing category field)
-        old_schema_count = labels_count - new_schema_count
-
-        # Count starred games
-        starred_count = conn.execute("SELECT COUNT(*) FROM starred_games").fetchone()[0]
+        if not user_id:
+            games_count = conn.execute(
+                """
+                SELECT COUNT(DISTINCT app_id) FROM (
+                    SELECT app_id FROM reviews
+                    UNION
+                    SELECT app_id FROM starred_games
+                )
+                """
+            ).fetchone()[0]
+            reviews_count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+            labels_count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
+            new_schema_count = conn.execute(
+                """
+                SELECT COUNT(*) FROM review_labels
+                WHERE json_extract(payload, '$.main_category') IS NOT NULL
+                """
+            ).fetchone()[0]
+            old_schema_count = labels_count - new_schema_count
+            starred_count = conn.execute("SELECT COUNT(*) FROM starred_games").fetchone()[0]
+        else:
+            app_rows = conn.execute(
+                "SELECT app_id FROM starred_games WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+            app_ids = [int(row["app_id"]) for row in app_rows]
+            if not app_ids:
+                return {
+                    "games": 0,
+                    "reviews": 0,
+                    "labels": 0,
+                    "labels_new_schema": 0,
+                    "labels_old_schema": 0,
+                    "starred_games": 0,
+                }
+            placeholders = ",".join(["?"] * len(app_ids))
+            reviews_count = conn.execute(
+                f"SELECT COUNT(*) FROM reviews WHERE app_id IN ({placeholders})",
+                app_ids,
+            ).fetchone()[0]
+            labels_count = conn.execute(
+                f"SELECT COUNT(*) FROM review_labels WHERE app_id IN ({placeholders})",
+                app_ids,
+            ).fetchone()[0]
+            new_schema_count = conn.execute(
+                f"""
+                SELECT COUNT(*) FROM review_labels
+                WHERE app_id IN ({placeholders})
+                  AND json_extract(payload, '$.main_category') IS NOT NULL
+                """,
+                app_ids,
+            ).fetchone()[0]
+            old_schema_count = labels_count - new_schema_count
+            starred_count = len(app_ids)
+            games_count = starred_count
 
         return {
-            "games": games_count,
-            "reviews": reviews_count,
-            "labels": labels_count,
-            "labels_new_schema": new_schema_count,
-            "labels_old_schema": old_schema_count,
-            "starred_games": starred_count,
+            "games": int(games_count),
+            "reviews": int(reviews_count),
+            "labels": int(labels_count),
+            "labels_new_schema": int(new_schema_count),
+            "labels_old_schema": int(old_schema_count),
+            "starred_games": int(starred_count),
         }
 
 
@@ -631,10 +750,16 @@ def clear_entire_database() -> Dict[str, int]:
         }
 
 
-def load_starred_games() -> list[Dict[str, Any]]:
+def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
     with _get_connection() as conn:
         rows = conn.execute(
-            "SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at FROM starred_games ORDER BY updated_at DESC"
+            """
+            SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at
+            FROM starred_games
+            WHERE user_id = ?
+            ORDER BY updated_at DESC
+            """,
+            (user_id,),
         ).fetchall()
 
     results: list[Dict[str, Any]] = []
@@ -676,13 +801,36 @@ def load_starred_games() -> list[Dict[str, Any]]:
     return results
 
 
-def list_database_games() -> List[Dict[str, Any]]:
+def load_user_app_ids(user_id: str) -> List[int]:
     with _get_connection() as conn:
-        review_rows = conn.execute("SELECT DISTINCT app_id FROM reviews ORDER BY app_id").fetchall()
-        starred_rows = conn.execute("SELECT app_id, name FROM starred_games").fetchall()
+        rows = conn.execute(
+            "SELECT app_id FROM starred_games WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+    return [int(row["app_id"]) for row in rows if row["app_id"] is not None]
 
-    name_map = {int(row["app_id"]): row["name"] for row in starred_rows if row["app_id"] is not None}
-    return [{"app_id": int(row["app_id"]), "name": name_map.get(int(row["app_id"]))} for row in review_rows]
+
+def user_has_game(user_id: str, app_id: int) -> bool:
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM starred_games WHERE user_id = ? AND app_id = ? LIMIT 1",
+            (user_id, int(app_id)),
+        ).fetchone()
+    return row is not None
+
+
+def list_database_games(user_id: str) -> List[Dict[str, Any]]:
+    with _get_connection() as conn:
+        starred_rows = conn.execute(
+            "SELECT app_id, name FROM starred_games WHERE user_id = ? ORDER BY app_id",
+            (user_id,),
+        ).fetchall()
+
+    return [
+        {"app_id": int(row["app_id"]), "name": row["name"]}
+        for row in starred_rows
+        if row["app_id"] is not None
+    ]
 
 
 def load_database_reviews(
@@ -691,11 +839,18 @@ def load_database_reviews(
     app_id: Optional[int] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
+    app_ids: Optional[Sequence[int]] = None,
 ) -> tuple[List[Dict[str, Any]], int]:
     limit = max(1, min(int(limit), 500))
     offset = max(0, int(offset))
     lang = (language or "").strip().lower()
     raw_query = (query or "").strip()
+
+    allowed_ids: Optional[List[int]] = None
+    if app_ids is not None:
+        allowed_ids = [int(item) for item in app_ids if item is not None]
+        if not allowed_ids:
+            return [], 0
 
     with _get_connection() as conn:
         if raw_query:
@@ -705,8 +860,14 @@ def load_database_reviews(
             where_parts = ["reviews_fts MATCH ?"]
             params: list[Any] = [raw_query]
             if app_id:
+                if allowed_ids is not None and int(app_id) not in allowed_ids:
+                    return [], 0
                 where_parts.append("reviews.app_id = ?")
                 params.append(int(app_id))
+            elif allowed_ids is not None:
+                placeholders = ",".join(["?"] * len(allowed_ids))
+                where_parts.append(f"reviews.app_id IN ({placeholders})")
+                params.extend(allowed_ids)
             if lang and lang != "all":
                 where_parts.append("reviews_fts.language = ?")
                 params.append(lang)
@@ -736,8 +897,14 @@ def load_database_reviews(
             where_parts = []
             params = []
             if app_id:
+                if allowed_ids is not None and int(app_id) not in allowed_ids:
+                    return [], 0
                 where_parts.append("reviews.app_id = ?")
                 params.append(int(app_id))
+            elif allowed_ids is not None:
+                placeholders = ",".join(["?"] * len(allowed_ids))
+                where_parts.append(f"reviews.app_id IN ({placeholders})")
+                params.extend(allowed_ids)
             if lang and lang != "all":
                 where_parts.append("json_extract(reviews.data, '$.language') = ?")
                 params.append(lang)
@@ -775,6 +942,7 @@ def load_database_reviews(
 
 
 def save_analysis_result(
+    user_id: str,
     app_id: int,
     metadata: Optional[Dict],
     insights: Optional[Dict],
@@ -795,9 +963,9 @@ def save_analysis_result(
     with _get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO analysis_results (app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(app_id) DO UPDATE SET
+            INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, app_id) DO UPDATE SET
                 metadata = excluded.metadata,
                 insights = excluded.insights,
                 reviews = excluded.reviews,
@@ -810,20 +978,20 @@ def save_analysis_result(
                 stale_reason = excluded.stale_reason,
                 updated_at = excluded.updated_at
             """,
-            (app_id, payload_metadata, payload_insights, payload_reviews, status, error, timestamp, run_id, snapshot_hash, int(stale), context_hash, stale_reason),
+            (user_id, app_id, payload_metadata, payload_insights, payload_reviews, status, error, timestamp, run_id, snapshot_hash, int(stale), context_hash, stale_reason),
         )
         conn.commit()
 
 
-def load_analysis_result(app_id: int) -> Optional[Dict[str, Any]]:
+def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
     with _get_connection() as conn:
         row = conn.execute(
             """
             SELECT metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason
             FROM analysis_results
-            WHERE app_id = ?
+            WHERE user_id = ? AND app_id = ?
             """,
-            (app_id,),
+            (user_id, app_id),
         ).fetchone()
 
     if row is None:

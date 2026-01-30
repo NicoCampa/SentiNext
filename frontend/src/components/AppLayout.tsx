@@ -26,6 +26,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     { href: "/database", label: "Database", icon: "◫" },
     { href: "/settings", label: "Settings", icon: "⚙" },
   ];
+  const sidebarNavItems = navItems.filter((item) => item.href !== "/settings");
 
   const isActiveRoute = (href: string) => {
     const path = href.split("?")[0];
@@ -39,26 +40,15 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
           <div className="flex h-full flex-col gap-8 text-sm">
             {/* Logo */}
             <div className="space-y-3 text-left">
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <h1 className="text-3xl font-semibold tracking-tight">
-                    <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                      SentiNext
-                    </span>
-                  </h1>
-                  <p className="text-[10px] uppercase tracking-[0.5em] text-slate-400">
-                    Game review analytics
-                  </p>
-                </div>
-                <SignedIn>
-                  <UserButton
-                    appearance={{
-                      elements: {
-                        userButtonAvatarBox: "h-9 w-9",
-                      },
-                    }}
-                  />
-                </SignedIn>
+              <div className="space-y-1">
+                <h1 className="text-3xl font-semibold tracking-tight">
+                  <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                    SentiNext
+                  </span>
+                </h1>
+                <p className="text-[10px] uppercase tracking-[0.5em] text-slate-400">
+                  Game review analytics
+                </p>
               </div>
             </div>
 
@@ -66,7 +56,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
             <div className="space-y-2">
               <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Navigate</p>
               <nav className="flex flex-col gap-2 text-xs uppercase tracking-[0.25em]">
-                {navItems.map((item) => (
+                {sidebarNavItems.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
@@ -90,6 +80,31 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
               <div className="flex-1 overflow-y-auto">{sidebarContent}</div>
             )}
 
+            <div className="mt-auto space-y-3">
+              <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Settings</p>
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3">
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Profile</p>
+                  <p className="text-xs text-slate-300">Account preferences</p>
+                </div>
+                <SignedIn>
+                  <UserButton
+                    appearance={{
+                      elements: {
+                        userButtonAvatarBox: "h-9 w-9",
+                      },
+                    }}
+                  />
+                </SignedIn>
+              </div>
+              <Link
+                href="/settings"
+                className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-xs uppercase tracking-[0.25em] text-slate-300 transition hover:border-sky-400/60 hover:text-white"
+              >
+                <span>App settings</span>
+                <span className="text-sm">⚙</span>
+              </Link>
+            </div>
           </div>
         </aside>
       )}
