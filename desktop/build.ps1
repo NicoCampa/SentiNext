@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
 Set-Location (Join-Path $RootDir "frontend")
+$env:SENTINEXT_STATIC_EXPORT = "true"
 npm install
 npm run build
 

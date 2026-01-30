@@ -4,7 +4,7 @@ SentiNext turns raw Steam reviews into clear, actionable insights. It ingests St
 
 ## Structure
 - `backend/` – FastAPI app (`backend/main.py`) and shared package (`senti_next/`)
-- `frontend/` – Next.js app (static export UI)
+- `frontend/` – Next.js app (server for web, static export for desktop)
 - `data/` – SQLite database (created at runtime)
 - `web/` – Marketing site (landing, docs, download)
 - `src-tauri/` – Tauri desktop wrapper (builds macOS/Windows apps)
@@ -24,7 +24,7 @@ conda activate SentiNext
 ```bash
 cd frontend
 npm install
-npm run build
+SENTINEXT_STATIC_EXPORT=true npm run build
 ```
 
 ### Run local app server
@@ -69,6 +69,11 @@ npm install
 cp .env.example .env.local  # set NEXT_PUBLIC_API_BASE_URL if different
 npm run dev  # http://localhost:3000
 ```
+
+## Deploy (web)
+Deploy the API and UI as separate services:
+- Frontend: use `Dockerfile.frontend` (Next.js server). Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL and add Clerk keys.
+- Backend: use `Dockerfile.backend` (FastAPI API-only). Attach a persistent disk and set `SENTINEXT_DB_PATH` to its mount path.
 
 ## Authentication (Clerk)
 Frontend (Next.js App Router, stored in `.env.local`):
