@@ -11,11 +11,22 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from platformdirs import user_data_dir
 
 
+def _render_disk_root() -> Path | None:
+    candidate = Path("/var/data")
+    if candidate.is_dir() and os.access(candidate, os.W_OK):
+        return candidate
+    return None
+
+
 def _default_db_path() -> Path:
     """Resolve a stable path for the SQLite database."""
     env_path = os.getenv("SENTINEXT_DB_PATH")
     if env_path:
         return Path(env_path).expanduser()
+
+    render_root = _render_disk_root()
+    if render_root:
+        return render_root / "senti_next.db"
 
     # Default to per-user application data so packaged desktop builds work cleanly.
     # Examples:
