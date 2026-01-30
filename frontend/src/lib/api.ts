@@ -329,6 +329,61 @@ export async function fetchDatabaseStats(scope: DatabaseScope = "me"): Promise<D
   return handleResponse<DatabaseStats>(response);
 }
 
+export type DatabaseExportFormat = "csv" | "jsonl";
+
+export interface DatabaseExportParams {
+  format: DatabaseExportFormat;
+  scope?: DatabaseScope;
+  app_id?: number | null;
+  language?: string | null;
+  query?: string | null;
+  max_rows?: number | null;
+}
+
+function parseContentDispositionFilename(value: string | null): string | null {
+  if (!value) return null;
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const match = value.match(/filename="?([^\";]+)"?/i);
+  return match?.[1] ?? null;
+}
+
+export async function downloadDatabaseExport(params: DatabaseExportParams): Promise<void> {
+  if (typeof window === "undefined") return;
+  const url = new URL(apiUrl("/database/export"), window.location.origin);
+  url.searchParams.set("format", params.format);
+  if (params.scope === "all") url.searchParams.set("scope", "all");
+  if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
+  if (params.language) url.searchParams.set("language", params.language);
+  if (params.query) url.searchParams.set("query", params.query);
+  if (params.max_rows) url.searchParams.set("max_rows", String(params.max_rows));
+
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Export failed (status ${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const fallback = `sentinext-dataset.${params.format}`;
+  const filename = parseContentDispositionFilename(response.headers.get("content-disposition")) || fallback;
+
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
 export interface BackendAdminStatus {
   destructive_enabled: boolean;
   token_configured: boolean;

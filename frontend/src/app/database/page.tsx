@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useGlobalFilters } from '@/contexts/GlobalFiltersContext';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
 import { applyGlobalReviewFilters } from '@/lib/reviewFilters';
-import { deleteGame, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
+import { deleteGame, downloadDatabaseExport, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
 import type { DatabaseReviewsResponse, DatabaseReviewItem, DatabaseGameOption } from '@/types';
 import type { AuthStatus, DatabaseScope, DatabaseStats } from '@/lib/api';
 
@@ -102,6 +102,8 @@ export default function DatabasePage() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
+  const [downloadBusy, setDownloadBusy] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const compact = density === 'compact';
   const isAdmin = authStatus?.is_admin ?? false;
@@ -266,6 +268,24 @@ export default function DatabasePage() {
     }
   }
 
+  async function handleDownload(format: 'csv' | 'jsonl') {
+    setDownloadBusy(true);
+    setDownloadError(null);
+    try {
+      await downloadDatabaseExport({
+        format,
+        scope,
+        app_id: selectedAppId,
+        language: languageFilter === 'all' ? null : languageFilter,
+        query: activeQuery || null,
+      });
+    } catch (err) {
+      setDownloadError((err as Error).message || 'Download failed.');
+    } finally {
+      setDownloadBusy(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(pageTotal / limit));
   const currentPage = Math.floor(offset / limit) + 1;
 
@@ -357,10 +377,31 @@ export default function DatabasePage() {
               <h2 className="text-lg font-semibold text-white">Dataset filters</h2>
               <p className="text-xs text-slate-400">Search and filter across the entire database.</p>
             </div>
-            <div className="text-xs text-slate-500">
-              Page {currentPage} of {totalPages} - {pageTotal.toLocaleString()} total reviews
+            <div className="flex flex-col items-start gap-2 text-xs text-slate-500 sm:items-end">
+              <div>
+                Page {currentPage} of {totalPages} - {pageTotal.toLocaleString()} total reviews
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={downloadBusy || loadingReviews}
+                  onClick={() => handleDownload('csv')}
+                >
+                  {downloadBusy ? 'Preparing…' : 'Download CSV'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={downloadBusy || loadingReviews}
+                  onClick={() => handleDownload('jsonl')}
+                >
+                  {downloadBusy ? 'Preparing…' : 'Download JSONL'}
+                </Button>
+              </div>
             </div>
           </div>
+          {downloadError ? <p className="mt-3 text-xs text-rose-300">{downloadError}</p> : null}
 
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <label className="flex flex-col gap-2 text-sm text-slate-300">

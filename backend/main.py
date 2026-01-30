@@ -5,6 +5,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import secrets
+import csv
+import io
 from datetime import datetime
 import hashlib
 from pathlib import Path
@@ -379,6 +381,8 @@ class DatabaseGameOption(BaseModel):
 
 
 REVIEW_EXPORT_COLUMNS = [
+    "app_id",
+    "app_name",
     # Review content
     "review_id",
     "review",
@@ -406,6 +410,71 @@ REVIEW_EXPORT_COLUMNS = [
     "llm_has_issue",
     "llm_has_request",
 ]
+
+EXPORT_MAX_ROWS = max(1, int(os.getenv("SENTINEXT_EXPORT_MAX_ROWS", "50000")))
+
+
+def _database_row_to_item(row: Dict[str, Any], games_map: Dict[int, Optional[str]]) -> "DatabaseReviewItem":
+    try:
+        payload = json.loads(row.get("data") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    try:
+        label_payload = json.loads(row.get("label_payload") or "{}")
+    except json.JSONDecodeError:
+        label_payload = {}
+
+    author = payload.get("author", {}) or {}
+    playtime_forever = int(author.get("playtime_forever") or 0)
+    playtime_recent = int(author.get("playtime_last_two_weeks") or 0)
+    created_ts = payload.get("timestamp_created")
+    created_at = (
+        datetime.utcfromtimestamp(created_ts).isoformat() + "Z"
+        if isinstance(created_ts, (int, float))
+        else None
+    )
+
+    issue_subcats = label_payload.get("issue_subcategories") or []
+    request_subcats = label_payload.get("request_subcategories") or []
+    evidence = label_payload.get("evidence")
+    if not isinstance(evidence, dict):
+        evidence = {}
+
+    app_id_value = int(row.get("app_id") or payload.get("app_id") or 0)
+
+    return DatabaseReviewItem(
+        review_id=str(payload.get("recommendationid") or row.get("review_id") or ""),
+        app_id=app_id_value,
+        app_name=games_map.get(app_id_value),
+        review=payload.get("review") or "",
+        language=payload.get("language"),
+        voted_up=bool(payload.get("voted_up")),
+        votes_up=int(payload.get("votes_up") or 0),
+        votes_funny=int(payload.get("votes_funny") or 0),
+        author_num_games_owned=int(author.get("num_games_owned") or 0),
+        author_num_reviews=int(author.get("num_reviews") or 0),
+        author_playtime_forever=playtime_forever,
+        author_playtime_last_two_weeks=playtime_recent,
+        author_playtime_hours=playtime_forever / 60.0 if playtime_forever else 0.0,
+        author_recent_playtime_hours=playtime_recent / 60.0 if playtime_recent else 0.0,
+        created_at=created_at,
+        llm_main_category=label_payload.get("main_category"),
+        llm_subcategory=label_payload.get("subcategory"),
+        llm_subcategories=list(label_payload.get("subcategories") or []),
+        llm_issue_subcategories=list(issue_subcats) if isinstance(issue_subcats, list) else [],
+        llm_request_subcategories=list(request_subcats) if isinstance(request_subcats, list) else [],
+        llm_subcategory_evidence=evidence,
+        llm_has_issue=bool(issue_subcats),
+        llm_has_request=bool(request_subcats),
+    )
+
+
+def _serialize_export_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
 
 def require_admin(request: Request) -> None:
     """Guard destructive endpoints behind an admin token or admin user allowlist."""
@@ -1090,60 +1159,108 @@ def database_reviews(
     items: List[DatabaseReviewItem] = []
 
     for row in rows:
-        try:
-            payload = json.loads(row.get("data") or "{}")
-        except json.JSONDecodeError:
-            payload = {}
-        try:
-            label_payload = json.loads(row.get("label_payload") or "{}")
-        except json.JSONDecodeError:
-            label_payload = {}
-
-        author = payload.get("author", {}) or {}
-        playtime_forever = int(author.get("playtime_forever") or 0)
-        playtime_recent = int(author.get("playtime_last_two_weeks") or 0)
-        created_ts = payload.get("timestamp_created")
-        created_at = (
-            datetime.utcfromtimestamp(created_ts).isoformat() + "Z"
-            if isinstance(created_ts, (int, float))
-            else None
-        )
-
-        issue_subcats = label_payload.get("issue_subcategories") or []
-        request_subcats = label_payload.get("request_subcategories") or []
-        evidence = label_payload.get("evidence")
-        if not isinstance(evidence, dict):
-            evidence = {}
-
-        items.append(
-            DatabaseReviewItem(
-                review_id=str(payload.get("recommendationid") or row.get("review_id") or ""),
-                app_id=int(row.get("app_id") or payload.get("app_id") or 0),
-                app_name=games_map.get(int(row.get("app_id") or 0)),
-                review=payload.get("review") or "",
-                language=payload.get("language"),
-                voted_up=bool(payload.get("voted_up")),
-                votes_up=int(payload.get("votes_up") or 0),
-                votes_funny=int(payload.get("votes_funny") or 0),
-                author_num_games_owned=int(author.get("num_games_owned") or 0),
-                author_num_reviews=int(author.get("num_reviews") or 0),
-                author_playtime_forever=playtime_forever,
-                author_playtime_last_two_weeks=playtime_recent,
-                author_playtime_hours=playtime_forever / 60.0 if playtime_forever else 0.0,
-                author_recent_playtime_hours=playtime_recent / 60.0 if playtime_recent else 0.0,
-                created_at=created_at,
-                llm_main_category=label_payload.get("main_category"),
-                llm_subcategory=label_payload.get("subcategory"),
-                llm_subcategories=list(label_payload.get("subcategories") or []),
-                llm_issue_subcategories=list(issue_subcats) if isinstance(issue_subcats, list) else [],
-                llm_request_subcategories=list(request_subcats) if isinstance(request_subcats, list) else [],
-                llm_subcategory_evidence=evidence,
-                llm_has_issue=bool(issue_subcats),
-                llm_has_request=bool(request_subcats),
-            )
-        )
+        items.append(_database_row_to_item(row, games_map))
 
     return DatabaseReviewsResponse(items=items, total=int(total), offset=int(offset), limit=int(limit))
+
+
+@app.get("/database/export", dependencies=[Depends(require_license)])
+def database_export(
+    format: str = "csv",
+    app_id: Optional[int] = None,
+    language: Optional[str] = None,
+    query: Optional[str] = None,
+    scope: Optional[str] = None,
+    max_rows: Optional[int] = None,
+    user_id: str = Depends(require_user_id),
+):
+    export_format = (format or "csv").strip().lower()
+    if export_format not in {"csv", "jsonl"}:
+        raise HTTPException(status_code=400, detail="Unsupported export format. Use csv or jsonl.")
+
+    scope_user_id = resolve_scope_user_id(scope, user_id)
+    if scope_user_id is None:
+        user_games = storage.list_database_games_all()
+        user_app_ids = None
+        scope_label = "all"
+    else:
+        user_games = storage.list_database_games(scope_user_id)
+        user_app_ids = [entry["app_id"] for entry in user_games]
+        scope_label = "me"
+    games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
+
+    if max_rows is None:
+        max_rows_value = EXPORT_MAX_ROWS
+    else:
+        try:
+            max_rows_value = int(max_rows)
+        except Exception:
+            max_rows_value = EXPORT_MAX_ROWS
+    if max_rows_value <= 0:
+        max_rows_value = EXPORT_MAX_ROWS
+    max_rows_value = min(max_rows_value, EXPORT_MAX_ROWS)
+
+    now_stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    app_label = str(app_id) if app_id else "all"
+    ext = "csv" if export_format == "csv" else "jsonl"
+    filename = f"sentinext-dataset-{scope_label}-{app_label}-{now_stamp}.{ext}"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+    def iter_review_items():
+        offset_value = 0
+        remaining = max_rows_value
+        page_size = 500
+        while remaining > 0:
+            page_limit = min(page_size, remaining)
+            rows, _total = storage.load_database_reviews(
+                limit=page_limit,
+                offset=offset_value,
+                app_id=app_id,
+                language=language,
+                query=query,
+                app_ids=user_app_ids,
+            )
+            if not rows:
+                break
+            for row in rows:
+                yield _database_row_to_item(row, games_map)
+            offset_value += len(rows)
+            remaining -= len(rows)
+            if len(rows) < page_limit:
+                break
+
+    if export_format == "jsonl":
+        def iter_jsonl():
+            for item in iter_review_items():
+                payload = item.dict()
+                yield (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+
+        return StreamingResponse(iter_jsonl(), media_type="application/x-ndjson", headers=headers)
+
+    def iter_csv():
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=REVIEW_EXPORT_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        yield output.getvalue().encode("utf-8")
+        output.seek(0)
+        output.truncate(0)
+
+        buffered = 0
+        for item in iter_review_items():
+            payload = item.dict()
+            row = {key: _serialize_export_value(payload.get(key)) for key in REVIEW_EXPORT_COLUMNS}
+            writer.writerow(row)
+            buffered += 1
+            if buffered >= 100:
+                yield output.getvalue().encode("utf-8")
+                output.seek(0)
+                output.truncate(0)
+                buffered = 0
+
+        if output.tell():
+            yield output.getvalue().encode("utf-8")
+
+    return StreamingResponse(iter_csv(), media_type="text/csv", headers=headers)
 
 
 if __name__ == "__main__":
