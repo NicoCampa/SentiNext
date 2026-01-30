@@ -276,6 +276,46 @@ _ALLOWED_SUBCATEGORY_KEYS = {
     f"{main}/{sub}" for main, subs in _ALLOWED_SUBCATEGORIES.items() for sub in subs
 }
 _SUBCATEGORY_SEPARATORS = ("/", ":", ".")
+
+_MAIN_CATEGORY_ALIASES: dict[str, str] = {
+    "content_and_design": "content_design",
+    "contentdesign": "content_design",
+    "developer_and_updates": "developer_updates",
+    "developerupdates": "developer_updates",
+    "monetization_and_value": "monetization_value",
+    "monetizationvalue": "monetization_value",
+    "online_and_community": "online_community",
+    "onlinecommunity": "online_community",
+    "uiux_accessibility": "ui_ux_accessibility",
+    "uiuxaccessibility": "ui_ux_accessibility",
+    "ui_ux": "ui_ux_accessibility",
+}
+
+_SUBCATEGORY_ALIASES: dict[str, dict[str, str]] = {
+    "technical": {
+        "bug": "bugs",
+        "crash": "crashes",
+    },
+    "gameplay": {
+        "mechanic": "mechanics",
+        "control": "controls",
+    },
+    "content_design": {
+        "quest_mode": "quests_modes",
+        "quest_modes": "quests_modes",
+    },
+    "ui_ux_accessibility": {
+        "menu_hud": "menus_hud",
+        "qol": "quality_of_life",
+    },
+    "developer_updates": {
+        "support": "customer_support",
+    },
+    "monetization_value": {
+        "microtransaction": "microtransactions",
+        "dlcs": "dlc",
+    },
+}
 MAX_EVIDENCE_SNIPPET_CHARS = 160
 
 
@@ -578,21 +618,56 @@ def _normalize_subcategory_value(value: Any) -> Optional[str]:
     raw = value.strip().lower()
     if not raw:
         return None
-    main = ""
-    sub = ""
+
+    def _sanitize_token(token: str) -> str:
+        token = (token or "").strip().lower()
+        if not token:
+            return ""
+        token = re.sub(r"[\s\-]+", "_", token)
+        token = token.replace("&", "_")
+        token = token.replace("+", "_")
+        token = re.sub(r"[^a-z0-9_]", "", token)
+        token = re.sub(r"_+", "_", token)
+        return token.strip("_")
+
     for sep in _SUBCATEGORY_SEPARATORS:
-        if sep in raw:
-            main, sub = raw.split(sep, 1)
-            break
-    if not main or not sub:
-        return None
-    main = main.strip()
-    sub = sub.strip()
-    if main not in _ALLOWED_SUBCATEGORIES:
-        return None
-    if sub not in _ALLOWED_SUBCATEGORIES[main]:
-        return None
-    return f"{main}/{sub}"
+        if sep not in raw:
+            continue
+        parts = [part.strip() for part in raw.split(sep) if part.strip()]
+        if len(parts) < 2:
+            continue
+
+        for split_index in range(1, len(parts)):
+            main_candidate = "_".join(filter(None, (_sanitize_token(part) for part in parts[:split_index])))
+            sub_candidate = "_".join(filter(None, (_sanitize_token(part) for part in parts[split_index:])))
+            if not main_candidate or not sub_candidate:
+                continue
+
+            main_candidate = _MAIN_CATEGORY_ALIASES.get(main_candidate, main_candidate)
+            if main_candidate not in _ALLOWED_SUBCATEGORIES:
+                continue
+
+            sub_aliases = _SUBCATEGORY_ALIASES.get(main_candidate, {})
+            sub_candidate = sub_aliases.get(sub_candidate, sub_candidate)
+            if sub_candidate not in _ALLOWED_SUBCATEGORIES[main_candidate]:
+                if sub_candidate.endswith("s"):
+                    singular = sub_candidate[:-1]
+                    singular = sub_aliases.get(singular, singular)
+                    if singular in _ALLOWED_SUBCATEGORIES[main_candidate]:
+                        sub_candidate = singular
+                    else:
+                        continue
+                else:
+                    plural = f"{sub_candidate}s"
+                    plural = sub_aliases.get(plural, plural)
+                    if plural in _ALLOWED_SUBCATEGORIES[main_candidate]:
+                        sub_candidate = plural
+                    else:
+                        continue
+
+            return f"{main_candidate}/{sub_candidate}"
+
+    return None
 
 
 def _parse_subcategory_list(value: Any) -> list[str]:
@@ -867,6 +942,12 @@ def _parse_payload_mapping(payload: Mapping[str, Any]) -> Dict[str, Any]:
     # `subcategories[0]` is treated as the primary label; main/sub are derived from it.
     candidate_subcategories = _parse_subcategory_list(payload.get("subcategories"))
     if not candidate_subcategories:
+        main_value = payload.get("main_category") or payload.get("main")
+        sub_value = payload.get("subcategory") or payload.get("sub")
+        normalized_primary = _normalize_subcategory_value({"main_category": main_value, "subcategory": sub_value})
+        if normalized_primary:
+            candidate_subcategories = [normalized_primary]
+    if not candidate_subcategories:
         raise ValueError("No valid subcategories found in LLM response.")
     if len(candidate_subcategories) > 6:
         candidate_subcategories = candidate_subcategories[:6]
@@ -981,6 +1062,34 @@ def classify_reviews_batch(
     return results, model_used
 
 
+def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Optional[Dict[str, Any]] = None) -> tuple[Dict[str, Dict[str, Any]], str]:
+    """Classify reviews with best-effort batching and automatic split-on-failure."""
+    if not items:
+        return {}, _model_id("openai", OPENAI_MODEL)
+
+    try:
+        return classify_reviews_batch(items, game_context=game_context)
+    except Exception:
+        if len(items) == 1:
+            item = items[0]
+            payload, model_used = classify_review(
+                str(item.get("review_text") or ""),
+                game_context=game_context,
+                reviewer_playtime=float(item.get("reviewer_playtime") or 0),
+                reviewer_voted_up=bool(item.get("reviewer_voted_up", True)),
+            )
+            review_id = str(item.get("review_id") or "")
+            if not review_id:
+                raise ValueError("Missing review_id in batch input.")
+            return {review_id: payload}, model_used
+
+        mid = len(items) // 2
+        left, left_model = classify_reviews(items[:mid], game_context=game_context)
+        right, right_model = classify_reviews(items[mid:], game_context=game_context)
+        model_used = left_model or right_model or _model_id("openai", OPENAI_MODEL)
+        return {**left, **right}, model_used
+
+
 def classify_review(
     review_text: str,
     game_context: Optional[Dict[str, Any]] = None,
@@ -1024,7 +1133,7 @@ def ensure_review_labels(
         nonlocal processed_count
         if not pending:
             return
-        batch_labels, model_used = classify_reviews_batch(pending, game_context=game_context)
+        batch_labels, model_used = classify_reviews(pending, game_context=game_context)
         for item in pending:
             review_id = str(item["review_id"])
             review_hash = str(item["review_hash"])
