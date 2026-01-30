@@ -229,17 +229,6 @@ def _review_word_count(text: str) -> int:
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+", flags=re.UNICODE)
 
 
-def _labeling_strategy_from_env() -> str:
-    value = os.getenv("SENTINEXT_LABELING_STRATEGY", "hybrid").strip().lower()
-    return value or "hybrid"
-
-
-def _hybrid_rules_enabled() -> bool:
-    return _labeling_strategy_from_env() in {"hybrid", "rules_first", "hybrid_rules"}
-
-
-def _hybrid_rules_model_id() -> str:
-    return f"rules:{HYBRID_RULES_VERSION}"
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -994,7 +983,6 @@ def estimate_review_labeling(
             "needs_refresh_reviews": 0,
             "empty_reviews": 0,
             "short_reviews": 0,
-            "rules_reviews": 0,
             "llm_reviews": 0,
             "reasons": {},
             "prompt_version": ACTIVE_PROMPT_VERSION,
@@ -1012,7 +1000,6 @@ def estimate_review_labeling(
         "needs_refresh_reviews": 0,
         "empty_reviews": 0,
         "short_reviews": 0,
-        "rules_reviews": 0,
         "llm_reviews": 0,
     }
     reasons: Dict[str, int] = {}

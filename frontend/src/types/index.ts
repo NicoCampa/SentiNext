@@ -268,7 +268,6 @@ export interface AnalyzeEstimateResponse {
   needs_refresh_reviews: number;
   empty_reviews: number;
   short_reviews: number;
-  rules_reviews: number;
   llm_reviews: number;
   prompt_version: string;
   model_id: string;

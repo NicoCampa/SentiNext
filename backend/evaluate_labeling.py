@@ -243,7 +243,7 @@ def _agreement_report(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run LLM-only vs hybrid labeling on the same Steam reviews and compute agreement."
+        description="Run LLM labeling on Steam reviews and compute agreement metrics."
     )
     parser.add_argument("--app-id", type=int, required=True, help="Steam app id (e.g. 1091500)")
     parser.add_argument("--review-count", type=int, default=200, help="Number of reviews to fetch/analyze (default: 200)")
@@ -254,7 +254,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-only", action="store_true", help="Only use cached DB reviews; fail if none cached.")
     parser.add_argument("--persist", action="store_true", help="Persist fetched reviews to the SQLite DB (default).")
     parser.add_argument("--no-persist", action="store_true", help="Do not persist fetched reviews to the DB.")
-    parser.add_argument("--provider", default="openai", help="LLM provider to use for LLM runs (default: openai).")
     parser.add_argument("--model", default="gpt-5-mini", help="LLM model to use for LLM runs (default: gpt-5-mini).")
     parser.add_argument(
         "--openai-timeout-sec",
@@ -283,11 +282,10 @@ def main() -> None:
         _load_dotenv(repo_root / ".env")
     _load_dotenv(Path.cwd() / ".env")
 
-    if str(args.provider).strip().lower() in {"openai", "chatgpt", "gpt"}:
-        if not (os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")):
-            raise SystemExit(
-                "OPENAI_API_KEY is not set. Export it in your shell or add it to .env as OPENAI_API_KEY=..."
-            )
+    if not (os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")):
+        raise SystemExit(
+            "OPENAI_API_KEY is not set. Export it in your shell or add it to .env as OPENAI_API_KEY=..."
+        )
 
     from backend.senti_next import fetch_reviews, llm, storage
     from backend.senti_next.steam_api import fetch_app_details
@@ -370,62 +368,18 @@ def main() -> None:
     if llm_labels_path.is_file() and not args.force:
         labels_llm = json.loads(llm_labels_path.read_text(encoding="utf-8"))
     else:
-        print("Running LLM-only labeling (gpt-5-mini)...")
-        os.environ["SENTINEXT_LABELING_STRATEGY"] = "llm"
-        labels_llm = llm.ensure_review_labels(
-            app_id=app_id,
-            reviews=reviews,
-            force_refresh=True,
-            cache_enabled=False,
-            game_context=game_context or None,
-            provider=args.provider,
-            model=args.model,
-            progress_callback=_progress_bar("LLM-only"),
-        )
-        _write_json(llm_labels_path, labels_llm)
+    print("Running LLM labeling (gpt-5-mini)...")
+    labels_llm = llm.ensure_review_labels(
+        app_id=app_id,
+        reviews=reviews,
+        force_refresh=True,
+        cache_enabled=False,
+        game_context=game_context or None,
+        progress_callback=_progress_bar("LLM-only"),
+    )
+    _write_json(llm_labels_path, labels_llm)
 
-    labels_hybrid: dict[str, dict] = {}
-    if hybrid_labels_path.is_file() and not args.force:
-        labels_hybrid = json.loads(hybrid_labels_path.read_text(encoding="utf-8"))
-    else:
-        print("Running hybrid labeling (rules + LLM fallback)...")
-        os.environ["SENTINEXT_LABELING_STRATEGY"] = "hybrid"
-        labels_hybrid = llm.ensure_review_labels(
-            app_id=app_id,
-            reviews=reviews,
-            force_refresh=True,
-            cache_enabled=False,
-            game_context=game_context or None,
-            provider=args.provider,
-            model=args.model,
-            progress_callback=_progress_bar("Hybrid"),
-        )
-        _write_json(hybrid_labels_path, labels_hybrid)
-
-    if not agreement_path.is_file() or args.force:
-        report = _agreement_report(reviews=reviews, labels_llm=labels_llm, labels_hybrid=labels_hybrid)
-        _write_json(agreement_path, report)
-        disagreements = report.get("primary_disagreements") or []
-        if isinstance(disagreements, list):
-            _write_json(out_dir / "primary_disagreements.json", disagreements[:200])
-    else:
-        report = json.loads(agreement_path.read_text(encoding="utf-8"))
-
-    overall = report.get("overall") or {}
-    eligible = report.get("eligible") or {}
     print(f"Saved evaluation to: {out_dir}")
-    print(
-        "Agreement (overall): "
-        f"primary={overall.get('primary_subcategory_agreement')}, "
-        f"main={overall.get('main_category_agreement')}, "
-        f"jaccard={overall.get('subcategories_jaccard_avg')}"
-    )
-    print(
-        "Agreement (eligible): "
-        f"primary={eligible.get('primary_subcategory_agreement')}, "
-        f"main={eligible.get('main_category_agreement')}, "
-        f"jaccard={eligible.get('subcategories_jaccard_avg')}"
-    )
 
 
 if __name__ == "__main__":

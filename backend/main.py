@@ -251,7 +251,6 @@ class AnalyzeEstimateResponse(BaseModel):
     needs_refresh_reviews: int
     empty_reviews: int
     short_reviews: int
-    rules_reviews: int
     llm_reviews: int
     prompt_version: str
     model_id: str
@@ -758,7 +757,6 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
         needs_refresh_reviews=int(estimate.get("needs_refresh_reviews", 0) or 0),
         empty_reviews=int(estimate.get("empty_reviews", 0) or 0),
         short_reviews=int(estimate.get("short_reviews", 0) or 0),
-        rules_reviews=int(estimate.get("rules_reviews", 0) or 0),
         llm_reviews=int(estimate.get("llm_reviews", 0) or 0),
         prompt_version=str(estimate.get("prompt_version") or ""),
         model_id=str(estimate.get("model_id") or ""),
