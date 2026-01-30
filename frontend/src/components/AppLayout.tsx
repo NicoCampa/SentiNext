@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { SignedIn, UserButton } from "@clerk/clerk-react";
+import { SignedIn, UserButton } from "@clerk/nextjs";
 import { FirstRunSetup } from "@/components/FirstRunSetup";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 

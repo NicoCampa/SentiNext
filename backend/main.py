@@ -62,7 +62,6 @@ AUTH_ENABLED = os.getenv("SENTINEXT_AUTH_ENABLED", "false").lower() in {"1", "tr
 AUTH_JWKS_URL = os.getenv("SENTINEXT_AUTH_JWKS_URL") or os.getenv("SENTINEXT_CLERK_JWKS_URL")
 AUTH_ISSUER = os.getenv("SENTINEXT_AUTH_ISSUER", "").strip() or None
 AUTH_AUDIENCE = os.getenv("SENTINEXT_AUTH_AUDIENCE", "").strip() or None
-CLERK_PUBLISHABLE_KEY = os.getenv("SENTINEXT_CLERK_PUBLISHABLE_KEY") or os.getenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY")
 
 _JWKS_CLIENT: Optional[PyJWKClient] = None
 
@@ -114,7 +113,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-AUTH_EXEMPT_PATHS = {"/health", "/auth/config", "/docs", "/openapi.json", "/redoc"}
+AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
 
 def _get_jwks_client() -> PyJWKClient:
@@ -399,11 +398,6 @@ def require_license() -> None:
 @app.get("/health")
 def healthcheck() -> dict:
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
-
-
-@app.get("/auth/config")
-def auth_config() -> dict:
-    return {"publishable_key": CLERK_PUBLISHABLE_KEY or ""}
 
 
 @app.get("/settings/storage")

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
-import { SignedIn, UserButton } from "@clerk/clerk-react";
+import { SignedIn, UserButton } from "@clerk/nextjs";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

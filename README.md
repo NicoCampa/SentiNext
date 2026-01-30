@@ -71,11 +71,11 @@ npm run dev  # http://localhost:3000
 ```
 
 ## Authentication (Clerk)
-Frontend (Next.js):
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (optional; falls back to backend config)
+Frontend (Next.js App Router, stored in `.env.local`):
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY=YOUR_SECRET_KEY`
 
 Backend (FastAPI):
-- `SENTINEXT_CLERK_PUBLISHABLE_KEY` (publishable key served to the UI)
 - `SENTINEXT_AUTH_ENABLED=1`
 - `SENTINEXT_CLERK_JWKS_URL` (from Clerk dashboard)
 - `SENTINEXT_AUTH_ISSUER` (Clerk issuer)

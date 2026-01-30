@@ -59,14 +59,18 @@ function mergeHeaders(base: HeadersInit | undefined, extra: HeadersInit): Header
   return headers;
 }
 
+type AuthTokenFetcher = () => Promise<string | null>;
+
+let authTokenFetcher: AuthTokenFetcher | null = null;
+
+export function setAuthTokenFetcher(fetcher: AuthTokenFetcher | null) {
+  authTokenFetcher = fetcher;
+}
+
 async function getAuthHeaders(): Promise<HeadersInit> {
-  if (typeof window === "undefined") return {};
-  const clerk = (window as Window & {
-    Clerk?: { session?: { getToken: () => Promise<string | null> } };
-  }).Clerk;
-  if (!clerk?.session) return {};
+  if (!authTokenFetcher) return {};
   try {
-    const token = await clerk.session.getToken();
+    const token = await authTokenFetcher();
     if (!token) return {};
     return { Authorization: `Bearer ${token}` };
   } catch {
