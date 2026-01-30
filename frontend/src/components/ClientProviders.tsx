@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ClerkLoaded,
@@ -18,7 +18,58 @@ import { UiPreferencesProvider } from "@/contexts/UiPreferencesContext";
 
 export function ClientProviders({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const [publishableKey, setPublishableKey] = useState<string | null>(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || null
+  );
+  const [configError, setConfigError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (publishableKey) return;
+    let active = true;
+
+    const resolveBase = () => {
+      if (typeof window !== "undefined" && window.__SENTINEXT_API_BASE__) {
+        return window.__SENTINEXT_API_BASE__;
+      }
+      if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+        return process.env.NEXT_PUBLIC_API_BASE_URL;
+      }
+      return "/api";
+    };
+
+    const apiUrl = () => {
+      const base = resolveBase().trim();
+      if (!base) return "/api/auth/config";
+      if (base.startsWith("http://") || base.startsWith("https://")) {
+        return new URL("/auth/config", base).toString();
+      }
+      return `${base.replace(/\/$/, "")}/auth/config`;
+    };
+
+    (async () => {
+      try {
+        const response = await fetch(apiUrl(), { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Failed to load auth config (${response.status})`);
+        }
+        const payload = (await response.json()) as { publishable_key?: string };
+        if (!active) return;
+        const key = (payload.publishable_key || "").trim();
+        if (key) {
+          setPublishableKey(key);
+        } else {
+          setConfigError("Auth publishable key is missing.");
+        }
+      } catch (err) {
+        if (!active) return;
+        setConfigError((err as Error).message || "Failed to load auth config.");
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [publishableKey]);
 
   if (!publishableKey) {
     return (
@@ -26,7 +77,7 @@ export function ClientProviders({ children }: { children: ReactNode }) {
         <div className="max-w-md text-center">
           <h1 className="text-xl font-semibold">Auth not configured</h1>
           <p className="mt-2 text-sm text-slate-400">
-            Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY to enable sign-in.
+            {configError || "Loading auth configuration..."}
           </p>
         </div>
       </div>
