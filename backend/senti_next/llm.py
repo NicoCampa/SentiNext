@@ -960,7 +960,7 @@ def _run_openai(prompt: str, model: str) -> str:
 
 
 def _run_gemini(prompt: str, model: str) -> str:
-    """Run Gemini API call."""
+    """Run Gemini API call with rate limit handling."""
     _maybe_load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -968,24 +968,60 @@ def _run_gemini(prompt: str, model: str) -> str:
 
     try:
         from google import genai
+        from google.genai.errors import ClientError
 
         start_time = time.time()
         logger.info(f"Starting Gemini API call with model {model}")
 
         client = genai.Client(api_key=api_key)
 
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt
-        )
+        max_retries = 3
+        attempt = 0
 
-        content = response.text
-        elapsed = time.time() - start_time
-        logger.info(f"Gemini API call completed in {elapsed:.2f}s")
+        while attempt < max_retries:
+            attempt += 1
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt
+                )
 
-        if not content:
-            raise ValueError("Empty response from Gemini.")
-        return content
+                content = response.text
+                elapsed = time.time() - start_time
+                logger.info(f"Gemini API call completed in {elapsed:.2f}s (attempt {attempt})")
+
+                if not content:
+                    raise ValueError("Empty response from Gemini.")
+                return content
+
+            except ClientError as e:
+                # Handle rate limiting (429)
+                if e.status_code == 429:
+                    retry_delay = 20  # Default to 20 seconds
+
+                    # Try to extract retry delay from error
+                    try:
+                        error_dict = e.message if isinstance(e.message, dict) else {}
+                        if 'error' in str(e.message):
+                            import re
+                            match = re.search(r'retry in ([\d.]+)s', str(e.message))
+                            if match:
+                                retry_delay = float(match.group(1)) + 1
+                    except:
+                        pass
+
+                    if attempt < max_retries:
+                        logger.warning(f"Gemini rate limit hit (429), retrying in {retry_delay:.1f}s (attempt {attempt}/{max_retries})")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        logger.error(f"Gemini rate limit exceeded after {max_retries} attempts")
+                        raise ValueError(f"Gemini rate limit exceeded. Free tier allows 10 requests/minute. Consider: 1) Reducing SENTINEXT_MAX_PARALLEL_BATCHES to 1-2, 2) Upgrading Gemini API plan, or 3) Switching to OpenAI.")
+                else:
+                    raise
+
+        raise ValueError(f"Gemini API call failed after {max_retries} attempts")
+
     except ImportError:
         raise ValueError("google-genai package not installed. Run: pip install google-genai")
     except Exception as e:
@@ -1317,8 +1353,10 @@ def ensure_review_labels(
 
     # Process all batches in parallel
     if all_batches:
-        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "5"))
-        logger.info(f"Processing {len(all_batches)} batches in parallel (max_workers={max_workers})")
+        # Use 2 workers for Gemini free tier (10 req/min limit), 5 for OpenAI
+        default_workers = "2" if LLM_PROVIDER == "google" else "5"
+        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", default_workers))
+        logger.info(f"Processing {len(all_batches)} batches in parallel (max_workers={max_workers}, provider={LLM_PROVIDER})")
 
         def process_batch(batch_items: list[Dict[str, Any]]) -> tuple[Dict[str, Dict[str, Any]], str]:
             return classify_reviews(batch_items, game_context=game_context)
