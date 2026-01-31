@@ -9,6 +9,7 @@ from pathlib import Path
 import random
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from string import Template
 from textwrap import dedent
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
@@ -1215,30 +1216,12 @@ def ensure_review_labels(
     if progress_callback is not None:
         progress_callback(0, total_reviews)
 
+    all_batches: list[list[Dict[str, Any]]] = []
+
     def _flush_pending() -> None:
-        nonlocal processed_count
         if not pending:
             return
-        batch_labels, model_used = classify_reviews(pending, game_context=game_context)
-        for item in pending:
-            review_id = str(item["review_id"])
-            review_hash = str(item["review_hash"])
-            payload = batch_labels[review_id]
-            payload["_label_source"] = "llm"
-            payload["_label_model"] = model_used
-            if cache_enabled:
-                storage.upsert_review_label(
-                    app_id,
-                    review_id,
-                    review_hash,
-                    payload,
-                    model_used,
-                    ACTIVE_PROMPT_VERSION,
-                )
-            results[review_id] = payload
-            processed_count += 1
-            if progress_callback is not None:
-                progress_callback(processed_count, total_reviews)
+        all_batches.append(list(pending))
         pending.clear()
 
     for review in reviews:
@@ -1331,6 +1314,44 @@ def ensure_review_labels(
             _flush_pending()
 
     _flush_pending()
+
+    # Process all batches in parallel
+    if all_batches:
+        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "5"))
+        logger.info(f"Processing {len(all_batches)} batches in parallel (max_workers={max_workers})")
+
+        def process_batch(batch_items: list[Dict[str, Any]]) -> tuple[Dict[str, Dict[str, Any]], str]:
+            return classify_reviews(batch_items, game_context=game_context)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_batch = {executor.submit(process_batch, batch): batch for batch in all_batches}
+
+            for future in as_completed(future_to_batch):
+                batch = future_to_batch[future]
+                try:
+                    batch_labels, model_used = future.result()
+                    for item in batch:
+                        review_id = str(item["review_id"])
+                        review_hash = str(item["review_hash"])
+                        payload = batch_labels[review_id]
+                        payload["_label_source"] = "llm"
+                        payload["_label_model"] = model_used
+                        if cache_enabled:
+                            storage.upsert_review_label(
+                                app_id,
+                                review_id,
+                                review_hash,
+                                payload,
+                                model_used,
+                                ACTIVE_PROMPT_VERSION,
+                            )
+                        results[review_id] = payload
+                        processed_count += 1
+                        if progress_callback is not None:
+                            progress_callback(processed_count, total_reviews)
+                except Exception as exc:
+                    logger.error(f"Batch processing failed: {exc}")
+                    raise
 
     if progress_callback is not None and processed_count < total_reviews:
         progress_callback(total_reviews, total_reviews)
