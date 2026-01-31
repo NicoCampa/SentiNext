@@ -715,51 +715,89 @@ def load_database_reviews(
             return [], 0
 
     from . import db as db_module
+    is_postgres = db_module.is_postgresql()
     with db_module.get_connection() as conn:
         if raw_query:
-            if not _FTS_ENABLED:
-                return [], 0
+            if is_postgres:
+                where_parts = ["reviews.search_vector @@ plainto_tsquery('english', :query)"]
+                params: Dict[str, Any] = {"query": raw_query}
+                if app_id:
+                    if allowed_ids is not None and int(app_id) not in allowed_ids:
+                        return [], 0
+                    where_parts.append("reviews.app_id = :app_id")
+                    params["app_id"] = int(app_id)
+                elif allowed_ids is not None:
+                    placeholders = ",".join([f":app_id_{i}" for i in range(len(allowed_ids))])
+                    where_parts.append(f"reviews.app_id IN ({placeholders})")
+                    for i, aid in enumerate(allowed_ids):
+                        params[f"app_id_{i}"] = aid
+                if lang and lang != "all":
+                    where_parts.append("reviews.data->>'language' = :lang")
+                    params["lang"] = lang
+                where_sql = " AND ".join(where_parts)
 
-            where_parts = ["reviews_fts MATCH :query"]
-            params: Dict[str, Any] = {"query": raw_query}
-            if app_id:
-                if allowed_ids is not None and int(app_id) not in allowed_ids:
-                    return [], 0
-                where_parts.append("reviews.app_id = :app_id")
-                params["app_id"] = int(app_id)
-            elif allowed_ids is not None:
-                placeholders = ",".join([f":app_id_{i}" for i in range(len(allowed_ids))])
-                where_parts.append(f"reviews.app_id IN ({placeholders})")
-                for i, aid in enumerate(allowed_ids):
-                    params[f"app_id_{i}"] = aid
-            if lang and lang != "all":
-                where_parts.append("reviews_fts.language = :lang")
-                params["lang"] = lang
-            where_sql = " AND ".join(where_parts)
+                params["limit"] = limit
+                params["offset"] = offset
 
-            params["limit"] = limit
-            params["offset"] = offset
+                total_query = f"""
+                    SELECT COUNT(*)
+                    FROM reviews
+                    WHERE {where_sql}
+                """
+                total = conn.execute(text(total_query), params).fetchone()[0]
 
-            total_query = f"""
-                SELECT COUNT(*)
-                FROM reviews
-                JOIN reviews_fts ON reviews.review_id = reviews_fts.review_id
-                WHERE {where_sql}
-            """
-            total = conn.execute(text(total_query), params).fetchone()[0]
+                query_sql = f"""
+                    SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
+                           review_labels.payload AS label_payload
+                    FROM reviews
+                    LEFT JOIN review_labels
+                      ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
+                    WHERE {where_sql}
+                    ORDER BY ts_rank(reviews.search_vector, plainto_tsquery('english', :query)) DESC
+                    LIMIT :limit OFFSET :offset
+                """
+                rows = conn.execute(text(query_sql), params).fetchall()
+            else:
+                where_parts = ["reviews_fts MATCH :query"]
+                params = {"query": raw_query}
+                if app_id:
+                    if allowed_ids is not None and int(app_id) not in allowed_ids:
+                        return [], 0
+                    where_parts.append("reviews.app_id = :app_id")
+                    params["app_id"] = int(app_id)
+                elif allowed_ids is not None:
+                    placeholders = ",".join([f":app_id_{i}" for i in range(len(allowed_ids))])
+                    where_parts.append(f"reviews.app_id IN ({placeholders})")
+                    for i, aid in enumerate(allowed_ids):
+                        params[f"app_id_{i}"] = aid
+                if lang and lang != "all":
+                    where_parts.append("reviews_fts.language = :lang")
+                    params["lang"] = lang
+                where_sql = " AND ".join(where_parts)
 
-            query_sql = f"""
-                SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
-                       review_labels.payload AS label_payload
-                FROM reviews
-                JOIN reviews_fts ON reviews.review_id = reviews_fts.review_id
-                LEFT JOIN review_labels
-                  ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
-                WHERE {where_sql}
-                ORDER BY bm25(reviews_fts)
-                LIMIT :limit OFFSET :offset
-            """
-            rows = conn.execute(text(query_sql), params).fetchall()
+                params["limit"] = limit
+                params["offset"] = offset
+
+                total_query = f"""
+                    SELECT COUNT(*)
+                    FROM reviews
+                    JOIN reviews_fts ON reviews.review_id = reviews_fts.review_id
+                    WHERE {where_sql}
+                """
+                total = conn.execute(text(total_query), params).fetchone()[0]
+
+                query_sql = f"""
+                    SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
+                           review_labels.payload AS label_payload
+                    FROM reviews
+                    JOIN reviews_fts ON reviews.review_id = reviews_fts.review_id
+                    LEFT JOIN review_labels
+                      ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
+                    WHERE {where_sql}
+                    ORDER BY bm25(reviews_fts)
+                    LIMIT :limit OFFSET :offset
+                """
+                rows = conn.execute(text(query_sql), params).fetchall()
         else:
             where_parts = []
             params: Dict[str, Any] = {}
@@ -774,7 +812,10 @@ def load_database_reviews(
                 for i, aid in enumerate(allowed_ids):
                     params[f"app_id_{i}"] = aid
             if lang and lang != "all":
-                where_parts.append("json_extract(reviews.data, '$.language') = :lang")
+                if is_postgres:
+                    where_parts.append("reviews.data->>'language' = :lang")
+                else:
+                    where_parts.append("json_extract(reviews.data, '$.language') = :lang")
                 params["lang"] = lang
             where_sql = " AND ".join(where_parts)
             where_clause = f"WHERE {where_sql}" if where_sql else ""
@@ -873,12 +914,12 @@ def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
     from . import db as db_module
     with db_module.get_connection() as conn:
         row = conn.execute(
-            """
+            text("""
             SELECT metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason
             FROM analysis_results
-            WHERE user_id = ? AND app_id = ?
-            """,
-            (user_id, app_id),
+            WHERE user_id = :user_id AND app_id = :app_id
+            """),
+            {"user_id": user_id, "app_id": app_id},
         ).fetchone()
 
     if row is None:
@@ -966,12 +1007,12 @@ def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
     from . import db as db_module
     with db_module.get_connection() as conn:
         row = conn.execute(
-            """
+            text("""
             SELECT job_id, user_id, app_id, job_type, status, created_at, started_at, completed_at, error, metadata
             FROM job_registry
-            WHERE job_id = ?
-            """,
-            (job_id,),
+            WHERE job_id = :job_id
+            """),
+            {"job_id": job_id},
         ).fetchone()
 
     if row is None:
@@ -997,12 +1038,12 @@ def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
     from . import db as db_module
     with db_module.get_connection() as conn:
         rows = conn.execute(
-            """
+            text("""
             SELECT job_id, user_id, app_id, job_type, status, created_at, started_at
             FROM job_registry
-            WHERE status = 'running' AND started_at < ?
-            """,
-            (cutoff,),
+            WHERE status = 'running' AND started_at < :cutoff
+            """),
+            {"cutoff": cutoff},
         ).fetchall()
 
     return [
@@ -1025,11 +1066,11 @@ def cleanup_old_jobs(age_days: int = 7) -> int:
     from . import db as db_module
     with db_module.get_connection() as conn:
         cursor = conn.execute(
-            """
+            text("""
             DELETE FROM job_registry
-            WHERE status IN ('completed', 'failed') AND completed_at < ?
-            """,
-            (cutoff,),
+            WHERE status IN ('completed', 'failed') AND completed_at < :cutoff
+            """),
+            {"cutoff": cutoff},
         )
         count = cursor.rowcount
         conn.commit()
