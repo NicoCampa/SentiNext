@@ -85,7 +85,10 @@ def _log_file_path() -> Path:
     raw = os.getenv("SENTINEXT_LOG_FILE")
     if raw:
         return Path(raw).expanduser()
-    return storage.db_path().parent / "logs" / "backend.log"
+    # Use platformdirs for cross-platform data directory
+    from platformdirs import user_data_dir
+    data_dir = Path(user_data_dir("SentiNext", "SentiNext"))
+    return data_dir / "logs" / "backend.log"
 
 
 def _configure_file_logging() -> None:
@@ -524,11 +527,11 @@ def healthcheck() -> dict:
 
 @app.get("/settings/storage")
 def storage_paths() -> dict:
-    db_path = storage.db_path()
-    data_dir = db_path.parent
+    from platformdirs import user_data_dir
+    data_dir = Path(user_data_dir("SentiNext", "SentiNext"))
     log_file = _log_file_path()
     return {
-        "db_path": str(db_path),
+        "database": "PostgreSQL (external)",
         "data_dir": str(data_dir),
         "logs_dir": str(log_file.parent),
         "log_file": str(log_file),

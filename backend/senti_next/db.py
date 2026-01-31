@@ -16,12 +16,13 @@ _engine: Optional[Engine] = None
 
 
 def get_database_url() -> str:
-    """Get database URL from environment, defaulting to SQLite.
+    """Get PostgreSQL database URL from environment.
 
     Environment variables:
-        DATABASE_URL: Full database URL (postgres://... or sqlite:///...)
-        SENTINEXT_DB_BACKEND: 'postgresql' or 'sqlite' (default: sqlite)
-        SENTINEXT_DB_PATH: Path for SQLite database file
+        DATABASE_URL: Full PostgreSQL URL (required)
+        Or individual components:
+        SENTINEXT_DB_HOST, SENTINEXT_DB_PORT, SENTINEXT_DB_NAME,
+        SENTINEXT_DB_USER, SENTINEXT_DB_PASSWORD
     """
     # Check for explicit DATABASE_URL first (Render sets this)
     database_url = os.getenv("DATABASE_URL")
@@ -31,22 +32,21 @@ def get_database_url() -> str:
             database_url = database_url.replace("postgres://", "postgresql://", 1)
         return database_url
 
-    # Check for explicit backend selection
-    backend = os.getenv("SENTINEXT_DB_BACKEND", "sqlite").lower()
+    # Build PostgreSQL URL from components
+    host = os.getenv("SENTINEXT_DB_HOST")
+    port = os.getenv("SENTINEXT_DB_PORT", "5432")
+    name = os.getenv("SENTINEXT_DB_NAME")
+    user = os.getenv("SENTINEXT_DB_USER")
+    password = os.getenv("SENTINEXT_DB_PASSWORD", "")
 
-    if backend == "postgresql":
-        # Build PostgreSQL URL from components
-        host = os.getenv("SENTINEXT_DB_HOST", "localhost")
-        port = os.getenv("SENTINEXT_DB_PORT", "5432")
-        name = os.getenv("SENTINEXT_DB_NAME", "sentinext")
-        user = os.getenv("SENTINEXT_DB_USER", "sentinext")
-        password = os.getenv("SENTINEXT_DB_PASSWORD", "")
+    if host and name and user:
         return f"postgresql://{user}:{password}@{host}:{port}/{name}"
 
-    # Default to SQLite
-    from . import storage
-    db_path = storage.db_path()
-    return f"sqlite:///{db_path}"
+    # No database configured
+    raise RuntimeError(
+        "DATABASE_URL is required. Set DATABASE_URL environment variable "
+        "or provide SENTINEXT_DB_HOST, SENTINEXT_DB_NAME, and SENTINEXT_DB_USER."
+    )
 
 
 def get_engine() -> Engine:

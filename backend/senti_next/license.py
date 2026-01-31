@@ -33,7 +33,9 @@ def _license_path() -> Path:
     raw = os.getenv("SENTINEXT_LICENSE_PATH")
     if raw:
         return Path(raw).expanduser()
-    return storage.db_path().parent / "license.json"
+    from platformdirs import user_data_dir
+    data_dir = Path(user_data_dir("SentiNext", "SentiNext"))
+    return data_dir / "license.json"
 
 
 def _load_public_key() -> Optional[bytes]:
