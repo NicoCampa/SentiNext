@@ -35,17 +35,46 @@ from backend.senti_next.steam_api import extract_app_id_from_input, fetch_app_de
 # Judge Scoring System
 # =============================================================================
 
-TAXONOMY = """TAXONOMY (valid categories):
-- gameplay: mechanics, controls, balance, difficulty, progression, ai
-- technical: performance, bugs, stability, crashes, compatibility, networking, installation
-- content_design: amount_variety, level_design, quests_modes, narrative_characters, replayability, pacing, customization
-- ui_ux_accessibility: menus_hud, readability, quality_of_life, controller_support, accessibility_options
-- onboarding: tutorial, learning_curve, clarity, tooltips
-- presentation: visuals_art_style, animation, audio_music_voice, atmosphere, localization
-- online_community: multiplayer_experience, matchmaking, social_features, toxicity_moderation, mods_ugc, cheating_anti_cheat
-- developer_updates: patch_quality, update_frequency, roadmap_events, communication, customer_support
-- monetization_value: price, regional_pricing, dlc, microtransactions, pay_to_win_grind, value_for_money
-- other: general, mixed, meta, unclear"""
+# Valid labels are formatted as "main/sub" (e.g., "technical/performance")
+VALID_LABELS = [
+    # gameplay
+    "gameplay/mechanics", "gameplay/controls", "gameplay/balance",
+    "gameplay/difficulty", "gameplay/progression", "gameplay/ai",
+    # technical
+    "technical/performance", "technical/bugs", "technical/stability",
+    "technical/crashes", "technical/compatibility", "technical/networking",
+    "technical/installation",
+    # content_design
+    "content_design/amount_variety", "content_design/level_design",
+    "content_design/quests_modes", "content_design/narrative_characters",
+    "content_design/replayability", "content_design/pacing",
+    "content_design/customization",
+    # ui_ux_accessibility
+    "ui_ux_accessibility/menus_hud", "ui_ux_accessibility/readability",
+    "ui_ux_accessibility/quality_of_life", "ui_ux_accessibility/controller_support",
+    "ui_ux_accessibility/accessibility_options",
+    # onboarding
+    "onboarding/tutorial", "onboarding/learning_curve",
+    "onboarding/clarity", "onboarding/tooltips",
+    # presentation
+    "presentation/visuals_art_style", "presentation/animation",
+    "presentation/audio_music_voice", "presentation/atmosphere",
+    "presentation/localization",
+    # online_community
+    "online_community/multiplayer_experience", "online_community/matchmaking",
+    "online_community/social_features", "online_community/toxicity_moderation",
+    "online_community/mods_ugc", "online_community/cheating_anti_cheat",
+    # developer_updates
+    "developer_updates/patch_quality", "developer_updates/update_frequency",
+    "developer_updates/roadmap_events", "developer_updates/communication",
+    "developer_updates/customer_support",
+    # monetization_value
+    "monetization_value/price", "monetization_value/regional_pricing",
+    "monetization_value/dlc", "monetization_value/microtransactions",
+    "monetization_value/pay_to_win_grind", "monetization_value/value_for_money",
+    # other
+    "other/general", "other/mixed", "other/meta", "other/unclear",
+]
 
 DEFAULT_WEIGHTS = {
     "primary": 0.30,
@@ -67,15 +96,19 @@ def build_judge_prompt(review_text: str, predicted: Dict[str, Any]) -> str:
     subcategories = predicted.get("subcategories", [])
     primary = subcategories[0] if subcategories else "(none)"
 
+    # Format valid labels for the prompt
+    valid_labels_str = ", ".join(VALID_LABELS)
+
     return f"""You are evaluating a Steam review classification. Rate each dimension 0-100.
 
-{TAXONOMY}
+VALID LABELS (format: "main/sub"):
+{valid_labels_str}
 
 REVIEW:
 \"\"\"{review_text}\"\"\"
 
-CLASSIFICATION:
-- primary (first subcategory): {primary}
+CLASSIFIER OUTPUT:
+- primary: {primary}
 - subcategories: {subcategories}
 - issue_subcategories: {predicted.get("issue_subcategories", [])}
 - request_subcategories: {predicted.get("request_subcategories", [])}
@@ -90,11 +123,11 @@ SCORING GUIDELINES:
 - 0-29: Very poor - mostly or completely wrong
 
 Rate each dimension:
-1. primary: Is "{primary}" the DOMINANT theme of this review?
-2. subcategories: Are all predicted subcategories correct? Are important themes missing?
-3. issues: Are issue_subcategories correctly identifying complaints/problems in the review?
-4. requests: Are request_subcategories correctly identifying EXPLICIT requests (e.g., "please add", "I wish")?
-5. evidence: Do the quotes actually appear in the review and support their categories?
+1. primary: Is "{primary}" the single DOMINANT theme? (Must be from valid labels)
+2. subcategories: Are predicted labels valid and appropriate? Any important themes missing?
+3. issues: Are issue_subcategories correctly identifying complaints/problems mentioned?
+4. requests: Are request_subcategories correctly identifying EXPLICIT requests ("please add", "I wish")?
+5. evidence: Do quotes appear verbatim in review and support their assigned labels?
 
 Return ONLY valid JSON:
 {{"primary": <0-100>, "subcategories": <0-100>, "issues": <0-100>, "requests": <0-100>, "evidence": <0-100>}}"""
