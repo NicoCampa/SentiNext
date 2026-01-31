@@ -6,3 +6,7 @@ uvicorn[standard]>=0.30
 platformdirs>=4.2
 cryptography>=42.0
 PyJWT[crypto]>=2.8
+redis>=5.0
+rq>=1.16
+psycopg2-binary>=2.9
+sqlalchemy>=2.0

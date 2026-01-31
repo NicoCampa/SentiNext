@@ -126,6 +126,89 @@ export async function fetchProgress(appId: number): Promise<ProgressStatus> {
   return handleResponse<ProgressStatus>(response);
 }
 
+export interface ProgressStreamEvent {
+  type: "progress" | "completed" | "error" | "timeout";
+  processed?: number;
+  total?: number;
+  active?: boolean;
+  status?: string;
+  error?: string;
+}
+
+export interface ProgressStreamCallbacks {
+  onProgress?: (processed: number, total: number, active: boolean) => void;
+  onCompleted?: () => void;
+  onError?: (error: string) => void;
+  onTimeout?: () => void;
+}
+
+/**
+ * Subscribe to real-time progress updates via Server-Sent Events.
+ * Returns a cleanup function to close the connection.
+ */
+export function subscribeToProgress(
+  appId: number,
+  callbacks: ProgressStreamCallbacks
+): () => void {
+  const url = apiUrl(`/progress/${appId}/stream`);
+
+  // EventSource doesn't support custom headers, so we need to add token as query param
+  // for authenticated SSE endpoints. For now, fall back to polling if auth is enabled.
+  const eventSource = new EventSource(url);
+
+  eventSource.addEventListener("progress", (event) => {
+    try {
+      const data = JSON.parse(event.data) as ProgressStreamEvent;
+      callbacks.onProgress?.(
+        data.processed ?? 0,
+        data.total ?? 0,
+        data.active ?? false
+      );
+    } catch {
+      // Ignore parse errors
+    }
+  });
+
+  eventSource.addEventListener("completed", () => {
+    callbacks.onCompleted?.();
+    eventSource.close();
+  });
+
+  eventSource.addEventListener("error", (event) => {
+    // Check if this is a custom error event with data
+    if (event instanceof MessageEvent && event.data) {
+      try {
+        const data = JSON.parse(event.data) as ProgressStreamEvent;
+        callbacks.onError?.(data.error ?? "Unknown error");
+      } catch {
+        callbacks.onError?.("Connection error");
+      }
+    } else {
+      // Browser-level connection error
+      callbacks.onError?.("Connection lost");
+    }
+    eventSource.close();
+  });
+
+  eventSource.addEventListener("timeout", () => {
+    callbacks.onTimeout?.();
+    eventSource.close();
+  });
+
+  // Handle connection errors
+  eventSource.onerror = () => {
+    // Only trigger error callback if not already closed
+    if (eventSource.readyState !== EventSource.CLOSED) {
+      callbacks.onError?.("Connection failed");
+      eventSource.close();
+    }
+  };
+
+  return () => {
+    eventSource.close();
+  };
+}
+
 export async function fetchStarredGames(): Promise<StarredGameDTO[]> {
   const response = await authFetch(apiUrl("/starred"), {
     cache: "no-store",

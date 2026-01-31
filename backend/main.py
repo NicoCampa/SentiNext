@@ -35,6 +35,9 @@ from .senti_next import storage
 from .senti_next import llm
 from .senti_next import license as license_guard
 from .senti_next import chat
+from .senti_next import redis_client
+from .senti_next import jobs as job_runner
+from .senti_next import logging_config
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +78,9 @@ _JWKS_CLIENT: Optional[PyJWKClient] = None
 
 storage.init_db()
 
+# Configure structured logging (JSON or text based on SENTINEXT_LOG_FORMAT)
+logging_config.configure_logging()
+
 def _log_file_path() -> Path:
     raw = os.getenv("SENTINEXT_LOG_FILE")
     if raw:
@@ -83,7 +89,12 @@ def _log_file_path() -> Path:
 
 
 def _configure_file_logging() -> None:
-    """Write backend logs to a rotating file in the local data directory."""
+    """Write backend logs to a rotating file in the local data directory (optional)."""
+    # Only add file logging if SENTINEXT_LOG_FILE is set or running locally
+    if os.getenv("SENTINEXT_LOG_FORMAT") == "json" and not os.getenv("SENTINEXT_LOG_FILE"):
+        # Skip file logging in production JSON mode unless explicitly requested
+        return
+
     log_file = _log_file_path()
     try:
         log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -93,7 +104,6 @@ def _configure_file_logging() -> None:
     level_name = os.getenv("SENTINEXT_LOG_LEVEL", "INFO").strip().upper()
     level = getattr(logging, level_name, logging.INFO)
     root = logging.getLogger()
-    root.setLevel(level)
 
     for handler in root.handlers:
         if isinstance(handler, RotatingFileHandler) and getattr(handler, "baseFilename", "") == str(log_file):
@@ -757,14 +767,32 @@ def analyze(
     if game_context:
         logger.info(f"Fetched game context for {game_context.get('name', request.app_id)}")
 
-    background_tasks.add_task(
-        _run_analysis_job,
-        user_id,
-        request.app_id,
-        all_reviews,
-        metadata,
-        game_context,
-    )
+    # Try to enqueue with Redis/RQ, fall back to BackgroundTasks if not configured
+    if redis_client.is_redis_configured():
+        import uuid
+        job_id = str(uuid.uuid4())
+        storage.create_job_registry(job_id, user_id, request.app_id, job_type="analysis")
+        redis_client.enqueue_job(
+            job_runner.run_analysis_job,
+            user_id,
+            request.app_id,
+            all_reviews,
+            metadata.dict(),
+            game_context,
+            job_id,
+            job_timeout=3600,  # 1 hour timeout
+        )
+        logger.info(f"Enqueued analysis job {job_id} for app {request.app_id}")
+    else:
+        # Fallback to in-process background task
+        background_tasks.add_task(
+            _run_analysis_job,
+            user_id,
+            request.app_id,
+            all_reviews,
+            metadata,
+            game_context,
+        )
 
     return AnalyzeResponse(metadata=metadata, insights=None, reviews=[])
 
@@ -1025,6 +1053,98 @@ def classification_progress(
         "active": processed < total,
         "updated_at": updated_at,
     }
+
+
+import asyncio
+
+
+@app.get("/progress/{app_id}/stream", dependencies=[Depends(require_license)])
+async def progress_stream(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+):
+    """Server-Sent Events endpoint for real-time progress updates.
+
+    Streams progress updates every 500ms until analysis completes or client disconnects.
+    Event types:
+        - progress: {"processed": int, "total": int, "active": bool}
+        - completed: {"status": "completed"}
+        - error: {"status": "failed", "error": str}
+    """
+    async def event_generator():
+        last_processed = -1
+        idle_count = 0
+        max_idle = 120  # 60 seconds of no progress = timeout
+
+        while True:
+            try:
+                progress = storage.load_progress(user_id, app_id)
+
+                if not progress:
+                    # Check if analysis result exists
+                    result = storage.load_analysis_result(user_id, app_id)
+                    if result:
+                        status = result.get("status", "unknown")
+                        if status == "completed":
+                            yield f"event: completed\ndata: {json.dumps({'status': 'completed'})}\n\n"
+                            return
+                        elif status == "failed":
+                            error = result.get("error", "Analysis failed")
+                            yield f"event: error\ndata: {json.dumps({'status': 'failed', 'error': error})}\n\n"
+                            return
+
+                    # No progress and no result - send empty state
+                    yield f"event: progress\ndata: {json.dumps({'processed': 0, 'total': 0, 'active': False})}\n\n"
+                    idle_count += 1
+                else:
+                    total = int(progress.get("total", 0))
+                    processed = int(progress.get("processed", 0))
+                    active = processed < total
+
+                    yield f"event: progress\ndata: {json.dumps({'processed': processed, 'total': total, 'active': active})}\n\n"
+
+                    if processed == last_processed:
+                        idle_count += 1
+                    else:
+                        idle_count = 0
+                        last_processed = processed
+
+                    # Check if completed
+                    if not active and total > 0:
+                        result = storage.load_analysis_result(user_id, app_id)
+                        if result:
+                            status = result.get("status", "unknown")
+                            if status == "completed":
+                                yield f"event: completed\ndata: {json.dumps({'status': 'completed'})}\n\n"
+                                return
+                            elif status == "failed":
+                                error = result.get("error", "Analysis failed")
+                                yield f"event: error\ndata: {json.dumps({'status': 'failed', 'error': error})}\n\n"
+                                return
+
+                if idle_count >= max_idle:
+                    yield f"event: timeout\ndata: {json.dumps({'status': 'timeout'})}\n\n"
+                    return
+
+                await asyncio.sleep(0.5)
+
+            except asyncio.CancelledError:
+                # Client disconnected
+                return
+            except Exception as exc:
+                logger.warning("SSE progress stream error: %s", exc)
+                yield f"event: error\ndata: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"
+                return
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
 
 
 @app.get("/starred", response_model=List[StarredGameResponse], dependencies=[Depends(require_license)])

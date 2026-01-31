@@ -317,6 +317,37 @@ _SUBCATEGORY_ALIASES: dict[str, dict[str, str]] = {
     },
 }
 MAX_EVIDENCE_SNIPPET_CHARS = 160
+HYBRID_RULES_VERSION = "v1"
+
+
+def _hybrid_rules_model_id() -> str:
+    """Return a stable identifier for hybrid-rules labeling."""
+    return f"rules:{HYBRID_RULES_VERSION}"
+
+
+_DANGEROUS_PATTERNS = [
+    re.compile(r"<<<\s*END\s*REVIEW", re.IGNORECASE),
+    re.compile(r"<<<\s*BEGIN\s*REVIEW", re.IGNORECASE),
+    re.compile(r"<<<\s*END\s*REVIEWS", re.IGNORECASE),
+    re.compile(r"<<<\s*BEGIN\s*REVIEWS", re.IGNORECASE),
+    re.compile(r"IGNORE\s+(?:PREVIOUS|ABOVE|ALL)\s+INSTRUCTIONS", re.IGNORECASE),
+    re.compile(r"DISREGARD\s+(?:PREVIOUS|ABOVE|ALL)", re.IGNORECASE),
+    re.compile(r"^SYSTEM\s*:", re.IGNORECASE | re.MULTILINE),
+    re.compile(r"^ASSISTANT\s*:", re.IGNORECASE | re.MULTILINE),
+    re.compile(r"^USER\s*:", re.IGNORECASE | re.MULTILINE),
+]
+
+
+def _sanitize_review_text(text: str) -> str:
+    """Sanitize review text to prevent prompt injection attacks."""
+    if not text:
+        return ""
+    sanitized = text
+    for pattern in _DANGEROUS_PATTERNS:
+        sanitized = pattern.sub("[FILTERED]", sanitized)
+    # Remove excessive newlines that could break formatting
+    sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
+    return sanitized[:MAX_REVIEW_CHARS]
 
 
 def _clean_snippet(value: Any) -> str:
@@ -760,7 +791,7 @@ def _build_prompt(
     reviewer_playtime: float = 0,
     reviewer_voted_up: bool = True,
 ) -> str:
-    truncated = (review_text or "")[:MAX_REVIEW_CHARS]
+    truncated = _sanitize_review_text(review_text or "")
 
     # Build game context strings
     if game_context:
@@ -1012,7 +1043,7 @@ def _build_batch_prompt(
         review_text = str(item.get("review_text") or "")
         reviewer_playtime = float(item.get("reviewer_playtime") or 0)
         reviewer_voted_up = bool(item.get("reviewer_voted_up", True))
-        truncated = (review_text or "")[:MAX_REVIEW_CHARS]
+        truncated = _sanitize_review_text(review_text or "")
         playtime_hours = round(reviewer_playtime / 60, 1) if reviewer_playtime else 0
         recommendation = "Positive" if reviewer_voted_up else "Negative"
         blocks.append(

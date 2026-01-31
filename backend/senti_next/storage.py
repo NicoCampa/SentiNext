@@ -1,7 +1,12 @@
-"""Simple SQLite storage for persisted Steam reviews."""
+"""Database storage for persisted Steam reviews.
+
+Supports SQLite (default) and PostgreSQL backends.
+Set DATABASE_URL or SENTINEXT_DB_BACKEND=postgresql to use PostgreSQL.
+"""
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import time
@@ -9,6 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from platformdirs import user_data_dir
+
+logger = logging.getLogger(__name__)
 
 
 def _render_disk_root() -> Path | None:
@@ -40,9 +47,23 @@ def _default_db_path() -> Path:
 _DB_PATH = _default_db_path()
 _FTS_ENABLED = True
 _DEFAULT_USER_ID = "local"
+_USING_POSTGRESQL = False
+
+
+def _check_postgresql_backend() -> bool:
+    """Check if PostgreSQL backend is configured."""
+    if os.getenv("DATABASE_URL"):
+        return True
+    return os.getenv("SENTINEXT_DB_BACKEND", "").lower() == "postgresql"
+
 
 def db_path() -> Path:
     return _DB_PATH
+
+
+def is_postgresql() -> bool:
+    """Check if using PostgreSQL backend."""
+    return _USING_POSTGRESQL
 
 
 def _get_connection() -> sqlite3.Connection:
@@ -61,7 +82,21 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 
 def init_db() -> None:
-    global _FTS_ENABLED
+    global _FTS_ENABLED, _USING_POSTGRESQL
+
+    # Check if PostgreSQL is configured
+    if _check_postgresql_backend():
+        try:
+            from . import db as db_module
+            db_module.init_postgresql_schema()
+            _USING_POSTGRESQL = True
+            logger.info("Initialized PostgreSQL backend")
+            return
+        except Exception as exc:
+            logger.warning("PostgreSQL init failed, falling back to SQLite: %s", exc)
+            _USING_POSTGRESQL = False
+
+    # SQLite initialization
     with _get_connection() as conn:
         conn.execute(
             """
@@ -304,6 +339,35 @@ def init_db() -> None:
                 conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
                 pass
+        # Job registry for background job tracking
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_registry (
+                job_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                app_id INTEGER NOT NULL,
+                job_type TEXT NOT NULL DEFAULT 'analysis',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at INTEGER NOT NULL,
+                started_at INTEGER,
+                completed_at INTEGER,
+                error TEXT,
+                metadata TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_job_registry_status
+            ON job_registry (status)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_job_registry_user_app
+            ON job_registry (user_id, app_id)
+            """
+        )
         conn.commit()
 
 
@@ -1039,3 +1103,133 @@ def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
         "context_hash": row["context_hash"],
         "stale_reason": row["stale_reason"],
     }
+
+
+# Job Registry Functions
+
+def create_job_registry(
+    job_id: str,
+    user_id: str,
+    app_id: int,
+    job_type: str = "analysis",
+    metadata: Optional[Dict] = None,
+) -> None:
+    """Create a new job registry entry."""
+    timestamp = int(time.time())
+    metadata_json = json.dumps(metadata) if metadata else None
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO job_registry (job_id, user_id, app_id, job_type, status, created_at, metadata)
+            VALUES (?, ?, ?, ?, 'pending', ?, ?)
+            ON CONFLICT(job_id) DO UPDATE SET
+                status = 'pending',
+                created_at = excluded.created_at,
+                metadata = excluded.metadata
+            """,
+            (job_id, user_id, app_id, job_type, timestamp, metadata_json),
+        )
+        conn.commit()
+
+
+def update_job_registry(
+    job_id: str,
+    status: Optional[str] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Update job registry entry status."""
+    timestamp = int(time.time())
+    with _get_connection() as conn:
+        if status == "running":
+            conn.execute(
+                "UPDATE job_registry SET status = ?, started_at = ? WHERE job_id = ?",
+                (status, timestamp, job_id),
+            )
+        elif status in ("completed", "failed"):
+            conn.execute(
+                "UPDATE job_registry SET status = ?, completed_at = ?, error = ? WHERE job_id = ?",
+                (status, timestamp, error, job_id),
+            )
+        elif status:
+            conn.execute(
+                "UPDATE job_registry SET status = ? WHERE job_id = ?",
+                (status, job_id),
+            )
+        conn.commit()
+
+
+def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
+    """Get job registry entry by ID."""
+    with _get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT job_id, user_id, app_id, job_type, status, created_at, started_at, completed_at, error, metadata
+            FROM job_registry
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    try:
+        metadata = json.loads(row["metadata"]) if row["metadata"] else None
+    except json.JSONDecodeError:
+        metadata = None
+
+    return {
+        "job_id": row["job_id"],
+        "user_id": row["user_id"],
+        "app_id": int(row["app_id"]),
+        "job_type": row["job_type"],
+        "status": row["status"],
+        "created_at": int(row["created_at"] or 0),
+        "started_at": int(row["started_at"]) if row["started_at"] else None,
+        "completed_at": int(row["completed_at"]) if row["completed_at"] else None,
+        "error": row["error"],
+        "metadata": metadata,
+    }
+
+
+def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
+    """Find jobs that are stuck in 'running' status for longer than age_minutes."""
+    cutoff = int(time.time()) - (age_minutes * 60)
+    with _get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT job_id, user_id, app_id, job_type, status, created_at, started_at
+            FROM job_registry
+            WHERE status = 'running' AND started_at < ?
+            """,
+            (cutoff,),
+        ).fetchall()
+
+    return [
+        {
+            "job_id": row["job_id"],
+            "user_id": row["user_id"],
+            "app_id": int(row["app_id"]),
+            "job_type": row["job_type"],
+            "status": row["status"],
+            "created_at": int(row["created_at"] or 0),
+            "started_at": int(row["started_at"]) if row["started_at"] else None,
+        }
+        for row in rows
+    ]
+
+
+def cleanup_old_jobs(age_days: int = 7) -> int:
+    """Delete completed/failed jobs older than age_days. Returns count deleted."""
+    cutoff = int(time.time()) - (age_days * 24 * 3600)
+    with _get_connection() as conn:
+        cursor = conn.execute(
+            """
+            DELETE FROM job_registry
+            WHERE status IN ('completed', 'failed') AND completed_at < ?
+            """,
+            (cutoff,),
+        )
+        count = cursor.rowcount
+        conn.commit()
+    return count

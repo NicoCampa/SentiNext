@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
-import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame } from '@/lib/api';
+import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
@@ -35,7 +35,7 @@ const AnalysisContext = createContext<AnalysisContextType | null>(null);
 export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Map<number, AnalysisTask>>(new Map());
 
-  // Poll progress for active analyses
+  // Track progress for active analyses using SSE with polling fallback
   useEffect(() => {
     const activeTasks = Array.from(tasks.entries()).filter(
       ([, task]) => task.status === 'analyzing'
@@ -43,84 +43,141 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
 
     if (activeTasks.length === 0) return;
 
-    const interval = setInterval(async () => {
-      for (const [appId, task] of activeTasks) {
+    const cleanups: (() => void)[] = [];
+    const pollingFallbacks = new Map<number, NodeJS.Timeout>();
+
+    // Helper to handle completion
+    const handleCompletion = async (appId: number, task: AnalysisTask) => {
+      try {
+        const analysis = await fetchAnalysisResult(appId);
+        if (analysis.status === 'completed') {
+          if (analysis.metadata && analysis.insights) {
+            try {
+              await saveStarredGame({
+                app_id: appId,
+                name: task.game.name,
+                metadata: analysis.metadata,
+                insights: analysis.insights,
+                sample: analysis.reviews,
+              });
+            } catch (err) {
+              console.error('Failed to persist analysis result', err);
+            }
+          }
+          setTasks((prev) => {
+            const newTasks = new Map(prev);
+            const existing = newTasks.get(appId);
+            if (existing) {
+              newTasks.set(appId, {
+                ...existing,
+                status: 'completed',
+                result: {
+                  metadata: analysis.metadata || existing.result?.metadata || {
+                    app_id: appId,
+                    requested: 0,
+                    retrieved: 0,
+                    language: 'unknown',
+                    fetched_at: '',
+                  },
+                  insights: analysis.insights,
+                  reviews: analysis.reviews,
+                } as AnalyzeResponse,
+                progress: null,
+                error: null,
+              });
+            }
+            return newTasks;
+          });
+        } else if (analysis.status === 'failed') {
+          setTasks((prev) => {
+            const newTasks = new Map(prev);
+            const existing = newTasks.get(appId);
+            if (existing) {
+              newTasks.set(appId, {
+                ...existing,
+                status: 'error',
+                progress: null,
+                error: analysis.error || 'Analysis failed',
+              });
+            }
+            return newTasks;
+          });
+        }
+      } catch {
+        // Ignore fetch errors during completion check
+      }
+    };
+
+    // Start polling fallback for a task
+    const startPollingFallback = (appId: number, task: AnalysisTask) => {
+      if (pollingFallbacks.has(appId)) return;
+
+      const interval = setInterval(async () => {
         try {
           const progress = await fetchProgress(appId);
           setTasks((prev) => {
             const newTasks = new Map(prev);
             const existing = newTasks.get(appId);
-            if (existing) {
+            if (existing && existing.status === 'analyzing') {
               newTasks.set(appId, { ...existing, progress });
             }
             return newTasks;
           });
+
+          // Check if completed
+          if (!progress.active && progress.total > 0) {
+            await handleCompletion(appId, task);
+            clearInterval(interval);
+            pollingFallbacks.delete(appId);
+          }
         } catch (err) {
           console.error(`Progress fetch error for ${appId}:`, err);
         }
+      }, 1500);
 
-        try {
-          const analysis = await fetchAnalysisResult(appId);
-          if (analysis.status === 'completed') {
-            if (analysis.metadata && analysis.insights) {
-              try {
-                await saveStarredGame({
-                  app_id: appId,
-                  name: task.game.name,
-                  metadata: analysis.metadata,
-                  insights: analysis.insights,
-                  sample: analysis.reviews,
-                });
-              } catch (err) {
-                console.error('Failed to persist analysis result', err);
-              }
-            }
+      pollingFallbacks.set(appId, interval);
+    };
+
+    // Try SSE first, fall back to polling
+    for (const [appId, task] of activeTasks) {
+      try {
+        const cleanup = subscribeToProgress(appId, {
+          onProgress: (processed, total, active) => {
             setTasks((prev) => {
               const newTasks = new Map(prev);
               const existing = newTasks.get(appId);
-              if (existing) {
+              if (existing && existing.status === 'analyzing') {
                 newTasks.set(appId, {
                   ...existing,
-                  status: 'completed',
-                  result: {
-                    metadata: analysis.metadata || existing.result?.metadata || {
-                      app_id: appId,
-                      requested: 0,
-                      retrieved: 0,
-                      language: 'unknown',
-                      fetched_at: '',
-                    },
-                    insights: analysis.insights,
-                    reviews: analysis.reviews,
-                  } as AnalyzeResponse,
-                  progress: null,
-                  error: null,
+                  progress: { app_id: appId, processed, total, active, updated_at: null },
                 });
               }
               return newTasks;
             });
-          } else if (analysis.status === 'failed') {
-            setTasks((prev) => {
-              const newTasks = new Map(prev);
-              const existing = newTasks.get(appId);
-              if (existing) {
-                newTasks.set(appId, {
-                  ...existing,
-                  status: 'error',
-                  progress: null,
-                  error: analysis.error || 'Analysis failed',
-                });
-              }
-              return newTasks;
-            });
-          }
-        } catch (err) {
-          // Likely 404 while job is still running; ignore quietly
-        }
+          },
+          onCompleted: () => {
+            handleCompletion(appId, task);
+          },
+          onError: (error) => {
+            console.warn(`SSE error for ${appId}, falling back to polling:`, error);
+            startPollingFallback(appId, task);
+          },
+          onTimeout: () => {
+            console.warn(`SSE timeout for ${appId}`);
+            startPollingFallback(appId, task);
+          },
+        });
+        cleanups.push(cleanup);
+      } catch {
+        // SSE not supported or failed, use polling
+        startPollingFallback(appId, task);
       }
-    }, 1500);
+    }
 
-    return () => clearInterval(interval);
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+      pollingFallbacks.forEach((interval) => clearInterval(interval));
+    };
   }, [tasks]);
 
   const startAnalysis = useCallback(async (game: SearchResult, options: StartAnalysisOptions = {}) => {

@@ -2,11 +2,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import re
+import threading
 import time
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import requests
+
+from .circuit_breaker import steam_api_breaker, CircuitOpenError
+
+logger = logging.getLogger(__name__)
+
+
+# In-memory cache for game context with TTL
+_CONTEXT_CACHE: Dict[int, Tuple[Dict, float]] = {}
+_CONTEXT_CACHE_LOCK = threading.Lock()
+_CONTEXT_CACHE_TTL_SECONDS = 3600  # 1 hour
 
 STORE_SEARCH_URL = "https://store.steampowered.com/api/storesearch"
 APP_REVIEWS_URL = "https://store.steampowered.com/appreviews/{app_id}"
@@ -67,6 +79,35 @@ def _get_with_retries(
     raise SteamAPIError(f"Request to {url} failed after {retries} attempts: {last_error}")
 
 
+def _protected_get(
+    url: str,
+    *,
+    params: Optional[Dict] = None,
+    timeout: int = 15,
+    retries: int = 3,
+    backoff: float = 0.6,
+) -> requests.Response:
+    """Execute GET request with circuit breaker protection.
+
+    Wraps _get_with_retries with the Steam API circuit breaker to prevent
+    cascading failures when the Steam API is unavailable.
+    """
+    try:
+        return steam_api_breaker.call(
+            _get_with_retries,
+            url,
+            params=params,
+            timeout=timeout,
+            retries=retries,
+            backoff=backoff,
+        )
+    except CircuitOpenError as exc:
+        logger.warning("Steam API circuit open: %s", exc)
+        raise SteamAPIError(
+            f"Steam API temporarily unavailable (circuit open). Retry after {exc.retry_after:.1f}s"
+        ) from exc
+
+
 def extract_app_id_from_input(value: str) -> Optional[int]:
     """Try to pull an app id from raw user input (numeric id or store URL)."""
     value = value.strip()
@@ -87,7 +128,7 @@ def search_applications(query: str, limit: int = 5) -> List[AppSearchResult]:
         "l": "english",
         "cc": "US",
     }
-    resp = _get_with_retries(STORE_SEARCH_URL, params=params, timeout=15)
+    resp = _protected_get(STORE_SEARCH_URL, params=params, timeout=15)
 
     payload = resp.json()
     items = payload.get("items", []) if isinstance(payload, dict) else []
@@ -170,7 +211,7 @@ def fetch_reviews(
         }
         if day_range is not None:
             params["day_range"] = max(1, min(day_range, 365))
-        resp = _get_with_retries(
+        resp = _protected_get(
             APP_REVIEWS_URL.format(app_id=app_id),
             params=params,
             timeout=20,
@@ -202,15 +243,11 @@ def resolve_app_id(user_input: str) -> Optional[int]:
     return results[0].appid
 
 
-def fetch_app_details(app_id: int) -> Optional[Dict]:
-    """Fetch game details from Steam's appdetails API.
-
-    Returns a dict with: name, short_description, genres, categories, tags (if available).
-    Returns None if the request fails or app is not found.
-    """
+def _fetch_app_details_uncached(app_id: int) -> Optional[Dict]:
+    """Fetch game details from Steam's appdetails API (no caching)."""
     params = {"appids": app_id}
     try:
-        resp = _get_with_retries(APP_DETAILS_URL, params=params, timeout=15)
+        resp = _protected_get(APP_DETAILS_URL, params=params, timeout=15)
 
         data = resp.json()
         if not data or str(app_id) not in data:
@@ -244,6 +281,41 @@ def fetch_app_details(app_id: int) -> Optional[Dict]:
 
     except Exception:
         return None
+
+
+def fetch_app_details(app_id: int, use_cache: bool = True) -> Optional[Dict]:
+    """Fetch game details from Steam's appdetails API.
+
+    Returns a dict with: name, short_description, genres, categories, tags (if available).
+    Returns None if the request fails or app is not found.
+
+    Results are cached in-memory for 1 hour to reduce API calls.
+    """
+    if use_cache:
+        with _CONTEXT_CACHE_LOCK:
+            if app_id in _CONTEXT_CACHE:
+                cached_result, cached_time = _CONTEXT_CACHE[app_id]
+                if time.time() - cached_time < _CONTEXT_CACHE_TTL_SECONDS:
+                    return cached_result
+                # Cache expired, remove it
+                del _CONTEXT_CACHE[app_id]
+
+    result = _fetch_app_details_uncached(app_id)
+
+    if result is not None and use_cache:
+        with _CONTEXT_CACHE_LOCK:
+            _CONTEXT_CACHE[app_id] = (result, time.time())
+
+    return result
+
+
+def clear_app_details_cache(app_id: Optional[int] = None) -> None:
+    """Clear the app details cache. If app_id is provided, only clear that entry."""
+    with _CONTEXT_CACHE_LOCK:
+        if app_id is not None:
+            _CONTEXT_CACHE.pop(app_id, None)
+        else:
+            _CONTEXT_CACHE.clear()
 
 
 def iter_review_fields() -> Iterable[str]:
