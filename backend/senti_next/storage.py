@@ -48,6 +48,22 @@ def _timestamp_to_int(val: Any) -> Optional[int]:
         return None
 
 
+def _parse_json_field(val: Any, default: Any = None) -> Any:
+    """Parse a JSON field that might be a string (SQLite) or already parsed (PostgreSQL JSONB)."""
+    if val is None:
+        return default
+    # PostgreSQL JSONB returns dict/list directly
+    if isinstance(val, (dict, list)):
+        return val
+    # SQLite returns JSON string
+    if isinstance(val, str):
+        try:
+            return json.loads(val)
+        except json.JSONDecodeError:
+            return default
+    return default
+
+
 def _render_disk_root() -> Path | None:
     candidate = Path("/var/data")
     if candidate.is_dir() and os.access(candidate, os.W_OK):
@@ -545,7 +561,7 @@ def load_reviews(app_id: int, limit: Optional[int] = None) -> List[dict]:
     with _get_connection() as conn:
         rows = conn.execute(query, params).fetchall()
 
-    return [json.loads(row["data"]) for row in rows]
+    return [_parse_json_field(row["data"], {}) for row in rows]
 
 
 def load_reviews_by_ids(app_id: int, review_ids: Sequence[str]) -> List[dict]:
@@ -564,7 +580,7 @@ def load_reviews_by_ids(app_id: int, review_ids: Sequence[str]) -> List[dict]:
             rows = conn.execute(query, params).fetchall()
             for row in rows:
                 try:
-                    result_map[row["review_id"]] = json.loads(row["data"]) if row["data"] else {}
+                    result_map[row["review_id"]] = _parse_json_field(row["data"], {}) if row["data"] else {}
                 except json.JSONDecodeError:
                     continue
 
@@ -579,7 +595,7 @@ def _rebuild_reviews_fts(conn: sqlite3.Connection, app_id: int) -> None:
     for row in rows:
         review_id = row["review_id"]
         try:
-            payload = json.loads(row["data"]) if row["data"] else {}
+            payload = _parse_json_field(row["data"], {}) if row["data"] else {}
         except json.JSONDecodeError:
             payload = {}
         review_text = str(payload.get("review") or "")
@@ -694,15 +710,11 @@ def load_review_labels(app_id: int) -> Dict[str, Dict]:
 
     labels: Dict[str, Dict] = {}
     for row in rows:
-        try:
-            payload = json.loads(row["payload"]) if row["payload"] else {}
-        except json.JSONDecodeError:
-            payload = {}
         labels[row["review_id"]] = {
             "model": row["model"],
             "prompt_version": row["prompt_version"],
             "review_hash": row["review_hash"],
-            "payload": payload,
+            "payload": _parse_json_field(row["payload"], {}),
         }
     return labels
 
@@ -951,36 +963,15 @@ def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
 
     results: list[Dict[str, Any]] = []
     for row in rows:
-        try:
-            metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-        except json.JSONDecodeError:
-            metadata = {}
-        try:
-            insights = json.loads(row["insights"]) if row["insights"] else None
-        except json.JSONDecodeError:
-            insights = None
-        try:
-            sample = json.loads(row["sample"]) if row["sample"] else []
-        except json.JSONDecodeError:
-            sample = []
-        try:
-            genres = json.loads(row["genres"]) if row["genres"] else []
-        except json.JSONDecodeError:
-            genres = []
-        try:
-            categories = json.loads(row["categories"]) if row["categories"] else []
-        except json.JSONDecodeError:
-            categories = []
-
         results.append(
             {
                 "app_id": int(row["app_id"]),
                 "name": row["name"],
-                "metadata": metadata,
-                "insights": insights,
-                "sample": sample,
-                "genres": genres,
-                "categories": categories,
+                "metadata": _parse_json_field(row["metadata"], {}),
+                "insights": _parse_json_field(row["insights"], None),
+                "sample": _parse_json_field(row["sample"], []),
+                "genres": _parse_json_field(row["genres"], []),
+                "categories": _parse_json_field(row["categories"], []),
                 "updated_at": _timestamp_to_int(row["updated_at"]) or 0,
             }
         )
@@ -1200,23 +1191,10 @@ def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
 
-    try:
-        metadata = json.loads(row["metadata"]) if row["metadata"] else None
-    except json.JSONDecodeError:
-        metadata = None
-    try:
-        insights = json.loads(row["insights"]) if row["insights"] else None
-    except json.JSONDecodeError:
-        insights = None
-    try:
-        reviews = json.loads(row["reviews"]) if row["reviews"] else []
-    except json.JSONDecodeError:
-        reviews = []
-
     return {
-        "metadata": metadata,
-        "insights": insights,
-        "reviews": reviews,
+        "metadata": _parse_json_field(row["metadata"], None),
+        "insights": _parse_json_field(row["insights"], None),
+        "reviews": _parse_json_field(row["reviews"], []),
         "status": row["status"],
         "error": row["error"],
         "updated_at": _timestamp_to_int(row["updated_at"]) or 0,
@@ -1296,11 +1274,6 @@ def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
 
-    try:
-        metadata = json.loads(row["metadata"]) if row["metadata"] else None
-    except json.JSONDecodeError:
-        metadata = None
-
     return {
         "job_id": row["job_id"],
         "user_id": row["user_id"],
@@ -1311,7 +1284,7 @@ def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
         "started_at": _timestamp_to_int(row["started_at"]),
         "completed_at": _timestamp_to_int(row["completed_at"]),
         "error": row["error"],
-        "metadata": metadata,
+        "metadata": _parse_json_field(row["metadata"], None),
     }
 
 
