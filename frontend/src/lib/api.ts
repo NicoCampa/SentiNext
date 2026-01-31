@@ -150,62 +150,89 @@ export function subscribeToProgress(
   appId: number,
   callbacks: ProgressStreamCallbacks
 ): () => void {
-  const url = apiUrl(`/progress/${appId}/stream`);
+  if (typeof EventSource === "undefined") {
+    throw new Error("EventSource is not supported in this environment");
+  }
 
-  // EventSource doesn't support custom headers, so we need to add token as query param
-  // for authenticated SSE endpoints. For now, fall back to polling if auth is enabled.
-  const eventSource = new EventSource(url);
+  const base =
+    typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const url = new URL(apiUrl(`/progress/${appId}/stream`), base);
 
-  eventSource.addEventListener("progress", (event) => {
+  let eventSource: EventSource | null = null;
+  let aborted = false;
+
+  const start = async () => {
     try {
-      const data = JSON.parse(event.data) as ProgressStreamEvent;
-      callbacks.onProgress?.(
-        data.processed ?? 0,
-        data.total ?? 0,
-        data.active ?? false
-      );
-    } catch {
-      // Ignore parse errors
-    }
-  });
-
-  eventSource.addEventListener("completed", () => {
-    callbacks.onCompleted?.();
-    eventSource.close();
-  });
-
-  eventSource.addEventListener("error", (event) => {
-    // Check if this is a custom error event with data
-    if (event instanceof MessageEvent && event.data) {
-      try {
-        const data = JSON.parse(event.data) as ProgressStreamEvent;
-        callbacks.onError?.(data.error ?? "Unknown error");
-      } catch {
-        callbacks.onError?.("Connection error");
+      const authHeaders = await getAuthHeaders();
+      const headerMap = new Headers(authHeaders);
+      const rawAuth =
+        headerMap.get("Authorization") ?? headerMap.get("authorization");
+      const rawToken =
+        typeof rawAuth === "string"
+          ? rawAuth.replace(/^Bearer\s+/i, "").trim()
+          : "";
+      if (rawToken) {
+        url.searchParams.set("token", rawToken);
       }
-    } else {
-      // Browser-level connection error
-      callbacks.onError?.("Connection lost");
-    }
-    eventSource.close();
-  });
 
-  eventSource.addEventListener("timeout", () => {
-    callbacks.onTimeout?.();
-    eventSource.close();
-  });
+      if (aborted) return;
+      eventSource = new EventSource(url.toString());
 
-  // Handle connection errors
-  eventSource.onerror = () => {
-    // Only trigger error callback if not already closed
-    if (eventSource.readyState !== EventSource.CLOSED) {
-      callbacks.onError?.("Connection failed");
-      eventSource.close();
+      eventSource.addEventListener("progress", (event) => {
+        try {
+          const data = JSON.parse(event.data) as ProgressStreamEvent;
+          callbacks.onProgress?.(
+            data.processed ?? 0,
+            data.total ?? 0,
+            data.active ?? false
+          );
+        } catch {
+          // Ignore parse errors
+        }
+      });
+
+      eventSource.addEventListener("completed", () => {
+        callbacks.onCompleted?.();
+        eventSource?.close();
+      });
+
+      eventSource.addEventListener("error", (event) => {
+        if (event instanceof MessageEvent && event.data) {
+          try {
+            const data = JSON.parse(event.data) as ProgressStreamEvent;
+            callbacks.onError?.(data.error ?? "Unknown error");
+          } catch {
+            callbacks.onError?.("Connection error");
+          }
+        } else {
+          callbacks.onError?.("Connection lost");
+        }
+        eventSource?.close();
+      });
+
+      eventSource.addEventListener("timeout", () => {
+        callbacks.onTimeout?.();
+        eventSource?.close();
+      });
+
+      eventSource.onerror = () => {
+        if (eventSource && eventSource.readyState !== EventSource.CLOSED) {
+          callbacks.onError?.("Connection failed");
+          eventSource.close();
+        }
+      };
+    } catch (error) {
+      callbacks.onError?.(
+        error instanceof Error ? error.message : "Failed to start progress stream"
+      );
     }
   };
 
+  void start();
+
   return () => {
-    eventSource.close();
+    aborted = true;
+    eventSource?.close();
   };
 }
 

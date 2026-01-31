@@ -169,9 +169,11 @@ async def auth_middleware(request: Request, call_next):
     if request.url.path in AUTH_EXEMPT_PATHS:
         return await call_next(request)
     auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
-        return JSONResponse(status_code=401, content={"detail": "Missing bearer token."})
-    token = auth_header.split(" ", 1)[1].strip()
+    token = None
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = request.query_params.get("token")
     if not token:
         return JSONResponse(status_code=401, content={"detail": "Missing bearer token."})
     try:
