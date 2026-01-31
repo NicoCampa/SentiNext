@@ -714,7 +714,8 @@ def load_database_reviews(
         if not allowed_ids:
             return [], 0
 
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         if raw_query:
             if not _FTS_ENABLED:
                 return [], 0
@@ -822,7 +823,8 @@ def save_analysis_result(
     payload_insights = json.dumps(insights) if insights is not None else None
     payload_reviews = json.dumps(reviews) if reviews is not None else None
     timestamp = _get_timestamp()
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         conn.execute(
             """
             INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
@@ -846,7 +848,8 @@ def save_analysis_result(
 
 
 def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         row = conn.execute(
             """
             SELECT metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason
@@ -886,7 +889,8 @@ def create_job_registry(
     """Create a new job registry entry."""
     timestamp = _get_timestamp()
     metadata_json = json.dumps(metadata) if metadata else None
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         conn.execute(
             """
             INSERT INTO job_registry (job_id, user_id, app_id, job_type, status, created_at, metadata)
@@ -908,7 +912,8 @@ def update_job_registry(
 ) -> None:
     """Update job registry entry status."""
     timestamp = _get_timestamp()
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         if status == "running":
             conn.execute(
                 "UPDATE job_registry SET status = ?, started_at = ? WHERE job_id = ?",
@@ -929,7 +934,8 @@ def update_job_registry(
 
 def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
     """Get job registry entry by ID."""
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         row = conn.execute(
             """
             SELECT job_id, user_id, app_id, job_type, status, created_at, started_at, completed_at, error, metadata
@@ -959,7 +965,8 @@ def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
 def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
     """Find jobs that are stuck in 'running' status for longer than age_minutes."""
     cutoff = _get_cutoff_timestamp(age_minutes * 60)
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         rows = conn.execute(
             """
             SELECT job_id, user_id, app_id, job_type, status, created_at, started_at
@@ -986,7 +993,8 @@ def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
 def cleanup_old_jobs(age_days: int = 7) -> int:
     """Delete completed/failed jobs older than age_days. Returns count deleted."""
     cutoff = _get_cutoff_timestamp(age_days * 24 * 3600)
-    with _get_connection() as conn:
+    from . import db as db_module
+    with db_module.get_connection() as conn:
         cursor = conn.execute(
             """
             DELETE FROM job_registry
