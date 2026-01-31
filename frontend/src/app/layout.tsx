@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { AuthGate } from "@/components/AuthGate";
@@ -8,11 +8,14 @@ import { ClerkTokenProvider } from "@/components/ClerkTokenProvider";
 import { ClientProviders } from "@/components/ClientProviders";
 
 export const metadata: Metadata = {
-  title: "SentiNext",
-  description: "Steam sentiment intelligence dashboard",
+  title: "SENTINEXT // Review Intelligence",
+  description: "Cyberpunk Steam sentiment intelligence dashboard",
 };
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+});
 
 export default function RootLayout({
   children,
@@ -21,8 +24,13 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en" className="bg-slate-950">
-        <body className={clsx(inter.variable, "min-h-screen bg-transparent text-slate-100 antialiased")}>
+      <html lang="en" className="bg-[rgb(5,5,15)]">
+        <body
+          className={clsx(
+            jetbrainsMono.variable,
+            "min-h-screen bg-transparent text-[rgb(224,224,224)] antialiased font-mono"
+          )}
+        >
           <ClerkTokenProvider />
           <AuthGate>
             <ClientProviders>{children}</ClientProviders>

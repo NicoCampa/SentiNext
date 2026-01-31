@@ -5,59 +5,135 @@ import { useRouter } from 'next/navigation';
 
 export default function RootPage() {
   const router = useRouter();
-  const [dots, setDots] = useState('');
+  const [bootSequence, setBootSequence] = useState<string[]>([]);
+  const [showLogo, setShowLogo] = useState(false);
+
+  const bootMessages = [
+    '> INITIALIZING SYSTEM...',
+    '> LOADING NEURAL CORE...',
+    '> CONNECTING TO DATA STREAMS...',
+    '> SENTIMENT ANALYSIS MODULE: ONLINE',
+    '> REVIEW PROCESSOR: ACTIVE',
+    '> SYSTEM READY',
+  ];
 
   useEffect(() => {
-    // Animate loading dots
+    let currentIndex = 0;
+
     const interval = setInterval(() => {
-      setDots(prev => prev.length >= 3 ? '' : prev + '.');
-    }, 500);
+      if (currentIndex < bootMessages.length) {
+        setBootSequence(prev => [...prev, bootMessages[currentIndex]]);
+        currentIndex++;
+      } else {
+        clearInterval(interval);
+        setShowLogo(true);
+        setTimeout(() => {
+          router.replace('/dashboard?view=home');
+        }, 800);
+      }
+    }, 200);
 
-    // Redirect to dashboard
-    const timeout = setTimeout(() => {
-      router.replace('/dashboard?view=home');
-    }, 500);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
+    return () => clearInterval(interval);
   }, [router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <div className="text-center space-y-6">
-        {/* Logo/Icon */}
-        <div className="mb-8">
-          <div className="mx-auto h-20 w-20 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-2xl shadow-cyan-500/20 animate-pulse">
-            <svg className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
+    <div className="flex min-h-screen items-center justify-center relative overflow-hidden">
+      {/* Grid background */}
+      <div className="absolute inset-0 opacity-20">
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(0, 255, 255, 0.1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0, 255, 255, 0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: '50px 50px',
+          }}
+        />
+      </div>
+
+      {/* Scan line effect */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px)',
+        }}
+      />
+
+      {/* Content */}
+      <div className="text-center space-y-8 z-10 p-8">
+        {/* Boot sequence terminal */}
+        <div className="text-left font-mono text-xs space-y-1 mb-12 min-h-[180px]">
+          {bootSequence.map((message, index) => (
+            <div
+              key={index}
+              className={`
+                ${message.includes('ONLINE') || message.includes('ACTIVE') || message.includes('READY')
+                  ? 'text-[rgb(0,255,136)]'
+                  : 'text-[rgb(0,255,255)]/70'}
+                animate-[fade-in_0.3s_ease-out]
+              `}
+            >
+              {message}
+              {index === bootSequence.length - 1 && (
+                <span className="inline-block w-2 h-4 bg-[rgb(0,255,255)] ml-1 animate-pulse" />
+              )}
+            </div>
+          ))}
         </div>
 
-        {/* Title */}
-        <h1 className="text-5xl font-bold text-white tracking-tight">
-          SentiNext
-        </h1>
+        {/* Logo */}
+        <div
+          className={`transition-all duration-700 ${
+            showLogo ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`}
+        >
+          {/* Icon */}
+          <div className="mb-6">
+            <div className="mx-auto w-24 h-24 border-2 border-[rgb(0,255,255)] flex items-center justify-center relative">
+              {/* Corner decorations */}
+              <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
+              <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-[rgb(255,0,128)]" />
+              <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-[rgb(255,0,128)]" />
 
-        {/* Subtitle */}
-        <p className="text-xl text-slate-400 font-light">
-          Steam Review Intelligence
-        </p>
+              <span className="text-5xl text-[rgb(0,255,255)] neon-text">◆</span>
 
-        {/* Loading indicator */}
-        <div className="pt-4">
-          <div className="inline-flex items-center space-x-2">
-            <div className="h-2 w-2 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="h-2 w-2 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="h-2 w-2 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              {/* Glow effect */}
+              <div className="absolute inset-0 bg-[rgb(0,255,255)]/10 blur-xl" />
+            </div>
           </div>
-          <p className="mt-4 text-sm text-slate-500 font-mono">
-            Loading{dots}
+
+          {/* Title */}
+          <h1 className="text-5xl font-bold tracking-[0.3em] cyber-gradient-text mb-4">
+            SENTINEXT
+          </h1>
+
+          {/* Subtitle */}
+          <p className="text-sm uppercase tracking-[0.4em] text-[rgb(0,255,255)]/50">
+            Review Intelligence System
           </p>
+
+          {/* Loading bar */}
+          <div className="mt-8 mx-auto w-64">
+            <div className="h-[2px] bg-[rgb(0,255,255)]/20 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[rgb(0,255,255)] to-[rgb(255,0,128)] animate-[loading-slide_1s_ease-in-out_infinite]"
+                style={{ width: '30%' }}
+              />
+            </div>
+            <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-[rgb(0,255,255)]/40 font-mono">
+              Entering System...
+            </p>
+          </div>
         </div>
       </div>
+
+      {/* Corner decorations */}
+      <div className="absolute top-8 left-8 w-16 h-16 border-t border-l border-[rgb(0,255,255)]/30" />
+      <div className="absolute top-8 right-8 w-16 h-16 border-t border-r border-[rgb(0,255,255)]/30" />
+      <div className="absolute bottom-8 left-8 w-16 h-16 border-b border-l border-[rgb(255,0,128)]/30" />
+      <div className="absolute bottom-8 right-8 w-16 h-16 border-b border-r border-[rgb(255,0,128)]/30" />
     </div>
   );
 }
