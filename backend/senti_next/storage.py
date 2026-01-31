@@ -66,7 +66,100 @@ def is_postgresql() -> bool:
     return _USING_POSTGRESQL
 
 
-def _get_connection() -> sqlite3.Connection:
+class _PostgreSQLRowAdapter:
+    """Adapter to make psycopg2 rows behave like sqlite3.Row."""
+    def __init__(self, cursor_description, row):
+        self._data = {desc[0]: val for desc, val in zip(cursor_description, row)}
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self._data.values())[key]
+        return self._data[key]
+
+    def keys(self):
+        return self._data.keys()
+
+
+class _PostgreSQLConnectionWrapper:
+    """Wrapper to make PostgreSQL connections compatible with sqlite3 interface."""
+
+    def __init__(self, engine):
+        self._engine = engine
+        self._conn = None
+
+    def __enter__(self):
+        self._conn = self._engine.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._conn:
+            if exc_type is None:
+                self._conn.commit()
+            self._conn.close()
+        return False
+
+    def execute(self, sql, params=None):
+        from sqlalchemy import text
+        # Convert ? placeholders to :p0, :p1, etc. for SQLAlchemy
+        if params:
+            new_sql = sql
+            param_dict = {}
+            for i, val in enumerate(params):
+                new_sql = new_sql.replace("?", f":p{i}", 1)
+                param_dict[f"p{i}"] = val
+            result = self._conn.execute(text(new_sql), param_dict)
+        else:
+            result = self._conn.execute(text(sql))
+        return _PostgreSQLResultWrapper(result)
+
+    def commit(self):
+        if self._conn:
+            self._conn.commit()
+
+
+class _PostgreSQLResultWrapper:
+    """Wrapper to make SQLAlchemy results compatible with sqlite3 cursor."""
+
+    def __init__(self, result):
+        self._result = result
+        self._description = result.cursor.description if hasattr(result, 'cursor') and result.cursor else None
+
+    def fetchall(self):
+        rows = self._result.fetchall()
+        if self._description:
+            return [_PostgreSQLRowAdapter(self._description, row) for row in rows]
+        # For SQLAlchemy 2.0 style results
+        if hasattr(self._result, 'keys'):
+            keys = list(self._result.keys())
+            return [_PostgreSQLRowAdapter([(k,) for k in keys], row) for row in rows]
+        return rows
+
+    def fetchone(self):
+        row = self._result.fetchone()
+        if row is None:
+            return None
+        if self._description:
+            return _PostgreSQLRowAdapter(self._description, row)
+        if hasattr(self._result, 'keys'):
+            keys = list(self._result.keys())
+            return _PostgreSQLRowAdapter([(k,) for k in keys], row)
+        return row
+
+    @property
+    def lastrowid(self):
+        return getattr(self._result, 'lastrowid', None)
+
+    @property
+    def rowcount(self):
+        return self._result.rowcount
+
+
+def _get_connection():
+    """Get a database connection (SQLite or PostgreSQL)."""
+    if _USING_POSTGRESQL:
+        from . import db as db_module
+        return _PostgreSQLConnectionWrapper(db_module.get_engine())
+
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_DB_PATH)
     conn.row_factory = sqlite3.Row
