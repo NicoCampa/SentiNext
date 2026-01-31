@@ -112,7 +112,7 @@ test_app_id = 99999
 try:
     # First, try to delete any existing test data
     try:
-        storage.remove_starred_game(test_user, test_app_id)
+        storage.delete_starred_game(test_user, test_app_id)
         print(f"  Cleaned up existing test data")
     except:
         pass
@@ -154,7 +154,7 @@ try:
         print(f"  load_starred_games(): ERROR - test game not found")
 
     # Cleanup
-    storage.remove_starred_game(test_user, test_app_id)
+    storage.delete_starred_game(test_user, test_app_id)
     print(f"  Cleanup: OK")
 
 except Exception as e:
