@@ -61,11 +61,11 @@ export default function RootPage() {
       <div className="text-center space-y-8 z-10 p-8">
         {/* Boot sequence terminal */}
         <div className="text-left font-mono text-xs space-y-1 mb-12 min-h-[180px]">
-          {bootSequence.map((message, index) => (
+          {bootSequence.filter(m => m).map((message, index) => (
             <div
               key={index}
               className={
-                message.includes('ONLINE') || message.includes('ACTIVE') || message.includes('READY')
+                message?.includes('ONLINE') || message?.includes('ACTIVE') || message?.includes('READY')
                   ? 'text-[rgb(0,255,136)]'
                   : 'text-[rgb(0,255,255)]/70'
               }
