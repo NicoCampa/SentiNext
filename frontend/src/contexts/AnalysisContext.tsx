@@ -1,14 +1,18 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
 import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
+interface ProgressWithEstimate extends ProgressStatus {
+  remainingSeconds?: number | null;
+}
+
 interface AnalysisTask {
   game: SearchResult;
   status: 'analyzing' | 'completed' | 'error';
-  progress: ProgressStatus | null;
+  progress: ProgressWithEstimate | null;
   result: AnalyzeResponse | null;
   error: string | null;
 }
@@ -32,8 +36,74 @@ interface AnalysisContextType {
 
 const AnalysisContext = createContext<AnalysisContextType | null>(null);
 
+const PROGRESS_SMOOTHING = 0.25;
+
+interface ProgressStats {
+  startTime: number;
+  smoothedSeconds: number | null;
+  lastProcessed: number;
+}
+
 export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Map<number, AnalysisTask>>(new Map());
+  const progressStatsRef = useRef<Map<number, ProgressStats>>(new Map());
+
+  const resetProgressStats = useCallback((appId: number) => {
+    progressStatsRef.current.delete(appId);
+  }, []);
+
+  const attachProgressEstimate = useCallback(
+    (appId: number, progress: ProgressStatus): ProgressWithEstimate => {
+      const now = Date.now();
+      const statsMap = progressStatsRef.current;
+      const existing = statsMap.get(appId);
+      const processed = Math.max(progress.processed, 0);
+      const total = Math.max(progress.total, 0);
+
+      let stats: ProgressStats;
+      if (!existing || processed < existing.lastProcessed) {
+        stats = {
+          startTime: now,
+          smoothedSeconds: null,
+          lastProcessed: processed,
+        };
+      } else {
+        stats = existing;
+      }
+
+      const elapsedSeconds = Math.max((now - stats.startTime) / 1000, 1);
+      let remainingSeconds: number | null = null;
+
+      if (total > 0) {
+        if (processed >= total) {
+          remainingSeconds = 0;
+        } else if (processed > 0) {
+          const rate = processed / elapsedSeconds;
+          if (rate > 0.01) {
+            remainingSeconds = (total - processed) / rate;
+          }
+        }
+      }
+
+      if (remainingSeconds === null && stats.smoothedSeconds !== null) {
+        remainingSeconds = stats.smoothedSeconds;
+      }
+
+      if (remainingSeconds !== null && remainingSeconds >= 0) {
+        stats.smoothedSeconds =
+          stats.smoothedSeconds === null
+            ? remainingSeconds
+            : stats.smoothedSeconds * (1 - PROGRESS_SMOOTHING) + remainingSeconds * PROGRESS_SMOOTHING;
+        remainingSeconds = stats.smoothedSeconds;
+      }
+
+      stats.lastProcessed = processed;
+      statsMap.set(appId, stats);
+
+      return { ...progress, remainingSeconds };
+    },
+    []
+  );
 
   // Track progress for active analyses using SSE with polling fallback
   useEffect(() => {
@@ -51,6 +121,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       try {
         const analysis = await fetchAnalysisResult(appId);
         if (analysis.status === 'completed') {
+          resetProgressStats(appId);
           if (analysis.metadata && analysis.insights) {
             try {
               await saveStarredGame({
@@ -89,6 +160,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             return newTasks;
           });
         } else if (analysis.status === 'failed') {
+          resetProgressStats(appId);
           setTasks((prev) => {
             const newTasks = new Map(prev);
             const existing = newTasks.get(appId);
@@ -115,17 +187,18 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       const interval = setInterval(async () => {
         try {
           const progress = await fetchProgress(appId);
+          const progressWithEstimate = attachProgressEstimate(appId, progress);
           setTasks((prev) => {
             const newTasks = new Map(prev);
             const existing = newTasks.get(appId);
             if (existing && existing.status === 'analyzing') {
-              newTasks.set(appId, { ...existing, progress });
+              newTasks.set(appId, { ...existing, progress: progressWithEstimate });
             }
             return newTasks;
           });
 
           // Check if completed
-          if (!progress.active && progress.total > 0) {
+          if (!progressWithEstimate.active && progressWithEstimate.total > 0) {
             await handleCompletion(appId, task);
             clearInterval(interval);
             pollingFallbacks.delete(appId);
@@ -147,9 +220,16 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
               const newTasks = new Map(prev);
               const existing = newTasks.get(appId);
               if (existing && existing.status === 'analyzing') {
+                const rawProgress: ProgressStatus = {
+                  app_id: appId,
+                  processed,
+                  total,
+                  active,
+                  updated_at: new Date().toISOString(),
+                };
                 newTasks.set(appId, {
                   ...existing,
-                  progress: { app_id: appId, processed, total, active, updated_at: null },
+                  progress: attachProgressEstimate(appId, rawProgress),
                 });
               }
               return newTasks;
@@ -178,7 +258,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       cleanups.forEach((cleanup) => cleanup());
       pollingFallbacks.forEach((interval) => clearInterval(interval));
     };
-  }, [tasks]);
+  }, [tasks, resetProgressStats]);
 
   const startAnalysis = useCallback(async (game: SearchResult, options: StartAnalysisOptions = {}) => {
     const appId = game.appid;
@@ -197,6 +277,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     }
 
     // Start new analysis
+    resetProgressStats(appId);
     setTasks((prev) => {
       const newTasks = new Map(prev);
       newTasks.set(appId, {
@@ -235,6 +316,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         return newTasks;
       });
     } catch (err) {
+      resetProgressStats(appId);
       const error = (err as Error).message || 'Analysis failed';
       setTasks((prev) => {
         const newTasks = new Map(prev);
@@ -248,7 +330,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         return newTasks;
       });
     }
-  }, [tasks]);
+  }, [tasks, attachProgressEstimate, resetProgressStats]);
 
   const getTask = useCallback(
     (appId: number) => {
@@ -258,12 +340,13 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   );
 
   const clearTask = useCallback((appId: number) => {
+    resetProgressStats(appId);
     setTasks((prev) => {
       const newTasks = new Map(prev);
       newTasks.delete(appId);
       return newTasks;
     });
-  }, []);
+  }, [resetProgressStats]);
 
   return (
     <AnalysisContext.Provider value={{ tasks, startAnalysis, getTask, clearTask }}>

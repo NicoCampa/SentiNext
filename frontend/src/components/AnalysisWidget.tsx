@@ -5,6 +5,22 @@ import { useAnalysis } from '@/contexts/AnalysisContext';
 import { SteamImage } from './SteamImage';
 import clsx from 'clsx';
 
+function formatRemainingTime(seconds?: number | null) {
+  if (seconds === undefined || seconds === null) {
+    return null;
+  }
+  if (seconds <= 0) {
+    return 'Less than a second';
+  }
+  const value = Math.round(seconds);
+  const minutes = Math.floor(value / 60);
+  const remainder = value % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${remainder}s`;
+  }
+  return `${remainder}s`;
+}
+
 export function AnalysisWidget() {
   const { tasks, clearTask } = useAnalysis();
   const [isMinimized, setIsMinimized] = useState(false);
@@ -40,8 +56,12 @@ export function AnalysisWidget() {
         {/* Task List */}
         {!isMinimized && (
           <div className="max-h-96 space-y-2 overflow-y-auto p-4">
-            {activeTasks.map(([appId, task]) => (
-              <div
+            {activeTasks.map(([appId, task]) => {
+              const remainingLabel = task.progress
+                ? formatRemainingTime(task.progress.remainingSeconds)
+                : null;
+              return (
+                <div
                 key={appId}
                 className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-800/30 p-3"
               >
@@ -85,6 +105,12 @@ export function AnalysisWidget() {
                           }}
                         />
                       </div>
+                      {task.progress.total > 0 && remainingLabel && (
+                        <p className="text-[11px] tracking-wide text-slate-400">
+                          Est. time remaining:{' '}
+                          <span className="font-mono text-slate-200">{remainingLabel}</span>
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -92,22 +118,23 @@ export function AnalysisWidget() {
                     <div className="flex items-center gap-2 text-xs text-emerald-400">
                       <span>Analysis complete</span>
                       <a
-                        href={`/dashboard?game=${appId}`}
-                        className="ml-auto text-sky-400 hover:text-sky-300 hover:underline"
-                      >
-                        View
-                      </a>
-                    </div>
-                  )}
+                              href={`/dashboard?game=${appId}`}
+                              className="ml-auto text-sky-400 hover:text-sky-300 hover:underline"
+                            >
+                              View
+                            </a>
+                          </div>
+                        )}
 
-                  {task.status === 'error' && (
-                    <div className="text-xs text-rose-400">
-                      Error: {task.error}
+                        {task.status === 'error' && (
+                          <div className="text-xs text-rose-400">
+                            Error: {task.error}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
