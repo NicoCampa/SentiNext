@@ -1,17 +1,18 @@
 import clsx from "clsx";
 import type { Metadata } from "next";
-import { JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { RootProviders } from "@/components/RootProviders";
 
 export const metadata: Metadata = {
-  title: "SENTINEXT // Review Intelligence",
-  description: "Cyberpunk Steam sentiment intelligence dashboard",
+  title: "SentiNext - Review Intelligence",
+  description: "Modern Steam review analytics and insights platform",
 };
 
-const jetbrainsMono = JetBrains_Mono({
+const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-mono",
+  variable: "--font-sans",
+  display: "swap",
 });
 
 export default function RootLayout({
@@ -20,11 +21,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="bg-[rgb(5,5,15)]">
+    <html lang="en" className="dark">
       <body
         className={clsx(
-          jetbrainsMono.variable,
-          "min-h-screen bg-transparent text-[rgb(224,224,224)] antialiased font-mono"
+          inter.variable,
+          "min-h-screen bg-slate-950 text-slate-100 antialiased font-sans"
         )}
       >
         <RootProviders>{children}</RootProviders>
