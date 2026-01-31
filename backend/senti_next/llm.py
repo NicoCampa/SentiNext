@@ -995,19 +995,37 @@ def _run_gemini(prompt: str, model: str) -> str:
                 return content
 
             except ClientError as e:
+                status_code = getattr(e, "status_code", None)
+                if status_code is None:
+                    status_code = getattr(e, "status", None)
+                if status_code is None:
+                    status_code = getattr(e, "code", None)
+
+                if status_code is None:
+                    import re
+                    match = re.search(r"code[\"']?\s*:\s*(\d{3})", str(e))
+                    if match:
+                        try:
+                            status_code = int(match.group(1))
+                        except ValueError:
+                            status_code = None
+
                 # Handle rate limiting (429)
-                if e.status_code == 429:
+                if status_code == 429:
                     retry_delay = 20  # Default to 20 seconds
 
-                    # Try to extract retry delay from error
+                    # Try to extract retry delay from error payload or string.
                     try:
-                        error_dict = e.message if isinstance(e.message, dict) else {}
-                        if 'error' in str(e.message):
-                            import re
-                            match = re.search(r'retry in ([\d.]+)s', str(e.message))
-                            if match:
-                                retry_delay = float(match.group(1)) + 1
-                    except:
+                        import re
+                        raw_message = getattr(e, "message", None)
+                        if raw_message is not None:
+                            raw_text = str(raw_message)
+                        else:
+                            raw_text = str(e)
+                        match = re.search(r"retry in ([\d.]+)s", raw_text, flags=re.IGNORECASE)
+                        if match:
+                            retry_delay = float(match.group(1)) + 1
+                    except Exception:
                         pass
 
                     if attempt < max_retries:
