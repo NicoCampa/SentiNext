@@ -1,4 +1,4 @@
-"""Database engine configuration supporting SQLite and PostgreSQL."""
+"""Database engine configuration for PostgreSQL."""
 from __future__ import annotations
 
 import logging
@@ -8,7 +8,7 @@ from typing import Generator, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.pool import QueuePool, StaticPool
+from sqlalchemy.pool import QueuePool
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,8 @@ def get_database_url() -> str:
         # Render uses postgres:// but SQLAlchemy requires postgresql://
         if database_url.startswith("postgres://"):
             database_url = database_url.replace("postgres://", "postgresql://", 1)
+        if not database_url.startswith("postgresql://"):
+            raise RuntimeError("DATABASE_URL must be a PostgreSQL URL (postgresql://...).")
         return database_url
 
     # Build PostgreSQL URL from components
@@ -50,38 +52,26 @@ def get_database_url() -> str:
 
 
 def get_engine() -> Engine:
-    """Get or create the SQLAlchemy engine.
-
-    Uses connection pooling for PostgreSQL, StaticPool for SQLite.
-    """
+    """Get or create the SQLAlchemy engine for PostgreSQL."""
     global _engine
     if _engine is not None:
         return _engine
 
     url = get_database_url()
-    is_sqlite = url.startswith("sqlite")
+    if not url.startswith("postgresql://"):
+        raise RuntimeError("Only PostgreSQL is supported. Set DATABASE_URL to a postgresql:// URL.")
 
-    if is_sqlite:
-        # SQLite: use StaticPool for thread safety with check_same_thread=False
-        _engine = create_engine(
-            url,
-            poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-            echo=os.getenv("SENTINEXT_DB_ECHO", "").lower() in ("1", "true"),
-        )
-        logger.info("Using SQLite database")
-    else:
-        # PostgreSQL: use QueuePool with connection pooling
-        _engine = create_engine(
-            url,
-            poolclass=QueuePool,
-            pool_size=int(os.getenv("SENTINEXT_DB_POOL_SIZE", "5")),
-            max_overflow=int(os.getenv("SENTINEXT_DB_MAX_OVERFLOW", "10")),
-            pool_pre_ping=True,  # Verify connections before use
-            pool_recycle=1800,   # Recycle connections after 30 minutes
-            echo=os.getenv("SENTINEXT_DB_ECHO", "").lower() in ("1", "true"),
-        )
-        logger.info("Using PostgreSQL database with connection pooling")
+    # PostgreSQL: use QueuePool with connection pooling
+    _engine = create_engine(
+        url,
+        poolclass=QueuePool,
+        pool_size=int(os.getenv("SENTINEXT_DB_POOL_SIZE", "5")),
+        max_overflow=int(os.getenv("SENTINEXT_DB_MAX_OVERFLOW", "10")),
+        pool_pre_ping=True,  # Verify connections before use
+        pool_recycle=1800,   # Recycle connections after 30 minutes
+        echo=os.getenv("SENTINEXT_DB_ECHO", "").lower() in ("1", "true"),
+    )
+    logger.info("Using PostgreSQL database with connection pooling")
 
     return _engine
 
@@ -90,12 +80,6 @@ def is_postgresql() -> bool:
     """Check if using PostgreSQL backend."""
     url = get_database_url()
     return url.startswith("postgresql")
-
-
-def is_sqlite() -> bool:
-    """Check if using SQLite backend."""
-    url = get_database_url()
-    return url.startswith("sqlite")
 
 
 @contextmanager

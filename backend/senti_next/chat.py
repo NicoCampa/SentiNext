@@ -102,10 +102,7 @@ _FTS_STOPWORDS = {
 
 
 def _fts_query_from_question(question: str) -> str:
-    """Build a safe FTS5 query from free-form text.
-
-    We avoid passing raw user strings into MATCH because punctuation can break the query parser.
-    """
+    """Build a safe full-text query from free-form text."""
     tokens = re.findall(r"[a-z0-9]{2,}", (question or "").lower())
     if not tokens:
         return ""

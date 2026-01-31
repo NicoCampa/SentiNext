@@ -54,7 +54,7 @@ cd frontend && npm run lint
 - `local_app.py` - Combined API + static UI server for desktop/local use
 - `senti_next/` - Core package:
   - `llm.py` - OpenAI integration, review classification with batching (10 reviews/batch), taxonomy parsing
-  - `storage.py` - SQLite persistence (reviews, labels, starred games, analysis results)
+  - `storage.py` - PostgreSQL persistence (reviews, labels, starred games, analysis results)
   - `steam_api.py` - Steam API wrapper for fetching reviews and game details
   - `insights.py` - Aggregates classification results into dashboard metrics
   - `chat.py` - Chat interface using review context
@@ -69,7 +69,7 @@ cd frontend && npm run lint
 ### Data Flow
 1. User searches game via Steam API
 2. `/analyze` endpoint fetches reviews, triggers background LLM classification
-3. Labels cached in SQLite with prompt version tracking
+3. Labels cached in PostgreSQL with prompt version tracking
 4. `/analysis/{app_id}` returns insights when ready
 5. Frontend polls `/progress/{app_id}` for classification status
 
@@ -83,7 +83,7 @@ cd frontend && npm run lint
 
 **Backend:**
 - `OPENAI_API_KEY` - Required for LLM classification
-- `SENTINEXT_DB_PATH` - SQLite location (default: platform-specific user data dir)
+- `DATABASE_URL` - PostgreSQL connection string
 - `SENTINEXT_AUTH_ENABLED` - Enable Clerk auth
 - `SENTINEXT_ENABLE_DESTRUCTIVE` - Allow delete endpoints
 
@@ -104,4 +104,4 @@ Labels include `subcategories`, `issue_subcategories`, `request_subcategories`, 
 
 ## Database
 
-SQLite with tables: `reviews`, `review_labels`, `starred_games`, `analysis_results`, `classification_progress`. FTS5 used for chat retrieval.
+PostgreSQL with tables: `reviews`, `review_labels`, `starred_games`, `analysis_results`, `progress`, `job_registry`. Full-text search uses `search_vector`.

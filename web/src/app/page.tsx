@@ -23,7 +23,7 @@ const FEATURE_CARDS: Array<{ title: string; text: string }> = [
   },
   {
     title: "Local-first storage",
-    text: "Reviews, labels, evidence, and exports are stored locally in SQLite. No accounts. No shared database.",
+    text: "Reviews, labels, evidence, and exports are stored locally in PostgreSQL. No accounts. No shared database.",
   },
 ];
 
@@ -42,7 +42,7 @@ const FAQ: Array<{ q: string; a: string }> = [
   },
   {
     q: "Is this a vector database / embeddings system?",
-    a: "No. Chat retrieval uses local SQLite full‑text search (FTS5) and cites only evidence from your labeled reviews.",
+    a: "No. Chat retrieval uses full‑text search and cites only evidence from your labeled reviews.",
   },
 ];
 

@@ -85,8 +85,8 @@ export default function DocsPage() {
           <div className="card">
             <p className="cardTitle">How retrieval works</p>
             <p className="cardText">
-              Retrieval uses local SQLite full-text search (FTS5 with stemming) and then cites evidence stored during
-              labeling. No embeddings database required.
+              Retrieval uses full-text search and then cites evidence stored during labeling. No embeddings database
+              required.
             </p>
           </div>
         </div>
@@ -182,4 +182,3 @@ export default function DocsPage() {
     </div>
   );
 }
-

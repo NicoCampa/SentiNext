@@ -58,7 +58,7 @@ with engine.connect() as conn:
     conn.commit()
     print("✓ Created index")
 
-    # Fix review_labels column names to match SQLite
+    # Fix review_labels column names to match current schema
     print("\nFixing review_labels table...")
 
     # Check existing columns in review_labels

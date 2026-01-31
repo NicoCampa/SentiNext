@@ -1,6 +1,15 @@
 version: "3.9"
 
 services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: sentinext
+      POSTGRES_USER: sentinext
+      POSTGRES_PASSWORD: sentinext
+    ports:
+      - "5432:5432"
+
   app:
     build:
       context: .
@@ -8,10 +17,10 @@ services:
     environment:
       - SENTINEXT_CLUSTER_LABELS=${SENTINEXT_CLUSTER_LABELS:-true}
       - SENTINEXT_CLUSTER_SIMILARITY=${SENTINEXT_CLUSTER_SIMILARITY:-0.82}
-      - SENTINEXT_DB_PATH=/app/data/senti_next.db
+      - DATABASE_URL=postgresql://sentinext:sentinext@db:5432/sentinext
       - SENTINEXT_ENABLE_DESTRUCTIVE=${SENTINEXT_ENABLE_DESTRUCTIVE:-false}
       - SENTINEXT_ADMIN_TOKEN=${SENTINEXT_ADMIN_TOKEN:-}
-    volumes:
-      - ./data:/app/data
+    depends_on:
+      - db
     ports:
       - "8000:8000"

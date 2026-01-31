@@ -5,7 +5,7 @@ SentiNext turns raw Steam reviews into clear, actionable insights. It ingests St
 ## Structure
 - `backend/` – FastAPI app (`backend/main.py`) and shared package (`senti_next/`)
 - `frontend/` – Next.js app (server for web, static export for desktop)
-- `data/` – SQLite database (created at runtime)
+- `data/` – Local runtime data (logs, caches; contents vary by deployment)
 - `web/` – Marketing site (landing, docs, download)
 - `src-tauri/` – Tauri desktop wrapper (builds macOS/Windows apps)
 
@@ -74,7 +74,7 @@ npm run dev  # http://localhost:3000
 Deploy the API and UI as separate services:
 - Frontend (recommended): use Render's **Node** runtime with `Root Directory=frontend`, `Build Command=npm install && npm run build`, `Start Command=npm run start`. Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL and add Clerk keys.
 - Frontend (Docker alternative): use `Dockerfile.frontend` (Next.js server) if you prefer Docker.
-- Backend: use `Dockerfile.backend` (FastAPI API-only). Attach a persistent disk and set `SENTINEXT_DB_PATH` to its mount path.
+- Backend: use `Dockerfile.backend` (FastAPI API-only). Set `DATABASE_URL` to your PostgreSQL database (Render internal URL recommended).
 
 ## Authentication (Clerk)
 Frontend (Next.js App Router, stored in `.env.local`):
@@ -88,6 +88,6 @@ Backend (FastAPI):
 - `SENTINEXT_AUTH_AUDIENCE` (Clerk client id, optional)
 
 ## Notes
-- The API persists reviews/labels to `data/senti_next.db`. Set `SENTINEXT_DB_PATH` to override.
+- The API persists reviews/labels to PostgreSQL via `DATABASE_URL`.
 - LLM settings via env: `SENTINEXT_OLLAMA_MODEL` (default `gpt-oss:20b-cloud`), `SENTINEXT_CLUSTER_LABELS`, `SENTINEXT_CLUSTER_SIMILARITY`.
 - Destructive admin actions (delete game data / clear DB) are disabled by default. To enable them set `SENTINEXT_ENABLE_DESTRUCTIVE=1` and `SENTINEXT_ADMIN_TOKEN` on the backend, then unlock via the **Admin** box in the UI sidebar.

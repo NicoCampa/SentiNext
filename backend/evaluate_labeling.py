@@ -252,7 +252,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--day-range", type=int, default=None, help="Only include reviews from last N days")
     parser.add_argument("--use-cache", action="store_true", help="Load cached DB reviews first, then fetch if needed.")
     parser.add_argument("--cache-only", action="store_true", help="Only use cached DB reviews; fail if none cached.")
-    parser.add_argument("--persist", action="store_true", help="Persist fetched reviews to the SQLite DB (default).")
+    parser.add_argument("--persist", action="store_true", help="Persist fetched reviews to the database (default).")
     parser.add_argument("--no-persist", action="store_true", help="Do not persist fetched reviews to the DB.")
     parser.add_argument("--model", default="gpt-5-mini", help="LLM model to use for LLM runs (default: gpt-5-mini).")
     parser.add_argument(
