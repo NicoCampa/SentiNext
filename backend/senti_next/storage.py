@@ -44,6 +44,11 @@ def _timestamp_to_int(val: Any) -> Optional[int]:
         return None
 
 
+def _get_timestamp() -> int:
+    """Get current Unix timestamp."""
+    return int(datetime.now(timezone.utc).timestamp())
+
+
 _DEFAULT_USER_ID = "local"
 
 
@@ -295,7 +300,7 @@ def reset_progress(user_id: str, app_id: int, total: int) -> None:
     with db_module.get_connection() as conn:
         conn.execute(
             text("""
-                INSERT INTO classification_progress (user_id, app_id, total, processed, updated_at)
+                INSERT INTO progress (user_id, app_id, total, processed, updated_at)
                 VALUES (:user_id, :app_id, :total, 0, :updated_at)
                 ON CONFLICT(user_id, app_id) DO UPDATE SET
                     total = EXCLUDED.total,
@@ -317,7 +322,7 @@ def update_progress(user_id: str, app_id: int, processed: int, total: Optional[i
     with db_module.get_connection() as conn:
         conn.execute(
             text("""
-                UPDATE classification_progress
+                UPDATE progress
                 SET processed = :processed,
                     updated_at = :updated_at,
                     total = COALESCE(:total, total)
@@ -340,7 +345,7 @@ def clear_progress(user_id: str, app_id: int) -> None:
 
     with db_module.get_connection() as conn:
         conn.execute(
-            text("DELETE FROM classification_progress WHERE user_id = :user_id AND app_id = :app_id"),
+            text("DELETE FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
             {"user_id": user_id, "app_id": app_id},
         )
         conn.commit()
@@ -352,7 +357,7 @@ def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, int]]:
 
     with db_module.get_connection() as conn:
         result = conn.execute(
-            text("SELECT total, processed, updated_at FROM classification_progress WHERE user_id = :user_id AND app_id = :app_id"),
+            text("SELECT total, processed, updated_at FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
             {"user_id": user_id, "app_id": app_id},
         )
         row = result.fetchone()
@@ -435,7 +440,7 @@ def delete_all_game_data(app_id: int) -> None:
     with db_module.get_connection() as conn:
         conn.execute(text("DELETE FROM reviews WHERE app_id = :app_id"), {"app_id": app_id})
         conn.execute(text("DELETE FROM review_labels WHERE app_id = :app_id"), {"app_id": app_id})
-        conn.execute(text("DELETE FROM classification_progress WHERE app_id = :app_id"), {"app_id": app_id})
+        conn.execute(text("DELETE FROM progress WHERE app_id = :app_id"), {"app_id": app_id})
         conn.execute(text("DELETE FROM starred_games WHERE app_id = :app_id"), {"app_id": app_id})
         conn.execute(text("DELETE FROM analysis_results WHERE app_id = :app_id"), {"app_id": app_id})
         conn.commit()
@@ -565,7 +570,7 @@ def clear_entire_database() -> Dict[str, int]:
         result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
         labels_count = result.fetchone()[0]
 
-        result = conn.execute(text("SELECT COUNT(*) FROM classification_progress"))
+        result = conn.execute(text("SELECT COUNT(*) FROM progress"))
         progress_count = result.fetchone()[0]
 
         result = conn.execute(text("SELECT COUNT(*) FROM starred_games"))
@@ -576,7 +581,7 @@ def clear_entire_database() -> Dict[str, int]:
 
         conn.execute(text("DELETE FROM reviews"))
         conn.execute(text("DELETE FROM review_labels"))
-        conn.execute(text("DELETE FROM classification_progress"))
+        conn.execute(text("DELETE FROM progress"))
         conn.execute(text("DELETE FROM starred_games"))
         conn.execute(text("DELETE FROM analysis_results"))
         conn.commit()
