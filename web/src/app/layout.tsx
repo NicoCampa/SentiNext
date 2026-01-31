@@ -1,23 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const mono = JetBrains_Mono({
   subsets: ["latin"],
-  variable: "--font-inter",
-});
-
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-display",
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "SentiNext",
-    template: "%s · SentiNext",
+    default: "SENTINEXT // Review Intelligence",
+    template: "%s // SENTINEXT",
   },
   description:
     "Local-first Steam review intelligence: actionable dashboard + chat with sources. Bring your own AI key (OpenAI or Ollama).",
@@ -25,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${display.variable}`}>
+    <html lang="en" className={mono.variable}>
       <body>
         <div className="shell">
           <header className="siteHeader">
@@ -83,7 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
             <div className="container footerFineprint">
               SentiNext analyzes public Steam reviews. Not affiliated with Valve.{" "}
-              <span className="footerMuted">© {new Date().getFullYear()} SentiNext</span>
+              <span className="footerMuted">{"//"} {new Date().getFullYear()} SentiNext</span>
             </div>
           </footer>
         </div>
