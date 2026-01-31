@@ -172,7 +172,7 @@ export default function ChatPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-4xl space-y-8 sm:space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-6 sm:px-6 lg:px-6">
         <div>
           <h1 className="text-xl font-bold">
             <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
