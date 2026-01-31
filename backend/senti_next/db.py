@@ -149,16 +149,80 @@ def init_postgresql_schema() -> None:
                 id SERIAL PRIMARY KEY,
                 app_id INTEGER NOT NULL,
                 review_id TEXT NOT NULL,
-                model_id TEXT,
+                model TEXT,
                 prompt_version TEXT,
-                context_hash TEXT,
-                label_payload JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                review_hash TEXT,
+                payload JSONB,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(app_id, review_id)
             )
         """))
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_review_labels_app_id ON review_labels(app_id)
+        """))
+        # Migrate review_labels column names to match storage expectations.
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'model_id'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'model'
+                ) THEN
+                    ALTER TABLE review_labels RENAME COLUMN model_id TO model;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'label_payload'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'payload'
+                ) THEN
+                    ALTER TABLE review_labels RENAME COLUMN label_payload TO payload;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'context_hash'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'review_hash'
+                ) THEN
+                    ALTER TABLE review_labels RENAME COLUMN context_hash TO review_hash;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'created_at'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'review_labels' AND column_name = 'updated_at'
+                ) THEN
+                    ALTER TABLE review_labels RENAME COLUMN created_at TO updated_at;
+                END IF;
+            END $$;
+        """))
+        # Ensure updated_at exists and uses TIMESTAMP type.
+        conn.execute(text("""
+            ALTER TABLE review_labels
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """))
+        conn.execute(text("""
+            DO $$
+            DECLARE col_type TEXT;
+            BEGIN
+                SELECT data_type INTO col_type
+                FROM information_schema.columns
+                WHERE table_name = 'review_labels' AND column_name = 'updated_at';
+                IF col_type = 'bigint' THEN
+                    ALTER TABLE review_labels
+                    ALTER COLUMN updated_at TYPE TIMESTAMP
+                    USING to_timestamp(updated_at);
+                END IF;
+            END $$;
         """))
 
         # Analysis results table with JSONB
@@ -172,6 +236,7 @@ def init_postgresql_schema() -> None:
                 snapshot_hash TEXT,
                 context_hash TEXT,
                 stale BOOLEAN DEFAULT FALSE,
+                stale_reason TEXT,
                 metadata JSONB,
                 insights JSONB,
                 reviews JSONB,
@@ -180,6 +245,11 @@ def init_postgresql_schema() -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, app_id)
             )
+        """))
+        # Ensure newer columns exist on older deployments.
+        conn.execute(text("""
+            ALTER TABLE IF EXISTS analysis_results
+            ADD COLUMN IF NOT EXISTS stale_reason TEXT
         """))
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_analysis_results_user_app

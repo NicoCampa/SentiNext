@@ -246,7 +246,7 @@ def upsert_review_label(
             text("""
                 INSERT INTO review_labels (review_id, app_id, model, prompt_version, review_hash, payload, updated_at)
                 VALUES (:review_id, :app_id, :model, :prompt_version, :review_hash, :payload, :updated_at)
-                ON CONFLICT(review_id) DO UPDATE SET
+                ON CONFLICT(app_id, review_id) DO UPDATE SET
                     model = EXCLUDED.model,
                     prompt_version = EXCLUDED.prompt_version,
                     review_hash = EXCLUDED.review_hash,
@@ -828,8 +828,8 @@ def save_analysis_result(
         from sqlalchemy import text
         conn.execute(
             text("""
-            INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash)
-            VALUES (:user_id, :app_id, :metadata, :insights, :reviews, :status, :error, to_timestamp(:updated_at), :run_id, :snapshot_hash, :stale, :context_hash)
+            INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
+            VALUES (:user_id, :app_id, :metadata, :insights, :reviews, :status, :error, to_timestamp(:updated_at), :run_id, :snapshot_hash, :stale, :context_hash, :stale_reason)
             ON CONFLICT(user_id, app_id) DO UPDATE SET
                 metadata = EXCLUDED.metadata,
                 insights = EXCLUDED.insights,
@@ -840,6 +840,7 @@ def save_analysis_result(
                 snapshot_hash = EXCLUDED.snapshot_hash,
                 stale = EXCLUDED.stale,
                 context_hash = EXCLUDED.context_hash,
+                stale_reason = EXCLUDED.stale_reason,
                 updated_at = EXCLUDED.updated_at
             """),
             {
@@ -855,6 +856,7 @@ def save_analysis_result(
                 "snapshot_hash": snapshot_hash,
                 "stale": stale,
                 "context_hash": context_hash,
+                "stale_reason": stale_reason,
             },
         )
 
