@@ -825,26 +825,40 @@ def save_analysis_result(
     timestamp = _get_timestamp()
     from . import db as db_module
     with db_module.get_connection() as conn:
+        from sqlalchemy import text
         conn.execute(
-            """
+            text("""
             INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (:user_id, :app_id, :metadata, :insights, :reviews, :status, :error, to_timestamp(:updated_at), :run_id, :snapshot_hash, :stale, :context_hash, :stale_reason)
             ON CONFLICT(user_id, app_id) DO UPDATE SET
-                metadata = excluded.metadata,
-                insights = excluded.insights,
-                reviews = excluded.reviews,
-                status = excluded.status,
-                error = excluded.error,
-                run_id = excluded.run_id,
-                snapshot_hash = excluded.snapshot_hash,
-                stale = excluded.stale,
-                context_hash = excluded.context_hash,
-                stale_reason = excluded.stale_reason,
-                updated_at = excluded.updated_at
-            """,
-            (user_id, app_id, payload_metadata, payload_insights, payload_reviews, status, error, timestamp, run_id, snapshot_hash, int(stale), context_hash, stale_reason),
+                metadata = EXCLUDED.metadata,
+                insights = EXCLUDED.insights,
+                reviews = EXCLUDED.reviews,
+                status = EXCLUDED.status,
+                error = EXCLUDED.error,
+                run_id = EXCLUDED.run_id,
+                snapshot_hash = EXCLUDED.snapshot_hash,
+                stale = EXCLUDED.stale,
+                context_hash = EXCLUDED.context_hash,
+                stale_reason = EXCLUDED.stale_reason,
+                updated_at = EXCLUDED.updated_at
+            """),
+            {
+                "user_id": user_id,
+                "app_id": app_id,
+                "metadata": payload_metadata,
+                "insights": payload_insights,
+                "reviews": payload_reviews,
+                "status": status,
+                "error": error,
+                "updated_at": timestamp,
+                "run_id": run_id,
+                "snapshot_hash": snapshot_hash,
+                "stale": stale,
+                "context_hash": context_hash,
+                "stale_reason": stale_reason,
+            },
         )
-        conn.commit()
 
 
 def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
@@ -891,18 +905,25 @@ def create_job_registry(
     metadata_json = json.dumps(metadata) if metadata else None
     from . import db as db_module
     with db_module.get_connection() as conn:
+        from sqlalchemy import text
         conn.execute(
-            """
+            text("""
             INSERT INTO job_registry (job_id, user_id, app_id, job_type, status, created_at, metadata)
-            VALUES (?, ?, ?, ?, 'pending', ?, ?)
+            VALUES (:job_id, :user_id, :app_id, :job_type, 'pending', to_timestamp(:created_at), :metadata)
             ON CONFLICT(job_id) DO UPDATE SET
                 status = 'pending',
-                created_at = excluded.created_at,
-                metadata = excluded.metadata
-            """,
-            (job_id, user_id, app_id, job_type, timestamp, metadata_json),
+                created_at = EXCLUDED.created_at,
+                metadata = EXCLUDED.metadata
+            """),
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "app_id": app_id,
+                "job_type": job_type,
+                "created_at": timestamp,
+                "metadata": metadata_json,
+            },
         )
-        conn.commit()
 
 
 def update_job_registry(
@@ -914,22 +935,22 @@ def update_job_registry(
     timestamp = _get_timestamp()
     from . import db as db_module
     with db_module.get_connection() as conn:
+        from sqlalchemy import text
         if status == "running":
             conn.execute(
-                "UPDATE job_registry SET status = ?, started_at = ? WHERE job_id = ?",
-                (status, timestamp, job_id),
+                text("UPDATE job_registry SET status = :status, started_at = to_timestamp(:started_at) WHERE job_id = :job_id"),
+                {"status": status, "started_at": timestamp, "job_id": job_id},
             )
         elif status in ("completed", "failed"):
             conn.execute(
-                "UPDATE job_registry SET status = ?, completed_at = ?, error = ? WHERE job_id = ?",
-                (status, timestamp, error, job_id),
+                text("UPDATE job_registry SET status = :status, completed_at = to_timestamp(:completed_at), error = :error WHERE job_id = :job_id"),
+                {"status": status, "completed_at": timestamp, "error": error, "job_id": job_id},
             )
         elif status:
             conn.execute(
-                "UPDATE job_registry SET status = ? WHERE job_id = ?",
-                (status, job_id),
+                text("UPDATE job_registry SET status = :status WHERE job_id = :job_id"),
+                {"status": status, "job_id": job_id},
             )
-        conn.commit()
 
 
 def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
