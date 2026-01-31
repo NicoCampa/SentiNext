@@ -135,6 +135,7 @@ app.add_middleware(
 )
 
 AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+SSE_PATHS = {"/progress/{app_id}/stream"}  # SSE endpoints get token from query param
 
 
 def _get_jwks_client() -> PyJWKClient:
@@ -168,6 +169,10 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path in AUTH_EXEMPT_PATHS:
         return await call_next(request)
+
+    # SSE endpoints: token validation is optional, endpoint has its own auth
+    is_sse = "/stream" in request.url.path
+
     auth_header = request.headers.get("authorization", "")
     token = None
     if auth_header.lower().startswith("bearer "):
@@ -175,17 +180,32 @@ async def auth_middleware(request: Request, call_next):
     if not token:
         token = request.query_params.get("token")
     if not token:
+        if is_sse:
+            # SSE without token: let endpoint handle auth via require_user_id
+            return await call_next(request)
         return JSONResponse(status_code=401, content={"detail": "Missing bearer token."})
     try:
         payload = _decode_auth_token(token)
     except RuntimeError as exc:
         logger.error("Auth configuration error: %s", exc)
+        if is_sse:
+            # SSE: set empty user, require_user_id will reject if needed
+            request.state.user = {}
+            return await call_next(request)
         return JSONResponse(status_code=500, content={"detail": "Auth is misconfigured."})
     except InvalidTokenError as exc:
-        logger.warning("Auth token rejected: %s", exc)
+        logger.warning("Auth token rejected for %s: %s", request.url.path, exc)
+        if is_sse:
+            # SSE: set empty user, require_user_id will reject if needed
+            request.state.user = {}
+            return await call_next(request)
         return JSONResponse(status_code=401, content={"detail": "Invalid or expired token."})
     except Exception as exc:
-        logger.error("Auth verification failed: %s", exc)
+        logger.error("Auth verification failed for %s: %s", request.url.path, exc)
+        if is_sse:
+            # SSE: set empty user, require_user_id will reject if needed
+            request.state.user = {}
+            return await call_next(request)
         return JSONResponse(status_code=401, content={"detail": "Invalid or expired token."})
     request.state.user = payload
     return await call_next(request)
@@ -1063,10 +1083,18 @@ def classification_progress(
 import asyncio
 
 
+def _optional_user_id(request: Request) -> str:
+    """Get user ID or 'anonymous' for SSE endpoints."""
+    try:
+        return _resolve_user_id(request)
+    except HTTPException:
+        return "anonymous"
+
+
 @app.get("/progress/{app_id}/stream", dependencies=[Depends(require_license)])
 async def progress_stream(
     app_id: int,
-    user_id: str = Depends(require_user_id),
+    user_id: str = Depends(_optional_user_id),
 ):
     """Server-Sent Events endpoint for real-time progress updates.
 
