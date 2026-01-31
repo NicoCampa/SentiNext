@@ -1079,8 +1079,10 @@ def classify_reviews_batch(
     if any(not rid for rid in expected_ids):
         raise ValueError("Missing review_id in batch input.")
 
+    logger.info(f"Classifying batch of {len(items)} reviews with LLM")
     prompt = _build_batch_prompt(items, game_context=game_context)
     raw, model_used = _run_llm(prompt)
+    logger.info(f"LLM batch classification complete: {len(items)} reviews processed")
     payload = _load_json_mapping(raw)
 
     results: Dict[str, Dict[str, Any]] = {}
