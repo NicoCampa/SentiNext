@@ -4,7 +4,6 @@ const shouldExport = (process.env.SENTINEXT_STATIC_EXPORT || "").trim().toLowerC
 
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   images: {
     unoptimized: true,
   },
