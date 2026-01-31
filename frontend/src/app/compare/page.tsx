@@ -143,7 +143,6 @@ export default function ComparePage() {
           <EmptyState
             title="No games to compare"
             description="Analyze some games first to compare them here."
-            icon="⚖️"
             variant="info"
             action={
               <a href="/dashboard">
@@ -162,8 +161,8 @@ export default function ComparePage() {
         <div>
           <h1 className="text-3xl font-bold text-white">Game Comparison</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Compare two games side-by-side • {selectedIds.length} selected
-            {filtersActive ? " · global filters applied" : ""}
+            Compare two games side-by-side - {selectedIds.length} selected
+            {filtersActive ? " - global filters applied" : ""}
           </p>
           {selectedGames.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -222,7 +221,7 @@ export default function ComparePage() {
                   </div>
                   {isSelected && (
                     <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white">
-                      ✓
+                      Selected
                     </div>
                   )}
                 </button>
@@ -235,7 +234,6 @@ export default function ComparePage() {
           <EmptyState
             title="Select two games"
             description="Pick two starred games to compare their category performance."
-            icon="👆"
             variant="default"
           />
         ) : (
@@ -379,7 +377,7 @@ function ComparisonDashboard({
                     className="text-xs text-slate-400 hover:text-white"
                     title="Remove from starred"
                   >
-                    ✕
+                    ×
                   </button>
                 </div>
                 <p className="text-xs text-slate-400">

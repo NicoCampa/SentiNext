@@ -405,7 +405,6 @@ function DashboardContent() {
                   <EmptyState
                     title="No analyses yet"
                     description="Search for a game to start your first analysis."
-                    icon="▣"
                     variant="info"
                   />
                 ) : (
@@ -430,7 +429,7 @@ function DashboardContent() {
                         <div className="flex-1 space-y-1">
                           <p className="text-sm font-semibold text-white line-clamp-1">{game.name}</p>
                           <p className="text-xs text-slate-400">
-                            {sample.length.toLocaleString()} reviews · {formatSavedLabel(game.updated_at)}
+                            {sample.length.toLocaleString()} reviews -{formatSavedLabel(game.updated_at)}
                           </p>
                         </div>
                         <div className="text-right">
@@ -546,7 +545,7 @@ function DashboardContent() {
                   </Button>
                   {estimate ? (
                     <p className="text-xs text-slate-400">
-                      LLM calls: <span className="text-slate-200">{estimate.llm_reviews}</span> · cached:{" "}
+                      LLM calls: <span className="text-slate-200">{estimate.llm_reviews}</span> -cached:{" "}
                       <span className="text-slate-200">{estimate.cached_reviews}</span>
                     </p>
                   ) : (
@@ -777,7 +776,7 @@ function AnalysisResults({
                 <h2 className="text-2xl font-semibold text-white">{selectedGame?.name ?? "Analysis"}</h2>
               </div>
               <p className="text-sm text-slate-400">
-                Last run {new Date(analysis.metadata.fetched_at).toLocaleString()} · language{" "}
+                Last run {new Date(analysis.metadata.fetched_at).toLocaleString()} -language{" "}
                 {analysis.metadata.language || "unknown"}
               </p>
               <p className="text-xs text-slate-500">
@@ -1095,7 +1094,7 @@ function AnalysisResults({
                       <div key={row.label} className="flex items-center justify-between gap-3">
                         <span>{row.label}</span>
                         <span className="text-xs text-slate-400">
-                          {count} reviews · rec {rec} · requests {req}
+                          {count} reviews -rec {rec} -requests {req}
                         </span>
                       </div>
                     );
@@ -1123,7 +1122,7 @@ function AnalysisResults({
                     return (
                       <div key={row.label} className="flex items-center justify-between gap-3">
                         <span>{row.label}</span>
-                        <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
+                        <span className="text-xs text-slate-400">{meta.join(" -")}</span>
                       </div>
                     );
                   })}
@@ -1150,7 +1149,7 @@ function AnalysisResults({
                     return (
                       <div key={row.label} className="flex items-center justify-between gap-3">
                         <span>{row.label}</span>
-                        <span className="text-xs text-slate-400">{meta.join(" · ")}</span>
+                        <span className="text-xs text-slate-400">{meta.join(" -")}</span>
                       </div>
                     );
                   })}
@@ -1172,7 +1171,7 @@ function AnalysisResults({
                       <div key={row.label} className="flex items-center justify-between gap-3">
                         <span>{row.label}</span>
                         <span className="text-xs text-slate-400">
-                          {count} reviews · rec {rec} · issues {issueCount}
+                          {count} reviews -rec {rec} -issues {issueCount}
                         </span>
                       </div>
                     );
@@ -1197,8 +1196,8 @@ function AnalysisResults({
               <div>
                 <h3 className="text-lg font-semibold text-white">{selectedSubcategoryLabel}</h3>
                 <p className="mt-1 text-sm text-slate-400">
-                  {selectedMainLabel} · {selectedReviews.length.toLocaleString()} reviews
-                  {filtersActive ? " · filters applied" : ""}
+                  {selectedMainLabel} -{selectedReviews.length.toLocaleString()} reviews
+                  {filtersActive ? " -filters applied" : ""}
                 </p>
               </div>
               <Button variant="secondary" onClick={() => setSelectedSubcategory(null)}>

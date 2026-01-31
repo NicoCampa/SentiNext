@@ -250,7 +250,7 @@ function ReviewsContent() {
               {filtersActive
                 ? `Global filters: ${baseReviews.length} / ${(game.sample || []).length} reviews`
                 : `${(game.sample || []).length} reviews`}{" "}
-              · Showing: {quickFilteredReviews.length}
+              -Showing: {quickFilteredReviews.length}
             </p>
             {filterType === "subcategory" && (
               <p className="mt-1 text-sm text-sky-400">
@@ -376,7 +376,7 @@ function ReviewsContent() {
                   <div>
                     <h2 className="text-lg font-semibold text-white">Review details</h2>
                     <p className="text-xs text-slate-400">
-                      {formatReviewDate(selectedReview.created_at)} · {selectedReview.votes_up || 0} helpful
+                      {formatReviewDate(selectedReview.created_at)} -{selectedReview.votes_up || 0} helpful
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">

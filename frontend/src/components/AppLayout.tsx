@@ -20,11 +20,11 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const compact = density === "compact";
 
   const navItems = [
-    { href: "/dashboard?view=home", label: "Home", icon: "◈", code: "01" },
-    { href: "/chat", label: "Chat", icon: "◉", code: "02" },
-    { href: "/compare", label: "Compare", icon: "◫", code: "03" },
-    { href: "/database", label: "Database", icon: "▦", code: "04" },
-    { href: "/settings", label: "Settings", icon: "⚡", code: "05" },
+    { href: "/dashboard?view=home", label: "Home", code: "01" },
+    { href: "/chat", label: "Chat", code: "02" },
+    { href: "/compare", label: "Compare", code: "03" },
+    { href: "/database", label: "Database", code: "04" },
+    { href: "/settings", label: "Settings", code: "05" },
   ];
   const sidebarNavItems = navItems.filter((item) => item.href !== "/settings");
 
@@ -43,7 +43,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
             <div className="mb-8">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-10 h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center">
-                  <span className="text-[rgb(0,255,255)] text-xl">◆</span>
+                  <span className="text-[rgb(0,255,255)] text-xl font-bold">SN</span>
                 </div>
                 <div>
                   <h1 className="text-xl font-bold tracking-wider cyber-gradient-text">
@@ -62,8 +62,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Navigation */}
             <div className="space-y-1">
-              <p className="hud-label mb-3 flex items-center gap-2">
-                <span className="text-[rgb(255,0,128)]">▸</span>
+              <p className="hud-label mb-3">
                 Navigation
               </p>
               <nav className="space-y-1">
@@ -82,7 +81,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                     <span className="text-[10px] font-mono text-[rgb(0,255,255)]/40 group-hover:text-[rgb(0,255,255)]/60">
                       {item.code}
                     </span>
-                    <span className="text-lg">{item.icon}</span>
                     <span className="text-xs uppercase tracking-[0.2em]">{item.label}</span>
                     {isActiveRoute(item.href) && (
                       <span className="ml-auto w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full shadow-[0_0_10px_rgb(0,255,255)]" />
@@ -126,7 +124,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                 className="flex items-center justify-between p-4 border border-[rgb(0,255,255)]/10 text-[rgb(150,150,170)] hover:border-[rgb(0,255,255)]/30 hover:text-[rgb(0,255,255)] transition-all duration-200 group"
               >
                 <span className="text-xs uppercase tracking-[0.2em]">System Config</span>
-                <span className="text-lg group-hover:animate-pulse">⚡</span>
               </Link>
 
               {/* Version Info */}
@@ -181,7 +178,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                   {active && (
                     <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-[rgb(0,255,255)] shadow-[0_0_10px_rgb(0,255,255)]" />
                   )}
-                  <span className="text-lg">{item.icon}</span>
                   <span className="text-[8px] uppercase tracking-[0.15em]">{item.label}</span>
                 </Link>
               );

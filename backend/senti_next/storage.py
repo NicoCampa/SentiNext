@@ -1,36 +1,32 @@
 """Database storage for persisted Steam reviews.
 
-Supports SQLite (default) and PostgreSQL backends.
-Set DATABASE_URL or SENTINEXT_DB_BACKEND=postgresql to use PostgreSQL.
+PostgreSQL-only backend using SQLAlchemy.
 """
 from __future__ import annotations
 
 import json
 import logging
-import os
-import sqlite3
-import time
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from platformdirs import user_data_dir
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
 
-def _get_timestamp() -> Union[int, datetime]:
-    """Get current timestamp in appropriate format for the database backend."""
-    if _USING_POSTGRESQL:
-        return datetime.now(timezone.utc)
-    return int(time.time())
-
-
-def _get_cutoff_timestamp(seconds_ago: int) -> Union[int, datetime]:
-    """Get a cutoff timestamp for comparison queries."""
-    if _USING_POSTGRESQL:
-        return datetime.now(timezone.utc) - __import__('datetime').timedelta(seconds=seconds_ago)
-    return int(time.time()) - seconds_ago
+def _parse_json_field(val: Any, default: Any = None) -> Any:
+    """Parse a JSON field (PostgreSQL JSONB returns dict/list directly)."""
+    if val is None:
+        return default
+    if isinstance(val, (dict, list)):
+        return val
+    # Fallback for any string values
+    if isinstance(val, str):
+        try:
+            return json.loads(val)
+        except json.JSONDecodeError:
+            return default
+    return default
 
 
 def _timestamp_to_int(val: Any) -> Optional[int]:
@@ -48,466 +44,14 @@ def _timestamp_to_int(val: Any) -> Optional[int]:
         return None
 
 
-def _parse_json_field(val: Any, default: Any = None) -> Any:
-    """Parse a JSON field that might be a string (SQLite) or already parsed (PostgreSQL JSONB)."""
-    if val is None:
-        return default
-    # PostgreSQL JSONB returns dict/list directly
-    if isinstance(val, (dict, list)):
-        return val
-    # SQLite returns JSON string
-    if isinstance(val, str):
-        try:
-            return json.loads(val)
-        except json.JSONDecodeError:
-            return default
-    return default
-
-
-def _render_disk_root() -> Path | None:
-    candidate = Path("/var/data")
-    if candidate.is_dir() and os.access(candidate, os.W_OK):
-        return candidate
-    return None
-
-
-def _default_db_path() -> Path:
-    """Resolve a stable path for the SQLite database."""
-    env_path = os.getenv("SENTINEXT_DB_PATH")
-    if env_path:
-        return Path(env_path).expanduser()
-
-    render_root = _render_disk_root()
-    if render_root:
-        return render_root / "senti_next.db"
-
-    # Default to per-user application data so packaged desktop builds work cleanly.
-    # Examples:
-    # - macOS: ~/Library/Application Support/SentiNext/senti_next.db
-    # - Windows: %APPDATA%\\SentiNext\\senti_next.db
-    # - Linux: ~/.local/share/SentiNext/senti_next.db
-    data_root = Path(user_data_dir(appname="SentiNext", appauthor=False))
-    return data_root / "senti_next.db"
-
-
-_DB_PATH = _default_db_path()
-_FTS_ENABLED = True
 _DEFAULT_USER_ID = "local"
-_USING_POSTGRESQL = False
-
-
-def _check_postgresql_backend() -> bool:
-    """Check if PostgreSQL backend is configured."""
-    if os.getenv("DATABASE_URL"):
-        return True
-    return os.getenv("SENTINEXT_DB_BACKEND", "").lower() == "postgresql"
-
-
-def db_path() -> Path:
-    return _DB_PATH
-
-
-def is_postgresql() -> bool:
-    """Check if using PostgreSQL backend."""
-    return _USING_POSTGRESQL
-
-
-class _PostgreSQLRowAdapter:
-    """Adapter to make psycopg2 rows behave like sqlite3.Row."""
-    def __init__(self, cursor_description, row):
-        self._data = {desc[0]: val for desc, val in zip(cursor_description, row)}
-
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return list(self._data.values())[key]
-        return self._data[key]
-
-    def keys(self):
-        return self._data.keys()
-
-
-class _PostgreSQLConnectionWrapper:
-    """Wrapper to make PostgreSQL connections compatible with sqlite3 interface."""
-
-    def __init__(self, engine):
-        self._engine = engine
-        self._conn = None
-
-    def __enter__(self):
-        self._conn = self._engine.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._conn:
-            if exc_type is None:
-                self._conn.commit()
-            self._conn.close()
-        return False
-
-    def execute(self, sql, params=None):
-        from sqlalchemy import text
-        # Convert ? placeholders to :p0, :p1, etc. for SQLAlchemy
-        if params:
-            new_sql = sql
-            param_dict = {}
-            for i, val in enumerate(params):
-                new_sql = new_sql.replace("?", f":p{i}", 1)
-                param_dict[f"p{i}"] = val
-            result = self._conn.execute(text(new_sql), param_dict)
-        else:
-            result = self._conn.execute(text(sql))
-        return _PostgreSQLResultWrapper(result)
-
-    def commit(self):
-        if self._conn:
-            self._conn.commit()
-
-
-class _PostgreSQLResultWrapper:
-    """Wrapper to make SQLAlchemy results compatible with sqlite3 cursor."""
-
-    def __init__(self, result):
-        self._result = result
-        self._description = result.cursor.description if hasattr(result, 'cursor') and result.cursor else None
-
-    def fetchall(self):
-        rows = self._result.fetchall()
-        if self._description:
-            return [_PostgreSQLRowAdapter(self._description, row) for row in rows]
-        # For SQLAlchemy 2.0 style results
-        if hasattr(self._result, 'keys'):
-            keys = list(self._result.keys())
-            return [_PostgreSQLRowAdapter([(k,) for k in keys], row) for row in rows]
-        return rows
-
-    def fetchone(self):
-        row = self._result.fetchone()
-        if row is None:
-            return None
-        if self._description:
-            return _PostgreSQLRowAdapter(self._description, row)
-        if hasattr(self._result, 'keys'):
-            keys = list(self._result.keys())
-            return _PostgreSQLRowAdapter([(k,) for k in keys], row)
-        return row
-
-    @property
-    def lastrowid(self):
-        return getattr(self._result, 'lastrowid', None)
-
-    @property
-    def rowcount(self):
-        return self._result.rowcount
-
-
-def _get_connection():
-    """Get a database connection (SQLite or PostgreSQL)."""
-    if _USING_POSTGRESQL:
-        from . import db as db_module
-        return _PostgreSQLConnectionWrapper(db_module.get_engine())
-
-    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    try:
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    except sqlite3.OperationalError:
-        return set()
-    return {row["name"] for row in rows if row["name"]}
 
 
 def init_db() -> None:
-    global _FTS_ENABLED, _USING_POSTGRESQL
-
-    # Check if PostgreSQL is configured
-    if _check_postgresql_backend():
-        try:
-            from . import db as db_module
-            db_module.init_postgresql_schema()
-            _USING_POSTGRESQL = True
-            logger.info("Initialized PostgreSQL backend")
-            return
-        except Exception as exc:
-            logger.warning("PostgreSQL init failed, falling back to SQLite: %s", exc)
-            _USING_POSTGRESQL = False
-
-    # SQLite initialization
-    with _get_connection() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS reviews (
-                review_id TEXT PRIMARY KEY,
-                app_id INTEGER NOT NULL,
-                data TEXT NOT NULL,
-                timestamp_created INTEGER,
-                timestamp_updated INTEGER
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_reviews_app_id_created
-            ON reviews (app_id, timestamp_created DESC)
-            """
-        )
-        # Optional: full-text search index over review text for chat retrieval.
-        try:
-            desired_definition = (
-                "CREATE VIRTUAL TABLE IF NOT EXISTS reviews_fts USING fts5("
-                "review_id UNINDEXED, "
-                "app_id UNINDEXED, "
-                "language UNINDEXED, "
-                "review_text, "
-                "tokenize='porter'"
-                ")"
-            )
-            fallback_definition = (
-                "CREATE VIRTUAL TABLE IF NOT EXISTS reviews_fts USING fts5("
-                "review_id UNINDEXED, "
-                "app_id UNINDEXED, "
-                "language UNINDEXED, "
-                "review_text"
-                ")"
-            )
-
-            try:
-                existing = conn.execute(
-                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reviews_fts'"
-                ).fetchone()
-            except sqlite3.OperationalError:
-                existing = None
-
-            def _supports_porter() -> bool:
-                try:
-                    conn.execute("DROP TABLE IF EXISTS _sentinext_fts_probe")
-                    conn.execute("CREATE VIRTUAL TABLE _sentinext_fts_probe USING fts5(x, tokenize='porter')")
-                    conn.execute("DROP TABLE IF EXISTS _sentinext_fts_probe")
-                    return True
-                except sqlite3.OperationalError:
-                    try:
-                        conn.execute("DROP TABLE IF EXISTS _sentinext_fts_probe")
-                    except sqlite3.OperationalError:
-                        pass
-                    return False
-
-            should_create = True
-            porter_supported: Optional[bool] = None
-
-            if existing is not None and existing["sql"]:
-                existing_sql = (
-                    str(existing["sql"])
-                    .lower()
-                    .replace(" ", "")
-                    .replace("\n", "")
-                    .replace("\t", "")
-                    .replace("\r", "")
-                )
-                has_porter = "tokenize='porter'" in existing_sql or 'tokenize="porter"' in existing_sql
-                if not has_porter:
-                    porter_supported = _supports_porter()
-                    if porter_supported:
-                        conn.execute("DROP TABLE IF EXISTS reviews_fts")
-                    else:
-                        # Keep the existing FTS table (still better than disabling retrieval).
-                        should_create = False
-
-            if should_create:
-                if porter_supported is None:
-                    porter_supported = _supports_porter()
-                conn.execute(desired_definition if porter_supported else fallback_definition)
-
-            _FTS_ENABLED = True
-        except sqlite3.OperationalError:
-            _FTS_ENABLED = False
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS review_labels (
-                review_id TEXT PRIMARY KEY,
-                app_id INTEGER NOT NULL,
-                model TEXT NOT NULL,
-                prompt_version TEXT NOT NULL,
-                review_hash TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                updated_at INTEGER NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_review_labels_app
-            ON review_labels (app_id)
-            """
-        )
-        progress_columns = _table_columns(conn, "classification_progress")
-        if progress_columns and "user_id" not in progress_columns:
-            conn.execute("DROP TABLE IF EXISTS classification_progress")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS classification_progress (
-                user_id TEXT NOT NULL,
-                app_id INTEGER NOT NULL,
-                total INTEGER NOT NULL,
-                processed INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                PRIMARY KEY (user_id, app_id)
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_classification_progress_app
-            ON classification_progress (app_id)
-            """
-        )
-        starred_columns = _table_columns(conn, "starred_games")
-        if starred_columns and "user_id" not in starred_columns:
-            conn.execute("ALTER TABLE starred_games RENAME TO starred_games_legacy")
-            conn.execute(
-                """
-                CREATE TABLE starred_games (
-                    user_id TEXT NOT NULL,
-                    app_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    metadata TEXT NOT NULL,
-                    insights TEXT,
-                    sample TEXT,
-                    genres TEXT,
-                    categories TEXT,
-                    updated_at INTEGER NOT NULL,
-                    PRIMARY KEY (user_id, app_id)
-                )
-                """
-            )
-            conn.execute(
-                """
-                INSERT INTO starred_games (user_id, app_id, name, metadata, insights, sample, genres, categories, updated_at)
-                SELECT ?, app_id, name, metadata, insights, sample, genres, categories, updated_at
-                FROM starred_games_legacy
-                """,
-                (_DEFAULT_USER_ID,),
-            )
-            conn.execute("DROP TABLE starred_games_legacy")
-        else:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS starred_games (
-                    user_id TEXT NOT NULL,
-                    app_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    metadata TEXT NOT NULL,
-                    insights TEXT,
-                    sample TEXT,
-                    genres TEXT,
-                    categories TEXT,
-                    updated_at INTEGER NOT NULL,
-                    PRIMARY KEY (user_id, app_id)
-                )
-                """
-            )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_starred_games_user
-            ON starred_games (user_id, updated_at DESC)
-            """
-        )
-
-        analysis_columns = _table_columns(conn, "analysis_results")
-        if analysis_columns and "user_id" not in analysis_columns:
-            conn.execute("ALTER TABLE analysis_results RENAME TO analysis_results_legacy")
-            conn.execute(
-                """
-                CREATE TABLE analysis_results (
-                    user_id TEXT NOT NULL,
-                    app_id INTEGER NOT NULL,
-                    metadata TEXT,
-                    insights TEXT,
-                    reviews TEXT,
-                    status TEXT NOT NULL DEFAULT 'pending',
-                    error TEXT,
-                    updated_at INTEGER NOT NULL,
-                    run_id TEXT,
-                    snapshot_hash TEXT,
-                    stale INTEGER DEFAULT 0,
-                    context_hash TEXT,
-                    stale_reason TEXT,
-                    PRIMARY KEY (user_id, app_id)
-                )
-                """
-            )
-            conn.execute(
-                """
-                INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
-                SELECT ?, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason
-                FROM analysis_results_legacy
-                """,
-                (_DEFAULT_USER_ID,),
-            )
-            conn.execute("DROP TABLE analysis_results_legacy")
-        else:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS analysis_results (
-                    user_id TEXT NOT NULL,
-                    app_id INTEGER NOT NULL,
-                    metadata TEXT,
-                    insights TEXT,
-                    reviews TEXT,
-                    status TEXT NOT NULL DEFAULT 'pending',
-                    error TEXT,
-                    updated_at INTEGER NOT NULL,
-                    run_id TEXT,
-                    snapshot_hash TEXT,
-                    stale INTEGER DEFAULT 0,
-                    context_hash TEXT,
-                    stale_reason TEXT,
-                    PRIMARY KEY (user_id, app_id)
-                )
-                """
-            )
-        for col in ["context_hash", "stale_reason"]:
-            try:
-                conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col} TEXT")
-            except sqlite3.OperationalError:
-                pass
-        for col in ["run_id", "snapshot_hash", "stale"]:
-            try:
-                conn.execute(f"ALTER TABLE analysis_results ADD COLUMN {col} TEXT")
-            except sqlite3.OperationalError:
-                pass
-        # Job registry for background job tracking
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS job_registry (
-                job_id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                app_id INTEGER NOT NULL,
-                job_type TEXT NOT NULL DEFAULT 'analysis',
-                status TEXT NOT NULL DEFAULT 'pending',
-                created_at INTEGER NOT NULL,
-                started_at INTEGER,
-                completed_at INTEGER,
-                error TEXT,
-                metadata TEXT
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_job_registry_status
-            ON job_registry (status)
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_job_registry_user_app
-            ON job_registry (user_id, app_id)
-            """
-        )
-        conn.commit()
+    """Initialize PostgreSQL database schema."""
+    from . import db as db_module
+    db_module.init_postgresql_schema()
+    logger.info("Initialized PostgreSQL backend")
 
 
 def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
@@ -516,9 +60,10 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
     if not rows:
         return 0
 
-    with _get_connection() as conn:
-        cursor = conn.cursor()
-        fts_enabled = _FTS_ENABLED
+    from . import db as db_module
+
+    count = 0
+    with db_module.get_connection() as conn:
         for review in rows:
             review_id = str(review.get("recommendationid"))
             if not review_id:
@@ -526,148 +71,155 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
             payload = json.dumps(review)
             timestamp_created = review.get("timestamp_created")
             timestamp_updated = review.get("timestamp_updated")
-            cursor.execute(
-                """
-                INSERT INTO reviews (review_id, app_id, data, timestamp_created, timestamp_updated)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(review_id) DO UPDATE SET
-                    data = excluded.data,
-                    timestamp_updated = excluded.timestamp_updated
-                """,
-                (review_id, app_id, payload, timestamp_created, timestamp_updated),
+
+            result = conn.execute(
+                text("""
+                    INSERT INTO reviews (review_id, app_id, data, timestamp_created, timestamp_updated)
+                    VALUES (:review_id, :app_id, :data, :timestamp_created, :timestamp_updated)
+                    ON CONFLICT(review_id) DO UPDATE SET
+                        data = EXCLUDED.data,
+                        timestamp_updated = EXCLUDED.timestamp_updated
+                """),
+                {
+                    "review_id": review_id,
+                    "app_id": app_id,
+                    "data": payload,
+                    "timestamp_created": timestamp_created,
+                    "timestamp_updated": timestamp_updated,
+                },
             )
-            if fts_enabled:
-                try:
-                    review_text = str(review.get("review") or "")
-                    review_language = str(review.get("language") or "").strip().lower()
-                    cursor.execute("DELETE FROM reviews_fts WHERE review_id = ?", (review_id,))
-                    cursor.execute(
-                        "INSERT INTO reviews_fts (review_id, app_id, language, review_text) VALUES (?, ?, ?, ?)",
-                        (review_id, int(app_id), review_language, review_text),
-                    )
-                except sqlite3.OperationalError:
-                    fts_enabled = False
+            count += 1
+
+            # Update search vector for full-text search
+            review_text = str(review.get("review") or "")
+            if review_text:
+                conn.execute(
+                    text("""
+                        UPDATE reviews
+                        SET search_vector = to_tsvector('english', :review_text)
+                        WHERE review_id = :review_id
+                    """),
+                    {"review_text": review_text, "review_id": review_id},
+                )
+
         conn.commit()
-        return cursor.rowcount or 0
+    return count
 
 
 def load_reviews(app_id: int, limit: Optional[int] = None) -> List[dict]:
-    query = "SELECT data FROM reviews WHERE app_id = ? ORDER BY timestamp_created DESC"
-    params: list = [app_id]
+    """Load reviews for an app, ordered by creation time (newest first)."""
+    from . import db as db_module
+
+    query = "SELECT data FROM reviews WHERE app_id = :app_id ORDER BY timestamp_created DESC"
+    params = {"app_id": app_id}
+
     if limit is not None:
-        query += " LIMIT ?"
-        params.append(limit)
+        query += " LIMIT :limit"
+        params["limit"] = limit
 
-    with _get_connection() as conn:
-        rows = conn.execute(query, params).fetchall()
+    with db_module.get_connection() as conn:
+        result = conn.execute(text(query), params)
+        rows = result.fetchall()
 
-    return [_parse_json_field(row["data"], {}) for row in rows]
+    return [_parse_json_field(row[0], {}) for row in rows]
 
 
 def load_reviews_by_ids(app_id: int, review_ids: Sequence[str]) -> List[dict]:
+    """Load reviews by their IDs, preserving input order."""
     ids = [str(item) for item in review_ids if item]
     if not ids:
         return []
 
+    from . import db as db_module
+
     result_map: Dict[str, dict] = {}
-    chunk_size = 900  # keep well under SQLite variable limit
-    with _get_connection() as conn:
+    chunk_size = 1000
+
+    with db_module.get_connection() as conn:
         for start in range(0, len(ids), chunk_size):
             chunk = ids[start : start + chunk_size]
-            placeholders = ",".join(["?"] * len(chunk))
-            query = f"SELECT review_id, data FROM reviews WHERE app_id = ? AND review_id IN ({placeholders})"
-            params: list = [int(app_id), *chunk]
-            rows = conn.execute(query, params).fetchall()
+            # PostgreSQL supports ANY with array parameter
+            result = conn.execute(
+                text("""
+                    SELECT review_id, data
+                    FROM reviews
+                    WHERE app_id = :app_id AND review_id = ANY(:review_ids)
+                """),
+                {"app_id": int(app_id), "review_ids": chunk},
+            )
+            rows = result.fetchall()
             for row in rows:
                 try:
-                    result_map[row["review_id"]] = _parse_json_field(row["data"], {}) if row["data"] else {}
+                    result_map[row[0]] = _parse_json_field(row[1], {}) if row[1] else {}
                 except json.JSONDecodeError:
                     continue
 
-    # Preserve ranking/order of the input ids.
+    # Preserve ranking/order of the input ids
     return [result_map[item] for item in ids if item in result_map]
 
 
-def _rebuild_reviews_fts(conn: sqlite3.Connection, app_id: int) -> None:
-    """Rebuild the FTS index for one app id using the canonical reviews table."""
-    rows = conn.execute("SELECT review_id, data FROM reviews WHERE app_id = ?", (int(app_id),)).fetchall()
-    conn.execute("DELETE FROM reviews_fts WHERE app_id = ?", (int(app_id),))
-    for row in rows:
-        review_id = row["review_id"]
-        try:
-            payload = _parse_json_field(row["data"], {}) if row["data"] else {}
-        except json.JSONDecodeError:
-            payload = {}
-        review_text = str(payload.get("review") or "")
-        review_language = str(payload.get("language") or "").strip().lower()
-        conn.execute(
-            "INSERT INTO reviews_fts (review_id, app_id, language, review_text) VALUES (?, ?, ?, ?)",
-            (review_id, int(app_id), review_language, review_text),
-        )
-
-
 def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Optional[str] = None) -> List[str]:
-    """Return review ids matching the full-text query, ranked by relevance (best first).
+    """Return review ids matching the full-text query using PostgreSQL full-text search.
 
-    If FTS5 is unavailable, returns an empty list so callers can fall back to other strategies.
+    Uses PostgreSQL's tsvector and tsquery for full-text search with ranking.
     """
     raw = (query or "").strip()
     if not raw:
         return []
 
-    with _get_connection() as conn:
-        try:
-            conn.execute("SELECT 1 FROM reviews_fts LIMIT 1").fetchone()
-        except sqlite3.OperationalError:
-            return []
+    from . import db as db_module
 
-        try:
-            fts_count = int(
-                conn.execute("SELECT COUNT(*) FROM reviews_fts WHERE app_id = ?", (int(app_id),)).fetchone()[0]
-            )
-            review_count = int(
-                conn.execute("SELECT COUNT(*) FROM reviews WHERE app_id = ?", (int(app_id),)).fetchone()[0]
-            )
-            if review_count and fts_count != review_count:
-                _rebuild_reviews_fts(conn, app_id)
-                conn.commit()
-        except sqlite3.OperationalError:
-            return []
+    # Convert search query to tsquery format
+    # Simple approach: split on spaces and join with &
+    query_terms = raw.split()
+    ts_query = " & ".join(query_terms)
 
-        lang = (language or "").strip().lower()
-        try:
-            if lang and lang != "all":
-                rows = conn.execute(
-                    """
+    lang = (language or "").strip().lower()
+
+    with db_module.get_connection() as conn:
+        if lang and lang != "all":
+            # Filter by language using JSONB
+            result = conn.execute(
+                text("""
                     SELECT review_id
-                    FROM reviews_fts
-                    WHERE app_id = ? AND language = ? AND reviews_fts MATCH ?
-                    ORDER BY bm25(reviews_fts)
-                    LIMIT ?
-                    """,
-                    (int(app_id), lang, raw, int(limit)),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND data->>'language' = :language
+                      AND search_vector @@ to_tsquery('english', :query)
+                    ORDER BY ts_rank(search_vector, to_tsquery('english', :query)) DESC
+                    LIMIT :limit
+                """),
+                {"app_id": int(app_id), "language": lang, "query": ts_query, "limit": int(limit)},
+            )
+        else:
+            result = conn.execute(
+                text("""
                     SELECT review_id
-                    FROM reviews_fts
-                    WHERE app_id = ? AND reviews_fts MATCH ?
-                    ORDER BY bm25(reviews_fts)
-                    LIMIT ?
-                    """,
-                    (int(app_id), raw, int(limit)),
-                ).fetchall()
-        except sqlite3.OperationalError:
-            return []
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND search_vector @@ to_tsquery('english', :query)
+                    ORDER BY ts_rank(search_vector, to_tsquery('english', :query)) DESC
+                    LIMIT :limit
+                """),
+                {"app_id": int(app_id), "query": ts_query, "limit": int(limit)},
+            )
 
-    return [str(row["review_id"]) for row in rows if row["review_id"]]
+        rows = result.fetchall()
+
+    return [str(row[0]) for row in rows if row[0]]
 
 
 def count_reviews(app_id: int) -> int:
-    with _get_connection() as conn:
-        result = conn.execute("SELECT COUNT(*) FROM reviews WHERE app_id = ?", (app_id,)).fetchone()
-    return int(result[0]) if result else 0
+    """Count total reviews for an app."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT COUNT(*) FROM reviews WHERE app_id = :app_id"),
+            {"app_id": app_id},
+        )
+        row = result.fetchone()
+    return int(row[0]) if row else 0
 
 
 def upsert_review_label(
@@ -678,99 +230,140 @@ def upsert_review_label(
     model: str,
     prompt_version: str,
 ) -> None:
+    """Insert or update a review label."""
+    from . import db as db_module
+
     serialized = json.dumps(payload, separators=(",", ":"))
-    timestamp = _get_timestamp()
-    with _get_connection() as conn:
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
         conn.execute(
-            """
-            INSERT INTO review_labels (review_id, app_id, model, prompt_version, review_hash, payload, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(review_id) DO UPDATE SET
-                model = excluded.model,
-                prompt_version = excluded.prompt_version,
-                review_hash = excluded.review_hash,
-                payload = excluded.payload,
-                updated_at = excluded.updated_at
-            """,
-            (review_id, app_id, model, prompt_version, review_hash, serialized, timestamp),
+            text("""
+                INSERT INTO review_labels (review_id, app_id, model, prompt_version, review_hash, payload, updated_at)
+                VALUES (:review_id, :app_id, :model, :prompt_version, :review_hash, :payload, :updated_at)
+                ON CONFLICT(review_id) DO UPDATE SET
+                    model = EXCLUDED.model,
+                    prompt_version = EXCLUDED.prompt_version,
+                    review_hash = EXCLUDED.review_hash,
+                    payload = EXCLUDED.payload,
+                    updated_at = EXCLUDED.updated_at
+            """),
+            {
+                "review_id": review_id,
+                "app_id": app_id,
+                "model": model,
+                "prompt_version": prompt_version,
+                "review_hash": review_hash,
+                "payload": serialized,
+                "updated_at": timestamp,
+            },
         )
         conn.commit()
 
 
 def load_review_labels(app_id: int) -> Dict[str, Dict]:
-    with _get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT review_id, model, prompt_version, review_hash, payload
-            FROM review_labels
-            WHERE app_id = ?
-            """,
-            (app_id,),
-        ).fetchall()
+    """Load all review labels for an app."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT review_id, model, prompt_version, review_hash, payload
+                FROM review_labels
+                WHERE app_id = :app_id
+            """),
+            {"app_id": app_id},
+        )
+        rows = result.fetchall()
 
     labels: Dict[str, Dict] = {}
     for row in rows:
-        labels[row["review_id"]] = {
-            "model": row["model"],
-            "prompt_version": row["prompt_version"],
-            "review_hash": row["review_hash"],
-            "payload": _parse_json_field(row["payload"], {}),
+        labels[row[0]] = {
+            "model": row[1],
+            "prompt_version": row[2],
+            "review_hash": row[3],
+            "payload": _parse_json_field(row[4], {}),
         }
     return labels
 
 
 def reset_progress(user_id: str, app_id: int, total: int) -> None:
-    timestamp = _get_timestamp()
-    with _get_connection() as conn:
+    """Reset progress tracking for an app."""
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+    with db_module.get_connection() as conn:
         conn.execute(
-            """
-            INSERT INTO classification_progress (user_id, app_id, total, processed, updated_at)
-            VALUES (?, ?, ?, 0, ?)
-            ON CONFLICT(user_id, app_id) DO UPDATE SET
-                total = excluded.total,
-                processed = excluded.processed,
-                updated_at = excluded.updated_at
-            """,
-            (user_id, app_id, int(total), timestamp),
+            text("""
+                INSERT INTO classification_progress (user_id, app_id, total, processed, updated_at)
+                VALUES (:user_id, :app_id, :total, 0, :updated_at)
+                ON CONFLICT(user_id, app_id) DO UPDATE SET
+                    total = EXCLUDED.total,
+                    processed = EXCLUDED.processed,
+                    updated_at = EXCLUDED.updated_at
+            """),
+            {"user_id": user_id, "app_id": app_id, "total": int(total), "updated_at": timestamp},
         )
         conn.commit()
 
 
 def update_progress(user_id: str, app_id: int, processed: int, total: Optional[int] = None) -> None:
-    timestamp = _get_timestamp()
-    query = """
-        UPDATE classification_progress
-        SET processed = ?,
-            updated_at = ?,
-            total = COALESCE(?, total)
-        WHERE user_id = ? AND app_id = ?
-    """
+    """Update progress for classification."""
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
     new_total = int(total) if total is not None else None
-    with _get_connection() as conn:
-        conn.execute(query, (int(processed), timestamp, new_total, user_id, app_id))
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                UPDATE classification_progress
+                SET processed = :processed,
+                    updated_at = :updated_at,
+                    total = COALESCE(:total, total)
+                WHERE user_id = :user_id AND app_id = :app_id
+            """),
+            {
+                "processed": int(processed),
+                "updated_at": timestamp,
+                "total": new_total,
+                "user_id": user_id,
+                "app_id": app_id,
+            },
+        )
         conn.commit()
 
 
 def clear_progress(user_id: str, app_id: int) -> None:
-    with _get_connection() as conn:
-        conn.execute("DELETE FROM classification_progress WHERE user_id = ? AND app_id = ?", (user_id, app_id))
+    """Clear progress tracking for an app."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("DELETE FROM classification_progress WHERE user_id = :user_id AND app_id = :app_id"),
+            {"user_id": user_id, "app_id": app_id},
+        )
         conn.commit()
 
 
 def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, int]]:
-    with _get_connection() as conn:
-        row = conn.execute(
-            "SELECT total, processed, updated_at FROM classification_progress WHERE user_id = ? AND app_id = ?",
-            (user_id, app_id),
-        ).fetchone()
+    """Load progress tracking for an app."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT total, processed, updated_at FROM classification_progress WHERE user_id = :user_id AND app_id = :app_id"),
+            {"user_id": user_id, "app_id": app_id},
+        )
+        row = result.fetchone()
 
     if row is None:
         return None
 
     return {
-        "total": int(row["total"] or 0),
-        "processed": int(row["processed"] or 0),
-        "updated_at": _timestamp_to_int(row["updated_at"]) or 0,
+        "total": int(row[0] or 0),
+        "processed": int(row[1] or 0),
+        "updated_at": _timestamp_to_int(row[2]) or 0,
     }
 
 
@@ -784,82 +377,110 @@ def save_starred_game(
     genres: Optional[List[str]] = None,
     categories: Optional[List[str]] = None,
 ) -> None:
+    """Save or update a starred game."""
+    from . import db as db_module
+
     payload_metadata = json.dumps(metadata)
     payload_insights = json.dumps(insights) if insights is not None else None
     payload_sample = json.dumps(sample) if sample is not None else None
     payload_genres = json.dumps(genres) if genres is not None else None
     payload_categories = json.dumps(categories) if categories is not None else None
-    timestamp = _get_timestamp()
-    with _get_connection() as conn:
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
         conn.execute(
-            """
-            INSERT INTO starred_games (user_id, app_id, name, metadata, insights, sample, genres, categories, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, app_id) DO UPDATE SET
-                name = excluded.name,
-                metadata = excluded.metadata,
-                insights = excluded.insights,
-                sample = excluded.sample,
-                genres = excluded.genres,
-                categories = excluded.categories,
-                updated_at = excluded.updated_at
-            """,
-            (user_id, app_id, name, payload_metadata, payload_insights, payload_sample, payload_genres, payload_categories, timestamp),
+            text("""
+                INSERT INTO starred_games (user_id, app_id, name, metadata, insights, sample, genres, categories, updated_at)
+                VALUES (:user_id, :app_id, :name, :metadata, :insights, :sample, :genres, :categories, :updated_at)
+                ON CONFLICT(user_id, app_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    metadata = EXCLUDED.metadata,
+                    insights = EXCLUDED.insights,
+                    sample = EXCLUDED.sample,
+                    genres = EXCLUDED.genres,
+                    categories = EXCLUDED.categories,
+                    updated_at = EXCLUDED.updated_at
+            """),
+            {
+                "user_id": user_id,
+                "app_id": app_id,
+                "name": name,
+                "metadata": payload_metadata,
+                "insights": payload_insights,
+                "sample": payload_sample,
+                "genres": payload_genres,
+                "categories": payload_categories,
+                "updated_at": timestamp,
+            },
         )
         conn.commit()
 
 
 def delete_starred_game(user_id: str, app_id: int) -> None:
-    with _get_connection() as conn:
-        conn.execute("DELETE FROM starred_games WHERE user_id = ? AND app_id = ?", (user_id, app_id))
+    """Delete a starred game."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("DELETE FROM starred_games WHERE user_id = :user_id AND app_id = :app_id"),
+            {"user_id": user_id, "app_id": app_id},
+        )
         conn.commit()
 
 
 def delete_all_game_data(app_id: int) -> None:
     """Delete all data associated with a game: reviews, labels, progress, and starred entry."""
-    with _get_connection() as conn:
-        conn.execute("DELETE FROM reviews WHERE app_id = ?", (app_id,))
-        if _FTS_ENABLED:
-            try:
-                conn.execute("DELETE FROM reviews_fts WHERE app_id = ?", (int(app_id),))
-            except sqlite3.OperationalError:
-                pass
-        conn.execute("DELETE FROM review_labels WHERE app_id = ?", (app_id,))
-        conn.execute("DELETE FROM classification_progress WHERE app_id = ?", (app_id,))
-        conn.execute("DELETE FROM starred_games WHERE app_id = ?", (app_id,))
-        conn.execute("DELETE FROM analysis_results WHERE app_id = ?", (app_id,))
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        conn.execute(text("DELETE FROM reviews WHERE app_id = :app_id"), {"app_id": app_id})
+        conn.execute(text("DELETE FROM review_labels WHERE app_id = :app_id"), {"app_id": app_id})
+        conn.execute(text("DELETE FROM classification_progress WHERE app_id = :app_id"), {"app_id": app_id})
+        conn.execute(text("DELETE FROM starred_games WHERE app_id = :app_id"), {"app_id": app_id})
+        conn.execute(text("DELETE FROM analysis_results WHERE app_id = :app_id"), {"app_id": app_id})
         conn.commit()
 
 
 def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
     """Get database statistics: counts of games, reviews, labels."""
-    with _get_connection() as conn:
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
         if not user_id:
-            games_count = conn.execute(
-                """
+            result = conn.execute(text("""
                 SELECT COUNT(DISTINCT app_id) FROM (
                     SELECT app_id FROM reviews
                     UNION
                     SELECT app_id FROM starred_games
-                )
-                """
-            ).fetchone()[0]
-            reviews_count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
-            labels_count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
-            new_schema_count = conn.execute(
-                """
+                ) AS combined
+            """))
+            games_count = result.fetchone()[0]
+
+            result = conn.execute(text("SELECT COUNT(*) FROM reviews"))
+            reviews_count = result.fetchone()[0]
+
+            result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
+            labels_count = result.fetchone()[0]
+
+            # PostgreSQL JSONB syntax: payload->>'main_category'
+            result = conn.execute(text("""
                 SELECT COUNT(*) FROM review_labels
-                WHERE json_extract(payload, '$.main_category') IS NOT NULL
-                """
-            ).fetchone()[0]
+                WHERE payload->>'main_category' IS NOT NULL
+            """))
+            new_schema_count = result.fetchone()[0]
+
             old_schema_count = labels_count - new_schema_count
-            starred_count = conn.execute("SELECT COUNT(*) FROM starred_games").fetchone()[0]
+
+            result = conn.execute(text("SELECT COUNT(*) FROM starred_games"))
+            starred_count = result.fetchone()[0]
         else:
-            app_rows = conn.execute(
-                "SELECT app_id FROM starred_games WHERE user_id = ?",
-                (user_id,),
-            ).fetchall()
-            app_ids = [int(row["app_id"]) for row in app_rows]
+            result = conn.execute(
+                text("SELECT app_id FROM starred_games WHERE user_id = :user_id"),
+                {"user_id": user_id},
+            )
+            app_rows = result.fetchall()
+            app_ids = [int(row[0]) for row in app_rows]
+
             if not app_ids:
                 return {
                     "games": 0,
@@ -869,23 +490,29 @@ def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
                     "labels_old_schema": 0,
                     "starred_games": 0,
                 }
-            placeholders = ",".join(["?"] * len(app_ids))
-            reviews_count = conn.execute(
-                f"SELECT COUNT(*) FROM reviews WHERE app_id IN ({placeholders})",
-                app_ids,
-            ).fetchone()[0]
-            labels_count = conn.execute(
-                f"SELECT COUNT(*) FROM review_labels WHERE app_id IN ({placeholders})",
-                app_ids,
-            ).fetchone()[0]
-            new_schema_count = conn.execute(
-                f"""
-                SELECT COUNT(*) FROM review_labels
-                WHERE app_id IN ({placeholders})
-                  AND json_extract(payload, '$.main_category') IS NOT NULL
-                """,
-                app_ids,
-            ).fetchone()[0]
+
+            result = conn.execute(
+                text("SELECT COUNT(*) FROM reviews WHERE app_id = ANY(:app_ids)"),
+                {"app_ids": app_ids},
+            )
+            reviews_count = result.fetchone()[0]
+
+            result = conn.execute(
+                text("SELECT COUNT(*) FROM review_labels WHERE app_id = ANY(:app_ids)"),
+                {"app_ids": app_ids},
+            )
+            labels_count = result.fetchone()[0]
+
+            result = conn.execute(
+                text("""
+                    SELECT COUNT(*) FROM review_labels
+                    WHERE app_id = ANY(:app_ids)
+                      AND payload->>'main_category' IS NOT NULL
+                """),
+                {"app_ids": app_ids},
+            )
+            new_schema_count = result.fetchone()[0]
+
             old_schema_count = labels_count - new_schema_count
             starred_count = len(app_ids)
             games_count = starred_count
@@ -902,42 +529,56 @@ def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
 
 def clear_all_labels() -> int:
     """Delete all labels. Returns count of deleted labels."""
-    with _get_connection() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
-        conn.execute("DELETE FROM review_labels")
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
+        count = result.fetchone()[0]
+        conn.execute(text("DELETE FROM review_labels"))
         conn.commit()
         return count
 
 
 def clear_old_schema_labels() -> int:
     """Delete labels with old schema (missing main_category field). Returns count of deleted labels."""
-    with _get_connection() as conn:
-        # Delete labels where main_category field is NULL
-        cursor = conn.execute(
-            """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        # PostgreSQL JSONB syntax
+        result = conn.execute(text("""
             DELETE FROM review_labels
-            WHERE json_extract(payload, '$.main_category') IS NULL
-            """
-        )
-        count = cursor.rowcount
+            WHERE payload->>'main_category' IS NULL
+        """))
+        count = result.rowcount
         conn.commit()
         return count
 
 
 def clear_entire_database() -> Dict[str, int]:
     """Clear all data from database. Returns counts of deleted records."""
-    with _get_connection() as conn:
-        reviews_count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
-        labels_count = conn.execute("SELECT COUNT(*) FROM review_labels").fetchone()[0]
-        progress_count = conn.execute("SELECT COUNT(*) FROM classification_progress").fetchone()[0]
-        starred_count = conn.execute("SELECT COUNT(*) FROM starred_games").fetchone()[0]
-        analysis_count = conn.execute("SELECT COUNT(*) FROM analysis_results").fetchone()[0]
+    from . import db as db_module
 
-        conn.execute("DELETE FROM reviews")
-        conn.execute("DELETE FROM review_labels")
-        conn.execute("DELETE FROM classification_progress")
-        conn.execute("DELETE FROM starred_games")
-        conn.execute("DELETE FROM analysis_results")
+    with db_module.get_connection() as conn:
+        result = conn.execute(text("SELECT COUNT(*) FROM reviews"))
+        reviews_count = result.fetchone()[0]
+
+        result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
+        labels_count = result.fetchone()[0]
+
+        result = conn.execute(text("SELECT COUNT(*) FROM classification_progress"))
+        progress_count = result.fetchone()[0]
+
+        result = conn.execute(text("SELECT COUNT(*) FROM starred_games"))
+        starred_count = result.fetchone()[0]
+
+        result = conn.execute(text("SELECT COUNT(*) FROM analysis_results"))
+        analysis_count = result.fetchone()[0]
+
+        conn.execute(text("DELETE FROM reviews"))
+        conn.execute(text("DELETE FROM review_labels"))
+        conn.execute(text("DELETE FROM classification_progress"))
+        conn.execute(text("DELETE FROM starred_games"))
+        conn.execute(text("DELETE FROM analysis_results"))
         conn.commit()
 
         return {
@@ -950,29 +591,33 @@ def clear_entire_database() -> Dict[str, int]:
 
 
 def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
-    with _get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at
-            FROM starred_games
-            WHERE user_id = ?
-            ORDER BY updated_at DESC
-            """,
-            (user_id,),
-        ).fetchall()
+    """Load all starred games for a user."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at
+                FROM starred_games
+                WHERE user_id = :user_id
+                ORDER BY updated_at DESC
+            """),
+            {"user_id": user_id},
+        )
+        rows = result.fetchall()
 
     results: list[Dict[str, Any]] = []
     for row in rows:
         results.append(
             {
-                "app_id": int(row["app_id"]),
-                "name": row["name"],
-                "metadata": _parse_json_field(row["metadata"], {}),
-                "insights": _parse_json_field(row["insights"], None),
-                "sample": _parse_json_field(row["sample"], []),
-                "genres": _parse_json_field(row["genres"], []),
-                "categories": _parse_json_field(row["categories"], []),
-                "updated_at": _timestamp_to_int(row["updated_at"]) or 0,
+                "app_id": int(row[0]),
+                "name": row[1],
+                "metadata": _parse_json_field(row[2], {}),
+                "insights": _parse_json_field(row[3], None),
+                "sample": _parse_json_field(row[4], []),
+                "genres": _parse_json_field(row[5], []),
+                "categories": _parse_json_field(row[6], []),
+                "updated_at": _timestamp_to_int(row[7]) or 0,
             }
         )
 
@@ -980,50 +625,68 @@ def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
 
 
 def load_user_app_ids(user_id: str) -> List[int]:
-    with _get_connection() as conn:
-        rows = conn.execute(
-            "SELECT app_id FROM starred_games WHERE user_id = ?",
-            (user_id,),
-        ).fetchall()
-    return [int(row["app_id"]) for row in rows if row["app_id"] is not None]
+    """Load all app IDs for a user's starred games."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT app_id FROM starred_games WHERE user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        rows = result.fetchall()
+    return [int(row[0]) for row in rows if row[0] is not None]
 
 
 def user_has_game(user_id: str, app_id: int) -> bool:
-    with _get_connection() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM starred_games WHERE user_id = ? AND app_id = ? LIMIT 1",
-            (user_id, int(app_id)),
-        ).fetchone()
+    """Check if a user has starred a game."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT 1 FROM starred_games WHERE user_id = :user_id AND app_id = :app_id LIMIT 1"),
+            {"user_id": user_id, "app_id": int(app_id)},
+        )
+        row = result.fetchone()
     return row is not None
 
 
 def list_database_games_all() -> List[Dict[str, Any]]:
-    with _get_connection() as conn:
-        review_rows = conn.execute("SELECT DISTINCT app_id FROM reviews ORDER BY app_id").fetchall()
-        starred_rows = conn.execute("SELECT app_id, name FROM starred_games").fetchall()
+    """List all games in the database (starred or with reviews)."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(text("SELECT DISTINCT app_id FROM reviews ORDER BY app_id"))
+        review_rows = result.fetchall()
+
+        result = conn.execute(text("SELECT app_id, name FROM starred_games"))
+        starred_rows = result.fetchall()
 
     name_map = {
-        int(row["app_id"]): row["name"]
+        int(row[0]): row[1]
         for row in starred_rows
-        if row["app_id"] is not None
+        if row[0] is not None
     }
-    review_ids = {int(row["app_id"]) for row in review_rows if row["app_id"] is not None}
-    starred_ids = {int(row["app_id"]) for row in starred_rows if row["app_id"] is not None}
+    review_ids = {int(row[0]) for row in review_rows if row[0] is not None}
+    starred_ids = {int(row[0]) for row in starred_rows if row[0] is not None}
     all_ids = sorted(review_ids | starred_ids)
     return [{"app_id": app_id, "name": name_map.get(app_id)} for app_id in all_ids]
 
 
 def list_database_games(user_id: str) -> List[Dict[str, Any]]:
-    with _get_connection() as conn:
-        starred_rows = conn.execute(
-            "SELECT app_id, name FROM starred_games WHERE user_id = ? ORDER BY app_id",
-            (user_id,),
-        ).fetchall()
+    """List games for a specific user."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT app_id, name FROM starred_games WHERE user_id = :user_id ORDER BY app_id"),
+            {"user_id": user_id},
+        )
+        starred_rows = result.fetchall()
 
     return [
-        {"app_id": int(row["app_id"]), "name": row["name"]}
+        {"app_id": int(row[0]), "name": row[1]}
         for row in starred_rows
-        if row["app_id"] is not None
+        if row[0] is not None
     ]
 
 

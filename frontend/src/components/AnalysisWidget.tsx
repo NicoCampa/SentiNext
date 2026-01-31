@@ -33,7 +33,7 @@ export function AnalysisWidget() {
               className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-white"
               aria-label={isMinimized ? 'Expand' : 'Minimize'}
             >
-              {isMinimized ? '▲' : '▼'}
+              {isMinimized ? '↑' : '↓'}
             </button>
           </div>
         </div>
@@ -64,7 +64,7 @@ export function AnalysisWidget() {
                         onClick={() => clearTask(appId)}
                         className="flex-shrink-0 text-xs text-slate-400 hover:text-white"
                       >
-                        ✕
+                        ×
                       </button>
                     )}
                   </div>
@@ -91,20 +91,19 @@ export function AnalysisWidget() {
 
                   {task.status === 'completed' && (
                     <div className="flex items-center gap-2 text-xs text-emerald-400">
-                      <span>✓</span>
                       <span>Analysis complete</span>
                       <a
                         href={`/dashboard?game=${appId}`}
                         className="ml-auto text-sky-400 hover:text-sky-300 hover:underline"
                       >
-                        View →
+                        View
                       </a>
                     </div>
                   )}
 
                   {task.status === 'error' && (
                     <div className="text-xs text-rose-400">
-                      <span>✗</span> {task.error}
+                      Error: {task.error}
                     </div>
                   )}
                 </div>

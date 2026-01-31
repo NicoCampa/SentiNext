@@ -89,7 +89,7 @@ export function GameContextBar() {
                 ))}
               </select>
               <Link href="/dashboard" className="text-xs text-slate-400 hover:text-slate-200">
-                Analyze new game →
+                Analyze new game
               </Link>
             </div>
             <p className="mt-1 text-xs text-slate-500">
@@ -117,7 +117,7 @@ export function GameContextBar() {
                   className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 transition hover:border-sky-500/40 hover:text-white"
                   type="button"
                 >
-                  {chip.label} ✕
+                  {chip.label} ×
                 </button>
               ))}
             </>

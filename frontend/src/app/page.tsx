@@ -93,7 +93,7 @@ export default function RootPage() {
               <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-[rgb(255,0,128)]" />
               <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-[rgb(255,0,128)]" />
 
-              <span className="text-5xl text-[rgb(0,255,255)]">◆</span>
+              <span className="text-4xl font-bold text-blue-500">SN</span>
             </div>
           </div>
 

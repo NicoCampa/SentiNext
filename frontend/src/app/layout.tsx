@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
   variable: "--font-sans",
   display: "swap",
 });
@@ -21,11 +22,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className={clsx("dark", spaceGrotesk.className)}>
       <body
         className={clsx(
           spaceGrotesk.variable,
-          "min-h-screen bg-slate-950 text-slate-100 antialiased font-sans"
+          "min-h-screen bg-slate-950 text-slate-100 antialiased"
         )}
       >
         <RootProviders>{children}</RootProviders>

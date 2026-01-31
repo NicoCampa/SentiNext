@@ -155,10 +155,10 @@ export default function ChatPage() {
                 Chat respects the global filters above.
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Sentiment: {filters.sentiment === "positive" ? "Recommended" : filters.sentiment === "negative" ? "Not recommended" : "All"} ·{" "}
-                Date: {filters.dateRange === "30d" ? "Last 30 days" : filters.dateRange === "90d" ? "Last 90 days" : filters.dateRange === "365d" ? "Last year" : "All time"} ·{" "}
-                Helpful: {filters.minHelpful ? `${filters.minHelpful}+` : "All"} ·{" "}
-                Playtime: {filters.playtime === "lt2h" ? "<2h" : filters.playtime === "2to20h" ? "2–20h" : filters.playtime === "20hplus" ? "20h+" : "All"} ·{" "}
+                Sentiment: {filters.sentiment === "positive" ? "Recommended" : filters.sentiment === "negative" ? "Not recommended" : "All"} -{" "}
+                Date: {filters.dateRange === "30d" ? "Last 30 days" : filters.dateRange === "90d" ? "Last 90 days" : filters.dateRange === "365d" ? "Last year" : "All time"} -{" "}
+                Helpful: {filters.minHelpful ? `${filters.minHelpful}+` : "All"} -{" "}
+                Playtime: {filters.playtime === "lt2h" ? "<2h" : filters.playtime === "2to20h" ? "2–20h" : filters.playtime === "20hplus" ? "20h+" : "All"} -{" "}
                 Language: {filters.language && filters.language !== "all" ? filters.language : "All"}
               </p>
             </div>
@@ -243,10 +243,10 @@ export default function ChatPage() {
                                   className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-xs text-slate-200 transition hover:border-sky-400/40 hover:bg-sky-500/10"
                                 >
                                   <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                                    {formatSubcategory(citation.subcategory)} · review {citation.review_id}
+                                    {formatSubcategory(citation.subcategory)} -review {citation.review_id}
                                   </p>
                                   <p className="mt-1 text-slate-200">&quot;{citation.snippet}&quot;</p>
-                                  <p className="mt-1 text-[11px] text-slate-500">Open in citations drawer →</p>
+                                  <p className="mt-1 text-[11px] text-slate-500">Open in citations drawer</p>
                                 </button>
                               ))}
                             </div>
@@ -298,7 +298,7 @@ export default function ChatPage() {
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
                   {formatTimestamp(selectedCitation.created_at)}
-                  {selectedCitation.votes_up !== undefined && selectedCitation.votes_up !== null ? ` · ${selectedCitation.votes_up} helpful` : ""}
+                  {selectedCitation.votes_up !== undefined && selectedCitation.votes_up !== null ? ` -${selectedCitation.votes_up} helpful` : ""}
                 </div>
                 {selectedCitation.voted_up !== undefined && selectedCitation.voted_up !== null ? (
                   <span
