@@ -28,7 +28,12 @@ OPENAI_MODEL = "gpt-5-mini"
 GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
 PROMPT_VERSION = "steam_review_insights_v13_subcategories_primary_json"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
-OPENAI_BATCH_SIZE = 10
+
+# Batch size configuration (lower = faster individual responses, higher = fewer API calls)
+# Gemini tends to work better with smaller batches (3-5), OpenAI handles 10 well
+_DEFAULT_BATCH_SIZE = 3 if LLM_PROVIDER == "google" else 10
+OPENAI_BATCH_SIZE = int(os.getenv("SENTINEXT_BATCH_SIZE", str(_DEFAULT_BATCH_SIZE)))
+
 MAX_REVIEW_CHARS = 3000
 MIN_REVIEW_WORDS = 2
 _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
@@ -867,6 +872,9 @@ def _run_openai(prompt: str, model: str) -> str:
     if not api_key:
         raise ValueError("OPENAI_API_KEY is not set.")
 
+    start_time = time.time()
+    logger.info(f"Starting OpenAI API call with model {model}")
+
     payload = {
         "model": model,
         "messages": [
@@ -935,6 +943,10 @@ def _run_openai(prompt: str, model: str) -> str:
             continue
 
         raise ValueError(f"OpenAI API error {response.status_code}: {response.text}")
+
+    elapsed = time.time() - start_time
+    logger.info(f"OpenAI API call completed in {elapsed:.2f}s (attempt {attempt})")
+
     data = response.json()
     choices = data.get("choices") or []
     if not choices:
@@ -955,6 +967,10 @@ def _run_gemini(prompt: str, model: str) -> str:
 
     try:
         from google import genai
+
+        start_time = time.time()
+        logger.info(f"Starting Gemini API call with model {model}")
+
         client = genai.Client(api_key=api_key)
 
         response = client.models.generate_content(
@@ -963,6 +979,9 @@ def _run_gemini(prompt: str, model: str) -> str:
         )
 
         content = response.text
+        elapsed = time.time() - start_time
+        logger.info(f"Gemini API call completed in {elapsed:.2f}s")
+
         if not content:
             raise ValueError("Empty response from Gemini.")
         return content
