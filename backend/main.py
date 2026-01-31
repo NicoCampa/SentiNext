@@ -168,9 +168,6 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     if request.url.path in AUTH_EXEMPT_PATHS:
         return await call_next(request)
-    # SSE endpoints can't send custom headers, exempt them (they have their own auth)
-    if "/stream" in request.url.path:
-        return await call_next(request)
     auth_header = request.headers.get("authorization", "")
     token = None
     if auth_header.lower().startswith("bearer "):
