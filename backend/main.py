@@ -449,15 +449,22 @@ REVIEW_EXPORT_COLUMNS = [
 EXPORT_MAX_ROWS = max(1, int(os.getenv("SENTINEXT_EXPORT_MAX_ROWS", "50000")))
 
 
+def _parse_json_payload(value: Any, fallback: dict) -> dict:
+    if value is None:
+        return fallback
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return fallback
+    return fallback
+
+
 def _database_row_to_item(row: Dict[str, Any], games_map: Dict[int, Optional[str]]) -> "DatabaseReviewItem":
-    try:
-        payload = json.loads(row.get("data") or "{}")
-    except json.JSONDecodeError:
-        payload = {}
-    try:
-        label_payload = json.loads(row.get("label_payload") or "{}")
-    except json.JSONDecodeError:
-        label_payload = {}
+    payload = _parse_json_payload(row.get("data"), {})
+    label_payload = _parse_json_payload(row.get("label_payload"), {})
 
     author = payload.get("author", {}) or {}
     playtime_forever = int(author.get("playtime_forever") or 0)
