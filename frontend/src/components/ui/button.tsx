@@ -5,11 +5,10 @@ import clsx from 'clsx';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'neon';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   icon?: ReactNode;
-  glow?: boolean;
 }
 
 export function Button({
@@ -18,7 +17,6 @@ export function Button({
   size = 'md',
   loading = false,
   icon,
-  glow = false,
   className,
   disabled,
   ...props
@@ -29,7 +27,6 @@ export function Button({
     focus:outline-none
     border
     uppercase tracking-wider
-    relative overflow-hidden
   `;
 
   const sizeClasses = {
@@ -69,14 +66,6 @@ export function Button({
       hover:border-[rgb(255,0,128)]
       hover:shadow-[0_0_20px_rgba(255,0,128,0.3)]
     `,
-    neon: `
-      bg-transparent
-      border-[rgb(0,255,255)]
-      text-[rgb(0,255,255)]
-      shadow-[0_0_10px_rgba(0,255,255,0.5),inset_0_0_10px_rgba(0,255,255,0.1)]
-      hover:shadow-[0_0_20px_rgba(0,255,255,0.8),inset_0_0_20px_rgba(0,255,255,0.2)]
-      hover:bg-[rgb(0,255,255)]/10
-    `,
   };
 
   const isDisabled = disabled || loading;
@@ -87,23 +76,17 @@ export function Button({
         baseClasses,
         sizeClasses[size],
         variantClasses[variant],
-        glow && 'neon-pulse',
         isDisabled && 'opacity-50 cursor-not-allowed',
         className
       )}
       disabled={isDisabled}
       {...props}
     >
-      {/* Animated border effect */}
-      <span className="absolute inset-0 overflow-hidden">
-        <span className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[rgb(0,255,255)]/50 to-transparent animate-[shimmer_2s_infinite]" />
-      </span>
-
       {loading && (
         <div className="w-4 h-4 border border-current border-t-transparent animate-spin" />
       )}
       {!loading && icon && <div className="text-current">{icon}</div>}
-      <span className="relative z-10">{children}</span>
+      {children}
     </button>
   );
 }

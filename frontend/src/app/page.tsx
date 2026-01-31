@@ -1,29 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+
+const BOOT_MESSAGES = [
+  '> INITIALIZING SYSTEM...',
+  '> LOADING NEURAL CORE...',
+  '> CONNECTING TO DATA STREAMS...',
+  '> SENTIMENT ANALYSIS MODULE: ONLINE',
+  '> REVIEW PROCESSOR: ACTIVE',
+  '> SYSTEM READY',
+];
 
 export default function RootPage() {
   const router = useRouter();
   const [bootSequence, setBootSequence] = useState<string[]>([]);
   const [showLogo, setShowLogo] = useState(false);
-
-  const bootMessages = [
-    '> INITIALIZING SYSTEM...',
-    '> LOADING NEURAL CORE...',
-    '> CONNECTING TO DATA STREAMS...',
-    '> SENTIMENT ANALYSIS MODULE: ONLINE',
-    '> REVIEW PROCESSOR: ACTIVE',
-    '> SYSTEM READY',
-  ];
+  const indexRef = useRef(0);
 
   useEffect(() => {
-    let currentIndex = 0;
-
     const interval = setInterval(() => {
-      if (currentIndex < bootMessages.length) {
-        setBootSequence(prev => [...prev, bootMessages[currentIndex]]);
-        currentIndex++;
+      if (indexRef.current < BOOT_MESSAGES.length) {
+        setBootSequence(prev => [...prev, BOOT_MESSAGES[indexRef.current]]);
+        indexRef.current++;
       } else {
         clearInterval(interval);
         setShowLogo(true);
@@ -39,18 +38,16 @@ export default function RootPage() {
   return (
     <div className="flex min-h-screen items-center justify-center relative overflow-hidden">
       {/* Grid background */}
-      <div className="absolute inset-0 opacity-20">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(0, 255, 255, 0.1) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(0, 255, 255, 0.1) 1px, transparent 1px)
-            `,
-            backgroundSize: '50px 50px',
-          }}
-        />
-      </div>
+      <div
+        className="absolute inset-0 opacity-20"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(0, 255, 255, 0.1) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 255, 255, 0.1) 1px, transparent 1px)
+          `,
+          backgroundSize: '50px 50px',
+        }}
+      />
 
       {/* Scan line effect */}
       <div
@@ -67,12 +64,11 @@ export default function RootPage() {
           {bootSequence.map((message, index) => (
             <div
               key={index}
-              className={`
-                ${message.includes('ONLINE') || message.includes('ACTIVE') || message.includes('READY')
+              className={
+                message.includes('ONLINE') || message.includes('ACTIVE') || message.includes('READY')
                   ? 'text-[rgb(0,255,136)]'
-                  : 'text-[rgb(0,255,255)]/70'}
-                animate-[fade-in_0.3s_ease-out]
-              `}
+                  : 'text-[rgb(0,255,255)]/70'
+              }
             >
               {message}
               {index === bootSequence.length - 1 && (
@@ -97,10 +93,7 @@ export default function RootPage() {
               <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-[rgb(255,0,128)]" />
               <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-[rgb(255,0,128)]" />
 
-              <span className="text-5xl text-[rgb(0,255,255)] neon-text">◆</span>
-
-              {/* Glow effect */}
-              <div className="absolute inset-0 bg-[rgb(0,255,255)]/10 blur-xl" />
+              <span className="text-5xl text-[rgb(0,255,255)]">◆</span>
             </div>
           </div>
 
@@ -117,10 +110,7 @@ export default function RootPage() {
           {/* Loading bar */}
           <div className="mt-8 mx-auto w-64">
             <div className="h-[2px] bg-[rgb(0,255,255)]/20 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[rgb(0,255,255)] to-[rgb(255,0,128)] animate-[loading-slide_1s_ease-in-out_infinite]"
-                style={{ width: '30%' }}
-              />
+              <div className="h-full w-[30%] bg-gradient-to-r from-[rgb(0,255,255)] to-[rgb(255,0,128)] animate-loading-slide" />
             </div>
             <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-[rgb(0,255,255)]/40 font-mono">
               Entering System...
