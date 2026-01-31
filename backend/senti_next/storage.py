@@ -10,12 +10,42 @@ import logging
 import os
 import sqlite3
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from platformdirs import user_data_dir
 
 logger = logging.getLogger(__name__)
+
+
+def _get_timestamp() -> Union[int, datetime]:
+    """Get current timestamp in appropriate format for the database backend."""
+    if _USING_POSTGRESQL:
+        return datetime.now(timezone.utc)
+    return int(time.time())
+
+
+def _get_cutoff_timestamp(seconds_ago: int) -> Union[int, datetime]:
+    """Get a cutoff timestamp for comparison queries."""
+    if _USING_POSTGRESQL:
+        return datetime.now(timezone.utc) - __import__('datetime').timedelta(seconds=seconds_ago)
+    return int(time.time()) - seconds_ago
+
+
+def _timestamp_to_int(val: Any) -> Optional[int]:
+    """Convert a timestamp value to integer (Unix timestamp)."""
+    if val is None:
+        return None
+    if isinstance(val, int):
+        return val
+    if isinstance(val, datetime):
+        return int(val.timestamp())
+    # Try to parse string
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
 
 
 def _render_disk_root() -> Path | None:
@@ -633,7 +663,7 @@ def upsert_review_label(
     prompt_version: str,
 ) -> None:
     serialized = json.dumps(payload, separators=(",", ":"))
-    timestamp = int(time.time())
+    timestamp = _get_timestamp()
     with _get_connection() as conn:
         conn.execute(
             """
@@ -678,7 +708,7 @@ def load_review_labels(app_id: int) -> Dict[str, Dict]:
 
 
 def reset_progress(user_id: str, app_id: int, total: int) -> None:
-    timestamp = int(time.time())
+    timestamp = _get_timestamp()
     with _get_connection() as conn:
         conn.execute(
             """
@@ -695,7 +725,7 @@ def reset_progress(user_id: str, app_id: int, total: int) -> None:
 
 
 def update_progress(user_id: str, app_id: int, processed: int, total: Optional[int] = None) -> None:
-    timestamp = int(time.time())
+    timestamp = _get_timestamp()
     query = """
         UPDATE classification_progress
         SET processed = ?,
@@ -728,7 +758,7 @@ def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, int]]:
     return {
         "total": int(row["total"] or 0),
         "processed": int(row["processed"] or 0),
-        "updated_at": int(row["updated_at"] or 0),
+        "updated_at": _timestamp_to_int(row["updated_at"]) or 0,
     }
 
 
@@ -747,7 +777,7 @@ def save_starred_game(
     payload_sample = json.dumps(sample) if sample is not None else None
     payload_genres = json.dumps(genres) if genres is not None else None
     payload_categories = json.dumps(categories) if categories is not None else None
-    timestamp = int(time.time())
+    timestamp = _get_timestamp()
     with _get_connection() as conn:
         conn.execute(
             """
@@ -951,7 +981,7 @@ def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
                 "sample": sample,
                 "genres": genres,
                 "categories": categories,
-                "updated_at": int(row["updated_at"] or 0),
+                "updated_at": _timestamp_to_int(row["updated_at"]) or 0,
             }
         )
 
@@ -1132,7 +1162,7 @@ def save_analysis_result(
     payload_metadata = json.dumps(metadata) if metadata is not None else None
     payload_insights = json.dumps(insights) if insights is not None else None
     payload_reviews = json.dumps(reviews) if reviews is not None else None
-    timestamp = int(time.time())
+    timestamp = _get_timestamp()
     with _get_connection() as conn:
         conn.execute(
             """
@@ -1189,7 +1219,7 @@ def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
         "reviews": reviews,
         "status": row["status"],
         "error": row["error"],
-        "updated_at": int(row["updated_at"] or 0),
+        "updated_at": _timestamp_to_int(row["updated_at"]) or 0,
         "run_id": row["run_id"],
         "snapshot_hash": row["snapshot_hash"],
         "stale": bool(row["stale"]),
@@ -1208,7 +1238,7 @@ def create_job_registry(
     metadata: Optional[Dict] = None,
 ) -> None:
     """Create a new job registry entry."""
-    timestamp = int(time.time())
+    timestamp = _get_timestamp()
     metadata_json = json.dumps(metadata) if metadata else None
     with _get_connection() as conn:
         conn.execute(
@@ -1231,7 +1261,7 @@ def update_job_registry(
     error: Optional[str] = None,
 ) -> None:
     """Update job registry entry status."""
-    timestamp = int(time.time())
+    timestamp = _get_timestamp()
     with _get_connection() as conn:
         if status == "running":
             conn.execute(
@@ -1277,9 +1307,9 @@ def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
         "app_id": int(row["app_id"]),
         "job_type": row["job_type"],
         "status": row["status"],
-        "created_at": int(row["created_at"] or 0),
-        "started_at": int(row["started_at"]) if row["started_at"] else None,
-        "completed_at": int(row["completed_at"]) if row["completed_at"] else None,
+        "created_at": _timestamp_to_int(row["created_at"]) or 0,
+        "started_at": _timestamp_to_int(row["started_at"]),
+        "completed_at": _timestamp_to_int(row["completed_at"]),
         "error": row["error"],
         "metadata": metadata,
     }
@@ -1287,7 +1317,7 @@ def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
 
 def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
     """Find jobs that are stuck in 'running' status for longer than age_minutes."""
-    cutoff = int(time.time()) - (age_minutes * 60)
+    cutoff = _get_cutoff_timestamp(age_minutes * 60)
     with _get_connection() as conn:
         rows = conn.execute(
             """
@@ -1305,8 +1335,8 @@ def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
             "app_id": int(row["app_id"]),
             "job_type": row["job_type"],
             "status": row["status"],
-            "created_at": int(row["created_at"] or 0),
-            "started_at": int(row["started_at"]) if row["started_at"] else None,
+            "created_at": _timestamp_to_int(row["created_at"]) or 0,
+            "started_at": _timestamp_to_int(row["started_at"]),
         }
         for row in rows
     ]
@@ -1314,7 +1344,7 @@ def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
 
 def cleanup_old_jobs(age_days: int = 7) -> int:
     """Delete completed/failed jobs older than age_days. Returns count deleted."""
-    cutoff = int(time.time()) - (age_days * 24 * 3600)
+    cutoff = _get_cutoff_timestamp(age_days * 24 * 3600)
     with _get_connection() as conn:
         cursor = conn.execute(
             """
