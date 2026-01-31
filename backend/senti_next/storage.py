@@ -756,7 +756,7 @@ def load_database_reviews(
                     ORDER BY ts_rank(reviews.search_vector, plainto_tsquery('english', :query)) DESC
                     LIMIT :limit OFFSET :offset
                 """
-                rows = conn.execute(text(query_sql), params).fetchall()
+                rows = conn.execute(text(query_sql), params).mappings().fetchall()
             else:
                 where_parts = ["reviews_fts MATCH :query"]
                 params = {"query": raw_query}
@@ -797,7 +797,7 @@ def load_database_reviews(
                     ORDER BY bm25(reviews_fts)
                     LIMIT :limit OFFSET :offset
                 """
-                rows = conn.execute(text(query_sql), params).fetchall()
+                rows = conn.execute(text(query_sql), params).mappings().fetchall()
         else:
             where_parts = []
             params: Dict[str, Any] = {}
@@ -836,7 +836,7 @@ def load_database_reviews(
                 ORDER BY reviews.timestamp_created DESC
                 LIMIT :limit OFFSET :offset
             """
-            rows = conn.execute(text(query_sql), params).fetchall()
+            rows = conn.execute(text(query_sql), params).mappings().fetchall()
 
     items: List[Dict[str, Any]] = []
     for row in rows:
@@ -920,7 +920,7 @@ def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
             WHERE user_id = :user_id AND app_id = :app_id
             """),
             {"user_id": user_id, "app_id": app_id},
-        ).fetchone()
+        ).mappings().fetchone()
 
     if row is None:
         return None
