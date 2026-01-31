@@ -1,4 +1,4 @@
-"""Review classification helpers (OpenAI only)."""
+"""Review classification helpers (OpenAI and Google Gemini)."""
 from __future__ import annotations
 
 import hashlib
@@ -21,10 +21,13 @@ from . import storage
 
 logger = logging.getLogger(__name__)
 
+# LLM Provider configuration
+LLM_PROVIDER = os.getenv("SENTINEXT_LLM_PROVIDER", "openai").lower()  # "openai" or "google"
 OPENAI_BASE_URL = os.getenv("SENTINEXT_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+OPENAI_MODEL = "gpt-5-mini"
+GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
 PROMPT_VERSION = "steam_review_insights_v13_subcategories_primary_json"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
-OPENAI_MODEL = "gpt-5-mini"
 OPENAI_BATCH_SIZE = 10
 MAX_REVIEW_CHARS = 3000
 MIN_REVIEW_WORDS = 2
@@ -943,6 +946,33 @@ def _run_openai(prompt: str, model: str) -> str:
     return content
 
 
+def _run_gemini(prompt: str, model: str) -> str:
+    """Run Gemini API call."""
+    _maybe_load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not set.")
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt
+        )
+
+        content = response.text
+        if not content:
+            raise ValueError("Empty response from Gemini.")
+        return content
+    except ImportError:
+        raise ValueError("google-genai package not installed. Run: pip install google-genai")
+    except Exception as e:
+        logger.error(f"Gemini API error: {e}")
+        raise ValueError(f"Gemini API error: {str(e)}")
+
+
 def _model_id(provider: str, model: str) -> str:
     return f"{provider}:{model}"
 
@@ -950,7 +980,11 @@ def _model_id(provider: str, model: str) -> str:
 def _run_llm(
     prompt: str,
 ) -> tuple[str, str]:
-    return _run_openai(prompt, OPENAI_MODEL), _model_id("openai", OPENAI_MODEL)
+    provider = LLM_PROVIDER
+    if provider == "google":
+        return _run_gemini(prompt, GEMINI_MODEL), _model_id("google", GEMINI_MODEL)
+    else:
+        return _run_openai(prompt, OPENAI_MODEL), _model_id("openai", OPENAI_MODEL)
 
 
 def run_chat_completion(

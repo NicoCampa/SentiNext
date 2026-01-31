@@ -559,6 +559,25 @@ def storage_paths() -> dict:
         "log_file": str(log_file),
     }
 
+@app.get("/settings/llm")
+def llm_settings() -> dict:
+    """Return current LLM provider and model configuration."""
+    from .senti_next import llm as llm_module
+    provider = llm_module.LLM_PROVIDER
+
+    if provider == "google":
+        model = llm_module.GEMINI_MODEL
+        api_key_set = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+    else:
+        model = llm_module.OPENAI_MODEL
+        api_key_set = bool(os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY"))
+
+    return {
+        "provider": provider,
+        "model": model,
+        "api_key_configured": api_key_set,
+    }
+
 @app.get("/logs/tail")
 def logs_tail(bytes: int = 20000) -> dict:
     """Return the last N bytes of the backend log file (best-effort)."""

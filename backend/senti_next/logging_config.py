@@ -95,6 +95,11 @@ def configure_logging() -> None:
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    # Suppress uvicorn access logs (HTTP request details)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    # Keep uvicorn error logs visible
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+
 
 def get_logger(name: str) -> logging.Logger:
     """Get a logger with the given name."""

@@ -9,6 +9,12 @@ import { fetchLogTail } from "@/lib/api";
 import { isTauriApp } from "@/lib/settings";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 
+interface LLMSettings {
+  provider: string;
+  model: string;
+  api_key_configured: boolean;
+}
+
 export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const { health, refresh: refreshHealth } = useBackendHealth();
@@ -16,6 +22,7 @@ export default function SettingsPage() {
   const [logTailError, setLogTailError] = useState<string | null>(null);
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -56,9 +63,22 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const loadLLMSettings = useCallback(async () => {
+    try {
+      const response = await fetch("/api/settings/llm");
+      if (response.ok) {
+        const data = await response.json();
+        setLlmSettings(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch LLM settings", err);
+    }
+  }, []);
+
   useEffect(() => {
     loadLogTail();
-  }, [loadLogTail]);
+    loadLLMSettings();
+  }, [loadLogTail, loadLLMSettings]);
 
   async function handleCopy(text: string) {
     try {
@@ -130,14 +150,35 @@ export default function SettingsPage() {
 
         <Card variant="glass" className="space-y-3 p-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">LLM</p>
-            <p className="mt-2 text-sm text-slate-300">
-              OpenAI (gpt-5-mini) is configured on the backend service.
-            </p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">LLM Provider</p>
+            {llmSettings ? (
+              <div className="mt-2 space-y-2">
+                <p className="text-sm text-slate-300">
+                  <span className="font-semibold">
+                    {llmSettings.provider === "google" ? "Google Gemini" : "OpenAI"}
+                  </span>
+                  {" "}({llmSettings.model})
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">API Key:</span>
+                  <span className={`text-xs ${llmSettings.api_key_configured ? "text-emerald-400" : "text-rose-400"}`}>
+                    {llmSettings.api_key_configured ? "✓ Configured" : "✗ Not configured"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-slate-300">Loading...</p>
+            )}
           </div>
-          <p className="text-xs text-slate-500">
-            Update the OpenAI key in your Render environment variables.
-          </p>
+          <div className="space-y-2 text-xs text-slate-500">
+            <p>To change the LLM provider, set environment variables in Render:</p>
+            <div className="rounded-lg bg-slate-950/40 p-3 font-mono text-[11px]">
+              <div>SENTINEXT_LLM_PROVIDER=google <span className="text-slate-600"># or "openai"</span></div>
+              <div>GEMINI_API_KEY=your_key_here <span className="text-slate-600"># for Google</span></div>
+              <div>OPENAI_API_KEY=your_key_here <span className="text-slate-600"># for OpenAI</span></div>
+              <div>SENTINEXT_GEMINI_MODEL=gemini-flash-lite-latest <span className="text-slate-600"># optional</span></div>
+            </div>
+          </div>
         </Card>
 
         <Card variant="glass" className="space-y-4 p-6">
