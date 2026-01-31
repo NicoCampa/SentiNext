@@ -24,25 +24,8 @@ export default function RootLayout({
 }) {
   const hasClerkKey = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-  if (!hasClerkKey) {
-    // Local development without Clerk
-    return (
-      <html lang="en" className="bg-[rgb(5,5,15)]">
-        <body
-          className={clsx(
-            jetbrainsMono.variable,
-            "min-h-screen bg-transparent text-[rgb(224,224,224)] antialiased font-mono"
-          )}
-        >
-          <ClientProviders>{children}</ClientProviders>
-        </body>
-      </html>
-    );
-  }
-
-  // Production with Clerk authentication
   return (
-    <ClerkProvider>
+    <ClerkProvider dynamic>
       <html lang="en" className="bg-[rgb(5,5,15)]">
         <body
           className={clsx(
@@ -50,10 +33,16 @@ export default function RootLayout({
             "min-h-screen bg-transparent text-[rgb(224,224,224)] antialiased font-mono"
           )}
         >
-          <ClerkTokenProvider />
-          <AuthGate>
+          {hasClerkKey ? (
+            <>
+              <ClerkTokenProvider />
+              <AuthGate>
+                <ClientProviders>{children}</ClientProviders>
+              </AuthGate>
+            </>
+          ) : (
             <ClientProviders>{children}</ClientProviders>
-          </AuthGate>
+          )}
         </body>
       </html>
     </ClerkProvider>
