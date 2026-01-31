@@ -720,21 +720,25 @@ def load_database_reviews(
             if not _FTS_ENABLED:
                 return [], 0
 
-            where_parts = ["reviews_fts MATCH ?"]
-            params: list[Any] = [raw_query]
+            where_parts = ["reviews_fts MATCH :query"]
+            params: Dict[str, Any] = {"query": raw_query}
             if app_id:
                 if allowed_ids is not None and int(app_id) not in allowed_ids:
                     return [], 0
-                where_parts.append("reviews.app_id = ?")
-                params.append(int(app_id))
+                where_parts.append("reviews.app_id = :app_id")
+                params["app_id"] = int(app_id)
             elif allowed_ids is not None:
-                placeholders = ",".join(["?"] * len(allowed_ids))
+                placeholders = ",".join([f":app_id_{i}" for i in range(len(allowed_ids))])
                 where_parts.append(f"reviews.app_id IN ({placeholders})")
-                params.extend(allowed_ids)
+                for i, aid in enumerate(allowed_ids):
+                    params[f"app_id_{i}"] = aid
             if lang and lang != "all":
-                where_parts.append("reviews_fts.language = ?")
-                params.append(lang)
+                where_parts.append("reviews_fts.language = :lang")
+                params["lang"] = lang
             where_sql = " AND ".join(where_parts)
+
+            params["limit"] = limit
+            params["offset"] = offset
 
             total_query = f"""
                 SELECT COUNT(*)
@@ -753,26 +757,30 @@ def load_database_reviews(
                   ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
                 WHERE {where_sql}
                 ORDER BY bm25(reviews_fts)
-                LIMIT ? OFFSET ?
+                LIMIT :limit OFFSET :offset
             """
-            rows = conn.execute(text(query_sql), [*params, limit, offset]).fetchall()
+            rows = conn.execute(text(query_sql), params).fetchall()
         else:
             where_parts = []
-            params = []
+            params: Dict[str, Any] = {}
             if app_id:
                 if allowed_ids is not None and int(app_id) not in allowed_ids:
                     return [], 0
-                where_parts.append("reviews.app_id = ?")
-                params.append(int(app_id))
+                where_parts.append("reviews.app_id = :app_id")
+                params["app_id"] = int(app_id)
             elif allowed_ids is not None:
-                placeholders = ",".join(["?"] * len(allowed_ids))
+                placeholders = ",".join([f":app_id_{i}" for i in range(len(allowed_ids))])
                 where_parts.append(f"reviews.app_id IN ({placeholders})")
-                params.extend(allowed_ids)
+                for i, aid in enumerate(allowed_ids):
+                    params[f"app_id_{i}"] = aid
             if lang and lang != "all":
-                where_parts.append("json_extract(reviews.data, '$.language') = ?")
-                params.append(lang)
+                where_parts.append("json_extract(reviews.data, '$.language') = :lang")
+                params["lang"] = lang
             where_sql = " AND ".join(where_parts)
             where_clause = f"WHERE {where_sql}" if where_sql else ""
+
+            params["limit"] = limit
+            params["offset"] = offset
 
             total_query = f"SELECT COUNT(*) FROM reviews {where_clause}"
             total = conn.execute(text(total_query), params).fetchone()[0]
@@ -785,9 +793,9 @@ def load_database_reviews(
                   ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
                 {where_clause}
                 ORDER BY reviews.timestamp_created DESC
-                LIMIT ? OFFSET ?
+                LIMIT :limit OFFSET :offset
             """
-            rows = conn.execute(text(query_sql), [*params, limit, offset]).fetchall()
+            rows = conn.execute(text(query_sql), params).fetchall()
 
     items: List[Dict[str, Any]] = []
     for row in rows:
