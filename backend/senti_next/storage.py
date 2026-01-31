@@ -742,7 +742,7 @@ def load_database_reviews(
                 JOIN reviews_fts ON reviews.review_id = reviews_fts.review_id
                 WHERE {where_sql}
             """
-            total = conn.execute(total_query, params).fetchone()[0]
+            total = conn.execute(text(total_query), params).fetchone()[0]
 
             query_sql = f"""
                 SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
@@ -755,7 +755,7 @@ def load_database_reviews(
                 ORDER BY bm25(reviews_fts)
                 LIMIT ? OFFSET ?
             """
-            rows = conn.execute(query_sql, [*params, limit, offset]).fetchall()
+            rows = conn.execute(text(query_sql), [*params, limit, offset]).fetchall()
         else:
             where_parts = []
             params = []
@@ -775,7 +775,7 @@ def load_database_reviews(
             where_clause = f"WHERE {where_sql}" if where_sql else ""
 
             total_query = f"SELECT COUNT(*) FROM reviews {where_clause}"
-            total = conn.execute(total_query, params).fetchone()[0]
+            total = conn.execute(text(total_query), params).fetchone()[0]
 
             query_sql = f"""
                 SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
@@ -787,7 +787,7 @@ def load_database_reviews(
                 ORDER BY reviews.timestamp_created DESC
                 LIMIT ? OFFSET ?
             """
-            rows = conn.execute(query_sql, [*params, limit, offset]).fetchall()
+            rows = conn.execute(text(query_sql), [*params, limit, offset]).fetchall()
 
     items: List[Dict[str, Any]] = []
     for row in rows:
