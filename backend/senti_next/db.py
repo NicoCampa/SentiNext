@@ -132,10 +132,11 @@ def init_postgresql_schema() -> None:
             CREATE TABLE IF NOT EXISTS reviews (
                 id SERIAL PRIMARY KEY,
                 app_id INTEGER NOT NULL,
-                review_id TEXT NOT NULL,
+                review_id TEXT NOT NULL UNIQUE,
                 data JSONB NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(app_id, review_id)
+                timestamp_created BIGINT,
+                timestamp_updated BIGINT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         conn.execute(text("""
