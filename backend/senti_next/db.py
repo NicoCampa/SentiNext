@@ -250,7 +250,44 @@ def init_postgresql_schema() -> None:
             ON reviews USING GIN(search_vector)
         """))
 
-        logger.info("PostgreSQL schema initialized")
+        # Migration: Add timestamp columns to reviews table
+        conn.execute(text("""
+            ALTER TABLE reviews
+            ADD COLUMN IF NOT EXISTS timestamp_created BIGINT
+        """))
+        conn.execute(text("""
+            ALTER TABLE reviews
+            ADD COLUMN IF NOT EXISTS timestamp_updated BIGINT
+        """))
+
+        # Migration: Migrate data from created_at to timestamp_created
+        conn.execute(text("""
+            UPDATE reviews
+            SET timestamp_created = EXTRACT(EPOCH FROM created_at)::BIGINT,
+                timestamp_updated = EXTRACT(EPOCH FROM created_at)::BIGINT
+            WHERE timestamp_created IS NULL AND created_at IS NOT NULL
+        """))
+
+        # Migration: Fix unique constraint on reviews
+        # Drop old composite constraint if it exists
+        conn.execute(text("""
+            ALTER TABLE reviews
+            DROP CONSTRAINT IF EXISTS reviews_app_id_review_id_key
+        """))
+
+        # Add unique constraint on review_id only (if not exists)
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'reviews_review_id_unique'
+                ) THEN
+                    ALTER TABLE reviews ADD CONSTRAINT reviews_review_id_unique UNIQUE (review_id);
+                END IF;
+            END $$;
+        """))
+
+        logger.info("PostgreSQL schema initialized and migrated")
 
 
 def close_engine() -> None:
