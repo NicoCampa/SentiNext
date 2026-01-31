@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { RootProviders } from "@/components/RootProviders";
 
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "Modern Steam review analytics and insights platform",
 };
 
-const inter = Inter({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
@@ -24,7 +24,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body
         className={clsx(
-          inter.variable,
+          spaceGrotesk.variable,
           "min-h-screen bg-slate-950 text-slate-100 antialiased font-sans"
         )}
       >
