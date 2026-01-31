@@ -22,6 +22,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const hasClerkKey = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
   return (
     <ClerkProvider>
       <html lang="en" className="bg-[rgb(5,5,15)]">
@@ -31,10 +33,16 @@ export default function RootLayout({
             "min-h-screen bg-transparent text-[rgb(224,224,224)] antialiased font-mono"
           )}
         >
-          <ClerkTokenProvider />
-          <AuthGate>
+          {hasClerkKey ? (
+            <>
+              <ClerkTokenProvider />
+              <AuthGate>
+                <ClientProviders>{children}</ClientProviders>
+              </AuthGate>
+            </>
+          ) : (
             <ClientProviders>{children}</ClientProviders>
-          </AuthGate>
+          )}
         </body>
       </html>
     </ClerkProvider>
