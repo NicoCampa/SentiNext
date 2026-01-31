@@ -60,6 +60,14 @@ export default function SettingsPage() {
     loadLogTail();
   }, [loadLogTail]);
 
+  async function handleCopy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error("Failed to copy text", err);
+    }
+  }
+
   async function handleCopyDiagnostics() {
     try {
     const payload = {
