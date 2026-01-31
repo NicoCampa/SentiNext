@@ -58,4 +58,60 @@ with engine.connect() as conn:
     conn.commit()
     print("✓ Created index")
 
+    # Fix review_labels column names to match SQLite
+    print("\nFixing review_labels table...")
+
+    # Check existing columns in review_labels
+    result = conn.execute(text("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'review_labels'
+    """))
+    labels_columns = {row[0] for row in result.fetchall()}
+
+    # Rename model_id to model if needed
+    if 'model_id' in labels_columns and 'model' not in labels_columns:
+        print("Renaming model_id to model...")
+        conn.execute(text("""
+            ALTER TABLE review_labels RENAME COLUMN model_id TO model
+        """))
+        conn.commit()
+        print("✓ Renamed model_id to model")
+
+    # Rename label_payload to payload if needed
+    if 'label_payload' in labels_columns and 'payload' not in labels_columns:
+        print("Renaming label_payload to payload...")
+        conn.execute(text("""
+            ALTER TABLE review_labels RENAME COLUMN label_payload TO payload
+        """))
+        conn.commit()
+        print("✓ Renamed label_payload to payload")
+
+    # Rename context_hash to review_hash if needed
+    if 'context_hash' in labels_columns and 'review_hash' not in labels_columns:
+        print("Renaming context_hash to review_hash...")
+        conn.execute(text("""
+            ALTER TABLE review_labels RENAME COLUMN context_hash TO review_hash
+        """))
+        conn.commit()
+        print("✓ Renamed context_hash to review_hash")
+
+    # Change created_at to updated_at and make it BIGINT
+    if 'created_at' in labels_columns and 'updated_at' not in labels_columns:
+        print("Renaming created_at to updated_at and changing type...")
+        # First add the new column
+        conn.execute(text("""
+            ALTER TABLE review_labels ADD COLUMN updated_at BIGINT
+        """))
+        # Extract epoch from timestamp and populate
+        conn.execute(text("""
+            UPDATE review_labels SET updated_at = EXTRACT(EPOCH FROM created_at)::BIGINT
+        """))
+        # Drop the old column
+        conn.execute(text("""
+            ALTER TABLE review_labels DROP COLUMN created_at
+        """))
+        conn.commit()
+        print("✓ Renamed created_at to updated_at (BIGINT)")
+
     print("\nMigration complete!")
