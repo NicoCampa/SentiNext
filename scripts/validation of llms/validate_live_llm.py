@@ -4,7 +4,7 @@
 Flow:
 1) Fetch reviews from Steam.
 2) Classify them using the project prompt/model pipeline.
-3) Ask a judge model to verify the labels.
+3) Ask a judge model to verify the labels (numeric scoring).
 4) Write per-review results + a summary report.
 
 Outputs go to: scripts/validation of llms/
@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +30,14 @@ sys.path.insert(0, str(ROOT))
 from backend.senti_next import llm  # type: ignore
 from backend.senti_next.steam_api import extract_app_id_from_input, fetch_app_details, fetch_reviews  # type: ignore
 
-JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
+from improved_judge import (
+    build_judge_prompt,
+    parse_judge_response,
+    compute_total,
+    aggregate_results,
+    DEFAULT_WEIGHTS,
+)
+
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 
 
@@ -128,17 +135,8 @@ def _parse_models(raw: str) -> List[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-def _extract_json(text: str) -> Dict[str, Any]:
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = JSON_OBJ_RE.search(text)
-        if not match:
-            raise
-        return json.loads(match.group(0))
-
-
-def _openai_judge(prompt: str, model: str, base_url: str) -> Dict[str, Any]:
+def _openai_judge_raw(prompt: str, model: str, base_url: str) -> str:
+    """Call OpenAI judge and return raw response text."""
     api_key = os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is required for OpenAI judge.")
@@ -168,10 +166,11 @@ def _openai_judge(prompt: str, model: str, base_url: str) -> Dict[str, Any]:
     content = (message.get("content") or "").strip()
     if not content:
         raise ValueError("OpenAI judge returned empty content")
-    return _extract_json(content)
+    return content
 
 
-def _google_judge(prompt: str, model: str) -> Dict[str, Any]:
+def _google_judge_raw(prompt: str, model: str) -> str:
+    """Call Google Gemini judge and return raw response text."""
     try:
         from google import genai
     except ImportError as exc:
@@ -186,36 +185,7 @@ def _google_judge(prompt: str, model: str) -> Dict[str, Any]:
     text = getattr(response, "text", "") or ""
     if not text:
         raise ValueError("Gemini judge returned empty content")
-    return _extract_json(text)
-
-
-def _judge_prompt(review_text: str, predicted: Dict[str, Any]) -> str:
-    return (
-        "You are a strict evaluator of review classification.\n"
-        "Given a review and the model's predicted labels, judge whether the labels are supported by the text.\n"
-        "Rules:\n"
-        "- Use ONLY the review text as evidence.\n"
-        "- Be conservative: if evidence is weak or ambiguous, mark partial or incorrect.\n"
-        "- If you propose corrections, keep them short and aligned with the review text.\n\n"
-        f"Review:\n{review_text}\n\n"
-        "Predicted labels:\n"
-        f"- main_category: {predicted.get('main_category')}\n"
-        f"- subcategory: {predicted.get('subcategory')}\n"
-        f"- subcategories: {predicted.get('subcategories')}\n"
-        f"- issue_subcategories: {predicted.get('issue_subcategories')}\n"
-        f"- request_subcategories: {predicted.get('request_subcategories')}\n\n"
-        "Return JSON with fields: verdict (correct|partial|incorrect), main_correct (bool), "
-        "subcategory_correct (bool), issue_request_correct (bool), suggested_main (string|null), "
-        "suggested_subcategories (array), rationale (string), confidence (0-1)."
-    )
-
-
-def _compute_score(result: Dict[str, Any]) -> float:
-    main_correct = bool(result.get("main_correct"))
-    sub_correct = bool(result.get("subcategory_correct"))
-    issue_correct = bool(result.get("issue_request_correct"))
-    score = 100.0 * (0.5 * main_correct + 0.3 * sub_correct + 0.2 * issue_correct)
-    return round(score, 2)
+    return text
 
 
 def _run_classification(run: ModelRun, app_id: int, reviews: List[Dict[str, Any]], game_context: Optional[Dict[str, Any]], max_parallel: int) -> Dict[str, Dict[str, Any]]:
@@ -290,6 +260,7 @@ def main() -> int:
     _log(f"Review count requested: {args.reviews}")
     _log(f"Language: {args.language} | filter: {args.filter} | day_range: {args.day_range}")
     _log(f"Judge: {args.judge_provider}:{args.judge_model}")
+    _log(f"Weights: {DEFAULT_WEIGHTS}")
 
     reviews = fetch_reviews(
         app_id_value,
@@ -353,6 +324,7 @@ def main() -> int:
         "review_count": len(reviews),
         "judge_provider": args.judge_provider,
         "judge_model": args.judge_model,
+        "weights": DEFAULT_WEIGHTS,
         "models": {},
     }
 
@@ -364,15 +336,10 @@ def main() -> int:
         _log(f"{run.label} classification complete. Labels: {len(labels)}")
 
         results_path = out_dir / f"{_sanitize_filename(run.label)}_results.jsonl"
-        total = 0
-        correct = 0
-        main_correct = 0
-        sub_correct = 0
-        issue_correct = 0
-        scores: List[float] = []
-        verdict_counts = {"correct": 0, "partial": 0, "incorrect": 0}
+        all_scores: List[Dict[str, float]] = []
 
         with results_path.open("w", encoding="utf-8") as handle:
+            judged_count = 0
             for review in reviews:
                 review_id = str(review.get("recommendationid") or "")
                 if not review_id:
@@ -384,57 +351,48 @@ def main() -> int:
                 if not predicted:
                     continue
 
-                prompt = _judge_prompt(text, predicted)
+                # Build judge prompt using improved_judge
+                prompt = build_judge_prompt(text, predicted)
                 if args.dry_run:
                     print(prompt)
                     return 0
 
                 limiter.wait()
-                _log(f"{run.label} judging review_id={review_id} ({total + 1} of {len(reviews)})")
+                judged_count += 1
+                _log(f"{run.label} judging review_id={review_id} ({judged_count} of {len(reviews)})")
+
+                # Get raw response from judge
                 if args.judge_provider == "openai":
-                    judge_payload = _openai_judge(prompt, args.judge_model, args.openai_base_url)
+                    raw_response = _openai_judge_raw(prompt, args.judge_model, args.openai_base_url)
                 else:
-                    judge_payload = _google_judge(prompt, args.judge_model)
+                    raw_response = _google_judge_raw(prompt, args.judge_model)
 
-                score = _compute_score(judge_payload)
+                # Parse numeric scores
+                scores = parse_judge_response(raw_response)
 
-                total += 1
-                verdict = str(judge_payload.get("verdict", "incorrect"))
-                verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
+                # Ensure all dimensions have a score
+                for key in DEFAULT_WEIGHTS:
+                    if key not in scores:
+                        scores[key] = 0.0
 
-                if bool(judge_payload.get("main_correct")):
-                    main_correct += 1
-                if bool(judge_payload.get("subcategory_correct")):
-                    sub_correct += 1
-                if bool(judge_payload.get("issue_request_correct")):
-                    issue_correct += 1
-                if verdict == "correct":
-                    correct += 1
+                # Compute weighted total
+                scores["total"] = compute_total(scores)
+                all_scores.append(scores)
 
-                scores.append(score)
+                bar = _progress_bar(judged_count, len(reviews))
+                _log(f"{run.label} judged {judged_count}/{len(reviews)} {bar} | total={scores['total']}")
 
-                bar = _progress_bar(total, len(reviews))
-                _log(f"{run.label} judged {total}/{len(reviews)} {bar} | score={score}")
-
+                # Write per-review result
                 handle.write(
                     json.dumps(
                         {
                             "review_id": review_id,
-                            "verdict": verdict,
-                            "score": score,
-                            "main_correct": bool(judge_payload.get("main_correct")),
-                            "subcategory_correct": bool(judge_payload.get("subcategory_correct")),
-                            "issue_request_correct": bool(judge_payload.get("issue_request_correct")),
-                            "suggested_main": judge_payload.get("suggested_main"),
-                            "suggested_subcategories": judge_payload.get("suggested_subcategories") or [],
-                            "confidence": judge_payload.get("confidence"),
-                            "rationale": judge_payload.get("rationale"),
+                            "scores": scores,
                             "predicted": {
-                                "main_category": predicted.get("main_category"),
-                                "subcategory": predicted.get("subcategory"),
                                 "subcategories": predicted.get("subcategories"),
                                 "issue_subcategories": predicted.get("issue_subcategories"),
                                 "request_subcategories": predicted.get("request_subcategories"),
+                                "evidence": predicted.get("evidence"),
                             },
                         },
                         ensure_ascii=False,
@@ -442,20 +400,36 @@ def main() -> int:
                     + "\n"
                 )
 
-        avg_score = round(sum(scores) / len(scores), 2) if scores else 0.0
-        report["models"][run.label] = {
-            "total_judged": total,
-            "avg_score": avg_score,
-            "verdicts": verdict_counts,
-            "main_correct_pct": round((main_correct / total) * 100, 2) if total else 0.0,
-            "subcategory_correct_pct": round((sub_correct / total) * 100, 2) if total else 0.0,
-            "issue_request_correct_pct": round((issue_correct / total) * 100, 2) if total else 0.0,
-        }
-        _log(f"{run.label} avg score: {avg_score}")
+        # Aggregate results for this model
+        aggregates = aggregate_results(all_scores)
+        report["models"][run.label] = aggregates
 
+        avg_total = aggregates.get("total", {}).get("mean", 0)
+        _log(f"{run.label} avg total score: {avg_total}")
+
+        # Log per-dimension averages
+        for dim in DEFAULT_WEIGHTS:
+            dim_mean = aggregates.get(dim, {}).get("mean", 0)
+            _log(f"  {dim}: {dim_mean}")
+
+    # Write final report
     report_path = out_dir / "validation_report.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     _log(f"Report written to {report_path}")
+
+    # Print summary comparison
+    _log("=" * 60)
+    _log("SUMMARY - Model Comparison")
+    _log("=" * 60)
+    for model_label, aggregates in report["models"].items():
+        avg_total = aggregates.get("total", {}).get("mean", 0)
+        dist = aggregates.get("distribution", {})
+        excellent = dist.get("excellent_90_100", 0)
+        good = dist.get("good_70_89", 0)
+        partial = dist.get("partial_50_69", 0)
+        poor = dist.get("poor_30_49", 0) + dist.get("very_poor_0_29", 0)
+        _log(f"{model_label}: avg={avg_total} | excellent={excellent} good={good} partial={partial} poor={poor}")
+
     return 0
 
 

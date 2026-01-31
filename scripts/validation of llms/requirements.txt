@@ -1,0 +1,4 @@
+# Minimal requirements for validate_live_llm.py
+requests>=2.31.0
+pandas>=2.0.0
+google-genai>=0.5.0
