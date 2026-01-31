@@ -14,7 +14,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
               <span className="text-2xl font-bold text-white">SN</span>
             </div>
             <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome to SentiNext</h1>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                  Welcome to SentiNext
+                </span>
+              </h1>
               <p className="text-sm text-slate-400">
                 Sign in to access your analytics dashboard and saved insights.
               </p>

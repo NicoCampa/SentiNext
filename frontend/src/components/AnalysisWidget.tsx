@@ -22,7 +22,6 @@ export function AnalysisWidget() {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 bg-slate-800/50 px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-sky-500" />
             <h3 className="text-sm font-semibold text-white">
               Analysis Queue ({activeTasks.length})
             </h3>

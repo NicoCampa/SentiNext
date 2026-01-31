@@ -46,15 +46,11 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                   <span className="text-[rgb(0,255,255)] text-xl font-bold">SN</span>
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold tracking-wider cyber-gradient-text">
-                    SENTINEXT
-                  </h1>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-[rgb(0,255,136)] rounded-full animate-pulse" />
-                    <span className="text-[9px] uppercase tracking-[0.3em] text-[rgb(0,255,255)]/50">
-                      System Online
+                  <h1 className="text-xl font-bold tracking-wider">
+                    <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                      SENTINEXT
                     </span>
-                  </div>
+                  </h1>
                 </div>
               </div>
               <div className="cyber-divider mt-4" />
@@ -83,7 +79,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                     </span>
                     <span className="text-xs uppercase tracking-[0.2em]">{item.label}</span>
                     {isActiveRoute(item.href) && (
-                      <span className="ml-auto w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full shadow-[0_0_10px_rgb(0,255,255)]" />
+                      <span className="ml-auto w-1.5 h-1.5 bg-sky-500 rounded-full" />
                     )}
                   </Link>
                 ))}
@@ -176,7 +172,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                   )}
                 >
                   {active && (
-                    <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-[rgb(0,255,255)] shadow-[0_0_10px_rgb(0,255,255)]" />
+                    <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-sky-500" />
                   )}
                   <span className="text-[8px] uppercase tracking-[0.15em]">{item.label}</span>
                 </Link>

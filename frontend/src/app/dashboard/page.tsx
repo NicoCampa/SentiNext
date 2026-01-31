@@ -311,7 +311,11 @@ function DashboardContent() {
               <div className="space-y-3">
                 <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">Welcome</p>
                 <div>
-                  <h1 className="text-2xl font-semibold text-white">Welcome to SentiNext</h1>
+                  <h1 className="text-2xl font-semibold">
+                    <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                      Welcome to SentiNext
+                    </span>
+                  </h1>
                   <p className="mt-2 text-sm text-slate-400">
                     Understand what players really think. Start with a new Steam analysis or jump back into a recent report.
                   </p>
@@ -773,7 +777,11 @@ function AnalysisResults({
             ) : null}
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-2xl font-semibold text-white">{selectedGame?.name ?? "Analysis"}</h2>
+                <h2 className="text-2xl font-semibold">
+                  <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                    {selectedGame?.name ?? "Analysis"}
+                  </span>
+                </h2>
               </div>
               <p className="text-sm text-slate-400">
                 Last run {new Date(analysis.metadata.fetched_at).toLocaleString()} -language{" "}

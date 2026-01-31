@@ -245,7 +245,11 @@ function ReviewsContent() {
       <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-white">{game.name}</h1>
+            <h1 className="text-3xl font-bold">
+              <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                {game.name}
+              </span>
+            </h1>
             <p className="mt-1 text-sm text-slate-400">
               {filtersActive
                 ? `Global filters: ${baseReviews.length} / ${(game.sample || []).length} reviews`

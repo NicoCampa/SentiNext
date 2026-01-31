@@ -37,12 +37,11 @@ export function Button({
 
   const variantClasses = {
     primary: `
-      bg-[rgb(0,255,255)]/10
-      border-[rgb(0,255,255)]/50
-      text-[rgb(0,255,255)]
-      hover:bg-[rgb(0,255,255)]/20
-      hover:border-[rgb(0,255,255)]
-      hover:shadow-[0_0_20px_rgba(0,255,255,0.3)]
+      bg-sky-500/10
+      border-sky-500/50
+      text-sky-400
+      hover:bg-sky-500/20
+      hover:border-sky-500
     `,
     secondary: `
       bg-[rgb(15,15,35)]
@@ -59,12 +58,11 @@ export function Button({
       hover:bg-[rgb(0,255,255)]/5
     `,
     danger: `
-      bg-[rgb(255,0,128)]/10
-      border-[rgb(255,0,128)]/50
-      text-[rgb(255,0,128)]
-      hover:bg-[rgb(255,0,128)]/20
-      hover:border-[rgb(255,0,128)]
-      hover:shadow-[0_0_20px_rgba(255,0,128,0.3)]
+      bg-rose-500/10
+      border-rose-500/50
+      text-rose-400
+      hover:bg-rose-500/20
+      hover:border-rose-500
     `,
   };
 

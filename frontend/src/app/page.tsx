@@ -98,8 +98,10 @@ export default function RootPage() {
           </div>
 
           {/* Title */}
-          <h1 className="text-5xl font-bold tracking-[0.3em] cyber-gradient-text mb-4">
-            SENTINEXT
+          <h1 className="text-5xl font-bold tracking-[0.3em] mb-4">
+            <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+              SENTINEXT
+            </span>
           </h1>
 
           {/* Subtitle */}

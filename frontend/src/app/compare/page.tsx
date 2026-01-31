@@ -159,7 +159,11 @@ export default function ComparePage() {
     <AppLayout>
       <div className="mx-auto max-w-7xl px-4 py-10 space-y-10 sm:space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-white">Game Comparison</h1>
+          <h1 className="text-3xl font-bold">
+            <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+              Game Comparison
+            </span>
+          </h1>
           <p className="mt-1 text-sm text-slate-400">
             Compare two games side-by-side - {selectedIds.length} selected
             {filtersActive ? " - global filters applied" : ""}

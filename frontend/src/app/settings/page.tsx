@@ -121,7 +121,11 @@ export default function SettingsPage() {
       <div className="mx-auto max-w-4xl space-y-8 sm:space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-white">Settings</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                Settings
+              </span>
+            </h1>
             <p className="text-sm text-slate-400">
               Account, storage, and diagnostics for this service.
             </p>
