@@ -15,7 +15,7 @@ env_vars = [
     "SENTINEXT_ALLOWED_ORIGINS",
     "SENTINEXT_AUTH_ENABLED",
     "SENTINEXT_AUTH_JWKS_URL",
-    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
 ]
 for var in env_vars:
     val = os.environ.get(var, "NOT SET")

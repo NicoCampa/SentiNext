@@ -1,4 +1,4 @@
-"""Review classification helpers (OpenAI and Google Gemini)."""
+"""Review classification helpers (Google Gemini)."""
 from __future__ import annotations
 
 import hashlib
@@ -23,17 +23,13 @@ from . import storage
 logger = logging.getLogger(__name__)
 
 # LLM Provider configuration
-LLM_PROVIDER = os.getenv("SENTINEXT_LLM_PROVIDER", "openai").lower()  # "openai" or "google"
-OPENAI_BASE_URL = os.getenv("SENTINEXT_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-OPENAI_MODEL = "gpt-5-mini"
 GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
 PROMPT_VERSION = "steam_review_insights_v13_subcategories_primary_json"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
 
 # Batch size configuration (lower = faster individual responses, higher = fewer API calls)
-# Gemini tends to work better with smaller batches (3-5), OpenAI handles 10 well
-_DEFAULT_BATCH_SIZE = 3 if LLM_PROVIDER == "google" else 10
-OPENAI_BATCH_SIZE = int(os.getenv("SENTINEXT_BATCH_SIZE", str(_DEFAULT_BATCH_SIZE)))
+# Gemini works well with 3-5 reviews per batch
+BATCH_SIZE = int(os.getenv("SENTINEXT_BATCH_SIZE", "3"))
 
 MAX_REVIEW_CHARS = 3000
 MIN_REVIEW_WORDS = 2
@@ -41,7 +37,7 @@ _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
 
 
 def _maybe_load_dotenv() -> None:
-    if os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY"):
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         return
 
     try:
@@ -837,126 +833,6 @@ def _build_prompt(
 
 
 
-def _openai_timeout_seconds() -> Optional[float]:
-    raw = os.getenv("SENTINEXT_OPENAI_TIMEOUT_SEC")
-    if raw is None:
-        return 60.0
-    value = str(raw).strip().lower()
-    if value in {"", "0", "none", "null", "false"}:
-        return None
-    try:
-        parsed = float(value)
-    except ValueError as exc:
-        raise ValueError("SENTINEXT_OPENAI_TIMEOUT_SEC must be a number (seconds) or 0/none.") from exc
-    if parsed <= 0:
-        return None
-    return parsed
-
-
-def _openai_max_retries() -> int:
-    raw = os.getenv("SENTINEXT_OPENAI_MAX_RETRIES", "12")
-    try:
-        value = int(str(raw).strip())
-    except ValueError as exc:
-        raise ValueError("SENTINEXT_OPENAI_MAX_RETRIES must be an integer.") from exc
-    return max(0, value)
-
-
-def _retry_backoff_seconds(attempt: int) -> float:
-    base = min(2 ** min(attempt, 6), 60)
-    return float(base) + random.random()
-
-
-def _run_openai(prompt: str, model: str) -> str:
-    _maybe_load_dotenv()
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY is not set.")
-
-    start_time = time.time()
-    logger.info(f"Starting OpenAI API call with model {model}")
-
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "Return STRICT JSON only. No prose, no code fences."},
-            {"role": "user", "content": prompt},
-        ],
-    }
-    temp_override = os.getenv("SENTINEXT_OPENAI_TEMPERATURE")
-    if temp_override:
-        try:
-            payload["temperature"] = float(temp_override)
-        except ValueError:
-            raise ValueError("SENTINEXT_OPENAI_TEMPERATURE must be a number.")
-    elif not model.startswith("gpt-5"):
-        payload["temperature"] = 0.2
-    timeout = _openai_timeout_seconds()
-    max_retries = _openai_max_retries()
-
-    attempt = 0
-    while True:
-        attempt += 1
-        try:
-            response = requests.post(
-                f"{OPENAI_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json=payload,
-                timeout=timeout,
-            )
-        except requests.exceptions.Timeout as exc:
-            if max_retries and attempt > max_retries:
-                raise
-            sleep_for = _retry_backoff_seconds(attempt)
-            logger.warning("OpenAI request timed out (attempt %s), retrying in %.1fs", attempt, sleep_for)
-            time.sleep(sleep_for)
-            continue
-        except requests.exceptions.RequestException as exc:
-            if max_retries and attempt > max_retries:
-                raise
-            sleep_for = _retry_backoff_seconds(attempt)
-            logger.warning("OpenAI request error (attempt %s), retrying in %.1fs: %s", attempt, sleep_for, exc)
-            time.sleep(sleep_for)
-            continue
-
-        if response.ok:
-            break
-
-        status = response.status_code
-        retryable = status in {408, 409, 425, 429, 500, 502, 503, 504}
-        if retryable and (not max_retries or attempt <= max_retries):
-            retry_after = response.headers.get("retry-after")
-            if retry_after:
-                try:
-                    sleep_for = float(retry_after)
-                except ValueError:
-                    sleep_for = _retry_backoff_seconds(attempt)
-            else:
-                sleep_for = _retry_backoff_seconds(attempt)
-            logger.warning(
-                "OpenAI API error %s (attempt %s), retrying in %.1fs: %s",
-                status,
-                attempt,
-                sleep_for,
-                response.text,
-            )
-            time.sleep(sleep_for)
-            continue
-
-        raise ValueError(f"OpenAI API error {response.status_code}: {response.text}")
-
-    elapsed = time.time() - start_time
-    logger.info(f"OpenAI API call completed in {elapsed:.2f}s (attempt {attempt})")
-
-    data = response.json()
-    choices = data.get("choices") or []
-    if not choices:
-        raise ValueError("OpenAI API returned no choices.")
-    message = choices[0].get("message") or {}
-    content = (message.get("content") or "").strip()
-    if not content:
-        raise ValueError("Empty response from OpenAI.")
-    return content
 
 
 def _run_gemini(prompt: str, model: str) -> str:
@@ -1034,7 +910,7 @@ def _run_gemini(prompt: str, model: str) -> str:
                         continue
                     else:
                         logger.error(f"Gemini rate limit exceeded after {max_retries} attempts")
-                        raise ValueError(f"Gemini rate limit exceeded. Free tier allows 10 requests/minute. Consider: 1) Reducing SENTINEXT_MAX_PARALLEL_BATCHES to 1-2, 2) Upgrading Gemini API plan, or 3) Switching to OpenAI.")
+                        raise ValueError(f"Gemini rate limit exceeded. Free tier allows 10 requests/minute. Consider: 1) Reducing SENTINEXT_MAX_PARALLEL_BATCHES to 1-2, or 2) Upgrading Gemini API plan.")
                 else:
                     raise
 
@@ -1054,11 +930,7 @@ def _model_id(provider: str, model: str) -> str:
 def _run_llm(
     prompt: str,
 ) -> tuple[str, str]:
-    provider = LLM_PROVIDER
-    if provider == "google":
-        return _run_gemini(prompt, GEMINI_MODEL), _model_id("google", GEMINI_MODEL)
-    else:
-        return _run_openai(prompt, OPENAI_MODEL), _model_id("openai", OPENAI_MODEL)
+    return _run_gemini(prompt, GEMINI_MODEL), _model_id("google", GEMINI_MODEL)
 
 
 def run_chat_completion(
@@ -1181,7 +1053,7 @@ def classify_reviews_batch(
     game_context: Optional[Dict[str, Any]] = None,
 ) -> tuple[Dict[str, Dict[str, Any]], str]:
     if not items:
-        return {}, _model_id("openai", OPENAI_MODEL)
+        return {}, _model_id("google", GEMINI_MODEL)
 
     expected_ids = [str(item.get("review_id") or "") for item in items]
     if any(not rid for rid in expected_ids):
@@ -1206,7 +1078,7 @@ def classify_reviews_batch(
 def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Optional[Dict[str, Any]] = None) -> tuple[Dict[str, Dict[str, Any]], str]:
     """Classify reviews with best-effort batching and automatic split-on-failure."""
     if not items:
-        return {}, _model_id("openai", OPENAI_MODEL)
+        return {}, _model_id("google", GEMINI_MODEL)
 
     try:
         return classify_reviews_batch(items, game_context=game_context)
@@ -1227,7 +1099,7 @@ def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Option
         mid = len(items) // 2
         left, left_model = classify_reviews(items[:mid], game_context=game_context)
         right, right_model = classify_reviews(items[mid:], game_context=game_context)
-        model_used = left_model or right_model or _model_id("openai", OPENAI_MODEL)
+        model_used = left_model or right_model or _model_id("google", GEMINI_MODEL)
         return {**left, **right}, model_used
 
 
@@ -1260,7 +1132,7 @@ def ensure_review_labels(
         return {}
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    expected_llm_model_id = _model_id("openai", OPENAI_MODEL)
+    expected_llm_model_id = _model_id("google", GEMINI_MODEL)
     valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
@@ -1364,17 +1236,16 @@ def ensure_review_labels(
                 "reviewer_voted_up": reviewer_voted_up,
             }
         )
-        if len(pending) >= OPENAI_BATCH_SIZE:
+        if len(pending) >= BATCH_SIZE:
             _flush_pending()
 
     _flush_pending()
 
     # Process all batches in parallel
     if all_batches:
-        # Use 2 workers for Gemini free tier (10 req/min limit), 5 for OpenAI
-        default_workers = "2" if LLM_PROVIDER == "google" else "5"
-        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", default_workers))
-        logger.info(f"Processing {len(all_batches)} batches in parallel (max_workers={max_workers}, provider={LLM_PROVIDER})")
+        # Use 2 workers for Gemini free tier (10 req/min limit)
+        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "2"))
+        logger.info(f"Processing {len(all_batches)} batches in parallel (max_workers={max_workers})")
 
         def process_batch(batch_items: list[Dict[str, Any]]) -> tuple[Dict[str, Dict[str, Any]], str]:
             return classify_reviews(batch_items, game_context=game_context)
@@ -1437,11 +1308,11 @@ def estimate_review_labeling(
             "reasons": {},
             "prompt_version": ACTIVE_PROMPT_VERSION,
             "model_id": "",
-            "labeling_strategy": "openai",
+            "labeling_strategy": "gemini",
         }
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    expected_llm_model_id = _model_id("openai", OPENAI_MODEL)
+    expected_llm_model_id = _model_id("google", GEMINI_MODEL)
     valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
 
     counts = {
@@ -1501,7 +1372,7 @@ def estimate_review_labeling(
         "reasons": reasons,
         "prompt_version": ACTIVE_PROMPT_VERSION,
         "model_id": expected_llm_model_id,
-        "labeling_strategy": "openai",
+        "labeling_strategy": "gemini",
     }
 
 

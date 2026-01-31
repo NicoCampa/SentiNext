@@ -11,7 +11,7 @@ Edit `.env.local` in the project root and add your Render PostgreSQL URL:
 ```bash
 # Get the External Database URL from Render dashboard
 DATABASE_URL=postgres://sentinext_db_user:xxxxx@dpg-xxxxx.oregon-postgres.render.com/sentinext_db
-OPENAI_API_KEY=sk-xxxxx
+GEMINI_API_KEY=your_key_here
 SENTINEXT_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 SENTINEXT_AUTH_ENABLED=false
 ```

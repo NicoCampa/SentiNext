@@ -6,14 +6,14 @@ PostgreSQL-only backend for Steam review analysis.
 
 - Python 3.10+
 - PostgreSQL database (required)
-- OpenAI API key
+- Google Gemini API key
 
 ## Environment Variables
 
 Required:
 ```bash
 DATABASE_URL=postgresql://user:password@host:port/database
-OPENAI_API_KEY=sk-xxx
+GEMINI_API_KEY=your_key_here
 ```
 
 Optional:

@@ -254,12 +254,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-only", action="store_true", help="Only use cached DB reviews; fail if none cached.")
     parser.add_argument("--persist", action="store_true", help="Persist fetched reviews to the database (default).")
     parser.add_argument("--no-persist", action="store_true", help="Do not persist fetched reviews to the DB.")
-    parser.add_argument("--model", default="gpt-5-mini", help="LLM model to use for LLM runs (default: gpt-5-mini).")
-    parser.add_argument(
-        "--openai-timeout-sec",
-        default="0",
-        help="OpenAI request timeout in seconds (0 disables timeouts). Uses SENTINEXT_OPENAI_TIMEOUT_SEC. Default: 0",
-    )
+    parser.add_argument("--model", default="gemini-flash-lite-latest", help="LLM model to use for LLM runs (default: gemini-flash-lite-latest).")
     parser.add_argument(
         "--out-dir",
         default=None,
@@ -275,16 +270,15 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    os.environ["SENTINEXT_OPENAI_TIMEOUT_SEC"] = str(args.openai_timeout_sec)
 
     repo_root = _find_repo_root(Path.cwd()) or _find_repo_root(Path(__file__).resolve())
     if repo_root:
         _load_dotenv(repo_root / ".env")
     _load_dotenv(Path.cwd() / ".env")
 
-    if not (os.getenv("OPENAI_API_KEY") or os.getenv("SENTINEXT_OPENAI_API_KEY")):
+    if not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
         raise SystemExit(
-            "OPENAI_API_KEY is not set. Export it in your shell or add it to .env as OPENAI_API_KEY=..."
+            "GEMINI_API_KEY is not set. Export it in your shell or add it to .env as GEMINI_API_KEY=..."
         )
 
     from backend.senti_next import fetch_reviews, llm, storage

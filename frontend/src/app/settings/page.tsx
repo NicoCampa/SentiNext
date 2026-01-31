@@ -154,9 +154,7 @@ export default function SettingsPage() {
             {llmSettings ? (
               <div className="mt-2 space-y-2">
                 <p className="text-sm text-slate-300">
-                  <span className="font-semibold">
-                    {llmSettings.provider === "google" ? "Google Gemini" : "OpenAI"}
-                  </span>
+                  <span className="font-semibold">Google Gemini</span>
                   {" "}({llmSettings.model})
                 </p>
                 <div className="flex items-center gap-2">
@@ -171,11 +169,9 @@ export default function SettingsPage() {
             )}
           </div>
           <div className="space-y-2 text-xs text-slate-500">
-            <p>To change the LLM provider, set environment variables in Render:</p>
+            <p>To configure the LLM, set environment variables in Render:</p>
             <div className="rounded-lg bg-slate-950/40 p-3 font-mono text-[11px]">
-              <div>SENTINEXT_LLM_PROVIDER=google <span className="text-slate-600"># or "openai"</span></div>
-              <div>GEMINI_API_KEY=your_key_here <span className="text-slate-600"># for Google</span></div>
-              <div>OPENAI_API_KEY=your_key_here <span className="text-slate-600"># for OpenAI</span></div>
+              <div>GEMINI_API_KEY=your_key_here <span className="text-slate-600"># required</span></div>
               <div>SENTINEXT_GEMINI_MODEL=gemini-flash-lite-latest <span className="text-slate-600"># optional</span></div>
             </div>
           </div>

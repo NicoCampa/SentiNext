@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SentiNext ingests Steam game reviews, classifies them using LLM (OpenAI gpt-5-mini) into a structured taxonomy, and surfaces actionable insights like top issues and feature requests.
+SentiNext ingests Steam game reviews, classifies them using LLM (Google Gemini) into a structured taxonomy, and surfaces actionable insights like top issues and feature requests.
 
 ## Build & Run Commands
 
@@ -53,7 +53,7 @@ cd frontend && npm run lint
 - `main.py` - FastAPI REST API (~25 endpoints)
 - `local_app.py` - Combined API + static UI server for desktop/local use
 - `senti_next/` - Core package:
-  - `llm.py` - OpenAI integration, review classification with batching (10 reviews/batch), taxonomy parsing
+  - `llm.py` - Google Gemini integration, review classification with batching (3 reviews/batch), taxonomy parsing
   - `storage.py` - PostgreSQL persistence (reviews, labels, starred games, analysis results)
   - `steam_api.py` - Steam API wrapper for fetching reviews and game details
   - `insights.py` - Aggregates classification results into dashboard metrics
@@ -82,7 +82,8 @@ cd frontend && npm run lint
 ## Key Environment Variables
 
 **Backend:**
-- `OPENAI_API_KEY` - Required for LLM classification
+- `GEMINI_API_KEY` - Required for LLM classification
+- `SENTINEXT_GEMINI_MODEL` - Optional, defaults to gemini-flash-lite-latest
 - `DATABASE_URL` - PostgreSQL connection string
 - `SENTINEXT_AUTH_ENABLED` - Enable Clerk auth
 - `SENTINEXT_ENABLE_DESTRUCTIVE` - Allow delete endpoints
