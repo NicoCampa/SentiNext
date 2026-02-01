@@ -37,7 +37,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     <div className="flex min-h-screen w-full overflow-x-hidden">
       {/* Sidebar */}
       {showSidebar && (
-        <aside className="hidden w-72 flex-shrink-0 border-r border-[rgb(0,255,255)]/10 bg-[rgb(5,5,15)]/95 backdrop-blur-xl lg:block">
+        <aside className="hidden w-72 flex-shrink-0 border-r border-[rgb(0,255,255)]/10 bg-[rgb(5,5,15)]/95 backdrop-blur-xl lg:block sticky top-0 h-screen overflow-y-auto">
           <div className="flex h-full flex-col p-6">
             {/* Logo Section */}
             <div className="mb-8">
