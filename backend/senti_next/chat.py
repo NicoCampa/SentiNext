@@ -785,6 +785,9 @@ def build_game_aware_prompt(
     reviews_by_game: Dict[int, List[dict]],
     recommendation_splits: Optional[Dict[int, Dict[str, Any]]] = None,
     subcategory_insights: Optional[Dict[int, List[Dict[str, Any]]]] = None,
+    full_insights: Optional[Dict[int, Dict[str, Any]]] = None,
+    intent: Optional[Any] = None,
+    sort_preference: Optional[str] = None,
     history: List[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt for game-aware chat with review context.
@@ -799,11 +802,16 @@ def build_game_aware_prompt(
         reviews_by_game: Dict mapping app_id to list of reviews
         recommendation_splits: Optional dict of SQL aggregation results per app_id
         subcategory_insights: Optional dict of subcategory insights per app_id
+        full_insights: Optional dict of full insights data per app_id
+        intent: Optional ChatIntent for the current query
+        sort_preference: Optional sort preference for subcategories
         history: Conversation history
 
     Returns:
         Complete prompt string for the LLM
     """
+    from .intent import ChatIntent
+
     if history is None:
         history = []
 
@@ -821,6 +829,7 @@ def build_game_aware_prompt(
         reviews = reviews_by_game.get(app_id, [])
         split = recommendation_splits.get(app_id) if recommendation_splits else None
         subcats = subcategory_insights.get(app_id, []) if subcategory_insights else []
+        insights = full_insights.get(app_id, {}) if full_insights else {}
 
         # Game metadata
         genres = game.get("genres", [])
@@ -848,13 +857,127 @@ def build_game_aware_prompt(
             prompt_parts.append(f"Data source: {split['definition']}")
             prompt_parts.append("")
 
-        # Subcategory breakdown (if available)
-        if subcats:
+        # NEW: TREND Section - Sentiment trend over time
+        if intent == ChatIntent.TREND and insights:
+            sentiment_trend = insights.get("sentiment_trend") or []
+            if sentiment_trend:
+                prompt_parts.append("\n### Sentiment Trend (Weekly):")
+                for entry in sentiment_trend[:12]:  # Show up to 12 weeks
+                    week = entry.get("week", "Unknown")
+                    rec_rate = entry.get("recommendation_rate", 0) * 100
+                    count = entry.get("count", 0)
+                    prompt_parts.append(f"{week}: {rec_rate:.1f}% positive ({count} reviews)")
+                prompt_parts.append("")
+
+        # NEW: SEGMENT Section - Sentiment by playtime bucket
+        if intent == ChatIntent.SEGMENT and insights:
+            playtime_breakdown = insights.get("playtime_breakdown") or []
+            if playtime_breakdown:
+                prompt_parts.append("\n### Sentiment by Playtime Bucket:")
+                for bucket in playtime_breakdown:
+                    label = bucket.get("bucket", "Unknown")
+                    rec_rate = bucket.get("recommendation_rate", 0) * 100
+                    count = bucket.get("count", 0)
+                    issue_count = bucket.get("issue_count", 0)
+                    prompt_parts.append(f"{label}: {rec_rate:.1f}% positive ({count} reviews, {issue_count} issues)")
+                prompt_parts.append("")
+
+                # Add issues by experience level if available
+                prompt_parts.append("\n### Top Issues by Experience Level:")
+                for bucket in playtime_breakdown:
+                    label = bucket.get("bucket", "Unknown")
+                    top_issues = bucket.get("top_issues") or []
+                    if top_issues:
+                        issues_str = ", ".join(top_issues[:5])
+                        prompt_parts.append(f"{label}: {issues_str}")
+                prompt_parts.append("")
+
+        # NEW: COMPARISON Section - Early Access vs Release
+        if intent == ChatIntent.COMPARISON and insights:
+            comparison_data = insights.get("comparison_data") or insights.get("ea_vs_release") or {}
+            if comparison_data:
+                prompt_parts.append("\n### Early Access vs Release Comparison:")
+                ea_data = comparison_data.get("early_access") or {}
+                release_data = comparison_data.get("release") or {}
+
+                if ea_data:
+                    ea_rec = ea_data.get("recommendation_rate", 0) * 100
+                    ea_count = ea_data.get("count", 0)
+                    ea_top_issues = ea_data.get("top_issues") or []
+                    prompt_parts.append(f"Early Access: {ea_rec:.1f}% positive ({ea_count} reviews)")
+                    if ea_top_issues:
+                        prompt_parts.append(f"  Top issues: {', '.join(ea_top_issues[:5])}")
+
+                if release_data:
+                    rel_rec = release_data.get("recommendation_rate", 0) * 100
+                    rel_count = release_data.get("count", 0)
+                    rel_top_issues = release_data.get("top_issues") or []
+                    prompt_parts.append(f"Release: {rel_rec:.1f}% positive ({rel_count} reviews)")
+                    if rel_top_issues:
+                        prompt_parts.append(f"  Top issues: {', '.join(rel_top_issues[:5])}")
+                prompt_parts.append("")
+
+        # NEW: RISK Section - Refund risk indicators
+        if intent == ChatIntent.RISK and insights:
+            risk_indicators = insights.get("risk_indicators") or {}
+            if risk_indicators:
+                prompt_parts.append("\n### Risk Indicators:")
+                refund_risk = risk_indicators.get("refund_risk", 0) * 100
+                core_disappointment = risk_indicators.get("core_fan_disappointment", 0) * 100
+                churn_signal = risk_indicators.get("churn_signal", 0) * 100
+                prompt_parts.append(f"Refund risk: {refund_risk:.1f}% (% of negative reviews with <2h playtime)")
+                prompt_parts.append(f"Core fan disappointment: {core_disappointment:.1f}% (% of negatives with 50h+ playtime)")
+                prompt_parts.append(f"Churn signal: {churn_signal:.1f}% (players who recently stopped)")
+                prompt_parts.append("")
+
+            # Also show low-playtime negative reviews if available
+            low_playtime_negatives = insights.get("low_playtime_negatives") or []
+            if low_playtime_negatives:
+                prompt_parts.append("\n### Top Issues from Quick Refund Risk Reviews (<2h):")
+                for issue in low_playtime_negatives[:5]:
+                    prompt_parts.append(f"- {issue.get('subcategory', 'Unknown')}: {issue.get('count', 0)} mentions")
+                prompt_parts.append("")
+
+        # NEW: FEATURE_REQUESTS Section - Most requested features
+        if intent == ChatIntent.FEATURE_REQUESTS and subcats:
+            # Sort by request_count
+            request_sorted = sorted(subcats, key=lambda x: x.get("request_count", 0), reverse=True)
+            request_sorted = [s for s in request_sorted if s.get("request_count", 0) > 0]
+
+            if request_sorted:
+                prompt_parts.append("\n### Most Requested Features (by request count):")
+                for idx, subcat in enumerate(request_sorted[:10], 1):
+                    name = subcat.get("subcategory", "Unknown")
+                    request_count = subcat.get("request_count", 0)
+                    count = subcat.get("count", 0)
+                    rec_rate = subcat.get("recommendation_rate", 0) * 100
+                    prompt_parts.append(
+                        f"{idx}. {name}: {request_count} requests ({count} mentions total, {rec_rate:.1f}% recommend)"
+                    )
+                prompt_parts.append("")
+
+        # Subcategory breakdown (with smart sorting based on intent)
+        if subcats and intent not in (ChatIntent.FEATURE_REQUESTS,):
             prompt_parts.append("\n### Subcategory Breakdown:")
             prompt_parts.append(f"Total subcategories analyzed: {len(subcats)}")
-            prompt_parts.append("\nTop subcategories by mention count:")
-            # Sort by count and show top 10
-            sorted_subcats = sorted(subcats, key=lambda x: x.get("count", 0), reverse=True)
+
+            # Apply smart sorting based on sort_preference
+            if sort_preference == "issue_count":
+                sorted_subcats = sorted(subcats, key=lambda x: x.get("issue_count", 0), reverse=True)
+                prompt_parts.append("\nTop subcategories by issue count:")
+            elif sort_preference == "request_count":
+                sorted_subcats = sorted(subcats, key=lambda x: x.get("request_count", 0), reverse=True)
+                prompt_parts.append("\nTop subcategories by request count:")
+            elif sort_preference == "recommendation_rate_asc":
+                sorted_subcats = sorted(subcats, key=lambda x: x.get("recommendation_rate", 1.0))
+                prompt_parts.append("\nSubcategories by lowest recommendation rate:")
+            elif sort_preference == "recommendation_rate_desc":
+                sorted_subcats = sorted(subcats, key=lambda x: x.get("recommendation_rate", 0), reverse=True)
+                prompt_parts.append("\nSubcategories by highest recommendation rate:")
+            else:
+                sorted_subcats = sorted(subcats, key=lambda x: x.get("count", 0), reverse=True)
+                prompt_parts.append("\nTop subcategories by mention count:")
+
             for idx, subcat in enumerate(sorted_subcats[:10], 1):
                 name = subcat.get("subcategory", "Unknown")
                 count = subcat.get("count", 0)
@@ -917,10 +1040,15 @@ def build_game_aware_prompt(
     prompt_parts.append("4. If there's insufficient data, clearly state that")
     prompt_parts.append("5. If comparing games, organize your response by game")
     prompt_parts.append("6. **Chart generation**: If the user asks for a chart/plot/graph:")
-    prompt_parts.append("   - Use the exact numbers from 'Computed Statistics' section")
+    prompt_parts.append("   - Use the exact numbers from 'Computed Statistics' or 'Subcategory Breakdown' sections")
     prompt_parts.append("   - Include a fenced code block with language 'chart' containing JSON for Chart.js")
     prompt_parts.append("   - Example:\n```chart\n{\"type\":\"pie\",\"title\":\"Recommendation Rate\",\"data\":{\"labels\":[\"Recommended\",\"Not Recommended\"],\"datasets\":[{\"data\":[742,258]}]}}\n```")
     prompt_parts.append("7. Never guess or estimate numbers - use provided statistics or state if unavailable")
+    prompt_parts.append("8. **For trend questions**: Use 'Sentiment Trend' data if available, create line charts showing progression over time")
+    prompt_parts.append("9. **For segment questions** (veterans vs newcomers, playtime): Use 'Sentiment by Playtime Bucket' data")
+    prompt_parts.append("10. **For comparison questions** (EA vs release, before/after): Use 'Early Access vs Release Comparison' data")
+    prompt_parts.append("11. **For risk questions** (refund risk, churn): Use 'Risk Indicators' data and explain what each metric means")
+    prompt_parts.append("12. **For feature request questions**: Use 'Most Requested Features' sorted by request count")
 
     # Current question
     prompt_parts.append(f"\n## Current Question:\n{message}")
@@ -945,6 +1073,11 @@ def answer_game_aware_chat(
     - AGGREGATION: SQL aggregation for charts/stats (accurate, all reviews)
     - EXAMPLES: Keyword search for specific review content
     - MIXED: Both SQL aggregation + example reviews
+    - TREND: Time-based queries (sentiment over time)
+    - SEGMENT: Playtime/experience-based queries
+    - COMPARISON: Before/after comparisons
+    - RISK: Refund risk, churn analysis
+    - FEATURE_REQUESTS: What players want
 
     Args:
         user_id: User ID for accessing starred games
@@ -958,7 +1091,13 @@ def answer_game_aware_chat(
     Returns:
         Dict with response, citations, and metadata
     """
-    from .intent import classify_intent, should_use_sql_aggregation, ChatIntent
+    from .intent import (
+        classify_intent,
+        should_use_sql_aggregation,
+        should_load_full_insights,
+        detect_sort_preference,
+        ChatIntent,
+    )
 
     if not app_ids:
         # No games selected - fall back to general chat
@@ -975,9 +1114,11 @@ def answer_game_aware_chat(
 
     # Step 1: Classify intent and extract search term
     intent, search_term, is_entity = classify_intent(message)
+    sort_preference = detect_sort_preference(message)
     logger.info(
         f"Classified intent: {intent.value}, search_term: {search_term}, "
-        f"is_entity: {is_entity} for message: {message[:100]}"
+        f"is_entity: {is_entity}, sort_preference: {sort_preference} "
+        f"for message: {message[:100]}"
     )
 
     # Load game metadata
@@ -1009,13 +1150,27 @@ def answer_game_aware_chat(
         }
 
     # Step 2: Route based on intent
-    from .intent import ChatIntent
     recommendation_splits: Dict[int, Dict[str, Any]] = {}
     subcategory_insights: Dict[int, List[Dict[str, Any]]] = {}
+    full_insights: Dict[int, Dict[str, Any]] = {}
     reviews_by_game: Dict[int, List[dict]] = {}
 
+    # Load full insights for advanced intents
+    if should_load_full_insights(intent):
+        if status_callback:
+            status_callback("Loading analysis insights...")
+
+        for app_id in app_ids:
+            result = storage.load_analysis_result(user_id, app_id)
+            if result and result.get("insights"):
+                insights = result.get("insights") or {}
+                full_insights[app_id] = insights
+                subcat_list = insights.get("subcategory_insights") or []
+                subcategory_insights[app_id] = subcat_list
+                logger.info(f"App {app_id}: Loaded full insights with {len(subcat_list)} subcategories")
+
     if should_use_sql_aggregation(intent):
-        # AGGREGATION or MIXED: Use SQL for accurate stats
+        # AGGREGATION/MIXED/TREND/SEGMENT/COMPARISON/RISK/FEATURE_REQUESTS: Use SQL for accurate stats
         if status_callback:
             status_callback("Computing recommendation statistics...")
 
@@ -1028,16 +1183,10 @@ def answer_game_aware_chat(
                 f"{split['not_recommended']} not recommended (total {split['total']})"
             )
 
-            # Get subcategory insights from analysis results
-            result = storage.load_analysis_result(user_id, app_id)
-            if result and result.get("insights"):
-                insights = result.get("insights") or {}
-                subcat_list = insights.get("subcategory_insights") or []
-                subcategory_insights[app_id] = subcat_list
-                logger.info(f"App {app_id}: Loaded {len(subcat_list)} subcategory insights")
-
         # Sample evidence reviews (not keyword search!)
-        if intent == ChatIntent.MIXED or intent == ChatIntent.AGGREGATION:
+        if intent in (ChatIntent.MIXED, ChatIntent.AGGREGATION, ChatIntent.TREND,
+                      ChatIntent.SEGMENT, ChatIntent.COMPARISON, ChatIntent.RISK,
+                      ChatIntent.FEATURE_REQUESTS):
             if status_callback:
                 status_callback("Sampling representative reviews...")
 
@@ -1110,6 +1259,9 @@ def answer_game_aware_chat(
         reviews_by_game=reviews_by_game,
         recommendation_splits=recommendation_splits if recommendation_splits else None,
         subcategory_insights=subcategory_insights if subcategory_insights else None,
+        full_insights=full_insights if full_insights else None,
+        intent=intent,
+        sort_preference=sort_preference,
         history=history or [],
     )
 

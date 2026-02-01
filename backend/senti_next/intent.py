@@ -12,6 +12,12 @@ class ChatIntent(Enum):
     TOPIC_EXAMPLES = "topic_examples"  # Reviews from LLM subcategory (bugs, AI, performance)
     ENTITY_EXAMPLES = "entity_examples" # Reviews mentioning specific entities (Sonic, Mario)
     MIXED = "mixed"                    # Both analytics + examples
+    # New intents for advanced queries
+    TREND = "trend"                    # Time-based queries (sentiment over time, since launch)
+    SEGMENT = "segment"                # Playtime/experience-based queries (veterans vs newcomers)
+    COMPARISON = "comparison"          # Before/after comparisons (EA vs release, patches)
+    RISK = "risk"                      # Refund risk, churn, retention analysis
+    FEATURE_REQUESTS = "feature_requests"  # What players want (most requested features)
 
 
 def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
@@ -31,18 +37,75 @@ def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
         "show me reviews about bugs" → (TOPIC_EXAMPLES, "bugs", False)
         'what do people think of "Sonic"?' → (ENTITY_EXAMPLES, "Sonic", True)
         "what percentage mention Super Mario?" → (AGGREGATION, "Super Mario", True)
+        "how has sentiment changed since launch?" → (TREND, None, False)
+        "what do veterans complain about?" → (SEGMENT, None, False)
+        "compare early access vs release" → (COMPARISON, None, False)
+        "what's the refund risk?" → (RISK, None, False)
+        "what features do players want?" → (FEATURE_REQUESTS, None, False)
     """
     normalized = message.lower()
 
-    # AGGREGATION indicators (charts, stats, metrics, trends)
+    # NEW: TREND indicators (time-based queries)
+    trend_patterns = [
+        r'\b(trend|trending|over time|since launch|since release)\b',
+        r'\b(changed|changing|evolution|evolved|history|historical)\b',
+        r'\b(last (week|month|year|patch)|recent(ly)?|lately)\b',
+        r'\b(weekly|monthly|yearly|daily)\b',
+        r'\b(past (\d+|few|several) (days?|weeks?|months?|years?))\b',
+        r'\b(did the (last )?patch|after the (update|patch|fix))\b',
+        r'\b(before|after) (the )?(update|patch|release|launch)\b',
+    ]
+
+    # NEW: SEGMENT indicators (playtime/experience-based queries)
+    segment_patterns = [
+        r'\b(veteran|veterans|newcomer|newcomers|newbie|newbies)\b',
+        r'\b(playtime|play time|hours played|hours of play)\b',
+        r'\b(\d+\+?\s*h(ours?)?|hours?\s*(of|with))\b',
+        r'\b(casual|hardcore|experienced|inexperienced)\b',
+        r'\b(new player|long.?time (player|fan)|first.?time)\b',
+        r'\b(by (playtime|experience|hours))\b',
+        r'\b(low playtime|high playtime|little playtime)\b',
+    ]
+
+    # NEW: COMPARISON indicators (before/after, EA vs release)
+    comparison_patterns = [
+        r'\b(early access|ea)\s*(vs?|versus|compared to|vs\.?)\s*(release|full|1\.0)\b',
+        r'\b(release|full|1\.0)\s*(vs?|versus|compared to|vs\.?)\s*(early access|ea)\b',
+        r'\b(compare|comparing|comparison)\s+.*(release|launch|patch|update)\b',
+        r'\b(before|after)\s+(release|launch|patch|update|1\.0)\b',
+        r'\b(pre.?release|post.?release|pre.?launch|post.?launch)\b',
+        r'\b(difference|differences) between\b.*\b(early|release|patch)\b',
+    ]
+
+    # NEW: RISK indicators (refund risk, churn, retention)
+    risk_patterns = [
+        r'\b(refund|refunds|refunded|refunding)\b',
+        r'\b(churn|churning|retention|retain)\b',
+        r'\b(risk|risky|at.?risk)\b',
+        r'\b(disappointment|disappointed|regret)\b',
+        r'\b(abandon|abandoned|quit|quitting|stopped playing)\b',
+        r'\b(buyer.?s? remorse|money back)\b',
+    ]
+
+    # NEW: FEATURE_REQUESTS indicators (what players want)
+    feature_request_patterns = [
+        r'\b(feature|features)\s*(request|requests|requested|wanted|want)\b',
+        r'\b(request|requests|requested|requesting)\s*(feature|features)?\b',
+        r'\b(players?|users?|people)\s*(want|wish|hope|desire|ask for)\b',
+        r'\b(most (requested|wanted|desired))\b',
+        r'\b(wish(list|es)?|suggestions?)\b',
+        r'\b(should (add|have|include)|need to add)\b',
+        r'\b(missing (feature|functionality|content))\b',
+    ]
+
+    # AGGREGATION indicators (charts, stats, metrics)
     aggregation_patterns = [
         r'\b(chart|pie|bar|graph|plot|visualization|visualize)\b',
         r'\b(rate|percentage|percent|ratio|split|distribution)\b',
         r'\b(how many|count|total|number of)\b',
-        r'\b(trend|over time|timeline|temporal)\b',
-        r'\b(compare|comparison|versus|vs)\b',
         r'\b(average|median|mean|aggregate)\b',
         r'\b(statistics|stats|metrics|analytics)\b',
+        r'\b(breakdown|summary|overview)\b',
     ]
 
     # EXAMPLES indicators (specific reviews, quotes, drill-down)
@@ -59,21 +122,44 @@ def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
         r'\b(example|quote)\b.*\b(why|reason|cause)\b',
     ]
 
-    # Count matches
-    aggregation_matches = sum(
-        1 for pattern in aggregation_patterns
-        if re.search(pattern, normalized)
-    )
-    examples_matches = sum(
-        1 for pattern in examples_patterns
-        if re.search(pattern, normalized)
-    )
+    # Count matches for each intent type
+    def count_matches(patterns: List[str]) -> int:
+        return sum(1 for pattern in patterns if re.search(pattern, normalized))
+
+    trend_matches = count_matches(trend_patterns)
+    segment_matches = count_matches(segment_patterns)
+    comparison_matches = count_matches(comparison_patterns)
+    risk_matches = count_matches(risk_patterns)
+    feature_request_matches = count_matches(feature_request_patterns)
+    aggregation_matches = count_matches(aggregation_patterns)
+    examples_matches = count_matches(examples_patterns)
     has_mixed = any(re.search(pattern, normalized) for pattern in mixed_patterns)
 
     # Extract topic or entity
     search_term, is_entity = extract_topic_or_entity(message)
 
-    # Decision logic
+    # Decision logic - prioritize specific new intents first
+    # TREND: Time-based queries have highest priority when detected
+    if trend_matches >= 1:
+        return (ChatIntent.TREND, search_term, is_entity)
+
+    # SEGMENT: Playtime/experience-based queries
+    if segment_matches >= 1:
+        return (ChatIntent.SEGMENT, search_term, is_entity)
+
+    # COMPARISON: Before/after, EA vs release comparisons
+    if comparison_matches >= 1:
+        return (ChatIntent.COMPARISON, search_term, is_entity)
+
+    # RISK: Refund risk, churn analysis
+    if risk_matches >= 1:
+        return (ChatIntent.RISK, search_term, is_entity)
+
+    # FEATURE_REQUESTS: What players want
+    if feature_request_matches >= 1:
+        return (ChatIntent.FEATURE_REQUESTS, search_term, is_entity)
+
+    # Original logic for other intents
     if has_mixed or (aggregation_matches > 0 and examples_matches > 0):
         return (ChatIntent.MIXED, search_term, is_entity)
     elif aggregation_matches > 0:
@@ -118,7 +204,98 @@ def should_use_sql_aggregation(intent: ChatIntent) -> bool:
     Returns:
         True if SQL aggregation should be used
     """
-    return intent in (ChatIntent.AGGREGATION, ChatIntent.MIXED)
+    return intent in (
+        ChatIntent.AGGREGATION,
+        ChatIntent.MIXED,
+        ChatIntent.TREND,
+        ChatIntent.SEGMENT,
+        ChatIntent.COMPARISON,
+        ChatIntent.RISK,
+        ChatIntent.FEATURE_REQUESTS,
+    )
+
+
+def should_load_full_insights(intent: ChatIntent) -> bool:
+    """Determine if full insights data should be loaded for this intent.
+
+    Args:
+        intent: Classified intent
+
+    Returns:
+        True if full insights should be loaded (subcategory breakdown, etc.)
+    """
+    return intent in (
+        ChatIntent.AGGREGATION,
+        ChatIntent.MIXED,
+        ChatIntent.TREND,
+        ChatIntent.SEGMENT,
+        ChatIntent.COMPARISON,
+        ChatIntent.RISK,
+        ChatIntent.FEATURE_REQUESTS,
+    )
+
+
+def detect_sort_preference(message: str) -> Optional[str]:
+    """Detect preferred sorting method for subcategory results.
+
+    Args:
+        message: User's question
+
+    Returns:
+        Sort preference string or None:
+        - "issue_count": Sort by most issues (bugs, problems)
+        - "request_count": Sort by most requests (features wanted)
+        - "recommendation_rate_asc": Sort by lowest recommendation rate
+        - "recommendation_rate_desc": Sort by highest recommendation rate
+        - "count": Sort by total mentions
+        - None: Use default sorting
+    """
+    normalized = message.lower()
+
+    # Issue-focused queries: sort by issue_count
+    issue_patterns = [
+        r'\b(top|worst|main|biggest|most)\s*(issues?|bugs?|problems?|complaints?)\b',
+        r'\b(issues?|bugs?|problems?)\s*(players?|users?)?\s*(are|is)?\s*(reporting|mentioning|having)\b',
+        r'\b(what.*(broken|buggy|issues|problems))\b',
+    ]
+    for pattern in issue_patterns:
+        if re.search(pattern, normalized):
+            return "issue_count"
+
+    # Request-focused queries: sort by request_count
+    request_patterns = [
+        r'\b(most|top)\s*(requested|wanted|desired)\b',
+        r'\b(feature|features)\s*(request|requests|wanted)\b',
+        r'\b(players?|users?)\s*(want|wish|ask|request)\b',
+        r'\b(what.*(players?|users?)\s*want)\b',
+    ]
+    for pattern in request_patterns:
+        if re.search(pattern, normalized):
+            return "request_count"
+
+    # Negative sentiment queries: sort by lowest recommendation rate
+    negative_patterns = [
+        r'\b(worst|lowest)\s*(rated|rated|recommendation|sentiment)\b',
+        r'\b(driving|causing)\s*(negative|bad)\s*(reviews?|sentiment)\b',
+        r'\b(why|what).*(negative|bad|poor)\s*(reviews?|sentiment|reception)\b',
+        r'\b(unhappy|disappointed|frustrated)\b',
+    ]
+    for pattern in negative_patterns:
+        if re.search(pattern, normalized):
+            return "recommendation_rate_asc"
+
+    # Positive queries: sort by highest recommendation rate
+    positive_patterns = [
+        r'\b(best|highest|top)\s*(rated|recommendation|sentiment)\b',
+        r'\b(what.*(players?|users?)\s*love)\b',
+        r'\b(positive|good|great)\s*(aspects?|things?|reviews?)\b',
+    ]
+    for pattern in positive_patterns:
+        if re.search(pattern, normalized):
+            return "recommendation_rate_desc"
+
+    # Default: None (use count/mentions)
+    return None
 
 
 # Known topic keywords that map to LLM subcategories
