@@ -1029,3 +1029,64 @@ def cleanup_old_jobs(age_days: int = 7) -> int:
         count = cursor.rowcount
         conn.commit()
     return count
+
+
+# Chat Message Functions
+
+def save_chat_message(user_id: str, role: str, content: str) -> None:
+    """Save a chat message to the database."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+            INSERT INTO chat_messages (user_id, role, content)
+            VALUES (:user_id, :role, :content)
+            """),
+            {
+                "user_id": user_id,
+                "role": role,
+                "content": content,
+            },
+        )
+
+
+def load_chat_history(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Load chat history for a user, ordered by most recent first."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+            SELECT role, content, created_at
+            FROM chat_messages
+            WHERE user_id = :user_id
+            ORDER BY created_at DESC
+            LIMIT :limit
+            """),
+            {"user_id": user_id, "limit": limit},
+        ).mappings().fetchall()
+
+    # Reverse to get chronological order (oldest first)
+    messages = []
+    for row in reversed(rows):
+        messages.append({
+            "role": row["role"],
+            "content": row["content"],
+            "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
+        })
+    return messages
+
+
+def clear_chat_history(user_id: str) -> int:
+    """Clear all chat history for a user. Returns number of messages deleted."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        cursor = conn.execute(
+            text("""
+            DELETE FROM chat_messages
+            WHERE user_id = :user_id
+            """),
+            {"user_id": user_id},
+        )
+        count = cursor.rowcount
+        conn.commit()
+    return count

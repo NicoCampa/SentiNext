@@ -294,6 +294,21 @@ def init_postgresql_schema() -> None:
             ON job_registry(status)
         """))
 
+        # Chat messages table
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
+            ON chat_messages(user_id, created_at DESC)
+        """))
+
         # Full-text search using tsvector (PostgreSQL specific)
         conn.execute(text("""
             ALTER TABLE reviews

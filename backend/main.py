@@ -353,6 +353,12 @@ class SimpleChatResponse(BaseModel):
     response: str
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: Optional[str] = None
+
+
 class ChatCitation(BaseModel):
     review_id: str
     subcategory: str
@@ -986,22 +992,64 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
 
 @app.post("/chat/simple", response_model=SimpleChatResponse)
 def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_id)) -> SimpleChatResponse:
-    """Simple chatbot endpoint that uses Gemini for general conversation."""
+    """Simple chatbot endpoint that uses Gemini for general conversation with memory."""
     message = (request.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     try:
-        # Build a simple prompt
-        prompt = f"You are a helpful AI assistant. Please respond to the following message:\n\n{message}"
+        # Load recent conversation history (last 20 messages for context)
+        history = storage.load_chat_history(user_id, limit=20)
+
+        # Build prompt with conversation history
+        conversation_text = ""
+        for msg in history:
+            role_label = "User" if msg["role"] == "user" else "Assistant"
+            conversation_text += f"{role_label}: {msg['content']}\n\n"
+
+        # Add current message
+        conversation_text += f"User: {message}\n\nAssistant:"
+
+        # Create full prompt
+        prompt = f"""You are a helpful, friendly AI assistant. You are having a conversation with a user.
+Previous conversation:
+{conversation_text if history else 'This is the start of the conversation.'}
+
+Please respond naturally to the user's latest message, considering the conversation history."""
 
         # Use Gemini to generate response
         response_text, model_id = llm.run_chat_completion(prompt)
+
+        # Save both user message and assistant response
+        storage.save_chat_message(user_id, "user", message)
+        storage.save_chat_message(user_id, "assistant", response_text)
 
         return SimpleChatResponse(response=response_text)
     except Exception as exc:
         logger.exception("Simple chat failed: %s", exc)
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc
+
+
+@app.get("/chat/history", response_model=List[ChatMessage])
+def get_chat_history(user_id: str = Depends(require_user_id)) -> List[ChatMessage]:
+    """Get chat history for the current user."""
+    try:
+        history = storage.load_chat_history(user_id, limit=100)
+        return [ChatMessage(**msg) for msg in history]
+    except Exception as exc:
+        logger.exception("Failed to load chat history: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load chat history.") from exc
+
+
+@app.delete("/chat/history")
+def clear_chat_history_endpoint(user_id: str = Depends(require_user_id)) -> Dict[str, Any]:
+    """Clear all chat history for the current user."""
+    try:
+        count = storage.clear_chat_history(user_id)
+        return {"deleted": count}
+    except Exception as exc:
+        logger.exception("Failed to clear chat history: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to clear chat history.") from exc
 
 
 @app.get("/feedback/{app_id}", response_model=List[FeedbackItem], dependencies=[Depends(require_license)])

@@ -15,6 +15,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -24,6 +25,29 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load chat history on mount
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        const response = await fetch("/api/chat/history");
+        if (response.ok) {
+          const history = await response.json();
+          const loadedMessages = history.map((msg: any) => ({
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+          }));
+          setMessages(loadedMessages);
+        }
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
+      } finally {
+        setLoadingHistory(false);
+      }
+    }
+    loadHistory();
+  }, []);
 
   async function handleSend() {
     const message = input.trim();
@@ -99,7 +123,19 @@ export default function ChatPage() {
         <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
-            {messages.length === 0 ? (
+            {loadingHistory ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-[rgb(0,255,255)] animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-slate-400">Loading conversation...</p>
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center space-y-4">
                   <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
