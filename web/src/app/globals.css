@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-space);
   --font-heading: var(--font-space);
 
   --color-background: var(--background);
