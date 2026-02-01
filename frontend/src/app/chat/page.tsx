@@ -168,6 +168,56 @@ function downloadChartImage(chart: ChartJS | null, filename: string) {
   link.click();
 }
 
+function buildChartOptions(spec: ChartSpec) {
+  const base = {
+    responsive: true,
+    maintainAspectRatio: false,
+    color: "#e2e8f0",
+    plugins: {
+      legend: {
+        display: true,
+        labels: { color: "#cbd5f5" },
+      },
+      title: spec.title
+        ? { display: true, text: spec.title, color: "#e2e8f0" }
+        : { display: false },
+      tooltip: {
+        enabled: true,
+        backgroundColor: "rgba(15, 23, 42, 0.9)",
+        titleColor: "#e2e8f0",
+        bodyColor: "#e2e8f0",
+        borderColor: "rgba(148, 163, 184, 0.2)",
+        borderWidth: 1,
+      },
+    },
+    scales: {
+      x: {
+        ticks: { color: "#cbd5f5" },
+        grid: { color: "rgba(148, 163, 184, 0.15)" },
+      },
+      y: {
+        ticks: { color: "#cbd5f5" },
+        grid: { color: "rgba(148, 163, 184, 0.15)" },
+      },
+    },
+  } as Record<string, unknown>;
+
+  const merged = {
+    ...base,
+    ...(spec.options ?? {}),
+    plugins: {
+      ...(base.plugins as Record<string, unknown>),
+      ...(spec.options?.plugins ?? {}),
+    },
+    scales: {
+      ...(base.scales as Record<string, unknown>),
+      ...(spec.options?.scales ?? {}),
+    },
+  };
+
+  return merged;
+}
+
 function apiUrl(path: string): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
   return `${base}${path}`;
@@ -326,7 +376,7 @@ export default function ChatPage() {
         session_id: sessionId,
         app_ids: selectedGames.length > 0 ? selectedGames : undefined,
         date_filter: selectedGames.length > 0 ? dateFilter : undefined,
-        max_reviews_per_game: 50,
+        max_reviews_per_game: 100,
       });
 
       console.log("Received chat response", {
@@ -686,15 +736,7 @@ export default function ChatPage() {
                         const chartRef = { current: null as ChartJS | null };
                         const spec = part.spec;
                         const chartData = spec.data as any;
-                        const chartOptions = {
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: {
-                            legend: { display: true },
-                            title: spec.title ? { display: true, text: spec.title } : { display: false },
-                          },
-                          ...spec.options,
-                        } as any;
+                        const chartOptions = buildChartOptions(spec) as any;
 
                         return (
                           <div
@@ -707,7 +749,7 @@ export default function ChatPage() {
                             {spec.description ? (
                               <p className="text-xs text-slate-400 mb-3">{spec.description}</p>
                             ) : null}
-                            <div className="h-64">
+                            <div className="h-72">
                               <Chart
                                 ref={(instance) => {
                                   chartRef.current = instance ?? null;
