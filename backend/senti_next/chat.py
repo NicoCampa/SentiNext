@@ -784,6 +784,7 @@ def build_game_aware_prompt(
     games: List[Dict[str, Any]],
     reviews_by_game: Dict[int, List[dict]],
     recommendation_splits: Optional[Dict[int, Dict[str, Any]]] = None,
+    subcategory_insights: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     history: List[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt for game-aware chat with review context.
@@ -797,6 +798,7 @@ def build_game_aware_prompt(
         games: List of game metadata dicts
         reviews_by_game: Dict mapping app_id to list of reviews
         recommendation_splits: Optional dict of SQL aggregation results per app_id
+        subcategory_insights: Optional dict of subcategory insights per app_id
         history: Conversation history
 
     Returns:
@@ -818,6 +820,7 @@ def build_game_aware_prompt(
         app_id = game["app_id"]
         reviews = reviews_by_game.get(app_id, [])
         split = recommendation_splits.get(app_id) if recommendation_splits else None
+        subcats = subcategory_insights.get(app_id, []) if subcategory_insights else []
 
         # Game metadata
         genres = game.get("genres", [])
@@ -843,6 +846,31 @@ def build_game_aware_prompt(
                 prompt_parts.append(f"Recommendation rate: {rec_rate:.1f}%")
             prompt_parts.append(f"Date filter applied: {split['date_filter']}")
             prompt_parts.append(f"Data source: {split['definition']}")
+            prompt_parts.append("")
+
+        # Subcategory breakdown (if available)
+        if subcats:
+            prompt_parts.append("\n### Subcategory Breakdown:")
+            prompt_parts.append(f"Total subcategories analyzed: {len(subcats)}")
+            prompt_parts.append("\nTop subcategories by mention count:")
+            # Sort by count and show top 10
+            sorted_subcats = sorted(subcats, key=lambda x: x.get("count", 0), reverse=True)
+            for idx, subcat in enumerate(sorted_subcats[:10], 1):
+                name = subcat.get("subcategory", "Unknown")
+                count = subcat.get("count", 0)
+                rec_rate = subcat.get("recommendation_rate", 0) * 100
+                issue_count = subcat.get("issue_count", 0)
+                request_count = subcat.get("request_count", 0)
+
+                # Calculate issue rate
+                issue_rate = (issue_count / count * 100) if count > 0 else 0
+
+                prompt_parts.append(
+                    f"{idx}. {name}: {count} mentions, "
+                    f"{rec_rate:.1f}% recommend, "
+                    f"{issue_count} issues ({issue_rate:.1f}% issue rate), "
+                    f"{request_count} requests"
+                )
             prompt_parts.append("")
 
         # CHANNEL B: Evidence (Sample Reviews)
@@ -983,6 +1011,7 @@ def answer_game_aware_chat(
     # Step 2: Route based on intent
     from .intent import ChatIntent
     recommendation_splits: Dict[int, Dict[str, Any]] = {}
+    subcategory_insights: Dict[int, List[Dict[str, Any]]] = {}
     reviews_by_game: Dict[int, List[dict]] = {}
 
     if should_use_sql_aggregation(intent):
@@ -991,12 +1020,21 @@ def answer_game_aware_chat(
             status_callback("Computing recommendation statistics...")
 
         for app_id in app_ids:
+            # Get overall recommendation split
             split = storage.get_recommendation_split(app_id, date_filter)
             recommendation_splits[app_id] = split
             logger.info(
                 f"App {app_id}: {split['recommended']} recommended, "
                 f"{split['not_recommended']} not recommended (total {split['total']})"
             )
+
+            # Get subcategory insights from analysis results
+            result = storage.load_analysis_result(user_id, app_id)
+            if result and result.get("insights"):
+                insights = result.get("insights") or {}
+                subcat_list = insights.get("subcategory_insights") or []
+                subcategory_insights[app_id] = subcat_list
+                logger.info(f"App {app_id}: Loaded {len(subcat_list)} subcategory insights")
 
         # Sample evidence reviews (not keyword search!)
         if intent == ChatIntent.MIXED or intent == ChatIntent.AGGREGATION:
@@ -1071,6 +1109,7 @@ def answer_game_aware_chat(
         games=games,
         reviews_by_game=reviews_by_game,
         recommendation_splits=recommendation_splits if recommendation_splits else None,
+        subcategory_insights=subcategory_insights if subcategory_insights else None,
         history=history or [],
     )
 
