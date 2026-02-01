@@ -72,8 +72,14 @@ export default function ChatPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
-        throw new Error(errorData.detail || "Failed to get response");
+        const errorText = await response.text();
+        console.error("Chat API error:", response.status, errorText);
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.detail || `Error ${response.status}: ${errorText}`);
+        } catch {
+          throw new Error(`Error ${response.status}: ${errorText}`);
+        }
       }
 
       const data = await response.json();
