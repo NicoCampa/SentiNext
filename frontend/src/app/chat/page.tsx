@@ -1,357 +1,192 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { SteamImage } from "@/components/SteamImage";
-import { chatWithInsights } from "@/lib/api";
-import { maxDaysFromDateRange, useGlobalFilters } from "@/contexts/GlobalFiltersContext";
-import { useGameContext } from "@/contexts/GameContext";
-import type { ChatCitation, ChatResponse } from "@/types";
 
-type ChatMessage = {
+type Message = {
   role: "user" | "assistant";
   content: string;
-  citations?: ChatCitation[];
-  usedSubcategories?: string[];
-  reviewCount?: number;
-  filteredReviewCount?: number;
-  model?: string;
+  timestamp: Date;
 };
 
-function highlightSnippet(text: string, snippet: string | null | undefined) {
-  const rawSnippet = (snippet || "").trim();
-  if (!rawSnippet) return text;
-  const haystack = text.toLowerCase();
-  const needle = rawSnippet.toLowerCase();
-  const index = haystack.indexOf(needle);
-  if (index === -1) return text;
-  const before = text.slice(0, index);
-  const match = text.slice(index, index + rawSnippet.length);
-  const after = text.slice(index + rawSnippet.length);
-  return (
-    <>
-      {before}
-      <mark className="rounded bg-sky-500/20 px-1 text-sky-100">{match}</mark>
-      {after}
-    </>
-  );
-}
-
-const DEFAULT_QUESTIONS = [
-  "What are players saying about AI and NPC behavior?",
-  "Which performance issues keep showing up?",
-  "What content or progression requests appear the most?",
-  "Where do players feel the pricing is unfair?",
-];
-
-function CitationWidget({ citation, onClose }: { citation: ChatCitation; onClose: () => void }) {
-  function formatSubcategory(value: string) {
-    if (!value) return "";
-    const label = value.includes("/") ? value.split("/", 2)[1] : value;
-    return label.replace(/_/g, " ");
-  }
-
-  function formatTimestamp(value?: string | null) {
-    if (!value) return "Date unknown";
-    const parsed = Number(value);
-    const date = Number.isFinite(parsed) ? new Date(parsed * 1000) : new Date(value);
-    if (Number.isNaN(date.getTime())) return "Date unknown";
-    return date.toLocaleDateString();
-  }
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:w-96 sm:max-w-[calc(100vw-3rem)]">
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 bg-slate-800/50 px-4 py-3">
-          <h3 className="text-sm font-semibold text-white">Citation Details</h3>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-white"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="max-h-96 overflow-y-auto p-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-            <span className="rounded-full bg-slate-800/70 px-2 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-300">
-              {formatSubcategory(citation.subcategory)}
-            </span>
-            <span>Review {citation.review_id}</span>
-          </div>
-
-          <div className="text-xs text-slate-500">
-            {formatTimestamp(citation.created_at)}
-            {citation.votes_up !== undefined && citation.votes_up !== null ? ` - ${citation.votes_up} helpful` : ""}
-          </div>
-
-          {citation.voted_up !== undefined && citation.voted_up !== null ? (
-            <span
-              className={`inline-flex rounded-full px-2 py-1 text-xs ${
-                citation.voted_up ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
-              }`}
-            >
-              {citation.voted_up ? "Recommended" : "Not recommended"}
-            </span>
-          ) : null}
-
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-slate-100">
-            {citation.review_text
-              ? highlightSnippet(citation.review_text, citation.snippet)
-              : "Review text unavailable."}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function ChatPage() {
-  const { filters } = useGlobalFilters();
-  const { games, selectedGameId, selectGameById, selectedStarredGame, loading: gamesLoading, error: gamesError } = useGameContext();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCitation, setSelectedCitation] = useState<ChatCitation | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const selectedGame = useMemo(() => selectedStarredGame ?? null, [selectedStarredGame]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
-  async function handleAsk(customQuestion?: string) {
-    const prompt = (customQuestion ?? question).trim();
-    if (!prompt || !selectedGame) return;
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-    setError(null);
+  async function handleSend() {
+    const message = input.trim();
+    if (!message || loading) return;
+
+    const userMessage: Message = {
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
     setLoading(true);
-    setQuestion("");
-
-    setMessages((prev) => [...prev, { role: "user", content: prompt }]);
 
     try {
-      const response: ChatResponse = await chatWithInsights({
-        app_id: selectedGame.app_id,
-        question: prompt,
-        sentiment: filters.sentiment,
-        min_helpful: filters.minHelpful,
-        max_days: maxDaysFromDateRange(filters.dateRange),
-        playtime_bucket: filters.playtime,
-        language: filters.language,
+      const response = await fetch("/api/chat/simple", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
       });
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: response.answer,
-          citations: response.citations,
-          usedSubcategories: response.used_subcategories,
-          reviewCount: response.review_count,
-          filteredReviewCount: response.filtered_review_count,
-          model: response.model,
-        },
-      ]);
-    } catch (err) {
-      console.error("Chat failed", err);
-      setError((err as Error).message || "Chat failed.");
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      const data = await response.json();
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: data.response,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      const errorMessage: Message = {
+        role: "assistant",
+        content: "Sorry, I encountered an error. Please try again.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
     }
   }
 
-  function formatSubcategory(value: string) {
-    if (!value) return "";
-    const label = value.includes("/") ? value.split("/", 2)[1] : value;
-    return label.replace(/_/g, " ");
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  function formatTime(date: Date) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-6 sm:px-6 lg:px-6">
-        <div>
+      <div className="mx-auto max-w-5xl h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
+        {/* Header */}
+        <div className="mb-6">
           <h1 className="text-xl font-bold">
             <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-              Chat with Insights
+              AI Assistant
             </span>
           </h1>
-          <p className="text-xs text-slate-400">Ask questions grounded in your tagged reviews and evidence snippets.</p>
+          <p className="text-xs text-slate-400">Your intelligent conversation partner</p>
         </div>
 
-        <Card variant="glass" className="p-6">
-          <div className="flex flex-wrap items-start gap-6">
-            <div className="min-w-0 w-full sm:min-w-[220px] sm:flex-1">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Game</p>
-              <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
-                {selectedGame ? (
-                  <SteamImage
-                    appId={selectedGame.app_id}
-                    variant="header"
-                    alt={selectedGame.name}
-                    className="h-16 w-28 rounded-xl object-cover"
-                    imageUrl={selectedGame.metadata.header_image}
-                  />
-                ) : null}
-                <select
-                  value={selectedGameId ?? ""}
-                  onChange={(event) => selectGameById(event.target.value ? Number(event.target.value) : null)}
-                  className="w-full flex-1 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
+        {/* Messages Container */}
+        <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+            {messages.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-300">Start a conversation</p>
+                    <p className="text-xs text-slate-500 mt-1">Ask me anything!</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  {games.map((game) => (
-                    <option key={game.app_id} value={game.app_id}>
-                      {game.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="min-w-0 w-full sm:min-w-[260px] sm:flex-1">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Scope</p>
-              <p className="mt-2 text-sm text-slate-300">
-                Chat respects the global filters above.
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Sentiment: {filters.sentiment === "positive" ? "Recommended" : filters.sentiment === "negative" ? "Not recommended" : "All"} -{" "}
-                Date: {filters.dateRange === "30d" ? "Last 30 days" : filters.dateRange === "90d" ? "Last 90 days" : filters.dateRange === "365d" ? "Last year" : "All time"} -{" "}
-                Helpful: {filters.minHelpful ? `${filters.minHelpful}+` : "All"} -{" "}
-                Playtime: {filters.playtime === "lt2h" ? "<2h" : filters.playtime === "2to20h" ? "2–20h" : filters.playtime === "20hplus" ? "20h+" : "All"} -{" "}
-                Language: {filters.language && filters.language !== "all" ? filters.language : "All"}
-              </p>
-            </div>
-
-            <div className="min-w-0 w-full sm:min-w-[200px] sm:flex-1">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Ideas</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {DEFAULT_QUESTIONS.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => handleAsk(item)}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 hover:border-sky-500/40 hover:text-white"
-                    type="button"
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                      msg.role === "user"
+                        ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-white"
+                        : "bg-slate-900/60 border border-white/10 text-slate-100"
+                    }`}
                   >
-                    {item}
-                  </button>
-                ))}
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {formatTime(msg.timestamp)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-slate-900/60 border border-white/10 rounded-2xl px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                    <span className="text-xs text-slate-400">Thinking...</span>
+                  </div>
+                </div>
               </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="border-t border-white/10 pt-4">
+            <div className="flex gap-3">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type your message..."
+                rows={2}
+                disabled={loading}
+                className="flex-1 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-[rgb(0,255,255)] focus:outline-none resize-none disabled:opacity-50"
+              />
+              <Button
+                variant="primary"
+                onClick={handleSend}
+                disabled={loading || !input.trim()}
+                className="self-end"
+              >
+                {loading ? (
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                )}
+              </Button>
             </div>
+            <p className="text-[10px] text-slate-600 mt-2">
+              Press Enter to send, Shift+Enter for new line
+            </p>
           </div>
         </Card>
-
-        <Card variant="glass" className="p-6">
-          {gamesLoading ? (
-            <div className="flex items-center justify-center gap-3 text-sm text-slate-400">
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400" />
-              Loading chat workspace...
-            </div>
-          ) : gamesError ? (
-            <EmptyState
-              title="Unable to load saved games"
-              description={gamesError}
-              variant="warning"
-            />
-          ) : games.length === 0 ? (
-            <EmptyState
-              title="No analyses available"
-              description="Run an analysis first so chat has insights to reference."
-              variant="info"
-            />
-          ) : (
-            <div className="space-y-4">
-              <div className="max-h-[32rem] space-y-4 overflow-auto pr-2">
-                {messages.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-slate-400">
-                    Ask a question about your insights. Responses will cite evidence snippets when available.
-                  </div>
-                ) : (
-                  messages.map((message, index) => (
-                    <div
-                      key={`${message.role}-${index}`}
-                      className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-2xl rounded-2xl border px-4 py-3 text-sm ${
-                          message.role === "user"
-                            ? "border-sky-500/40 bg-sky-500/10 text-white"
-                            : "border-white/10 bg-slate-900/40 text-slate-100"
-                        }`}
-                      >
-                        <p className="whitespace-pre-line">{message.content}</p>
-                        {message.role === "assistant" && message.usedSubcategories?.length ? (
-                          <p className="mt-2 text-xs text-slate-400">
-                            Focused on: {message.usedSubcategories.map(formatSubcategory).join(", ")}
-                          </p>
-                        ) : null}
-                        {message.role === "assistant" && message.reviewCount !== undefined ? (
-                          <p className="mt-1 text-xs text-slate-500">
-                            Coverage: {message.filteredReviewCount ?? 0} / {message.reviewCount} reviews
-                          </p>
-                        ) : null}
-                        {message.role === "assistant" && message.citations && message.citations.length > 0 ? (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-xs font-medium text-slate-400">
-                              Citations ({message.citations.length})
-                            </p>
-                            {message.citations.slice(0, 6).map((citation) => (
-                              <button
-                                key={`${citation.review_id}-${citation.subcategory}-${citation.snippet}`}
-                                type="button"
-                                onClick={() => setSelectedCitation(citation)}
-                                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-xs text-slate-200 transition hover:border-sky-400/40 hover:bg-sky-500/10"
-                              >
-                                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                                  {formatSubcategory(citation.subcategory)} - review {citation.review_id}
-                                </p>
-                                <p className="mt-1 text-slate-200">&quot;{citation.snippet}&quot;</p>
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {error ? <p className="text-sm text-rose-400">{error}</p> : null}
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <textarea
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Ask about subcategories, issues, or sentiment..."
-                  rows={2}
-                  className="flex-1 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleAsk();
-                    }
-                  }}
-                />
-                <Button
-                  variant="primary"
-                  onClick={() => handleAsk()}
-                  disabled={loading || !question.trim() || !selectedGame}
-                >
-                  {loading ? "Thinking..." : "Ask"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
       </div>
-
-      {selectedCitation && (
-        <CitationWidget
-          citation={selectedCitation}
-          onClose={() => setSelectedCitation(null)}
-        />
-      )}
     </AppLayout>
   );
 }

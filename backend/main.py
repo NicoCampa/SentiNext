@@ -345,6 +345,14 @@ class ChatRequest(BaseModel):
     max_snippets: int = Field(8, ge=1, le=20)
 
 
+class SimpleChatRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+
+
+class SimpleChatResponse(BaseModel):
+    response: str
+
+
 class ChatCitation(BaseModel):
     review_id: str
     subcategory: str
@@ -974,6 +982,26 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc
 
     return ChatResponse(**payload)
+
+
+@app.post("/chat/simple", response_model=SimpleChatResponse)
+def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_id)) -> SimpleChatResponse:
+    """Simple chatbot endpoint that uses Gemini for general conversation."""
+    message = (request.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    try:
+        # Build a simple prompt
+        prompt = f"You are a helpful AI assistant. Please respond to the following message:\n\n{message}"
+
+        # Use Gemini to generate response
+        response_text, model_id = llm.run_chat_completion(prompt)
+
+        return SimpleChatResponse(response=response_text)
+    except Exception as exc:
+        logger.exception("Simple chat failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Chat request failed.") from exc
 
 
 @app.get("/feedback/{app_id}", response_model=List[FeedbackItem], dependencies=[Depends(require_license)])
