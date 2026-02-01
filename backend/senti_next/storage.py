@@ -1297,3 +1297,259 @@ def load_game_metadata_for_chat(user_id: str, app_ids: List[int]) -> List[Dict[s
         })
 
     return games
+
+
+def get_recommendation_split(
+    app_id: int,
+    date_filter: str = "all",
+) -> Dict[str, int]:
+    """Get recommendation split (recommended/not recommended counts) using SQL aggregation.
+
+    This is for ANALYTICAL questions about recommendation rates, not content search.
+    Uses the Steam voted_up field from the reviews.data JSONB column.
+
+    Args:
+        app_id: The Steam app ID
+        date_filter: One of "30d", "90d", "365d", "all"
+
+    Returns:
+        Dict with keys:
+            - recommended: Count of reviews with voted_up=true
+            - not_recommended: Count of reviews with voted_up=false
+            - total: Total count
+            - definition: Description of what's being measured
+            - date_filter: The applied date filter
+            - cutoff_timestamp: Unix timestamp of cutoff (if date filter applied)
+
+    Example:
+        >>> get_recommendation_split(1091500, "30d")
+        {
+            "recommended": 742,
+            "not_recommended": 258,
+            "total": 1000,
+            "definition": "Steam recommendation (voted_up field)",
+            "date_filter": "30d",
+            "cutoff_timestamp": 1234567890
+        }
+    """
+    from . import db as db_module
+    import time
+
+    max_days = _parse_date_filter(date_filter)
+    cutoff = None
+
+    with db_module.get_connection() as conn:
+        if max_days is not None:
+            cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+            result = conn.execute(
+                text("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended,
+                        COUNT(*) as total
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND timestamp_created > :cutoff
+                      AND data->>'voted_up' IS NOT NULL
+                """),
+                {"app_id": int(app_id), "cutoff": cutoff},
+            )
+        else:
+            result = conn.execute(
+                text("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended,
+                        COUNT(*) as total
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND data->>'voted_up' IS NOT NULL
+                """),
+                {"app_id": int(app_id)},
+            )
+
+        row = result.fetchone()
+
+    if not row:
+        return {
+            "recommended": 0,
+            "not_recommended": 0,
+            "total": 0,
+            "definition": "Steam recommendation (voted_up field)",
+            "date_filter": date_filter,
+            "cutoff_timestamp": cutoff,
+        }
+
+    return {
+        "recommended": int(row[0]) if row[0] else 0,
+        "not_recommended": int(row[1]) if row[1] else 0,
+        "total": int(row[2]) if row[2] else 0,
+        "definition": "Steam recommendation (voted_up field)",
+        "date_filter": date_filter,
+        "cutoff_timestamp": cutoff,
+    }
+
+
+def sample_reviews_by_sentiment(
+    app_id: int,
+    sentiment: str,
+    date_filter: str = "all",
+    limit: int = 5,
+) -> List[dict]:
+    """Sample top reviews by sentiment (for evidence after SQL aggregation).
+
+    This is NOT keyword search. This samples by voted_up label + votes_up ranking.
+
+    Args:
+        app_id: The Steam app ID
+        sentiment: "positive" or "negative"
+        date_filter: One of "30d", "90d", "365d", "all"
+        limit: Maximum number of samples
+
+    Returns:
+        List of review dicts, ordered by votes_up DESC
+    """
+    from . import db as db_module
+    import time
+
+    max_days = _parse_date_filter(date_filter)
+    voted_up_value = sentiment == "positive"
+
+    with db_module.get_connection() as conn:
+        if max_days is not None:
+            cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+            result = conn.execute(
+                text("""
+                    SELECT data
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND (data->>'voted_up')::boolean = :voted_up
+                      AND timestamp_created > :cutoff
+                    ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                    LIMIT :limit
+                """),
+                {
+                    "app_id": int(app_id),
+                    "voted_up": voted_up_value,
+                    "cutoff": cutoff,
+                    "limit": int(limit),
+                },
+            )
+        else:
+            result = conn.execute(
+                text("""
+                    SELECT data
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND (data->>'voted_up')::boolean = :voted_up
+                    ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                    LIMIT :limit
+                """),
+                {
+                    "app_id": int(app_id),
+                    "voted_up": voted_up_value,
+                    "limit": int(limit),
+                },
+            )
+
+        rows = result.fetchall()
+
+    return [_parse_json_field(row[0], {}) for row in rows]
+
+
+def get_reviews_by_subcategory(
+    app_id: int,
+    subcategory: str,
+    date_filter: str = "all",
+    limit: int = 50,
+    order_by: str = "votes_up",
+) -> List[dict]:
+    """Get reviews that were labeled with a specific subcategory.
+
+    This retrieves reviews based on LLM classification labels, not keyword search.
+    Used when user asks about topics (bugs, AI, performance) rather than entities.
+
+    Args:
+        app_id: The Steam app ID
+        subcategory: The subcategory to filter by (e.g., "technical/bugs", "gameplay/mechanics")
+                     Can be partial match (e.g., "bugs" matches "technical/bugs")
+        date_filter: One of "30d", "90d", "365d", "all"
+        limit: Maximum number of results
+        order_by: Order by column - "votes_up" (default) or "timestamp_created"
+
+    Returns:
+        List of review dicts that have this subcategory label
+
+    Example:
+        >>> get_reviews_by_subcategory(1091500, "bugs", "30d", 10)
+        # Returns reviews labeled with technical/bugs from last 30 days
+    """
+    from . import db as db_module
+    import time
+
+    max_days = _parse_date_filter(date_filter)
+
+    # Normalize subcategory search (handle partial matches)
+    # If user says "bugs", match "technical/bugs"
+    # If user says "technical/bugs", match exactly
+    subcategory_lower = subcategory.lower().strip()
+
+    with db_module.get_connection() as conn:
+        # Build the query
+        if max_days is not None:
+            cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+            # Join reviews with review_labels, filter by subcategory in JSONB payload
+            result = conn.execute(
+                text("""
+                    SELECT DISTINCT r.data
+                    FROM reviews r
+                    JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
+                    WHERE r.app_id = :app_id
+                      AND r.timestamp_created > :cutoff
+                      AND rl.payload IS NOT NULL
+                      AND (
+                          -- Match subcategory in the subcategories array (case-insensitive, partial match)
+                          EXISTS (
+                              SELECT 1
+                              FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat
+                              WHERE LOWER(subcat) LIKE :subcategory_pattern
+                          )
+                      )
+                    ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST
+                    LIMIT :limit
+                """),
+                {
+                    "app_id": int(app_id),
+                    "cutoff": cutoff,
+                    "subcategory_pattern": f"%{subcategory_lower}%",
+                    "limit": int(limit),
+                },
+            )
+        else:
+            result = conn.execute(
+                text("""
+                    SELECT DISTINCT r.data
+                    FROM reviews r
+                    JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
+                    WHERE r.app_id = :app_id
+                      AND rl.payload IS NOT NULL
+                      AND (
+                          EXISTS (
+                              SELECT 1
+                              FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat
+                              WHERE LOWER(subcat) LIKE :subcategory_pattern
+                          )
+                      )
+                    ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST
+                    LIMIT :limit
+                """),
+                {
+                    "app_id": int(app_id),
+                    "subcategory_pattern": f"%{subcategory_lower}%",
+                    "limit": int(limit),
+                },
+            )
+
+        rows = result.fetchall()
+
+    return [_parse_json_field(row[0], {}) for row in rows]

@@ -783,19 +783,28 @@ def build_game_aware_prompt(
     message: str,
     games: List[Dict[str, Any]],
     reviews_by_game: Dict[int, List[dict]],
-    history: List[Dict[str, Any]],
+    recommendation_splits: Optional[Dict[int, Dict[str, Any]]] = None,
+    history: List[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt for game-aware chat with review context.
+
+    Uses a two-channel structure:
+    - Channel A: Computed facts (SQL aggregations) - authoritative for stats/charts
+    - Channel B: Evidence snippets (sample reviews) - qualitative examples only
 
     Args:
         message: User's current message
         games: List of game metadata dicts
         reviews_by_game: Dict mapping app_id to list of reviews
+        recommendation_splits: Optional dict of SQL aggregation results per app_id
         history: Conversation history
 
     Returns:
         Complete prompt string for the LLM
     """
+    if history is None:
+        history = []
+
     prompt_parts = []
 
     # System instruction
@@ -808,6 +817,7 @@ def build_game_aware_prompt(
     for game in games:
         app_id = game["app_id"]
         reviews = reviews_by_game.get(app_id, [])
+        split = recommendation_splits.get(app_id) if recommendation_splits else None
 
         # Game metadata
         genres = game.get("genres", [])
@@ -822,9 +832,22 @@ def build_game_aware_prompt(
         if game.get("short_description"):
             prompt_parts.append(f"Description: {game['short_description'][:200]}")
 
-        # Reviews section
+        # CHANNEL A: Computed Facts (SQL Aggregation)
+        if split:
+            prompt_parts.append("\n### Computed Statistics (AUTHORITATIVE - use for charts/numbers):")
+            prompt_parts.append(f"Total reviews in time window: {split['total']}")
+            prompt_parts.append(f"Recommended (thumbs up): {split['recommended']}")
+            prompt_parts.append(f"Not Recommended (thumbs down): {split['not_recommended']}")
+            if split['total'] > 0:
+                rec_rate = (split['recommended'] / split['total']) * 100
+                prompt_parts.append(f"Recommendation rate: {rec_rate:.1f}%")
+            prompt_parts.append(f"Date filter applied: {split['date_filter']}")
+            prompt_parts.append(f"Data source: {split['definition']}")
+            prompt_parts.append("")
+
+        # CHANNEL B: Evidence (Sample Reviews)
         if reviews:
-            prompt_parts.append(f"\n### Reviews ({len(reviews)} most relevant):\n")
+            prompt_parts.append(f"\n### Evidence Snippets ({len(reviews)} sample reviews):\n")
             for idx, review in enumerate(reviews[:50], 1):
                 votes_up = int(review.get("votes_up") or 0)
                 voted_up = review.get("voted_up")
@@ -860,14 +883,16 @@ def build_game_aware_prompt(
 
     # Instructions
     prompt_parts.append("\n## Instructions:")
-    prompt_parts.append("1. Answer based ONLY on the reviews provided above")
-    prompt_parts.append("2. When quoting a review, mention the review ID (e.g., \"Review #12345 mentions...\")")
-    prompt_parts.append("3. If there's insufficient data, clearly state that")
-    prompt_parts.append("4. Note the sentiment (positive/negative) when relevant")
-    prompt_parts.append("5. Consider the helpfulness (votes) when weighing opinions")
-    prompt_parts.append("6. If comparing games, organize your response by game")
-    prompt_parts.append("7. If the user asks for a chart/plot/graph, include a fenced code block with language 'chart' containing JSON for Chart.js.")
-    prompt_parts.append("   Example:\n```chart\n{\"type\":\"bar\",\"title\":\"Example\",\"data\":{\"labels\":[\"A\",\"B\"],\"datasets\":[{\"label\":\"Value\",\"data\":[1,2]}]}}\n```")
+    prompt_parts.append("1. **For charts/statistics**: Use ONLY the 'Computed Statistics' section (if provided). These are authoritative SQL aggregations over ALL reviews in the time window.")
+    prompt_parts.append("2. **For qualitative insights**: Use the 'Evidence Snippets' as examples. These are representative samples, not the complete dataset.")
+    prompt_parts.append("3. When quoting a review, mention the review ID (e.g., \"Review #12345 mentions...\")")
+    prompt_parts.append("4. If there's insufficient data, clearly state that")
+    prompt_parts.append("5. If comparing games, organize your response by game")
+    prompt_parts.append("6. **Chart generation**: If the user asks for a chart/plot/graph:")
+    prompt_parts.append("   - Use the exact numbers from 'Computed Statistics' section")
+    prompt_parts.append("   - Include a fenced code block with language 'chart' containing JSON for Chart.js")
+    prompt_parts.append("   - Example:\n```chart\n{\"type\":\"pie\",\"title\":\"Recommendation Rate\",\"data\":{\"labels\":[\"Recommended\",\"Not Recommended\"],\"datasets\":[{\"data\":[742,258]}]}}\n```")
+    prompt_parts.append("7. Never guess or estimate numbers - use provided statistics or state if unavailable")
 
     # Current question
     prompt_parts.append(f"\n## Current Question:\n{message}")
@@ -888,6 +913,11 @@ def answer_game_aware_chat(
 ) -> Dict[str, Any]:
     """Answer a chat question with game review context.
 
+    Uses intent-based routing:
+    - AGGREGATION: SQL aggregation for charts/stats (accurate, all reviews)
+    - EXAMPLES: Keyword search for specific review content
+    - MIXED: Both SQL aggregation + example reviews
+
     Args:
         user_id: User ID for accessing starred games
         app_ids: List of app IDs to include in context (max 2)
@@ -900,6 +930,8 @@ def answer_game_aware_chat(
     Returns:
         Dict with response, citations, and metadata
     """
+    from .intent import classify_intent, should_use_sql_aggregation, ChatIntent
+
     if not app_ids:
         # No games selected - fall back to general chat
         return {
@@ -912,6 +944,13 @@ def answer_game_aware_chat(
 
     # Limit to 2 games
     app_ids = app_ids[:2]
+
+    # Step 1: Classify intent and extract search term
+    intent, search_term, is_entity = classify_intent(message)
+    logger.info(
+        f"Classified intent: {intent.value}, search_term: {search_term}, "
+        f"is_entity: {is_entity} for message: {message[:100]}"
+    )
 
     # Load game metadata
     if status_callback:
@@ -941,14 +980,85 @@ def answer_game_aware_chat(
             "has_game_context": False,
         }
 
-    # Search reviews
-    reviews_by_game = search_reviews_for_question(
-        app_ids=app_ids,
-        question=message,
-        date_filter=date_filter,
-        max_per_game=max_reviews_per_game,
-        status_callback=status_callback,
-    )
+    # Step 2: Route based on intent
+    from .intent import ChatIntent
+    recommendation_splits: Dict[int, Dict[str, Any]] = {}
+    reviews_by_game: Dict[int, List[dict]] = {}
+
+    if should_use_sql_aggregation(intent):
+        # AGGREGATION or MIXED: Use SQL for accurate stats
+        if status_callback:
+            status_callback("Computing recommendation statistics...")
+
+        for app_id in app_ids:
+            split = storage.get_recommendation_split(app_id, date_filter)
+            recommendation_splits[app_id] = split
+            logger.info(
+                f"App {app_id}: {split['recommended']} recommended, "
+                f"{split['not_recommended']} not recommended (total {split['total']})"
+            )
+
+        # Sample evidence reviews (not keyword search!)
+        if intent == ChatIntent.MIXED or intent == ChatIntent.AGGREGATION:
+            if status_callback:
+                status_callback("Sampling representative reviews...")
+
+            for app_id in app_ids:
+                # Get top positive and negative reviews as evidence
+                positive_samples = storage.sample_reviews_by_sentiment(
+                    app_id, sentiment="positive", date_filter=date_filter, limit=3
+                )
+                negative_samples = storage.sample_reviews_by_sentiment(
+                    app_id, sentiment="negative", date_filter=date_filter, limit=3
+                )
+                reviews_by_game[app_id] = positive_samples + negative_samples
+
+    if intent == ChatIntent.TOPIC_EXAMPLES:
+        # TOPIC_EXAMPLES: Use LLM subcategory labels (bugs, AI, performance, etc.)
+        if status_callback:
+            status_callback(f"Finding reviews about {search_term}...")
+
+        for app_id in app_ids:
+            if search_term:
+                topic_reviews = storage.get_reviews_by_subcategory(
+                    app_id=app_id,
+                    subcategory=search_term,
+                    date_filter=date_filter,
+                    limit=max_reviews_per_game,
+                )
+                reviews_by_game[app_id] = topic_reviews
+                logger.info(
+                    f"App {app_id}: Found {len(topic_reviews)} reviews "
+                    f"with subcategory matching '{search_term}'"
+                )
+            else:
+                # No specific term, fall back to general sampling
+                reviews_by_game[app_id] = []
+
+    elif intent == ChatIntent.ENTITY_EXAMPLES or (intent == ChatIntent.MIXED and not recommendation_splits):
+        # ENTITY_EXAMPLES: Use keyword search (Sonic, Mario, specific names)
+        if status_callback:
+            if search_term:
+                status_callback(f"Searching for reviews mentioning '{search_term}'...")
+            else:
+                status_callback("Searching relevant reviews...")
+
+        # Use the search term if available, otherwise use the full message
+        query = search_term if search_term else message
+
+        for app_id in app_ids:
+            entity_reviews = storage.search_reviews_with_date_filter(
+                app_id=app_id,
+                query=query,
+                date_filter=date_filter,
+                limit=max_reviews_per_game,
+                order_by="votes_up",
+            )
+            reviews_by_game[app_id] = entity_reviews
+            logger.info(
+                f"App {app_id}: Found {len(entity_reviews)} reviews "
+                f"matching entity '{query}'"
+            )
 
     total_reviews = sum(len(r) for r in reviews_by_game.values())
 
@@ -960,6 +1070,7 @@ def answer_game_aware_chat(
         message=message,
         games=games,
         reviews_by_game=reviews_by_game,
+        recommendation_splits=recommendation_splits if recommendation_splits else None,
         history=history or [],
     )
 
