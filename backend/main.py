@@ -12,6 +12,12 @@ import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Load environment variables from .env.local (for local development)
+from dotenv import load_dotenv
+_env_path = Path(__file__).resolve().parents[1] / ".env.local"
+if _env_path.exists():
+    load_dotenv(_env_path)
+
 import pandas as pd
 import jwt
 from jwt import PyJWKClient

@@ -11,3 +11,4 @@ rq>=1.16
 psycopg2-binary>=2.9
 sqlalchemy>=2.0
 google-genai>=0.2.0
+python-dotenv>=1.0
