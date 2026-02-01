@@ -22,6 +22,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -36,15 +37,20 @@ export default function ChatPage() {
   useEffect(() => {
     async function loadHistory() {
       try {
+        console.log("Loading chat history from:", apiUrl("/chat/history"));
         const response = await authFetch(apiUrl("/chat/history"));
+        console.log("Chat history response status:", response.status);
         if (response.ok) {
           const history = await response.json();
+          console.log("Loaded chat history:", history.length, "messages");
           const loadedMessages = history.map((msg: any) => ({
             role: msg.role,
             content: msg.content,
             timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
           }));
           setMessages(loadedMessages);
+        } else {
+          console.error("Failed to load chat history, status:", response.status);
         }
       } catch (error) {
         console.error("Failed to load chat history:", error);
@@ -88,6 +94,7 @@ export default function ChatPage() {
       }
 
       const data = await response.json();
+      console.log("Received chat response, backend should have saved messages");
       const assistantMessage: Message = {
         role: "assistant",
         content: data.response,
@@ -120,23 +127,101 @@ export default function ChatPage() {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
+  async function handleNewConversation() {
+    try {
+      const response = await authFetch(apiUrl("/chat/history"), {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error("Failed to clear chat history:", error);
+    }
+  }
+
   return (
     <AppLayout>
+      <style jsx>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
       <div className="mx-auto max-w-5xl h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-xl font-bold">
-            <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-              AI Assistant
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400">Your intelligent conversation partner</p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold">
+              <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                AI Assistant
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400">Your intelligent conversation partner</p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowHistory(!showHistory)}
+              className="text-xs"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              History
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleNewConversation}
+              className="text-xs"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Chat
+            </Button>
+          </div>
         </div>
 
-        {/* Messages Container */}
-        <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+        {/* Main Content Area */}
+        <div className="flex-1 flex gap-4 overflow-hidden">
+          {/* History Sidebar */}
+          {showHistory && (
+            <Card variant="glass" className="w-64 flex-shrink-0 p-4 overflow-hidden flex flex-col">
+              <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Conversation History
+              </h2>
+              <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
+                {messages.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">No messages yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-slate-900/40 border border-white/5 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full"></div>
+                        <span className="text-xs font-medium text-slate-300">Current Chat</span>
+                      </div>
+                      <p className="text-xs text-slate-400">{messages.length} messages</p>
+                      <p className="text-[10px] text-slate-600 mt-1">
+                        {messages[0] && formatTime(messages[0].timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Messages Container */}
+          <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 scrollbar-hide">
             {loadingHistory ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center space-y-4">
@@ -236,6 +321,7 @@ export default function ChatPage() {
             </p>
           </div>
         </Card>
+        </div>
       </div>
     </AppLayout>
   );

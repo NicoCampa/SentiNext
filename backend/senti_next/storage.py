@@ -1036,6 +1036,7 @@ def cleanup_old_jobs(age_days: int = 7) -> int:
 def save_chat_message(user_id: str, role: str, content: str) -> None:
     """Save a chat message to the database."""
     from . import db as db_module
+    logger.info(f"Saving chat message: user_id={user_id}, role={role}, content_length={len(content)}")
     with db_module.get_connection() as conn:
         conn.execute(
             text("""
@@ -1048,11 +1049,13 @@ def save_chat_message(user_id: str, role: str, content: str) -> None:
                 "content": content,
             },
         )
+    logger.info(f"Successfully saved chat message for user_id={user_id}")
 
 
 def load_chat_history(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
     """Load chat history for a user, ordered by most recent first."""
     from . import db as db_module
+    logger.info(f"Loading chat history for user_id={user_id}, limit={limit}")
     with db_module.get_connection() as conn:
         rows = conn.execute(
             text("""
@@ -1073,6 +1076,7 @@ def load_chat_history(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
             "content": row["content"],
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
         })
+    logger.info(f"Loaded {len(messages)} messages for user_id={user_id}")
     return messages
 
 
