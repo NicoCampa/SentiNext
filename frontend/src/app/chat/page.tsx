@@ -16,57 +16,57 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 
 const markdownComponents = {
-  h1: ({ node, ...props }: ComponentPropsWithoutRef<"h1">) => (
+  h1: (props: ComponentPropsWithoutRef<"h1">) => (
     <h1 className="text-lg font-semibold mt-3 mb-2" {...props} />
   ),
-  h2: ({ node, ...props }: ComponentPropsWithoutRef<"h2">) => (
+  h2: (props: ComponentPropsWithoutRef<"h2">) => (
     <h2 className="text-base font-semibold mt-3 mb-2" {...props} />
   ),
-  h3: ({ node, ...props }: ComponentPropsWithoutRef<"h3">) => (
+  h3: (props: ComponentPropsWithoutRef<"h3">) => (
     <h3 className="text-sm font-semibold mt-3 mb-2" {...props} />
   ),
-  h4: ({ node, ...props }: ComponentPropsWithoutRef<"h4">) => (
+  h4: (props: ComponentPropsWithoutRef<"h4">) => (
     <h4 className="text-sm font-semibold mt-3 mb-1" {...props} />
   ),
-  p: ({ node, ...props }: ComponentPropsWithoutRef<"p">) => (
+  p: (props: ComponentPropsWithoutRef<"p">) => (
     <p className="text-sm leading-relaxed whitespace-pre-wrap" {...props} />
   ),
-  ul: ({ node, ...props }: ComponentPropsWithoutRef<"ul">) => (
+  ul: (props: ComponentPropsWithoutRef<"ul">) => (
     <ul className="list-disc list-inside mt-2 space-y-1" {...props} />
   ),
-  ol: ({ node, ...props }: ComponentPropsWithoutRef<"ol">) => (
+  ol: (props: ComponentPropsWithoutRef<"ol">) => (
     <ol className="list-decimal list-inside mt-2 space-y-1" {...props} />
   ),
-  li: ({ node, ...props }: ComponentPropsWithoutRef<"li">) => (
+  li: (props: ComponentPropsWithoutRef<"li">) => (
     <li className="text-sm leading-relaxed" {...props} />
   ),
-  blockquote: ({ node, ...props }: ComponentPropsWithoutRef<"blockquote">) => (
+  blockquote: (props: ComponentPropsWithoutRef<"blockquote">) => (
     <blockquote className="border-l-2 border-white/20 pl-3 text-slate-300 my-2" {...props} />
   ),
-  code: ({ node, inline, ...props }: ComponentPropsWithoutRef<"code"> & { inline?: boolean }) =>
+  code: ({ inline, ...props }: ComponentPropsWithoutRef<"code"> & { inline?: boolean }) =>
     inline ? (
       <code className="rounded bg-slate-900/60 px-1 py-0.5 text-[12px] text-slate-200" {...props} />
     ) : (
       <code className="text-[12px] text-slate-200" {...props} />
     ),
-  pre: ({ node, ...props }: ComponentPropsWithoutRef<"pre">) => (
+  pre: (props: ComponentPropsWithoutRef<"pre">) => (
     <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/70 p-3 text-[12px]" {...props} />
   ),
-  a: ({ node, ...props }: ComponentPropsWithoutRef<"a">) => (
+  a: (props: ComponentPropsWithoutRef<"a">) => (
     <a className="text-[rgb(0,255,255)] underline decoration-white/30 underline-offset-2" {...props} />
   ),
-  hr: ({ node, ...props }: ComponentPropsWithoutRef<"hr">) => (
+  hr: (props: ComponentPropsWithoutRef<"hr">) => (
     <hr className="my-3 border-white/10" {...props} />
   ),
-  table: ({ node, ...props }: ComponentPropsWithoutRef<"table">) => (
+  table: (props: ComponentPropsWithoutRef<"table">) => (
     <div className="my-2 overflow-x-auto">
       <table className="w-full text-left text-xs" {...props} />
     </div>
   ),
-  th: ({ node, ...props }: ComponentPropsWithoutRef<"th">) => (
+  th: (props: ComponentPropsWithoutRef<"th">) => (
     <th className="border-b border-white/10 px-2 py-1 font-semibold" {...props} />
   ),
-  td: ({ node, ...props }: ComponentPropsWithoutRef<"td">) => (
+  td: (props: ComponentPropsWithoutRef<"td">) => (
     <td className="border-b border-white/5 px-2 py-1 align-top" {...props} />
   ),
 };
