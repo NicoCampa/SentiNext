@@ -1,133 +1,93 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Check, X } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 
 export default function PricingPage() {
     return (
-        <div className="flex flex-col min-h-screen">
-            <section className="py-20 bg-background border-b border-border/40">
-                <div className="container px-4 md:px-6 text-center">
-                    <div className="inline-block rounded-full bg-secondary/10 px-3 py-1 text-sm font-medium text-secondary border border-secondary/20 mb-6">
-                        Pricing in Beta
+        <div className="flex flex-col min-h-screen items-center w-full">
+            <section className="py-20 bg-background border-b border-border/40 w-full flex justify-center">
+                <div className="container px-4 md:px-6 text-center max-w-4xl mx-auto">
+                    <div className="inline-block rounded-full bg-secondary/10 px-3 py-1 text-sm font-medium text-secondary border border-secondary/20 mb-6 font-mono tracking-wide">
+                        BETA ACCESS ACTIVE
                     </div>
-                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
-                        Simple, transparent pricing.
+                    <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-8">
+                        Free during Beta.
                     </h1>
                     <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10">
-                        Start for free on our hosted platform. Upgrade for team collaboration and advanced retention.
+                        We are actively refining our AI agent. All features are currently free to use on the hosted platform.
                     </p>
-
-                    <div className="p-4 bg-card/50 border border-primary/20 rounded-lg max-w-xl mx-auto mb-8 text-sm text-muted-foreground flex items-center justify-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                        Billing is currently disabled during the public beta. All features are free to try.
-                    </div>
                 </div>
             </section>
 
-            <section className="py-20">
-                <div className="container px-4 md:px-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                        {/* Free Tier */}
+            <section className="py-20 w-full flex justify-center">
+                <div className="container px-4 md:px-6 mx-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-start">
+
+                        {/* Starter */}
                         <PricingCard
-                            name="Free"
+                            name="Starter"
                             price="$0"
-                            description="Perfect for indie developers analyzing their own game."
+                            period="/ beta"
+                            description="For indie developers trying out AI analysis."
                             features={[
-                                "Ingest up to 10k reviews/mo",
-                                "1 Active App Dashboard",
-                                "Basic Issue Classification",
-                                "7-day Data Retention",
-                                "Community Support"
+                                "Cloud Ingestion",
+                                "1 Active Project",
+                                "Basic AI Taxonomy",
+                                "7-day history",
                             ]}
-                            cta="Start for Free"
+                            cta="Start Analyzing"
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"}
-                            variant="outline"
+                            variant="ghost"
                         />
 
-                        {/* Pro Tier (Popular) */}
-                        <PricingCard
-                            name="Pro"
-                            price="$29"
-                            period="/month"
-                            description="For studios that need deeper insights and longer history."
-                            features={[
-                                "Ingest up to 100k reviews/mo",
-                                "5 Active App Dashboards",
-                                "Advanced Taxonomy & Evidence",
-                                "90-day Data Retention",
-                                "Priority Email Support",
-                                "Export to CSV/JSON"
-                            ]}
-                            cta="Join Waitlist"
-                            href="/contact"
-                            variant="primary"
-                            popular
-                        />
+                        {/* Pro Tier (Highlighted) */}
+                        <div className="relative transform md:-translate-y-4">
+                            <div className="absolute inset-0 bg-gradient-to-b from-primary/20 to-secondary/20 blur-xl opacity-50 pointer-events-none" />
+                            <PricingCard
+                                name="Pro Agent"
+                                price="$0"
+                                period="/ beta"
+                                description="Full AI power for growing studios."
+                                features={[
+                                    "Priority Cloud Queue",
+                                    "5 Active Projects",
+                                    "Advanced Evidence Extraction",
+                                    "90-day history",
+                                    "Export Data"
+                                ]}
+                                cta="Get Pro Access"
+                                href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"}
+                                variant="primary"
+                                popular
+                            />
+                        </div>
 
                         {/* Team Tier */}
                         <PricingCard
-                            name="Team"
+                            name="Enterprise"
                             price="Custom"
-                            description="For publishers and large teams managing portfolio intelligence."
+                            description="For publishers needing custom taxonomy fine-tuning."
                             features={[
                                 "Unlimited Ingestion",
-                                "Unlimited Dashboards",
-                                "Custom Taxonomy Rules",
-                                "1-year Data Retention",
-                                "Dedicated Account Manager",
-                                "SSO & Admin Controls"
+                                "Custom LLM Fine-tuning",
+                                "Dedicated Support",
+                                "SLA & Compliance",
                             ]}
                             cta="Contact Sales"
                             href="/contact"
-                            variant="outline"
+                            variant="ghost"
                         />
                     </div>
                 </div>
             </section>
 
-            {/* Comparison Table */}
-            <section className="py-20 bg-card/30 border-t border-border/40">
-                <div className="container px-4 md:px-6 max-w-4xl mx-auto">
-                    <h2 className="text-3xl font-bold text-center mb-12">Feature Comparison</h2>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-border/40">
-                                    <th className="py-4 px-4 font-medium text-muted-foreground w-1/3">Feature</th>
-                                    <th className="py-4 px-4 font-bold text-center w-1/5">Free</th>
-                                    <th className="py-4 px-4 font-bold text-center text-primary w-1/5">Pro</th>
-                                    <th className="py-4 px-4 font-bold text-center w-1/5">Team</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/20">
-                                <TableRow feature="Review Ingestion Limit" free="10k / mo" pro="100k / mo" team="Unlimited" />
-                                <TableRow feature="Active Apps" free="1" pro="5" team="Unlimited" />
-                                <TableRow feature="Data Retention" free="7 days" pro="90 days" team="1 year+" />
-                                <TableRow feature="LLM Classification" free={<Check className="h-4 w-4 mx-auto text-primary" />} pro={<Check className="h-4 w-4 mx-auto text-primary" />} team={<Check className="h-4 w-4 mx-auto text-primary" />} />
-                                <TableRow feature="Evidence Extraction" free={<Check className="h-4 w-4 mx-auto text-primary" />} pro={<Check className="h-4 w-4 mx-auto text-primary" />} team={<Check className="h-4 w-4 mx-auto text-primary" />} />
-                                <TableRow feature="CSV / JSON Export" free={<X className="h-4 w-4 mx-auto text-muted-foreground/50" />} pro={<Check className="h-4 w-4 mx-auto text-primary" />} team={<Check className="h-4 w-4 mx-auto text-primary" />} />
-                                <TableRow feature="Team Members" free="1" pro="5" team="Unlimited" />
-                                <TableRow feature="SSO / SAML" free={<X className="h-4 w-4 mx-auto text-muted-foreground/50" />} pro={<X className="h-4 w-4 mx-auto text-muted-foreground/50" />} team={<Check className="h-4 w-4 mx-auto text-primary" />} />
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div className="mt-16 text-center">
-                        <h3 className="text-xl font-bold mb-4">Frequently Asked Questions</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left mt-8">
-                            <div>
-                                <h4 className="font-semibold mb-2">Is the desktop app free?</h4>
-                                <p className="text-sm text-muted-foreground">Yes! The SentiNext desktop app is open source and can be run locally for free without limits if you bring your own API keys.</p>
-                            </div>
-                            <div>
-                                <h4 className="font-semibold mb-2">What happens after the beta?</h4>
-                                <p className="text-sm text-muted-foreground">We will notify all users 30 days before enabling billing. Early beta users may be eligible for a discount.</p>
-                            </div>
-                        </div>
-                    </div>
+            <section className="pb-24 w-full flex justify-center">
+                <div className="container px-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                        * Pricing models will be introduced in late 2026. Beta users will receive a legacy discount.
+                    </p>
                 </div>
             </section>
         </div>
@@ -136,46 +96,35 @@ export default function PricingPage() {
 
 function PricingCard({ name, price, period, description, features, cta, href, variant, popular }: any) {
     return (
-        <div className={`relative flex flex-col p-8 rounded-xl border ${popular ? 'border-primary shadow-[0_0_30px_-10px_var(--primary)] bg-card/60' : 'border-border/50 bg-card/30'} transition-all hover:bg-card/50`}>
+        <div className={`relative flex flex-col p-8 rounded-2xl border ${popular ? 'border-primary bg-card/80 shadow-2xl skew-y-0 z-10' : 'border-border/50 bg-card/30'} backdrop-blur-sm transition-all hover:bg-card/50 h-full`}>
             {popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">
-                    Most Popular
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary to-secondary text-black text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg flex items-center gap-2">
+                    <Sparkles className="h-3 w-3" /> Recommended
                 </div>
             )}
-            <div className="mb-6">
-                <h3 className="text-xl font-bold mb-2">{name}</h3>
-                <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-bold">{price}</span>
-                    {period && <span className="text-muted-foreground">{period}</span>}
+            <div className="mb-8">
+                <h3 className="text-xl font-bold mb-4 font-mono uppercase tracking-wider text-muted-foreground">{name}</h3>
+                <div className="flex items-baseline gap-1 mb-4">
+                    <span className="text-5xl font-bold tracking-tight">{price}</span>
+                    {period && <span className="text-sm text-muted-foreground font-mono">{period}</span>}
                 </div>
-                <p className="text-sm text-muted-foreground mt-4 h-10">{description}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed min-h-[40px]">{description}</p>
             </div>
             <ul className="flex-1 space-y-4 mb-8">
                 {features.map((feature: string, i: number) => (
                     <li key={i} className="flex items-start gap-3 text-sm">
-                        <Check className="h-4 w-4 text-primary mt-0.5" />
-                        <span className="text-foreground/80">{feature}</span>
+                        <Check className={`h-4 w-4 mt-0.5 ${popular ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <span className="text-foreground/90">{feature}</span>
                     </li>
                 ))}
             </ul>
             <Button
-                className={`w-full ${variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
-                variant={variant === 'outline' ? 'outline' : 'default'}
+                className={`w-full h-12 text-base font-bold ${variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20' : ''}`}
+                variant={variant === 'primary' ? 'default' : 'outline'}
                 asChild
             >
                 <Link href={href}>{cta}</Link>
             </Button>
         </div>
-    )
-}
-
-function TableRow({ feature, free, pro, team }: any) {
-    return (
-        <tr className="hover:bg-card/30 transition-colors">
-            <td className="py-4 px-4 text-sm font-medium">{feature}</td>
-            <td className="py-4 px-4 text-sm text-muted-foreground text-center">{free}</td>
-            <td className="py-4 px-4 text-sm text-muted-foreground text-center">{pro}</td>
-            <td className="py-4 px-4 text-sm text-muted-foreground text-center">{team}</td>
-        </tr>
     )
 }

@@ -51,10 +51,6 @@ const sidebarNavItems = [
                 title: "FAQ",
                 href: "/docs/faq",
             },
-            {
-                title: "For Developers",
-                href: "/docs/developers",
-            },
         ],
     },
 ];

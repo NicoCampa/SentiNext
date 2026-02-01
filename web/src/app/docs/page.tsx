@@ -27,11 +27,6 @@ export default function DocsIndex() {
                     description="Understand how our AI classifies issues, requests, and sentiment."
                     href="/docs/insights-and-taxonomy"
                 />
-                <DocsCard
-                    title="API & Developers"
-                    description="Technical reference for the open-source backend and local deployment."
-                    href="/docs/developers"
-                />
             </div>
 
             <h2>What is SentiNext?</h2>

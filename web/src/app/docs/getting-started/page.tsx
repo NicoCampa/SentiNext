@@ -1,59 +1,45 @@
 
 import Link from "next/link";
-import { AlertCircle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 export default function GettingStartedPage() {
     return (
         <div>
             <h1>Getting Started</h1>
             <p>
-                This guide will walk you through setting up SentiNext using our hosted version.
+                Welcome to the SentiNext Closed Beta. This guide will help you set up your account and start your first AI analysis.
             </p>
 
-            <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg my-6 flex gap-4 items-start">
-                <AlertCircle className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+            <div className="p-4 bg-secondary/10 border border-secondary/20 rounded-lg my-6 flex gap-4 items-start">
+                <AlertTriangle className="h-5 w-5 text-secondary mt-0.5 flex-shrink-0" />
                 <div>
-                    <h4 className="font-bold text-primary mb-1 text-sm">Hosted Cloud vs. Local Desktop</h4>
+                    <h4 className="font-bold text-secondary mb-1 text-sm font-mono uppercase">Beta Notice</h4>
                     <p className="text-sm text-muted-foreground m-0">
-                        This guide covers the <strong>Hosted Web App</strong>. If you prefer to run SentiNext locally on your own machine (BYO API Key), check out the <Link href="/docs/developers">Developer Docs</Link>.
+                        You are using the Hosted Cloud version. No local installation or GPU is required.
                     </p>
                 </div>
             </div>
 
-            <h2>1. Access the Dashboard</h2>
+            <h2>1. Access the Cloud Dashboard</h2>
             <p>
-                Open the <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">SentiNext Dashboard</Link>. You can browse public demo apps immediately without logging in.
+                Navigate to the <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">SentiNext App</Link>.
             </p>
 
-            <h2>2. Create an Account</h2>
+            <h2>2. Authenticate</h2>
             <p>
-                To track your own games or save analysis history, click <strong>Log In</strong> in the top right. We use Clerk for secure, passwordless authentication via Email, Google, or GitHub.
+                You must log in to trigger AI jobs. We use secure passwordless auth (Clerk).
             </p>
 
-            <h2>3. Analyze Your First Game</h2>
+            <h2>3. Run Your First Agent Job</h2>
             <ol>
-                <li>Click <strong>New Analysis</strong> in the sidebar.</li>
-                <li>Enter the <strong>Steam App ID</strong> of the game you want to analyze (e.g., <code>413150</code> for Stardew Valley).</li>
-                <li>
-                    Configure your fetch settings:
-                    <ul>
-                        <li><strong>Review Count</strong>: Start with 500-1000 reviews for a quick initial scan.</li>
-                        <li><strong>Filter</strong>: Choose "Recent" to see the latest feedback or "All" for historical trends.</li>
-                    </ul>
-                </li>
-                <li>Click <strong>Start Analysis</strong>.</li>
+                <li>Click <strong>New Analysis</strong>.</li>
+                <li>Enter a Steam App ID (e.g., <code>1086940</code>).</li>
+                <li>Select <strong>Recent Reviews</strong> (recommended for faster results).</li>
+                <li>Click <strong>Deploy Agent</strong>.</li>
             </ol>
-
-            <h2>4. Explore Insights</h2>
             <p>
-                Once the analysis is complete (usually 1-2 minutes for 1000 reviews), you will be redirected to the Game Dashboard. Here you can explore:
+                The agent will queue your job. You can close the tab—we'll email you when the analysis is complete.
             </p>
-            <ul>
-                <li><strong>Summary</strong>: High-level sentiment distribution and key topics.</li>
-                <li><strong>Issues</strong>: Top classified bugs and technical problems.</li>
-                <li><strong>Requests</strong>: Most requested features and quality-of-life improvements.</li>
-                <li><strong>Explorer</strong>: Search through individual reviews with advanced filtering.</li>
-            </ul>
         </div>
     );
 }

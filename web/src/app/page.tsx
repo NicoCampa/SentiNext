@@ -3,183 +3,173 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowRight, BarChart3, Database, Search, Zap } from "lucide-react";
+import { ArrowRight, Bot, Sparkles, Zap, BrainCircuit, ShieldCheck, Cpu, MessageSquare } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center w-full min-h-screen">
       {/* Hero Section */}
-      <section className="relative w-full py-24 md:py-32 lg:py-40 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
-        <div className="container px-4 md:px-6 relative z-10 flex flex-col items-center text-center">
+      <section className="relative w-full py-24 md:py-32 lg:py-48 overflow-hidden flex flex-col items-center justify-center">
+        {/* Subtle Gradient Spot - No Neon Glow */}
+        <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
+
+        <div className="container px-4 md:px-6 relative z-10 flex flex-col items-center text-center max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-6"
+            className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-sm font-medium text-primary mb-8 backdrop-blur-sm"
           >
-            <span className="flex h-2 w-2 rounded-full bg-primary mr-2 animate-pulse"></span>
-            SentiNext is now available
+            <Sparkles className="h-3.5 w-3.5 mr-2 text-primary" />
+            <span className="tracking-wide uppercase text-xs font-bold">Public Beta Live</span>
           </motion.div>
+
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/70 mb-6 max-w-4xl"
+            className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8 leading-tight"
           >
-            Turn Steam reviews into actionable insights.
+            Your AI Analyst for <br />
+            <span className="text-primary">Steam Reviews</span>
           </motion.h1>
+
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-10 leading-relaxed"
+            className="text-lg md:text-2xl text-muted-foreground max-w-3xl mb-12 leading-relaxed"
           >
-            SentiNext analyzes thousands of player reviews to tell you exactly what’s driving sentiment, what’s broken, and what to build next.
+            Don't just read feedback. Chat with it. SentiNext's AI Agent reads, classifies, and quantifies thousands of reviews to give you instant answers.
           </motion.p>
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto"
+            className="flex flex-col sm:flex-row gap-6 w-full sm:w-auto items-center justify-center"
           >
-            <Button size="lg" className="h-12 px-8 text-base bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_-5px_var(--primary)]" asChild>
+            <Button size="lg" className="h-14 px-10 text-lg bg-primary text-primary-foreground hover:bg-primary/90 font-bold tracking-wide shadow-none" asChild>
               <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                Open SentiNext <ArrowRight className="ml-2 h-4 w-4" />
+                Start Analysis <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
             </Button>
-            <Button size="lg" variant="outline" className="h-12 px-8 text-base" asChild>
+            <Button size="lg" variant="outline" className="h-14 px-10 text-lg border-primary/20 hover:bg-primary/10" asChild>
               <Link href="/how-it-works">
-                How it works
+                See How it Works
               </Link>
             </Button>
           </motion.div>
         </div>
       </section>
 
-      {/* Features Grid */}
-      <section className="w-full py-20 bg-card border-y border-border/40">
-        <div className="container px-4 md:px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Beyond simple sentiment</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              We go deeper than "Negative" or "Positive". SentiNext builds a structured taxonomy of every issue and request found in your reviews.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <FeatureCard
-              icon={<Search className="h-8 w-8 text-primary" />}
-              title="Ingest & Search"
-              description="Instantly fetch reviews for any Steam app. Filter by language, date range, and playtime to get the most relevant feedback."
-              delay={0.1}
-            />
-            <FeatureCard
-              icon={<Database className="h-8 w-8 text-secondary" />}
-              title="Auto-Classification"
-              description="Our LLM-powered pipeline tags every review with specific issues (e.g., 'Performance/Stuttering') and requests."
-              delay={0.2}
-            />
-            <FeatureCard
-              icon={<BarChart3 className="h-8 w-8 text-blue-400" />}
-              title="Aggregate Insights"
-              description="See the big picture. Identify the top 5 issues driving negative sentiment and prioritize your roadmap with data."
-              delay={0.3}
-            />
+      {/* AI Agent Chat Section */}
+      <section className="w-full py-24 border-y border-border/50 bg-card/20 backdrop-blur-sm">
+        <div className="container px-4 md:px-6 mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center max-w-6xl mx-auto">
+            <div>
+              <div className="flex items-center gap-2 mb-4 text-primary font-mono text-sm tracking-widest uppercase">
+                <MessageSquare className="h-4 w-4" />
+                <span>Conversational Intelligence</span>
+              </div>
+              <h2 className="text-4xl md:text-5xl font-bold mb-6">Ask Your Data Questions.</h2>
+              <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
+                Why scroll through 5,000 negative reviews? Just ask the agent. SentiNext simulates a product analyst that has read every single comment.
+              </p>
+
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-card border border-border/50 flex gap-4">
+                  <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">Q</div>
+                  <p className="font-medium">"What are the top 3 reasons players are refunding this week?"</p>
+                </div>
+                <div className="p-4 rounded-lg bg-card border border-border/50 flex gap-4 opacity-80">
+                  <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">Q</div>
+                  <p className="font-medium">"Do players prefer the new combat system or the old one?"</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Representation of Chat Interface */}
+            <div className="relative group">
+              <div className="relative rounded-xl border border-border/50 bg-card p-6 shadow-2xl">
+                <div className="flex items-center gap-3 border-b border-border/50 pb-4 mb-4">
+                  <div className="h-3 w-3 rounded-full bg-red-500" />
+                  <div className="h-3 w-3 rounded-full bg-yellow-500" />
+                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                  <span className="text-xs text-muted-foreground ml-2">SentiNext Agent v1.0</span>
+                </div>
+                <div className="space-y-6 font-mono text-sm h-[300px] overflow-hidden relative">
+                  <div className="flex gap-4 items-start">
+                    <div className="h-8 w-8 rounded bg-muted flex items-center justify-center flex-shrink-0">You</div>
+                    <div className="p-3 bg-muted rounded-lg text-foreground">
+                      Why is the review score dropping?
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start">
+                    <div className="h-8 w-8 rounded bg-primary flex items-center justify-center flex-shrink-0 text-white"><Bot className="h-4 w-4" /></div>
+                    <div className="space-y-3 w-full">
+                      <div className="p-3 bg-primary/10 rounded-lg text-foreground border border-primary/20">
+                        <p className="mb-2">I analyzed 450 recent negative reviews. The drop is driven by 2 main issues:</p>
+                        <ul className="list-disc pl-4 space-y-1 mb-2 text-muted-foreground">
+                          <li><strong>Performance / Stutter</strong> (35% of reports) - Specifically after the v1.2 patch.</li>
+                          <li><strong>Save Data / Corruption</strong> (15% of reports) - Occurs in the "Iron Mines" level.</li>
+                        </ul>
+                        <div className="text-xs text-primary flex gap-2 items-center mt-2">
+                          <ShieldCheck className="h-3 w-3" /> Verified with 120 evidence quotes
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Preview / How it works Teaser */}
+      {/* Value Props */}
       <section className="w-full py-24">
-        <div className="container px-4 md:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-6">Designed for Product Teams</h2>
-              <ul className="space-y-4">
-                <li className="flex items-start gap-3">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Zap className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">Real-time Analysis</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Don't wait for monthly reports. Run analysis whenever you need fresh insights.</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Zap className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">Transparent Taxonomy</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Drill down from a high-level "Bug" category to specific reviews mentioning "Crash on Startup".</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Zap className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">Hosted or Local</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Use our hosted version or run the open-source engine locally for full data control.</p>
-                  </div>
-                </li>
-              </ul>
-              <div className="mt-8">
-                <Button variant="link" className="p-0 text-primary h-auto" asChild>
-                  <Link href="/product">Explore all features <ArrowRight className="ml-1 h-4 w-4" /></Link>
-                </Button>
-              </div>
-            </div>
-            <div className="relative aspect-square md:aspect-video rounded-xl bg-gradient-to-br from-card to-background border border-border/50 shadow-2xl p-6 flex flex-col justify-center items-center overflow-hidden group">
-              {/* Abstract UI representation */}
-              <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(68,68,68,.2)_50%,transparent_75%,transparent_100%)] bg-[length:250%_250%,100%_100%] bg-[position:-100%_0,0_0] bg-no-repeat transition-[background-position_0s] duration-0 ease-in-out group-hover:bg-[position:200%_0,0_0] group-hover:duration-[1500ms]" />
-              <div className="w-full h-full border border-border/30 rounded-lg bg-background/50 backdrop-blur flex flex-col p-4">
-                <div className="h-8 w-full border-b border-border/30 mb-4 flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-red-500/50" />
-                  <div className="h-3 w-3 rounded-full bg-yellow-500/50" />
-                  <div className="h-3 w-3 rounded-full bg-green-500/50" />
-                </div>
-                <div className="flex-1 w-full grid grid-cols-3 gap-4">
-                  <div className="col-span-1 border-r border-border/30 pr-4 space-y-3">
-                    <div className="h-4 w-3/4 bg-border/20 rounded" />
-                    <div className="h-4 w-1/2 bg-border/20 rounded" />
-                    <div className="h-4 w-2/3 bg-border/20 rounded" />
-                  </div>
-                  <div className="col-span-2 space-y-3">
-                    <div className="h-32 w-full bg-border/10 rounded flex items-end p-2 gap-2">
-                      <div className="w-8 h-12 bg-primary/40 rounded-t" />
-                      <div className="w-8 h-20 bg-primary/60 rounded-t" />
-                      <div className="w-8 h-16 bg-primary/50 rounded-t" />
-                      <div className="w-8 h-24 bg-primary rounded-t" />
-                    </div>
-                    <div className="h-4 w-full bg-border/20 rounded" />
-                    <div className="h-4 w-5/6 bg-border/20 rounded" />
-                  </div>
+        <div className="container px-4 md:px-6 mx-auto">
+          <div className="text-center mb-16 max-w-3xl mx-auto">
+            <h2 className="text-3xl md:text-5xl font-bold mb-6">Built for Developers</h2>
+            <p className="text-muted-foreground text-lg">
+              SentiNext integrates directly with the Steam ecosystem.
+            </p>
+          </div>
 
-                </div>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            <ValueCard
+              icon={<Zap className="h-8 w-8 text-primary" />}
+              title="Real-time Ingestion"
+              description="Connect to your App ID. Fetch 5,000+ reviews in minutes, filtered by language and playtime."
+            />
+            <ValueCard
+              icon={<BrainCircuit className="h-8 w-8 text-secondary" />}
+              title="LLM Classification"
+              description="Our fine-tuned models detect distinct technical issues, removing the noise of generic complaints."
+            />
+            <ValueCard
+              icon={<Bot className="h-8 w-8 text-foreground" />}
+              title="Actionable Dashboard"
+              description="Don't drown in CSVs. Get a prioritized list of top issues affecting your review score right now."
+            />
           </div>
         </div>
       </section>
 
       {/* CTA Section */}
       <section className="w-full py-24 mb-10">
-        <div className="container px-4 md:px-6">
-          <div className="rounded-3xl bg-gradient-to-br from-primary/10 to-secondary/5 border border-border/50 p-8 md:p-16 text-center">
-            <h2 className="text-3xl md:text-5xl font-bold mb-6">Ready to see your game clearly?</h2>
-            <p className="text-muted-foreground text-lg mb-8 max-w-2xl mx-auto">
-              Join developers who are using SentiNext to prioritize their roadmap and improve player sentiment.
+        <div className="container px-4 md:px-6 mx-auto">
+          <div className="max-w-4xl mx-auto rounded-3xl bg-card border border-border/50 p-8 md:p-16 text-center shadow-lg relative overflow-hidden">
+
+            <h2 className="text-3xl md:text-5xl font-bold mb-6 relative z-10">Deploy Intelligence.</h2>
+            <p className="text-muted-foreground text-lg mb-8 max-w-2xl mx-auto relative z-10">
+              Join the beta. Analyze your game's feedback loop today.
             </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Button size="lg" className="h-12 px-8 text-base bg-foreground text-background hover:bg-foreground/90" asChild>
+            <div className="flex flex-col sm:flex-row justify-center gap-4 relative z-10">
+              <Button size="lg" className="h-14 px-10 text-lg bg-primary text-primary-foreground hover:bg-primary/90 font-bold" asChild>
                 <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                  Try SentiNext for Free
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" className="h-12 px-8 text-base bg-transparent border-primary/20 hover:bg-primary/5 hover:text-primary hover:border-primary/50" asChild>
-                <Link href="/contact">
-                  Contact Sales
+                  Try SentiNext Agent
                 </Link>
               </Button>
             </div>
@@ -190,20 +180,14 @@ export default function Home() {
   );
 }
 
-function FeatureCard({ icon, title, description, delay }: { icon: React.ReactNode, title: string, description: string, delay: number }) {
+function ValueCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.5, delay }}
-      className="flex flex-col items-center text-center p-6 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 transition-colors"
-    >
-      <div className="mb-4 p-3 rounded-full bg-background border border-border/50 shadow-sm">
+    <div className="flex flex-col items-center text-center p-8 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 transition-all hover:border-primary/30 group">
+      <div className="mb-6 p-4 rounded-full bg-background border border-border/50 group-hover:border-primary/50 transition-colors">
         {icon}
       </div>
-      <h3 className="text-xl font-bold mb-3">{title}</h3>
-      <p className="text-muted-foreground">{description}</p>
-    </motion.div>
+      <h3 className="text-xl font-bold mb-3 group-hover:text-primary transition-colors">{title}</h3>
+      <p className="text-muted-foreground leading-relaxed">{description}</p>
+    </div>
   )
 }

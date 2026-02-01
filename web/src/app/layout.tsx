@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Outfit, Inter } from "next/font/google";
+import { Space_Grotesk, Inter } from "next/font/google";
 import "./globals.css";
 
-const outfit = Outfit({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-outfit",
+  variable: "--font-space",
   display: "swap",
 });
 
@@ -30,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${outfit.variable} ${inter.variable} antialiased bg-background text-foreground font-sans flex flex-col min-h-screen`}
+        className={`${spaceGrotesk.variable} ${inter.variable} antialiased bg-background text-foreground font-sans flex flex-col min-h-screen`}
       >
         <Header />
         <main className="flex-1">{children}</main>
