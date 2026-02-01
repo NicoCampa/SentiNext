@@ -299,6 +299,7 @@ def init_postgresql_schema() -> None:
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id SERIAL PRIMARY KEY,
                 user_id TEXT NOT NULL,
+                session_id TEXT,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -307,6 +308,10 @@ def init_postgresql_schema() -> None:
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
             ON chat_messages(user_id, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_session
+            ON chat_messages(user_id, session_id, created_at DESC)
         """))
 
         # Full-text search using tsvector (PostgreSQL specific)

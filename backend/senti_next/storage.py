@@ -1033,40 +1033,60 @@ def cleanup_old_jobs(age_days: int = 7) -> int:
 
 # Chat Message Functions
 
-def save_chat_message(user_id: str, role: str, content: str) -> None:
+def save_chat_message(user_id: str, role: str, content: str, session_id: str = None) -> None:
     """Save a chat message to the database."""
     from . import db as db_module
-    logger.info(f"Saving chat message: user_id={user_id}, role={role}, content_length={len(content)}")
+    logger.info(f"Saving chat message: user_id={user_id}, session_id={session_id}, role={role}, content_length={len(content)}")
     with db_module.get_connection() as conn:
         conn.execute(
             text("""
-            INSERT INTO chat_messages (user_id, role, content)
-            VALUES (:user_id, :role, :content)
+            INSERT INTO chat_messages (user_id, session_id, role, content)
+            VALUES (:user_id, :session_id, :role, :content)
             """),
             {
                 "user_id": user_id,
+                "session_id": session_id,
                 "role": role,
                 "content": content,
             },
         )
-    logger.info(f"Successfully saved chat message for user_id={user_id}")
+    logger.info(f"Successfully saved chat message for user_id={user_id}, session_id={session_id}")
 
 
-def load_chat_history(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-    """Load chat history for a user, ordered by most recent first."""
+def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> List[Dict[str, Any]]:
+    """Load chat history for a user, optionally filtered by session."""
     from . import db as db_module
-    logger.info(f"Loading chat history for user_id={user_id}, limit={limit}")
+    logger.info(f"Loading chat history for user_id={user_id}, session_id={session_id}, limit={limit}")
     with db_module.get_connection() as conn:
-        rows = conn.execute(
-            text("""
-            SELECT role, content, created_at
-            FROM chat_messages
-            WHERE user_id = :user_id
-            ORDER BY created_at DESC
-            LIMIT :limit
-            """),
-            {"user_id": user_id, "limit": limit},
-        ).mappings().fetchall()
+        if session_id:
+            rows = conn.execute(
+                text("""
+                SELECT role, content, created_at, session_id
+                FROM chat_messages
+                WHERE user_id = :user_id AND session_id = :session_id
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """),
+                {"user_id": user_id, "session_id": session_id, "limit": limit},
+            ).mappings().fetchall()
+        else:
+            # Load latest session or all messages if no sessions
+            rows = conn.execute(
+                text("""
+                SELECT role, content, created_at, session_id
+                FROM chat_messages
+                WHERE user_id = :user_id AND (
+                    session_id = (
+                        SELECT session_id FROM chat_messages
+                        WHERE user_id = :user_id AND session_id IS NOT NULL
+                        ORDER BY created_at DESC LIMIT 1
+                    ) OR session_id IS NULL
+                )
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """),
+                {"user_id": user_id, "limit": limit},
+            ).mappings().fetchall()
 
     # Reverse to get chronological order (oldest first)
     messages = []
@@ -1075,22 +1095,62 @@ def load_chat_history(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
             "role": row["role"],
             "content": row["content"],
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
+            "session_id": row.get("session_id"),
         })
-    logger.info(f"Loaded {len(messages)} messages for user_id={user_id}")
+    logger.info(f"Loaded {len(messages)} messages for user_id={user_id}, session_id={session_id}")
     return messages
 
 
-def clear_chat_history(user_id: str) -> int:
-    """Clear all chat history for a user. Returns number of messages deleted."""
+def get_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
+    """Get all chat sessions for a user."""
     from . import db as db_module
     with db_module.get_connection() as conn:
-        cursor = conn.execute(
+        rows = conn.execute(
             text("""
-            DELETE FROM chat_messages
-            WHERE user_id = :user_id
+            SELECT
+                session_id,
+                COUNT(*) as message_count,
+                MIN(created_at) as started_at,
+                MAX(created_at) as last_message_at
+            FROM chat_messages
+            WHERE user_id = :user_id AND session_id IS NOT NULL
+            GROUP BY session_id
+            ORDER BY last_message_at DESC
             """),
             {"user_id": user_id},
-        )
+        ).mappings().fetchall()
+
+    sessions = []
+    for row in rows:
+        sessions.append({
+            "session_id": row["session_id"],
+            "message_count": row["message_count"],
+            "started_at": row["started_at"].isoformat() if row["started_at"] else None,
+            "last_message_at": row["last_message_at"].isoformat() if row["last_message_at"] else None,
+        })
+    return sessions
+
+
+def clear_chat_history(user_id: str, session_id: str = None) -> int:
+    """Clear chat history for a user. If session_id provided, only clears that session."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        if session_id:
+            cursor = conn.execute(
+                text("""
+                DELETE FROM chat_messages
+                WHERE user_id = :user_id AND session_id = :session_id
+                """),
+                {"user_id": user_id, "session_id": session_id},
+            )
+        else:
+            cursor = conn.execute(
+                text("""
+                DELETE FROM chat_messages
+                WHERE user_id = :user_id
+                """),
+                {"user_id": user_id},
+            )
         count = cursor.rowcount
         conn.commit()
     return count

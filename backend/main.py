@@ -356,16 +356,26 @@ class ChatRequest(BaseModel):
 
 class SimpleChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
+    session_id: Optional[str] = None
 
 
 class SimpleChatResponse(BaseModel):
     response: str
+    session_id: str
 
 
 class ChatMessage(BaseModel):
     role: str
     content: str
     timestamp: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class ChatSession(BaseModel):
+    session_id: str
+    message_count: int
+    started_at: Optional[str] = None
+    last_message_at: Optional[str] = None
 
 
 class ChatCitation(BaseModel):
@@ -1007,8 +1017,14 @@ def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     try:
-        # Load recent conversation history (last 20 messages for context)
-        history = storage.load_chat_history(user_id, limit=20)
+        # Generate session_id if not provided
+        session_id = request.session_id
+        if not session_id:
+            import uuid
+            session_id = str(uuid.uuid4())
+
+        # Load recent conversation history for this session (last 20 messages for context)
+        history = storage.load_chat_history(user_id, limit=20, session_id=session_id)
 
         # Build prompt with conversation history
         conversation_text = ""
@@ -1029,21 +1045,32 @@ Please respond naturally to the user's latest message, considering the conversat
         # Use Gemini to generate response
         response_text, model_id = llm.run_chat_completion(prompt)
 
-        # Save both user message and assistant response
-        storage.save_chat_message(user_id, "user", message)
-        storage.save_chat_message(user_id, "assistant", response_text)
+        # Save both user message and assistant response with session_id
+        storage.save_chat_message(user_id, "user", message, session_id=session_id)
+        storage.save_chat_message(user_id, "assistant", response_text, session_id=session_id)
 
-        return SimpleChatResponse(response=response_text)
+        return SimpleChatResponse(response=response_text, session_id=session_id)
     except Exception as exc:
         logger.exception("Simple chat failed: %s", exc)
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc
 
 
-@app.get("/chat/history", response_model=List[ChatMessage])
-def get_chat_history(user_id: str = Depends(require_user_id)) -> List[ChatMessage]:
-    """Get chat history for the current user."""
+@app.get("/chat/sessions", response_model=List[ChatSession])
+def get_chat_sessions(user_id: str = Depends(require_user_id)) -> List[ChatSession]:
+    """Get all chat sessions for the current user."""
     try:
-        history = storage.load_chat_history(user_id, limit=100)
+        sessions = storage.get_chat_sessions(user_id)
+        return [ChatSession(**session) for session in sessions]
+    except Exception as exc:
+        logger.exception("Failed to load chat sessions: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load chat sessions.") from exc
+
+
+@app.get("/chat/history", response_model=List[ChatMessage])
+def get_chat_history(session_id: Optional[str] = None, user_id: str = Depends(require_user_id)) -> List[ChatMessage]:
+    """Get chat history for the current user, optionally filtered by session."""
+    try:
+        history = storage.load_chat_history(user_id, limit=100, session_id=session_id)
         return [ChatMessage(**msg) for msg in history]
     except Exception as exc:
         logger.exception("Failed to load chat history: %s", exc)
@@ -1051,10 +1078,10 @@ def get_chat_history(user_id: str = Depends(require_user_id)) -> List[ChatMessag
 
 
 @app.delete("/chat/history")
-def clear_chat_history_endpoint(user_id: str = Depends(require_user_id)) -> Dict[str, Any]:
-    """Clear all chat history for the current user."""
+def clear_chat_history_endpoint(session_id: Optional[str] = None, user_id: str = Depends(require_user_id)) -> Dict[str, Any]:
+    """Clear chat history for the current user. If session_id provided, only clears that session."""
     try:
-        count = storage.clear_chat_history(user_id)
+        count = storage.clear_chat_history(user_id, session_id=session_id)
         return {"deleted": count}
     except Exception as exc:
         logger.exception("Failed to clear chat history: %s", exc)

@@ -17,12 +17,21 @@ type Message = {
   timestamp: Date;
 };
 
+type ChatSession = {
+  session_id: string;
+  message_count: number;
+  started_at: string | null;
+  last_message_at: string | null;
+};
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -33,24 +42,40 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Load chat history on mount
+  // Load chat sessions and latest session history on mount
   useEffect(() => {
     async function loadHistory() {
       try {
-        console.log("Loading chat history from:", apiUrl("/chat/history"));
-        const response = await authFetch(apiUrl("/chat/history"));
-        console.log("Chat history response status:", response.status);
-        if (response.ok) {
-          const history = await response.json();
-          console.log("Loaded chat history:", history.length, "messages");
-          const loadedMessages = history.map((msg: any) => ({
-            role: msg.role,
-            content: msg.content,
-            timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-          }));
-          setMessages(loadedMessages);
+        // Load all sessions
+        console.log("Loading chat sessions from:", apiUrl("/chat/sessions"));
+        const sessionsResponse = await authFetch(apiUrl("/chat/sessions"));
+        if (sessionsResponse.ok) {
+          const sessionsList = await sessionsResponse.json();
+          console.log("Loaded chat sessions:", sessionsList.length);
+          setSessions(sessionsList);
+
+          // Load latest session if exists
+          if (sessionsList.length > 0) {
+            const latestSession = sessionsList[0];
+            setCurrentSessionId(latestSession.session_id);
+
+            console.log("Loading chat history for session:", latestSession.session_id);
+            const historyResponse = await authFetch(
+              apiUrl(`/chat/history?session_id=${latestSession.session_id}`)
+            );
+            if (historyResponse.ok) {
+              const history = await historyResponse.json();
+              console.log("Loaded chat history:", history.length, "messages");
+              const loadedMessages = history.map((msg: any) => ({
+                role: msg.role,
+                content: msg.content,
+                timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+              }));
+              setMessages(loadedMessages);
+            }
+          }
         } else {
-          console.error("Failed to load chat history, status:", response.status);
+          console.error("Failed to load chat sessions, status:", sessionsResponse.status);
         }
       } catch (error) {
         console.error("Failed to load chat history:", error);
@@ -79,7 +104,10 @@ export default function ChatPage() {
       const response = await authFetch(apiUrl("/chat/simple"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          session_id: currentSessionId
+        }),
       });
 
       if (!response.ok) {
@@ -95,6 +123,12 @@ export default function ChatPage() {
 
       const data = await response.json();
       console.log("Received chat response, backend should have saved messages");
+
+      // Update session ID if this was a new session
+      if (data.session_id && data.session_id !== currentSessionId) {
+        setCurrentSessionId(data.session_id);
+      }
+
       const assistantMessage: Message = {
         role: "assistant",
         content: data.response,
@@ -102,6 +136,9 @@ export default function ChatPage() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Reload sessions to update sidebar
+      reloadSessions();
     } catch (error) {
       console.error("Chat error:", error);
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
@@ -128,15 +165,41 @@ export default function ChatPage() {
   }
 
   async function handleNewConversation() {
+    // Start a new conversation by clearing current session ID
+    // The backend will create a new session ID on the next message
+    setCurrentSessionId(null);
+    setMessages([]);
+    console.log("Started new conversation");
+  }
+
+  async function reloadSessions() {
     try {
-      const response = await authFetch(apiUrl("/chat/history"), {
-        method: "DELETE",
-      });
-      if (response.ok) {
-        setMessages([]);
+      const sessionsResponse = await authFetch(apiUrl("/chat/sessions"));
+      if (sessionsResponse.ok) {
+        const sessionsList = await sessionsResponse.json();
+        setSessions(sessionsList);
       }
     } catch (error) {
-      console.error("Failed to clear chat history:", error);
+      console.error("Failed to reload sessions:", error);
+    }
+  }
+
+  async function loadSession(sessionId: string) {
+    try {
+      console.log("Loading session:", sessionId);
+      const response = await authFetch(apiUrl(`/chat/history?session_id=${sessionId}`));
+      if (response.ok) {
+        const history = await response.json();
+        const loadedMessages = history.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+        }));
+        setMessages(loadedMessages);
+        setCurrentSessionId(sessionId);
+      }
+    } catch (error) {
+      console.error("Failed to load session:", error);
     }
   }
 
@@ -195,23 +258,42 @@ export default function ChatPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Conversation History
+                Chat History
               </h2>
               <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
-                {messages.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">No messages yet</p>
+                {sessions.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">No conversations yet</p>
                 ) : (
-                  <div className="space-y-3">
-                    <div className="p-3 bg-slate-900/40 border border-white/5 rounded-lg">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full"></div>
-                        <span className="text-xs font-medium text-slate-300">Current Chat</span>
-                      </div>
-                      <p className="text-xs text-slate-400">{messages.length} messages</p>
-                      <p className="text-[10px] text-slate-600 mt-1">
-                        {messages[0] && formatTime(messages[0].timestamp)}
-                      </p>
-                    </div>
+                  <div className="space-y-2">
+                    {sessions.map((session) => (
+                      <button
+                        key={session.session_id}
+                        onClick={() => loadSession(session.session_id)}
+                        className={`w-full p-3 rounded-lg border text-left transition ${
+                          currentSessionId === session.session_id
+                            ? "bg-[rgb(0,255,255)]/10 border-[rgb(0,255,255)]/30"
+                            : "bg-slate-900/40 border-white/5 hover:border-white/20"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              currentSessionId === session.session_id
+                                ? "bg-[rgb(0,255,255)]"
+                                : "bg-slate-600"
+                            }`}
+                          ></div>
+                          <span className="text-xs font-medium text-slate-300">
+                            {session.message_count} messages
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          {session.last_message_at
+                            ? new Date(session.last_message_at).toLocaleString()
+                            : "No date"}
+                        </p>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
