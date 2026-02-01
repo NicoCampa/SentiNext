@@ -1134,7 +1134,13 @@ def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_
 Previous conversation:
 {conversation_text if history else 'This is the start of the conversation.'}
 
-Please respond naturally to the user's latest message, considering the conversation history."""
+Please respond naturally to the user's latest message, considering the conversation history.
+If the user asks for a chart/plot/graph, include a fenced code block with language 'chart' containing JSON for Chart.js.
+Example:
+```chart
+{{"type":"bar","title":"Example","data":{{"labels":["A","B"],"datasets":[{{"label":"Value","data":[1,2]}}]}}}}
+```
+"""
 
             # Use Gemini to generate response
             response_text, model_id = llm.run_chat_completion(prompt)

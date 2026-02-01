@@ -866,6 +866,8 @@ def build_game_aware_prompt(
     prompt_parts.append("4. Note the sentiment (positive/negative) when relevant")
     prompt_parts.append("5. Consider the helpfulness (votes) when weighing opinions")
     prompt_parts.append("6. If comparing games, organize your response by game")
+    prompt_parts.append("7. If the user asks for a chart/plot/graph, include a fenced code block with language 'chart' containing JSON for Chart.js.")
+    prompt_parts.append("   Example:\n```chart\n{\"type\":\"bar\",\"title\":\"Example\",\"data\":{\"labels\":[\"A\",\"B\"],\"datasets\":[{\"label\":\"Value\",\"data\":[1,2]}]}}\n```")
 
     # Current question
     prompt_parts.append(f"\n## Current Question:\n{message}")

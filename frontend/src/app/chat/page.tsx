@@ -1,6 +1,27 @@
 'use client';
 
 import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from "react";
+import {
+  Chart as ChartJS,
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  LinearScale,
+  LineElement,
+  PointElement,
+  RadarController,
+  RadialLinearScale,
+  BubbleController,
+  ScatterController,
+  DoughnutController,
+  PieController,
+  PolarAreaController,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from "chart.js";
+import { Chart } from "react-chartjs-2";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +91,82 @@ const markdownComponents = {
     <td className="border-b border-white/5 px-2 py-1 align-top" {...props} />
   ),
 };
+
+ChartJS.register(
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  LinearScale,
+  LineElement,
+  PointElement,
+  RadarController,
+  RadialLinearScale,
+  BubbleController,
+  ScatterController,
+  DoughnutController,
+  PieController,
+  PolarAreaController,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+type ChartSpec = {
+  type: string;
+  data: {
+    labels?: Array<string | number>;
+    datasets: Array<Record<string, unknown>>;
+  };
+  options?: Record<string, unknown>;
+  title?: string;
+  description?: string;
+};
+
+type ChatPart =
+  | { type: "text"; value: string }
+  | { type: "chart"; spec: ChartSpec; raw: string };
+
+const CHART_BLOCK_RE = /```(?:chart|chartjs|chart-json)\n([\s\S]*?)```/gi;
+
+function splitChatContent(content: string): ChatPart[] {
+  const parts: ChatPart[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = CHART_BLOCK_RE.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", value: content.slice(lastIndex, match.index) });
+    }
+    const raw = match[1].trim();
+    try {
+      const spec = JSON.parse(raw) as ChartSpec;
+      if (spec && spec.type && spec.data) {
+        parts.push({ type: "chart", spec, raw });
+      } else {
+        parts.push({ type: "text", value: match[0] });
+      }
+    } catch {
+      parts.push({ type: "text", value: match[0] });
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push({ type: "text", value: content.slice(lastIndex) });
+  }
+
+  return parts;
+}
+
+function downloadChartImage(chart: ChartJS | null, filename: string) {
+  if (!chart) return;
+  const url = chart.toBase64Image("image/png", 1);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || "chart.png";
+  link.click();
+}
 
 function apiUrl(path: string): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
@@ -571,14 +668,72 @@ export default function ChatPage() {
                         : "bg-slate-900/60 border border-white/10 text-slate-100"
                     }`}
                   >
-                    <div className="text-sm text-slate-100">
-                      <ReactMarkdown
-                        components={markdownComponents}
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeSanitize]}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
+                    <div className="text-sm text-slate-100 space-y-3">
+                      {splitChatContent(msg.content).map((part, partIdx) => {
+                        if (part.type === "text") {
+                          return (
+                            <ReactMarkdown
+                              key={`text-${partIdx}`}
+                              components={markdownComponents}
+                              remarkPlugins={[remarkGfm]}
+                              rehypePlugins={[rehypeSanitize]}
+                            >
+                              {part.value}
+                            </ReactMarkdown>
+                          );
+                        }
+
+                        const chartRef = { current: null as ChartJS | null };
+                        const spec = part.spec;
+                        const chartData = spec.data as any;
+                        const chartOptions = {
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: { display: true },
+                            title: spec.title ? { display: true, text: spec.title } : { display: false },
+                          },
+                          ...spec.options,
+                        } as any;
+
+                        return (
+                          <div
+                            key={`chart-${partIdx}`}
+                            className="rounded-2xl border border-white/10 bg-slate-900/40 p-4"
+                          >
+                            {spec.title ? (
+                              <p className="text-sm font-semibold text-white mb-2">{spec.title}</p>
+                            ) : null}
+                            {spec.description ? (
+                              <p className="text-xs text-slate-400 mb-3">{spec.description}</p>
+                            ) : null}
+                            <div className="h-64">
+                              <Chart
+                                ref={(instance) => {
+                                  chartRef.current = instance ?? null;
+                                }}
+                                type={spec.type as any}
+                                data={chartData}
+                                options={chartOptions}
+                              />
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  downloadChartImage(
+                                    chartRef.current,
+                                    (spec.title || "chart").toLowerCase().replace(/\s+/g, "-") + ".png"
+                                  )
+                                }
+                              >
+                                Download PNG
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     {/* Citations for game-aware responses */}
                     {msg.citations && msg.citations.length > 0 && (
