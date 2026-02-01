@@ -6,6 +6,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { authFetch } from "@/lib/api";
 
+function apiUrl(path: string): string {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+  return `${base}${path}`;
+}
+
 type Message = {
   role: "user" | "assistant";
   content: string;
@@ -31,7 +36,7 @@ export default function ChatPage() {
   useEffect(() => {
     async function loadHistory() {
       try {
-        const response = await authFetch("/api/chat/history");
+        const response = await authFetch(apiUrl("/chat/history"));
         if (response.ok) {
           const history = await response.json();
           const loadedMessages = history.map((msg: any) => ({
@@ -65,7 +70,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const response = await authFetch("/api/chat/simple", {
+      const response = await authFetch(apiUrl("/chat/simple"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
