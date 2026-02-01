@@ -712,6 +712,80 @@ function AnalysisResults({
       .sort((a, b) => Number(b.votes_up ?? 0) - Number(a.votes_up ?? 0));
   }, [filteredReviewSample, selectedSubcategory]);
 
+  const highlightEvidence = (text: string, evidence: string[]): React.ReactNode => {
+    if (!evidence || evidence.length === 0) return text;
+
+    // Sort evidence by length (longest first) to handle overlapping matches
+    const sortedEvidence = [...evidence].sort((a, b) => b.length - a.length);
+
+    // Create a list of segments with their highlight status
+    const segments: Array<{ text: string; highlight: boolean }> = [];
+    let remainingText = text;
+    let currentIndex = 0;
+
+    // Find all evidence positions
+    const matches: Array<{ start: number; end: number; text: string }> = [];
+    sortedEvidence.forEach(snippet => {
+      if (!snippet.trim()) return;
+      const lowerText = text.toLowerCase();
+      const lowerSnippet = snippet.toLowerCase();
+      let index = lowerText.indexOf(lowerSnippet);
+      while (index !== -1) {
+        matches.push({ start: index, end: index + snippet.length, text: snippet });
+        index = lowerText.indexOf(lowerSnippet, index + 1);
+      }
+    });
+
+    // Sort matches by position and merge overlapping
+    matches.sort((a, b) => a.start - b.start);
+    const mergedMatches: typeof matches = [];
+    matches.forEach(match => {
+      if (mergedMatches.length === 0) {
+        mergedMatches.push(match);
+      } else {
+        const last = mergedMatches[mergedMatches.length - 1];
+        if (match.start <= last.end) {
+          // Overlapping or adjacent - extend the last match
+          last.end = Math.max(last.end, match.end);
+        } else {
+          mergedMatches.push(match);
+        }
+      }
+    });
+
+    // Build segments
+    mergedMatches.forEach(match => {
+      if (match.start > currentIndex) {
+        segments.push({ text: text.slice(currentIndex, match.start), highlight: false });
+      }
+      segments.push({ text: text.slice(match.start, match.end), highlight: true });
+      currentIndex = match.end;
+    });
+
+    if (currentIndex < text.length) {
+      segments.push({ text: text.slice(currentIndex), highlight: false });
+    }
+
+    if (segments.length === 0) return text;
+
+    return (
+      <>
+        {segments.map((segment, idx) =>
+          segment.highlight ? (
+            <mark
+              key={idx}
+              className="bg-yellow-400/30 text-yellow-100 rounded px-0.5"
+            >
+              {segment.text}
+            </mark>
+          ) : (
+            <span key={idx}>{segment.text}</span>
+          )
+        )}
+      </>
+    );
+  };
+
   const selectedSubcategoryLabel = selectedSubcategory ? toSubcategoryLabel(selectedSubcategory) : "";
   const selectedMainLabel = selectedSubcategory
     ? MAIN_CATEGORY_LABELS[selectedSubcategory.split("/", 1)[0]?.toLowerCase() ?? ""] ?? toTitleCase(selectedSubcategory)
@@ -1221,6 +1295,9 @@ function AnalysisResults({
                 {selectedReviews.map((review, idx) => {
                   const reviewKey = String(review.review_id ?? idx);
                   const text = review.review ?? "";
+                  const evidence = selectedSubcategory
+                    ? (review.llm_subcategory_evidence?.[selectedSubcategory] ?? [])
+                    : [];
                   const createdAt = review.created_at ? new Date(review.created_at) : null;
                   const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
                     ? createdAt.toLocaleDateString()
@@ -1237,6 +1314,11 @@ function AnalysisResults({
                         <div className="flex flex-wrap items-center gap-3">
                           <span>{createdLabel}</span>
                           <span>{review.votes_up ?? 0} helpful</span>
+                          {evidence.length > 0 && (
+                            <span className="rounded-full bg-yellow-400/20 px-2 py-0.5 text-yellow-300">
+                              {evidence.length} evidence
+                            </span>
+                          )}
                         </div>
                       </div>
                       <p
@@ -1252,7 +1334,7 @@ function AnalysisResults({
                             : undefined
                         }
                       >
-                        {text}
+                        {highlightEvidence(text, evidence)}
                       </p>
                       <div className="mt-3 flex items-center justify-between gap-3 text-xs">
                         <span
