@@ -164,7 +164,7 @@ export default function ChatPage() {
           </div>
           <div className="flex gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => setShowHistory(!showHistory)}
               className="text-xs"
             >
@@ -174,7 +174,7 @@ export default function ChatPage() {
               History
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={handleNewConversation}
               className="text-xs"
             >

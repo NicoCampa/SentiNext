@@ -903,9 +903,9 @@ function AnalysisResults({
                     </p>
                   </div>
 
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 grid grid-cols-2 gap-2">
                     {category.subcategories.length === 0 ? (
-                      <p className="text-sm text-slate-500">No tagged subcategories.</p>
+                      <p className="text-sm text-slate-500 col-span-2">No tagged subcategories.</p>
                     ) : (
                       visibleSubcategories.map((sub) => (
                         <button
@@ -914,24 +914,26 @@ function AnalysisResults({
                           onClick={() =>
                             setSelectedSubcategory((prev) => (prev === sub.subcategory ? null : sub.subcategory))
                           }
-                          className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${
+                          className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left ${
                             selectedSubcategory === sub.subcategory
                               ? "border-sky-400/50 bg-sky-500/10"
                               : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
                           }`}
                         >
-                          <div className="min-w-0">
+                          <div className="w-full min-w-0">
                             <p className="truncate text-sm text-slate-200">
                               {toSubcategoryLabel(sub.subcategory, sub.sub_category)}
                             </p>
-                            <p className="text-xs text-slate-500">{Number(sub.count ?? 0).toLocaleString()} tags</p>
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                              <p className="text-xs text-slate-500">{Number(sub.count ?? 0).toLocaleString()} tags</p>
+                              <p
+                                className="text-sm font-semibold"
+                                style={{ color: getRecommendationColor(sub.recommendation_rate) }}
+                              >
+                                {formatPercentOrDash(sub.recommendation_rate)}
+                              </p>
+                            </div>
                           </div>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: getRecommendationColor(sub.recommendation_rate) }}
-                          >
-                            {formatPercentOrDash(sub.recommendation_rate)}
-                          </p>
                         </button>
                       ))
                     )}
