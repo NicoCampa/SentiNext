@@ -58,7 +58,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadLogTail();
-  }, [loadLogTail, loadLLMSettings]);
+  }, [loadLogTail]);
 
   async function handleCopy(text: string) {
     try {
