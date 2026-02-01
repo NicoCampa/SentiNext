@@ -78,7 +78,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   }
 }
 
-async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const auth = await getAuthHeaders();
   const headers = mergeHeaders(init.headers, auth);
   return fetch(input, { ...init, headers });
