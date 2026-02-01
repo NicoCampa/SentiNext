@@ -1,10 +1,75 @@
 'use client';
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { authFetch } from "@/lib/api";
+import {
+  authFetch,
+  sendEnhancedChat,
+  subscribeToChatStream,
+  fetchStarredGames,
+  ChatCitationItem,
+} from "@/lib/api";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
+
+const markdownComponents = {
+  h1: ({ node, ...props }: ComponentPropsWithoutRef<"h1">) => (
+    <h1 className="text-lg font-semibold mt-3 mb-2" {...props} />
+  ),
+  h2: ({ node, ...props }: ComponentPropsWithoutRef<"h2">) => (
+    <h2 className="text-base font-semibold mt-3 mb-2" {...props} />
+  ),
+  h3: ({ node, ...props }: ComponentPropsWithoutRef<"h3">) => (
+    <h3 className="text-sm font-semibold mt-3 mb-2" {...props} />
+  ),
+  h4: ({ node, ...props }: ComponentPropsWithoutRef<"h4">) => (
+    <h4 className="text-sm font-semibold mt-3 mb-1" {...props} />
+  ),
+  p: ({ node, ...props }: ComponentPropsWithoutRef<"p">) => (
+    <p className="text-sm leading-relaxed whitespace-pre-wrap" {...props} />
+  ),
+  ul: ({ node, ...props }: ComponentPropsWithoutRef<"ul">) => (
+    <ul className="list-disc list-inside mt-2 space-y-1" {...props} />
+  ),
+  ol: ({ node, ...props }: ComponentPropsWithoutRef<"ol">) => (
+    <ol className="list-decimal list-inside mt-2 space-y-1" {...props} />
+  ),
+  li: ({ node, ...props }: ComponentPropsWithoutRef<"li">) => (
+    <li className="text-sm leading-relaxed" {...props} />
+  ),
+  blockquote: ({ node, ...props }: ComponentPropsWithoutRef<"blockquote">) => (
+    <blockquote className="border-l-2 border-white/20 pl-3 text-slate-300 my-2" {...props} />
+  ),
+  code: ({ node, inline, ...props }: ComponentPropsWithoutRef<"code"> & { inline?: boolean }) =>
+    inline ? (
+      <code className="rounded bg-slate-900/60 px-1 py-0.5 text-[12px] text-slate-200" {...props} />
+    ) : (
+      <code className="text-[12px] text-slate-200" {...props} />
+    ),
+  pre: ({ node, ...props }: ComponentPropsWithoutRef<"pre">) => (
+    <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/70 p-3 text-[12px]" {...props} />
+  ),
+  a: ({ node, ...props }: ComponentPropsWithoutRef<"a">) => (
+    <a className="text-[rgb(0,255,255)] underline decoration-white/30 underline-offset-2" {...props} />
+  ),
+  hr: ({ node, ...props }: ComponentPropsWithoutRef<"hr">) => (
+    <hr className="my-3 border-white/10" {...props} />
+  ),
+  table: ({ node, ...props }: ComponentPropsWithoutRef<"table">) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="w-full text-left text-xs" {...props} />
+    </div>
+  ),
+  th: ({ node, ...props }: ComponentPropsWithoutRef<"th">) => (
+    <th className="border-b border-white/10 px-2 py-1 font-semibold" {...props} />
+  ),
+  td: ({ node, ...props }: ComponentPropsWithoutRef<"td">) => (
+    <td className="border-b border-white/5 px-2 py-1 align-top" {...props} />
+  ),
+};
 
 function apiUrl(path: string): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
@@ -15,6 +80,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  citations?: ChatCitationItem[];
 };
 
 type ChatSession = {
@@ -24,15 +90,35 @@ type ChatSession = {
   last_message_at: string | null;
 };
 
+type StarredGame = {
+  app_id: number;
+  name: string;
+};
+
+const DATE_FILTER_OPTIONS = [
+  { value: "all", label: "All time" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "365d", label: "Last year" },
+];
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [showContext, setShowContext] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Game context state (Chat with Your Data)
+  const [starredGames, setStarredGames] = useState<StarredGame[]>([]);
+  const [selectedGames, setSelectedGames] = useState<number[]>([]);
+  const [dateFilter, setDateFilter] = useState("all");
+  const [chatStatus, setChatStatus] = useState<string | null>(null);
+  const [loadingGames, setLoadingGames] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,6 +127,24 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load starred games on mount
+  useEffect(() => {
+    async function loadGames() {
+      setLoadingGames(true);
+      try {
+        const games = await fetchStarredGames();
+        setStarredGames(
+          games.map((g) => ({ app_id: g.app_id, name: g.name }))
+        );
+      } catch (error) {
+        console.error("Failed to load starred games:", error);
+      } finally {
+        setLoadingGames(false);
+      }
+    }
+    loadGames();
+  }, []);
 
   // Load chat sessions and latest session history on mount
   useEffect(() => {
@@ -99,32 +203,42 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
+    setChatStatus(null);
+
+    // Generate session ID if needed
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      setCurrentSessionId(sessionId);
+    }
+
+    // Subscribe to SSE for status updates if we have game context
+    let unsubscribe: (() => void) | null = null;
+    if (selectedGames.length > 0) {
+      unsubscribe = subscribeToChatStream(sessionId, {
+        onStatus: (status) => setChatStatus(status),
+        onDone: () => setChatStatus(null),
+        onError: () => setChatStatus(null),
+        onTimeout: () => setChatStatus(null),
+      });
+    }
 
     try {
-      const response = await authFetch(apiUrl("/chat/simple"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          session_id: currentSessionId
-        }),
+      const data = await sendEnhancedChat({
+        message,
+        session_id: sessionId,
+        app_ids: selectedGames.length > 0 ? selectedGames : undefined,
+        date_filter: selectedGames.length > 0 ? dateFilter : undefined,
+        max_reviews_per_game: 50,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Chat API error:", response.status, errorText);
-        try {
-          const errorData = JSON.parse(errorText);
-          throw new Error(errorData.detail || `Error ${response.status}: ${errorText}`);
-        } catch {
-          throw new Error(`Error ${response.status}: ${errorText}`);
-        }
-      }
+      console.log("Received chat response", {
+        hasGameContext: data.has_game_context,
+        reviewsSearched: data.reviews_searched,
+        citationsCount: data.citations?.length ?? 0,
+      });
 
-      const data = await response.json();
-      console.log("Received chat response, backend should have saved messages");
-
-      // Update session ID if this was a new session
+      // Update session ID if changed
       if (data.session_id && data.session_id !== currentSessionId) {
         setCurrentSessionId(data.session_id);
       }
@@ -133,6 +247,7 @@ export default function ChatPage() {
         role: "assistant",
         content: data.response,
         timestamp: new Date(),
+        citations: data.citations,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -150,7 +265,22 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
+      setChatStatus(null);
+      if (unsubscribe) unsubscribe();
     }
+  }
+
+  function toggleGameSelection(appId: number) {
+    setSelectedGames((prev) => {
+      if (prev.includes(appId)) {
+        return prev.filter((id) => id !== appId);
+      }
+      // Max 2 games
+      if (prev.length >= 2) {
+        return [prev[1], appId];
+      }
+      return [...prev, appId];
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -214,7 +344,7 @@ export default function ChatPage() {
           display: none;
         }
       `}</style>
-      <div className="mx-auto max-w-5xl h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
+      <div className="w-full h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -223,9 +353,23 @@ export default function ChatPage() {
                 AI Assistant
               </span>
             </h1>
-            <p className="text-xs text-slate-400">Your intelligent conversation partner</p>
+            <p className="text-xs text-slate-400">
+              {selectedGames.length > 0
+                ? `Chatting with ${selectedGames.length} game${selectedGames.length > 1 ? "s" : ""} selected`
+                : "Your intelligent conversation partner"}
+            </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setShowContext(!showContext)}
+              className="text-xs"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+              </svg>
+              Context
+            </Button>
             <Button
               variant="secondary"
               onClick={() => setShowHistory(!showHistory)}
@@ -251,52 +395,136 @@ export default function ChatPage() {
 
         {/* Main Content Area */}
         <div className="flex-1 flex gap-4 overflow-hidden">
-          {/* History Sidebar */}
-          {showHistory && (
-            <Card variant="glass" className="w-64 flex-shrink-0 p-4 overflow-hidden flex flex-col">
-              <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Chat History
-              </h2>
-              <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
-                {sessions.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">No conversations yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {sessions.map((session) => (
-                      <button
-                        key={session.session_id}
-                        onClick={() => loadSession(session.session_id)}
-                        className={`w-full p-3 rounded-lg border text-left transition ${
-                          currentSessionId === session.session_id
-                            ? "bg-[rgb(0,255,255)]/10 border-[rgb(0,255,255)]/30"
-                            : "bg-slate-900/40 border-white/5 hover:border-white/20"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <div
-                            className={`w-2 h-2 rounded-full ${
-                              currentSessionId === session.session_id
-                                ? "bg-[rgb(0,255,255)]"
-                                : "bg-slate-600"
+          {/* Sidebar: History + Game Selector */}
+          {(showHistory || showContext) && (
+            <Card variant="glass" className="w-72 flex-shrink-0 p-4 overflow-hidden flex flex-col gap-4">
+              {/* Game Selector */}
+              {showContext && (
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                    Chat with Your Data
+                  </h2>
+                  {loadingGames ? (
+                    <p className="text-xs text-slate-500 text-center py-2">Loading games...</p>
+                  ) : starredGames.length === 0 ? (
+                    <p className="text-xs text-slate-500 text-center py-2">No starred games yet</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-slate-500 mb-2">Select up to 2 games to search reviews:</p>
+                      <div className="max-h-32 overflow-y-auto space-y-1 scrollbar-hide">
+                        {starredGames.map((game) => (
+                          <button
+                            key={game.app_id}
+                            onClick={() => toggleGameSelection(game.app_id)}
+                            className={`w-full p-2 rounded-lg border text-left text-xs transition ${
+                              selectedGames.includes(game.app_id)
+                                ? "bg-[rgb(0,255,255)]/10 border-[rgb(0,255,255)]/30 text-white"
+                                : "bg-slate-900/40 border-white/5 hover:border-white/20 text-slate-400"
                             }`}
-                          ></div>
-                          <span className="text-xs font-medium text-slate-300">
-                            {session.message_count} messages
-                          </span>
+                          >
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-3 h-3 rounded border flex items-center justify-center ${
+                                  selectedGames.includes(game.app_id)
+                                    ? "bg-[rgb(0,255,255)] border-[rgb(0,255,255)]"
+                                    : "border-slate-600"
+                                }`}
+                              >
+                                {selectedGames.includes(game.app_id) && (
+                                  <svg className="w-2 h-2 text-slate-900" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
+                              <span className="truncate">{game.name}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      {selectedGames.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-white/5">
+                          <label className="text-[10px] text-slate-500 block mb-1">Date Range:</label>
+                          <select
+                            value={dateFilter}
+                            onChange={(e) => setDateFilter(e.target.value)}
+                            className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-xs text-white focus:border-[rgb(0,255,255)] focus:outline-none"
+                          >
+                            {DATE_FILTER_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                        <p className="text-[10px] text-slate-500">
-                          {session.last_message_at
-                            ? new Date(session.last_message_at).toLocaleString()
-                            : "No date"}
-                        </p>
-                      </button>
-                    ))}
+                      )}
+                      {selectedGames.length > 0 && (
+                        <button
+                          onClick={() => setSelectedGames([])}
+                          className="text-[10px] text-slate-500 hover:text-slate-300 mt-1"
+                        >
+                          Clear selection
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showContext && showHistory && (
+                <div className="border-t border-white/10"></div>
+              )}
+
+              {/* Chat History */}
+              {showHistory && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Chat History
+                  </h2>
+                  <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
+                    {sessions.length === 0 ? (
+                      <p className="text-xs text-slate-500 text-center py-4">No conversations yet</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {sessions.map((session) => (
+                          <button
+                            key={session.session_id}
+                            onClick={() => loadSession(session.session_id)}
+                            className={`w-full p-3 rounded-lg border text-left transition ${
+                              currentSessionId === session.session_id
+                                ? "bg-[rgb(0,255,255)]/10 border-[rgb(0,255,255)]/30"
+                                : "bg-slate-900/40 border-white/5 hover:border-white/20"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  currentSessionId === session.session_id
+                                    ? "bg-[rgb(0,255,255)]"
+                                    : "bg-slate-600"
+                                }`}
+                              ></div>
+                              <span className="text-xs font-medium text-slate-300">
+                                {session.message_count} messages
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500">
+                              {session.last_message_at
+                                ? new Date(session.last_message_at).toLocaleString()
+                                : "No date"}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </Card>
           )}
 
@@ -343,7 +571,43 @@ export default function ChatPage() {
                         : "bg-slate-900/60 border border-white/10 text-slate-100"
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <div className="text-sm text-slate-100">
+                      <ReactMarkdown
+                        components={markdownComponents}
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeSanitize]}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                    {/* Citations for game-aware responses */}
+                    {msg.citations && msg.citations.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Sources ({msg.citations.length})</p>
+                        <div className="space-y-2">
+                          {msg.citations.slice(0, 3).map((citation, citIdx) => (
+                            <div
+                              key={citIdx}
+                              className="bg-slate-800/50 rounded-lg p-2 text-[11px]"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[rgb(0,255,255)]">#{citation.review_id}</span>
+                                <span className="text-slate-500">•</span>
+                                <span className="text-slate-400">{citation.game_name}</span>
+                                <span className="text-slate-500">•</span>
+                                <span className="text-slate-500">{citation.votes_up} helpful</span>
+                              </div>
+                              <p className="text-slate-300 line-clamp-2">&quot;{citation.snippet}&quot;</p>
+                            </div>
+                          ))}
+                          {msg.citations.length > 3 && (
+                            <p className="text-[10px] text-slate-500">
+                              +{msg.citations.length - 3} more citations
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <p className="text-[10px] text-slate-500 mt-1">
                       {formatTime(msg.timestamp)}
                     </p>
@@ -360,7 +624,9 @@ export default function ChatPage() {
                       <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                       <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                     </div>
-                    <span className="text-xs text-slate-400">Thinking...</span>
+                    <span className="text-xs text-slate-400">
+                      {chatStatus || (selectedGames.length > 0 ? "Searching reviews..." : "Thinking...")}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -399,7 +665,11 @@ export default function ChatPage() {
               </Button>
             </div>
             <p className="text-[10px] text-slate-600 mt-2">
-              Press Enter to send, Shift+Enter for new line
+              {selectedGames.length > 0 ? (
+                <>Press Enter to search reviews and get insights</>
+              ) : (
+                <>Press Enter to send, Shift+Enter for new line</>
+              )}
             </p>
           </div>
         </Card>

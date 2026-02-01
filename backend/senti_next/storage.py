@@ -1154,3 +1154,146 @@ def clear_chat_history(user_id: str, session_id: str = None) -> int:
         count = cursor.rowcount
         conn.commit()
     return count
+
+
+def _parse_date_filter(date_filter: str) -> Optional[int]:
+    """Convert date filter string to days. Returns None for 'all'."""
+    if not date_filter or date_filter == "all":
+        return None
+    mapping = {
+        "30d": 30,
+        "90d": 90,
+        "365d": 365,
+        "1y": 365,
+    }
+    return mapping.get(date_filter.lower())
+
+
+def search_reviews_with_date_filter(
+    app_id: int,
+    query: str,
+    date_filter: str = "all",
+    limit: int = 50,
+    order_by: str = "votes_up",
+) -> List[dict]:
+    """Search reviews using PostgreSQL FTS with date filtering.
+
+    Args:
+        app_id: The Steam app ID to search
+        query: Search query string (will be converted to tsquery)
+        date_filter: One of "30d", "90d", "365d", "all"
+        limit: Maximum number of results (default 50)
+        order_by: Order by column - "votes_up" (default) or "timestamp_created"
+
+    Returns:
+        List of review dicts ordered by votes_up DESC
+    """
+    from . import db as db_module
+    import time
+
+    raw = (query or "").strip()
+    max_days = _parse_date_filter(date_filter)
+
+    with db_module.get_connection() as conn:
+        if raw:
+            # Convert search query to tsquery format
+            query_terms = raw.split()
+            ts_query = " | ".join(query_terms)  # Use OR for broader matching
+
+            if max_days is not None:
+                cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+                result = conn.execute(
+                    text("""
+                        SELECT data
+                        FROM reviews
+                        WHERE app_id = :app_id
+                          AND search_vector @@ to_tsquery('english', :query)
+                          AND timestamp_created > :cutoff
+                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                        LIMIT :limit
+                    """),
+                    {"app_id": int(app_id), "query": ts_query, "cutoff": cutoff, "limit": int(limit)},
+                )
+            else:
+                result = conn.execute(
+                    text("""
+                        SELECT data
+                        FROM reviews
+                        WHERE app_id = :app_id
+                          AND search_vector @@ to_tsquery('english', :query)
+                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                        LIMIT :limit
+                    """),
+                    {"app_id": int(app_id), "query": ts_query, "limit": int(limit)},
+                )
+        else:
+            # No query - just get most helpful reviews
+            if max_days is not None:
+                cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+                result = conn.execute(
+                    text("""
+                        SELECT data
+                        FROM reviews
+                        WHERE app_id = :app_id
+                          AND timestamp_created > :cutoff
+                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                        LIMIT :limit
+                    """),
+                    {"app_id": int(app_id), "cutoff": cutoff, "limit": int(limit)},
+                )
+            else:
+                result = conn.execute(
+                    text("""
+                        SELECT data
+                        FROM reviews
+                        WHERE app_id = :app_id
+                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                        LIMIT :limit
+                    """),
+                    {"app_id": int(app_id), "limit": int(limit)},
+                )
+
+        rows = result.fetchall()
+
+    return [_parse_json_field(row[0], {}) for row in rows]
+
+
+def load_game_metadata_for_chat(user_id: str, app_ids: List[int]) -> List[Dict[str, Any]]:
+    """Load game metadata for chat context.
+
+    Args:
+        user_id: The user ID
+        app_ids: List of app IDs (max 2 recommended)
+
+    Returns:
+        List of dicts with app_id, name, genres, categories, and short_description
+    """
+    if not app_ids:
+        return []
+
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT app_id, name, metadata, genres, categories
+                FROM starred_games
+                WHERE user_id = :user_id AND app_id = ANY(:app_ids)
+            """),
+            {"user_id": user_id, "app_ids": [int(aid) for aid in app_ids]},
+        )
+        rows = result.fetchall()
+
+    games = []
+    for row in rows:
+        metadata = _parse_json_field(row[2], {})
+        games.append({
+            "app_id": int(row[0]),
+            "name": row[1] or str(row[0]),
+            "genres": _parse_json_field(row[3], []),
+            "categories": _parse_json_field(row[4], []),
+            "short_description": metadata.get("short_description", ""),
+            "header_image": metadata.get("header_image", ""),
+        })
+
+    return games

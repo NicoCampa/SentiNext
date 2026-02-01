@@ -306,6 +306,10 @@ def init_postgresql_schema() -> None:
             )
         """))
         conn.execute(text("""
+            ALTER TABLE chat_messages
+            ADD COLUMN IF NOT EXISTS session_id TEXT
+        """))
+        conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id
             ON chat_messages(user_id, created_at DESC)
         """))

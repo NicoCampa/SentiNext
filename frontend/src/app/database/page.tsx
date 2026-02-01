@@ -100,6 +100,9 @@ export default function DatabasePage() {
   const [quickSentiment, setQuickSentiment] = useState<'all' | 'positive' | 'negative'>('all');
   const [quickType, setQuickType] = useState<'all' | 'issue' | 'request'>('all');
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedSubcategory, setSelectedSubcategory] = useState('all');
+  const [expandedReview, setExpandedReview] = useState<DatabaseReviewItem | null>(null);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [downloadBusy, setDownloadBusy] = useState(false);
@@ -175,6 +178,55 @@ export default function DatabasePage() {
   const pageItems = reviewsResponse?.items ?? [];
   const pageTotal = reviewsResponse?.total ?? 0;
 
+  const categoryOptions = useMemo(() => {
+    const mains = new Set<string>();
+    pageItems.forEach((review) => {
+      if (review.llm_main_category) {
+        mains.add(review.llm_main_category.toLowerCase());
+      }
+      const subcats = [
+        ...(review.llm_subcategories ?? []),
+        ...(review.llm_issue_subcategories ?? []),
+        ...(review.llm_request_subcategories ?? []),
+      ];
+      subcats.forEach((value) => {
+        const [main] = value.split('/', 1);
+        if (main) {
+          mains.add(main.toLowerCase());
+        }
+      });
+    });
+    return Array.from(mains)
+      .sort()
+      .map((value) => ({
+        value,
+        label: MAIN_CATEGORY_LABELS[value] ?? titleize(value),
+      }));
+  }, [pageItems]);
+
+  const subcategoryOptions = useMemo(() => {
+    const subs = new Map<string, { value: string; label: string; main?: string }>();
+    pageItems.forEach((review) => {
+      const subcats = [
+        ...(review.llm_subcategories ?? []),
+        ...(review.llm_issue_subcategories ?? []),
+        ...(review.llm_request_subcategories ?? []),
+      ];
+      subcats.forEach((value) => {
+        const trimmed = value?.trim();
+        if (!trimmed) return;
+        const lower = trimmed.toLowerCase();
+        const main = trimmed.includes('/') ? trimmed.split('/', 1)[0].toLowerCase() : undefined;
+        subs.set(lower, {
+          value: lower,
+          label: formatTaxonomyLabel(trimmed),
+          main,
+        });
+      });
+    });
+    return Array.from(subs.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [pageItems]);
+
   const filteredReviews = useMemo(() => {
     const scoped = applyGlobalReviewFilters(pageItems, filters);
     return scoped.filter((review) => {
@@ -182,9 +234,29 @@ export default function DatabasePage() {
       if (quickSentiment === 'negative' && review.voted_up) return false;
       if (quickType === 'issue' && !hasIssue(review)) return false;
       if (quickType === 'request' && !hasRequest(review)) return false;
+      if (selectedCategory !== 'all') {
+        const main = review.llm_main_category?.toLowerCase();
+        if (main !== selectedCategory) {
+          const subcats = [
+            ...(review.llm_subcategories ?? []),
+            ...(review.llm_issue_subcategories ?? []),
+            ...(review.llm_request_subcategories ?? []),
+          ];
+          const matches = subcats.some((value) => value.toLowerCase().startsWith(`${selectedCategory}/`));
+          if (!matches) return false;
+        }
+      }
+      if (selectedSubcategory !== 'all') {
+        const subcats = [
+          ...(review.llm_subcategories ?? []),
+          ...(review.llm_issue_subcategories ?? []),
+          ...(review.llm_request_subcategories ?? []),
+        ];
+        if (!subcats.some((value) => value.toLowerCase() === selectedSubcategory)) return false;
+      }
       return true;
     });
-  }, [filters, pageItems, quickSentiment, quickType]);
+  }, [filters, pageItems, quickSentiment, quickType, selectedCategory, selectedSubcategory]);
 
   useEffect(() => {
     if (filteredReviews.length === 0) {
@@ -227,12 +299,20 @@ export default function DatabasePage() {
   }, [filteredReviews]);
 
   useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setExpandedReview(null);
+      }
+    }
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, []);
+
+  useEffect(() => {
     if (selectedIndex === null) return;
     const item = document.getElementById(`db-review-item-${selectedIndex}`);
     item?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
-
-  const selectedReview = selectedIndex !== null ? filteredReviews[selectedIndex] : null;
 
   function handleApplyQuery() {
     setActiveQuery(queryInput.trim());
@@ -305,9 +385,9 @@ export default function DatabasePage() {
           </p>
         </div>
 
-        <Card variant="glass" className="p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-medium">Database Statistics</h2>
+        <Card variant="glass" className="p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-white">Database statistics</h2>
             {isAdmin && (
               <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-[10px] uppercase tracking-[0.25em] text-slate-400">
                 <button
@@ -338,23 +418,19 @@ export default function DatabasePage() {
           {loadingStats ? (
             <p className="text-sm text-slate-400">Loading stats...</p>
           ) : stats ? (
-            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-wider text-slate-400">Games</p>
-                <p className="text-2xl font-semibold text-sky-300">{stats.games.toLocaleString()}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-wider text-slate-400">Reviews</p>
-                <p className="text-2xl font-semibold text-sky-300">{stats.reviews.toLocaleString()}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-wider text-slate-400">Starred</p>
-                <p className="text-2xl font-semibold text-sky-300">{stats.starred_games.toLocaleString()}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-wider text-slate-400">Labels (Total)</p>
-                <p className="text-2xl font-semibold text-sky-300">{stats.labels.toLocaleString()}</p>
-              </div>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
+              <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
+                <span className="text-slate-400">Games</span> · {stats.games.toLocaleString()}
+              </span>
+              <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
+                <span className="text-slate-400">Reviews</span> · {stats.reviews.toLocaleString()}
+              </span>
+              <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
+                <span className="text-slate-400">Starred</span> · {stats.starred_games.toLocaleString()}
+              </span>
+              <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
+                <span className="text-slate-400">Labels</span> · {stats.labels.toLocaleString()}
+              </span>
             </div>
           ) : (
             <EmptyState
@@ -454,6 +530,49 @@ export default function DatabasePage() {
             </label>
           </div>
 
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Category</span>
+              <select
+                value={selectedCategory}
+                onChange={(event) => {
+                  setSelectedCategory(event.target.value);
+                  setSelectedSubcategory('all');
+                  setOffset(0);
+                }}
+                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+              >
+                <option value="all">All categories</option>
+                {categoryOptions.map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Subcategory</span>
+              <select
+                value={selectedSubcategory}
+                onChange={(event) => {
+                  setSelectedSubcategory(event.target.value);
+                  setOffset(0);
+                }}
+                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+              >
+                <option value="all">All subcategories</option>
+                {subcategoryOptions
+                  .filter((opt) => !selectedCategory || selectedCategory === 'all' || opt.main === selectedCategory)
+                  .map((subcategory) => (
+                    <option key={subcategory.value} value={subcategory.value}>
+                      {subcategory.label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
             <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Quick filters</span>
             {(['all', 'positive', 'negative'] as const).map((value) => (
@@ -510,7 +629,7 @@ export default function DatabasePage() {
           </Card>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="grid gap-6">
           <Card variant="glass" className="flex flex-col p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -546,7 +665,10 @@ export default function DatabasePage() {
                         key={`${review.review_id}-${idx}`}
                         id={`db-review-item-${idx}`}
                         type="button"
-                        onClick={() => setSelectedIndex(idx)}
+                        onClick={() => {
+                          setSelectedIndex(idx);
+                          setExpandedReview(review);
+                        }}
                         className={`w-full rounded-2xl border text-left transition ${
                           isActive
                             ? 'border-sky-400/60 bg-sky-500/10'
@@ -621,117 +743,127 @@ export default function DatabasePage() {
               </div>
             </div>
           </Card>
+        </div>
+      </div>
 
-          <Card variant="glass" className="flex flex-col p-6">
-            {selectedReview ? (
-              <>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-white">Review details</h2>
-                    <p className="text-xs text-slate-400">
-                      {formatReviewDate(selectedReview.created_at)} - {selectedReview.votes_up || 0} helpful
-                    </p>
-                  </div>
+      {expandedReview && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 py-8">
+          <div
+            className="absolute inset-0"
+            onClick={() => setExpandedReview(null)}
+            role="button"
+            tabIndex={-1}
+          />
+          <Card
+            variant="glass"
+            className="relative z-10 w-full max-w-3xl max-h-[85vh] overflow-auto p-6"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Review details</h2>
+                <p className="text-xs text-slate-400">
+                  {formatReviewDate(expandedReview.created_at)} - {expandedReview.votes_up || 0} helpful
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs ${
+                    expandedReview.voted_up ? 'bg-emerald-500/15 text-emerald-200' : 'bg-rose-500/15 text-rose-200'
+                  }`}
+                >
+                  {expandedReview.voted_up ? 'Recommended' : 'Not recommended'}
+                </span>
+                {expandedReview.llm_main_category ? (
+                  <span className="rounded-full bg-indigo-500/15 px-3 py-1 text-xs text-indigo-200">
+                    {formatTaxonomyLabel(expandedReview.llm_main_category)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
+              <p className="whitespace-pre-line">{expandedReview.review}</p>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Labels</p>
+                {expandedReview.llm_subcategories?.length ? (
                   <div className="flex flex-wrap gap-2">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs ${
-                        selectedReview.voted_up ? 'bg-emerald-500/15 text-emerald-200' : 'bg-rose-500/15 text-rose-200'
-                      }`}
-                    >
-                      {selectedReview.voted_up ? 'Recommended' : 'Not recommended'}
-                    </span>
-                    {selectedReview.llm_main_category ? (
-                      <span className="rounded-full bg-indigo-500/15 px-3 py-1 text-xs text-indigo-200">
-                        {formatTaxonomyLabel(selectedReview.llm_main_category)}
+                    {expandedReview.llm_subcategories.map((value, idx) => (
+                      <span key={`${value}-${idx}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">
+                        {formatTaxonomyLabel(value)}
                       </span>
-                    ) : null}
+                    ))}
                   </div>
-                </div>
+                ) : (
+                  <p className="text-xs text-slate-500">No subcategories tagged.</p>
+                )}
+              </div>
 
-                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
-                  <p className="whitespace-pre-line">{selectedReview.review}</p>
-                </div>
-
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Labels</p>
-                    {selectedReview.llm_subcategories?.length ? (
-                      <div className="flex flex-wrap gap-2">
-                        {selectedReview.llm_subcategories.map((value, idx) => (
-                          <span key={`${value}-${idx}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">
+              <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Issues & Requests</p>
+                <div className="space-y-3 text-xs text-slate-300">
+                  {expandedReview.llm_issue_subcategories?.length ? (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300">Issues</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {expandedReview.llm_issue_subcategories.map((value, idx) => (
+                          <span key={`${value}-${idx}`} className="rounded-full bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
                             {formatTaxonomyLabel(value)}
                           </span>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">No subcategories tagged.</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Issues & Requests</p>
-                    <div className="space-y-3 text-xs text-slate-300">
-                      {selectedReview.llm_issue_subcategories?.length ? (
-                        <div>
-                          <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300">Issues</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {selectedReview.llm_issue_subcategories.map((value, idx) => (
-                              <span key={`${value}-${idx}`} className="rounded-full bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
-                                {formatTaxonomyLabel(value)}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-500">No issues tagged.</p>
-                      )}
-                      {selectedReview.llm_request_subcategories?.length ? (
-                        <div>
-                          <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">Requests</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {selectedReview.llm_request_subcategories.map((value, idx) => (
-                              <span key={`${value}-${idx}`} className="rounded-full bg-cyan-500/15 px-2 py-1 text-xs text-cyan-200">
-                                {formatTaxonomyLabel(value)}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Evidence</p>
-                  {selectedReview.llm_subcategory_evidence && Object.keys(selectedReview.llm_subcategory_evidence).length ? (
-                    <div className="mt-3 space-y-3 text-sm text-slate-200">
-                      {Object.entries(selectedReview.llm_subcategory_evidence).map(([subcategory, snippets]) => (
-                        <div key={subcategory} className="rounded-xl border border-white/5 bg-white/5 p-3">
-                          <p className="text-xs font-semibold text-slate-300">{formatTaxonomyLabel(subcategory)}</p>
-                          <div className="mt-2 space-y-2 text-xs text-slate-200">
-                            {snippets.map((snippet, idx) => (
-                              <p key={`${subcategory}-${idx}`} className="rounded-lg bg-slate-950/40 px-3 py-2">
-                                {snippet}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
                     </div>
                   ) : (
-                    <p className="mt-2 text-sm text-slate-500">No evidence snippets saved for this review.</p>
+                    <p className="text-xs text-slate-500">No issues tagged.</p>
                   )}
+                  {expandedReview.llm_request_subcategories?.length ? (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">Requests</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {expandedReview.llm_request_subcategories.map((value, idx) => (
+                          <span key={`${value}-${idx}`} className="rounded-full bg-cyan-500/15 px-2 py-1 text-xs text-cyan-200">
+                            {formatTaxonomyLabel(value)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              </>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-slate-400">
-                <p>Select a review to see labels and evidence.</p>
-                <p className="text-xs text-slate-500">Tip: use Up/Down or J/K to move quickly.</p>
               </div>
-            )}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Evidence</p>
+              {expandedReview.llm_subcategory_evidence && Object.keys(expandedReview.llm_subcategory_evidence).length ? (
+                <div className="mt-3 space-y-3 text-sm text-slate-200">
+                  {Object.entries(expandedReview.llm_subcategory_evidence).map(([subcategory, snippets]) => (
+                    <div key={subcategory} className="rounded-xl border border-white/5 bg-white/5 p-3">
+                      <p className="text-xs font-semibold text-slate-300">{formatTaxonomyLabel(subcategory)}</p>
+                      <div className="mt-2 space-y-2 text-xs text-slate-200">
+                        {snippets.map((snippet, idx) => (
+                          <p key={`${subcategory}-${idx}`} className="rounded-lg bg-slate-950/40 px-3 py-2">
+                            {snippet}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">No evidence snippets saved for this review.</p>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <Button variant="secondary" onClick={() => setExpandedReview(null)}>
+                Close
+              </Button>
+            </div>
           </Card>
         </div>
-      </div>
+      )}
     </AppLayout>
   );
 }

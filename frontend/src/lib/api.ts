@@ -67,7 +67,7 @@ export function setAuthTokenFetcher(fetcher: AuthTokenFetcher | null) {
   authTokenFetcher = fetcher;
 }
 
-async function getAuthHeaders(): Promise<HeadersInit> {
+export async function getAuthHeaders(): Promise<HeadersInit> {
   if (!authTokenFetcher) return {};
   try {
     const token = await authTokenFetcher();
@@ -534,4 +534,152 @@ export interface AuthStatus {
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   const response = await authFetch(apiUrl("/auth/status"), { cache: "no-store" });
   return handleResponse<AuthStatus>(response);
+}
+
+// ============================================================================
+// Enhanced Chat (Chat with Your Data)
+// ============================================================================
+
+export interface EnhancedChatPayload {
+  message: string;
+  session_id?: string;
+  /** App IDs for game context (max 2) */
+  app_ids?: number[];
+  /** Date filter: "30d", "90d", "365d", or "all" */
+  date_filter?: string;
+  /** Max reviews per game (default 50) */
+  max_reviews_per_game?: number;
+}
+
+export interface ChatCitationItem {
+  review_id: string;
+  app_id: number;
+  game_name: string;
+  snippet: string;
+  votes_up: number;
+  voted_up?: boolean;
+  playtime_hours: number;
+}
+
+export interface EnhancedChatResponse {
+  response: string;
+  session_id: string;
+  citations: ChatCitationItem[];
+  games_used: Array<{ app_id: number; name: string }>;
+  reviews_searched: number;
+  has_game_context: boolean;
+}
+
+export async function sendEnhancedChat(
+  payload: EnhancedChatPayload
+): Promise<EnhancedChatResponse> {
+  const response = await authFetch(apiUrl("/chat/simple"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<EnhancedChatResponse>(response);
+}
+
+export interface ChatStatusEvent {
+  type: "status" | "done" | "error" | "timeout";
+  message?: string;
+  timestamp?: string;
+  status?: string;
+  error?: string;
+}
+
+export interface ChatStreamCallbacks {
+  onStatus?: (message: string) => void;
+  onDone?: () => void;
+  onError?: (error: string) => void;
+  onTimeout?: () => void;
+}
+
+/**
+ * Subscribe to real-time chat status updates via Server-Sent Events.
+ * Returns a cleanup function to close the connection.
+ */
+export function subscribeToChatStream(
+  sessionId: string,
+  callbacks: ChatStreamCallbacks
+): () => void {
+  if (typeof EventSource === "undefined") {
+    throw new Error("EventSource is not supported in this environment");
+  }
+
+  const base =
+    typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const url = new URL(apiUrl(`/chat/stream/${sessionId}`), base);
+
+  let eventSource: EventSource | null = null;
+  let aborted = false;
+
+  const start = async () => {
+    try {
+      const authHeaders = await getAuthHeaders();
+      const headerMap = new Headers(authHeaders);
+      const rawAuth =
+        headerMap.get("Authorization") ?? headerMap.get("authorization");
+      const rawToken =
+        typeof rawAuth === "string"
+          ? rawAuth.replace(/^Bearer\s+/i, "").trim()
+          : "";
+      if (rawToken) {
+        url.searchParams.set("token", rawToken);
+      }
+
+      if (aborted) return;
+      eventSource = new EventSource(url.toString());
+
+      eventSource.addEventListener("status", (event) => {
+        try {
+          const data = JSON.parse(event.data) as ChatStatusEvent;
+          callbacks.onStatus?.(data.message ?? "");
+        } catch {
+          // Ignore parse errors
+        }
+      });
+
+      eventSource.addEventListener("done", () => {
+        callbacks.onDone?.();
+        eventSource?.close();
+      });
+
+      eventSource.addEventListener("error", (event) => {
+        if (event instanceof MessageEvent && event.data) {
+          try {
+            const data = JSON.parse(event.data) as ChatStatusEvent;
+            callbacks.onError?.(data.error ?? "Unknown error");
+          } catch {
+            callbacks.onError?.("Connection error");
+          }
+        } else {
+          callbacks.onError?.("Connection lost");
+        }
+        eventSource?.close();
+      });
+
+      eventSource.addEventListener("timeout", () => {
+        callbacks.onTimeout?.();
+        eventSource?.close();
+      });
+
+      eventSource.onerror = () => {
+        if (eventSource && eventSource.readyState !== EventSource.CLOSED) {
+          // Don't report errors for SSE - it's optional
+          eventSource.close();
+        }
+      };
+    } catch (error) {
+      // SSE is optional, don't report errors
+    }
+  };
+
+  void start();
+
+  return () => {
+    aborted = true;
+    eventSource?.close();
+  };
 }

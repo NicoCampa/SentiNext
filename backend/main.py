@@ -10,6 +10,7 @@ import io
 from datetime import datetime
 import hashlib
 from pathlib import Path
+import asyncio
 from typing import Any, Dict, List, Optional
 
 # Load environment variables from .env.local (for local development)
@@ -81,6 +82,35 @@ def _parse_admin_user_ids() -> set[str]:
 ADMIN_USER_IDS = _parse_admin_user_ids()
 
 _JWKS_CLIENT: Optional[PyJWKClient] = None
+
+# In-memory chat status tracking for SSE
+# Maps session_id -> list of status messages
+_chat_status_store: Dict[str, List[str]] = {}
+_chat_status_lock = None  # Will be initialized lazily for async
+
+def _get_chat_status_store() -> Dict[str, List[str]]:
+    """Get the chat status store (thread-safe access)."""
+    return _chat_status_store
+
+def _emit_chat_status(session_id: str, status: str) -> None:
+    """Emit a status update for a chat session."""
+    store = _get_chat_status_store()
+    if session_id not in store:
+        store[session_id] = []
+    store[session_id].append(status)
+    # Keep only last 20 status messages per session
+    if len(store[session_id]) > 20:
+        store[session_id] = store[session_id][-20:]
+
+def _get_chat_status(session_id: str) -> List[str]:
+    """Get all status messages for a session."""
+    return _get_chat_status_store().get(session_id, [])
+
+def _clear_chat_status(session_id: str) -> None:
+    """Clear status messages for a session."""
+    store = _get_chat_status_store()
+    if session_id in store:
+        del store[session_id]
 
 storage.init_db()
 
@@ -234,6 +264,14 @@ def require_user_id(request: Request) -> str:
     return _resolve_user_id(request)
 
 
+def _optional_user_id(request: Request) -> str:
+    """Get user ID or 'anonymous' for SSE endpoints."""
+    try:
+        return _resolve_user_id(request)
+    except HTTPException:
+        return "anonymous"
+
+
 def is_admin_user_id(user_id: str) -> bool:
     return bool(user_id and user_id in ADMIN_USER_IDS)
 
@@ -357,11 +395,30 @@ class ChatRequest(BaseModel):
 class SimpleChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     session_id: Optional[str] = None
+    # Game context for "Chat with Your Data"
+    app_ids: Optional[List[int]] = Field(None, max_length=2, description="App IDs for game context (max 2)")
+    date_filter: str = Field("all", description="Date filter: 30d, 90d, 365d, or all")
+    max_reviews_per_game: int = Field(50, ge=1, le=100, description="Max reviews per game")
+
+
+class ChatCitationItem(BaseModel):
+    review_id: str
+    app_id: int
+    game_name: str
+    snippet: str
+    votes_up: int
+    voted_up: Optional[bool] = None
+    playtime_hours: float
 
 
 class SimpleChatResponse(BaseModel):
     response: str
     session_id: str
+    # Game context response fields
+    citations: List[ChatCitationItem] = Field(default_factory=list)
+    games_used: List[Dict[str, Any]] = Field(default_factory=list)
+    reviews_searched: int = 0
+    has_game_context: bool = False
 
 
 class ChatMessage(BaseModel):
@@ -1011,45 +1068,92 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
 
 @app.post("/chat/simple", response_model=SimpleChatResponse)
 def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_id)) -> SimpleChatResponse:
-    """Simple chatbot endpoint that uses Gemini for general conversation with memory."""
+    """Simple chatbot endpoint that uses Gemini for general conversation with memory.
+
+    If app_ids are provided, enables "Chat with Your Data" mode which searches
+    through game reviews to answer questions with citations.
+    """
     message = (request.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     try:
+        import uuid
+
         # Generate session_id if not provided
         session_id = request.session_id
         if not session_id:
-            import uuid
             session_id = str(uuid.uuid4())
 
         # Load recent conversation history for this session (last 20 messages for context)
         history = storage.load_chat_history(user_id, limit=20, session_id=session_id)
 
-        # Build prompt with conversation history
-        conversation_text = ""
-        for msg in history:
-            role_label = "User" if msg["role"] == "user" else "Assistant"
-            conversation_text += f"{role_label}: {msg['content']}\n\n"
+        # Check if we have game context (Chat with Your Data mode)
+        app_ids = request.app_ids or []
+        has_game_context = bool(app_ids)
 
-        # Add current message
-        conversation_text += f"User: {message}\n\nAssistant:"
+        if has_game_context:
+            # Game-aware chat: search reviews and build context
+            logger.info(f"Chat with game context: app_ids={app_ids}, date_filter={request.date_filter}")
 
-        # Create full prompt
-        prompt = f"""You are a helpful, friendly AI assistant. You are having a conversation with a user.
+            # Create status callback that emits to SSE store
+            def status_callback(status: str) -> None:
+                _emit_chat_status(session_id, status)
+
+            result = chat.answer_game_aware_chat(
+                user_id=user_id,
+                app_ids=app_ids,
+                message=message,
+                date_filter=request.date_filter,
+                max_reviews_per_game=request.max_reviews_per_game,
+                history=history,
+                status_callback=status_callback,
+            )
+
+            # Clear status after completion
+            _clear_chat_status(session_id)
+
+            response_text = result.get("response", "")
+            citations = [
+                ChatCitationItem(**c) for c in result.get("citations", [])
+            ]
+            games_used = result.get("games_used", [])
+            reviews_searched = result.get("reviews_searched", 0)
+        else:
+            # Standard chat: general conversation
+            conversation_text = ""
+            for msg in history:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                conversation_text += f"{role_label}: {msg['content']}\n\n"
+
+            # Add current message
+            conversation_text += f"User: {message}\n\nAssistant:"
+
+            # Create full prompt
+            prompt = f"""You are a helpful, friendly AI assistant. You are having a conversation with a user.
 Previous conversation:
 {conversation_text if history else 'This is the start of the conversation.'}
 
 Please respond naturally to the user's latest message, considering the conversation history."""
 
-        # Use Gemini to generate response
-        response_text, model_id = llm.run_chat_completion(prompt)
+            # Use Gemini to generate response
+            response_text, model_id = llm.run_chat_completion(prompt)
+            citations = []
+            games_used = []
+            reviews_searched = 0
 
         # Save both user message and assistant response with session_id
         storage.save_chat_message(user_id, "user", message, session_id=session_id)
         storage.save_chat_message(user_id, "assistant", response_text, session_id=session_id)
 
-        return SimpleChatResponse(response=response_text, session_id=session_id)
+        return SimpleChatResponse(
+            response=response_text,
+            session_id=session_id,
+            citations=citations,
+            games_used=games_used,
+            reviews_searched=reviews_searched,
+            has_game_context=has_game_context,
+        )
     except Exception as exc:
         logger.exception("Simple chat failed: %s", exc)
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc
@@ -1086,6 +1190,71 @@ def clear_chat_history_endpoint(session_id: Optional[str] = None, user_id: str =
     except Exception as exc:
         logger.exception("Failed to clear chat history: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to clear chat history.") from exc
+
+
+@app.get("/chat/stream/{session_id}")
+async def chat_stream(
+    session_id: str,
+    user_id: str = Depends(_optional_user_id),
+):
+    """Server-Sent Events endpoint for real-time chat status updates.
+
+    Subscribe to this endpoint when sending a chat message to receive
+    status updates like "Searching reviews...", "Generating response...".
+
+    Event types:
+        - status: {"message": str, "timestamp": str}
+        - done: {"status": "completed"}
+    """
+    import asyncio
+
+    async def event_generator():
+        last_index = 0
+        idle_count = 0
+        max_idle = 60  # 30 seconds of no updates = timeout
+
+        while True:
+            try:
+                statuses = _get_chat_status(session_id)
+
+                # Send any new status messages
+                if len(statuses) > last_index:
+                    for status in statuses[last_index:]:
+                        yield f"event: status\ndata: {json.dumps({'message': status, 'timestamp': datetime.utcnow().isoformat() + 'Z'})}\n\n"
+                        idle_count = 0
+                    last_index = len(statuses)
+
+                # Check if done (status list cleared or contains "done" indicator)
+                if statuses and any("generating" in s.lower() for s in statuses[-3:]):
+                    # Give some time for the response to complete
+                    await asyncio.sleep(0.5)
+                    if not _get_chat_status(session_id):
+                        yield f"event: done\ndata: {json.dumps({'status': 'completed'})}\n\n"
+                        return
+
+                idle_count += 1
+                if idle_count >= max_idle:
+                    yield f"event: timeout\ndata: {json.dumps({'status': 'timeout'})}\n\n"
+                    return
+
+                await asyncio.sleep(0.5)
+
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning("Chat SSE stream error: %s", exc)
+                yield f"event: error\ndata: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"
+                return
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/feedback/{app_id}", response_model=List[FeedbackItem], dependencies=[Depends(require_license)])
@@ -1208,17 +1377,6 @@ def classification_progress(
         "active": processed < total,
         "updated_at": updated_at,
     }
-
-
-import asyncio
-
-
-def _optional_user_id(request: Request) -> str:
-    """Get user ID or 'anonymous' for SSE endpoints."""
-    try:
-        return _resolve_user_id(request)
-    except HTTPException:
-        return "anonymous"
 
 
 @app.get("/progress/{app_id}/stream", dependencies=[Depends(require_license)])

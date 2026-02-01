@@ -3,12 +3,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Any, Dict, List, Optional, Sequence
+import logging
+from typing import Any, Dict, List, Optional, Sequence, Callable
 import re
 import time
 
 from . import llm, storage
 from .steam_api import fetch_app_details
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -646,4 +649,348 @@ def answer_chat(
         "model": model_id,
         "review_count": context["total_reviews"],
         "filtered_review_count": context["filtered_reviews"],
+    }
+
+
+# ============================================================================
+# Game-Aware Chat Functions (Chat with Your Data)
+# ============================================================================
+
+@dataclass
+class GameChatCitation:
+    """Citation for a review in game-aware chat."""
+    review_id: str
+    app_id: int
+    game_name: str
+    snippet: str
+    votes_up: int
+    voted_up: Optional[bool]
+    playtime_hours: float
+
+
+def extract_search_terms(message: str) -> List[str]:
+    """Extract search keywords from a user question using simple NLP.
+
+    Uses a lightweight approach without requiring an LLM call.
+    Filters out stopwords and question words to find relevant terms.
+    """
+    # Lowercase and tokenize
+    text = message.lower()
+
+    # Remove common question patterns
+    question_patterns = [
+        r"^what (do|does|did|are|is|was|were) ",
+        r"^how (do|does|did|are|is|was|were|many|much) ",
+        r"^why (do|does|did|are|is|was|were) ",
+        r"^can you ",
+        r"^could you ",
+        r"^tell me ",
+        r"^show me ",
+        r"^find ",
+        r"^search for ",
+        r"^look for ",
+    ]
+    for pattern in question_patterns:
+        text = re.sub(pattern, "", text)
+
+    # Extract word tokens
+    tokens = re.findall(r"[a-z0-9]+", text)
+
+    # Filter out stopwords (extended list for chat context)
+    stopwords = _FTS_STOPWORDS | {
+        "about", "think", "say", "saying", "said", "talk", "talking",
+        "mention", "mentioning", "mentioned", "feel", "feeling",
+        "think", "thinking", "like", "likes", "want", "wants",
+        "reviews", "players", "people", "users", "reviewers",
+        "game", "games", "steam", "any", "some", "most", "many",
+    }
+
+    filtered = []
+    for token in tokens:
+        if token not in stopwords and len(token) > 2:
+            if token not in filtered:
+                filtered.append(token)
+
+    return filtered[:10]  # Limit to 10 keywords
+
+
+def _truncate_review_text(text: str, max_chars: int = 500) -> str:
+    """Truncate review text for prompt inclusion."""
+    if not text or len(text) <= max_chars:
+        return text
+    # Try to break at a sentence boundary
+    truncated = text[:max_chars]
+    last_period = truncated.rfind(".")
+    if last_period > max_chars // 2:
+        return truncated[: last_period + 1]
+    return truncated + "..."
+
+
+def search_reviews_for_question(
+    app_ids: List[int],
+    question: str,
+    date_filter: str = "all",
+    max_per_game: int = 50,
+    status_callback: Optional[Callable[[str], None]] = None,
+) -> Dict[int, List[dict]]:
+    """Search reviews for a question across multiple games.
+
+    Args:
+        app_ids: List of app IDs to search (max 2)
+        question: User's question
+        date_filter: Date filter ("30d", "90d", "365d", "all")
+        max_per_game: Maximum reviews per game
+        status_callback: Optional callback for status updates
+
+    Returns:
+        Dict mapping app_id to list of matching reviews
+    """
+    if status_callback:
+        status_callback("Analyzing your question...")
+
+    # Extract search keywords
+    keywords = extract_search_terms(question)
+    query = " ".join(keywords) if keywords else ""
+
+    logger.info(f"Extracted search keywords from question: {keywords}")
+
+    results: Dict[int, List[dict]] = {}
+
+    for app_id in app_ids[:2]:  # Max 2 games
+        if status_callback:
+            # Count total reviews for this game
+            total_count = storage.count_reviews(app_id)
+            status_callback(f"Searching {total_count:,} reviews...")
+
+        reviews = storage.search_reviews_with_date_filter(
+            app_id=app_id,
+            query=query,
+            date_filter=date_filter,
+            limit=max_per_game,
+            order_by="votes_up",
+        )
+        results[app_id] = reviews
+        logger.info(f"Found {len(reviews)} reviews for app {app_id}")
+
+    total_found = sum(len(r) for r in results.values())
+    if status_callback:
+        status_callback(f"Found {total_found} relevant reviews")
+
+    return results
+
+
+def build_game_aware_prompt(
+    message: str,
+    games: List[Dict[str, Any]],
+    reviews_by_game: Dict[int, List[dict]],
+    history: List[Dict[str, Any]],
+) -> str:
+    """Build a prompt for game-aware chat with review context.
+
+    Args:
+        message: User's current message
+        games: List of game metadata dicts
+        reviews_by_game: Dict mapping app_id to list of reviews
+        history: Conversation history
+
+    Returns:
+        Complete prompt string for the LLM
+    """
+    prompt_parts = []
+
+    # System instruction
+    prompt_parts.append(
+        "You are a game review analyst with access to real player reviews from Steam. "
+        "Your role is to answer questions about games based on actual player feedback.\n"
+    )
+
+    # Add game context and reviews
+    for game in games:
+        app_id = game["app_id"]
+        reviews = reviews_by_game.get(app_id, [])
+
+        # Game metadata
+        genres = game.get("genres", [])
+        if isinstance(genres, list):
+            genre_str = ", ".join(str(g.get("description", g) if isinstance(g, dict) else g) for g in genres[:5])
+        else:
+            genre_str = str(genres)
+
+        prompt_parts.append(f"\n## Game: {game.get('name', 'Unknown')}")
+        if genre_str:
+            prompt_parts.append(f"Genres: {genre_str}")
+        if game.get("short_description"):
+            prompt_parts.append(f"Description: {game['short_description'][:200]}")
+
+        # Reviews section
+        if reviews:
+            prompt_parts.append(f"\n### Reviews ({len(reviews)} most relevant):\n")
+            for idx, review in enumerate(reviews[:50], 1):
+                votes_up = int(review.get("votes_up") or 0)
+                voted_up = review.get("voted_up")
+                sentiment = "positive" if voted_up else "negative"
+
+                # Get playtime
+                author = review.get("author") or {}
+                playtime_mins = int(author.get("playtime_forever") or 0)
+                playtime_hours = playtime_mins / 60
+
+                # Review text (truncated)
+                review_text = _truncate_review_text(str(review.get("review") or ""), 500)
+                review_id = review.get("recommendationid") or review.get("review_id") or f"r{idx}"
+
+                prompt_parts.append(
+                    f"[Review #{review_id}] ({votes_up} helpful votes, {sentiment}, {playtime_hours:.0f}h playtime)"
+                )
+                prompt_parts.append(f'"{review_text}"\n')
+        else:
+            prompt_parts.append("\n### No reviews found matching your query.\n")
+
+    # Add conversation history (last 6 exchanges)
+    if history:
+        prompt_parts.append("\n## Previous Conversation:\n")
+        for msg in history[-12:]:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")[:500]
+            if role == "user":
+                prompt_parts.append(f"User: {content}")
+            else:
+                prompt_parts.append(f"Assistant: {content}")
+        prompt_parts.append("")
+
+    # Instructions
+    prompt_parts.append("\n## Instructions:")
+    prompt_parts.append("1. Answer based ONLY on the reviews provided above")
+    prompt_parts.append("2. When quoting a review, mention the review ID (e.g., \"Review #12345 mentions...\")")
+    prompt_parts.append("3. If there's insufficient data, clearly state that")
+    prompt_parts.append("4. Note the sentiment (positive/negative) when relevant")
+    prompt_parts.append("5. Consider the helpfulness (votes) when weighing opinions")
+    prompt_parts.append("6. If comparing games, organize your response by game")
+
+    # Current question
+    prompt_parts.append(f"\n## Current Question:\n{message}")
+    prompt_parts.append("\n## Your Answer:")
+
+    return "\n".join(prompt_parts)
+
+
+def answer_game_aware_chat(
+    *,
+    user_id: str,
+    app_ids: List[int],
+    message: str,
+    date_filter: str = "all",
+    max_reviews_per_game: int = 50,
+    history: Optional[List[Dict[str, Any]]] = None,
+    status_callback: Optional[Callable[[str], None]] = None,
+) -> Dict[str, Any]:
+    """Answer a chat question with game review context.
+
+    Args:
+        user_id: User ID for accessing starred games
+        app_ids: List of app IDs to include in context (max 2)
+        message: User's question
+        date_filter: Date filter for reviews ("30d", "90d", "365d", "all")
+        max_reviews_per_game: Maximum reviews per game (default 50)
+        history: Optional conversation history
+        status_callback: Optional callback for status updates
+
+    Returns:
+        Dict with response, citations, and metadata
+    """
+    if not app_ids:
+        # No games selected - fall back to general chat
+        return {
+            "response": "",
+            "citations": [],
+            "games_used": [],
+            "reviews_searched": 0,
+            "has_game_context": False,
+        }
+
+    # Limit to 2 games
+    app_ids = app_ids[:2]
+
+    # Load game metadata
+    if status_callback:
+        status_callback("Retrieving game info...")
+
+    games = storage.load_game_metadata_for_chat(user_id, app_ids)
+    if not games:
+        # Try fetching from Steam API directly
+        games = []
+        for app_id in app_ids:
+            details = fetch_app_details(app_id)
+            if details:
+                games.append({
+                    "app_id": app_id,
+                    "name": details.get("name", str(app_id)),
+                    "genres": details.get("genres", []),
+                    "categories": details.get("categories", []),
+                    "short_description": details.get("short_description", ""),
+                })
+
+    if not games:
+        return {
+            "response": "I couldn't find information about the selected games.",
+            "citations": [],
+            "games_used": [],
+            "reviews_searched": 0,
+            "has_game_context": False,
+        }
+
+    # Search reviews
+    reviews_by_game = search_reviews_for_question(
+        app_ids=app_ids,
+        question=message,
+        date_filter=date_filter,
+        max_per_game=max_reviews_per_game,
+        status_callback=status_callback,
+    )
+
+    total_reviews = sum(len(r) for r in reviews_by_game.values())
+
+    # Build prompt
+    if status_callback:
+        status_callback("Generating response...")
+
+    prompt = build_game_aware_prompt(
+        message=message,
+        games=games,
+        reviews_by_game=reviews_by_game,
+        history=history or [],
+    )
+
+    # Call LLM
+    response_text, model_id = llm.run_chat_completion(prompt)
+
+    # Extract citations from the response (look for review ID mentions)
+    citations = []
+    review_id_pattern = re.compile(r"Review #(\d+)")
+    mentioned_ids = set(review_id_pattern.findall(response_text))
+
+    for app_id, reviews in reviews_by_game.items():
+        game_name = next((g["name"] for g in games if g["app_id"] == app_id), str(app_id))
+        for review in reviews:
+            review_id = str(review.get("recommendationid") or review.get("review_id") or "")
+            if review_id in mentioned_ids:
+                author = review.get("author") or {}
+                playtime_mins = int(author.get("playtime_forever") or 0)
+                citations.append({
+                    "review_id": review_id,
+                    "app_id": app_id,
+                    "game_name": game_name,
+                    "snippet": _truncate_review_text(str(review.get("review") or ""), 200),
+                    "votes_up": int(review.get("votes_up") or 0),
+                    "voted_up": review.get("voted_up"),
+                    "playtime_hours": playtime_mins / 60,
+                })
+
+    return {
+        "response": response_text,
+        "citations": citations,
+        "games_used": [{"app_id": g["app_id"], "name": g["name"]} for g in games],
+        "reviews_searched": total_reviews,
+        "has_game_context": True,
+        "model": model_id,
     }

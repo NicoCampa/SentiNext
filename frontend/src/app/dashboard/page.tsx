@@ -683,6 +683,12 @@ function AnalysisResults({
     });
   }, [activeCategoryRates, subcatsByMain, theme.palette.accent]);
 
+  const categoryKeys = useMemo(() => categories.map((category) => category.key), [categories]);
+  const allCategoriesExpanded = useMemo(() => {
+    if (categoryKeys.length === 0) return false;
+    return categoryKeys.every((key) => expandedCategories.has(key));
+  }, [categoryKeys, expandedCategories]);
+
   const issueItems = useMemo(() => {
     return (activeSubcategoryInsights ?? [])
       .filter((entry) => Number(entry.issue_count ?? 0) > 0)
@@ -949,11 +955,20 @@ function AnalysisResults({
       <div className="space-y-6">
 
         <Card variant="glass" className="p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h4 className="text-lg font-semibold text-white">Category recommendation</h4>
+              <h4 className="text-lg font-semibold text-white">Categories overview</h4>
               <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                setExpandedCategories(() => new Set(allCategoriesExpanded ? [] : categoryKeys))
+              }
+            >
+              {allCategoriesExpanded ? "Collapse all" : "Expand all"}
+            </Button>
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -961,7 +976,7 @@ function AnalysisResults({
               const rateText = formatPercentOrDash(category.rate);
               const rateColor = getRecommendationColor(category.rate);
               const isExpanded = expandedCategories.has(category.key);
-              const visibleSubcategories = isExpanded ? category.subcategories : category.subcategories.slice(0, 3);
+              const visibleSubcategories = isExpanded ? category.subcategories : category.subcategories.slice(0, 4);
               return (
                 <div
                   key={category.key}
@@ -1012,7 +1027,7 @@ function AnalysisResults({
                       ))
                     )}
                   </div>
-                  {category.subcategories.length > 3 ? (
+                  {category.subcategories.length > 4 ? (
                     <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
                       <span>
                         Showing {Math.min(visibleSubcategories.length, category.subcategories.length)} of{" "}
