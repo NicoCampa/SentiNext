@@ -71,7 +71,8 @@ export default function ChatPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to get response");
+        const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(errorData.detail || "Failed to get response");
       }
 
       const data = await response.json();
@@ -84,9 +85,10 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Chat error:", error);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       const errorMessage: Message = {
         role: "assistant",
-        content: "Sorry, I encountered an error. Please try again.",
+        content: `Error: ${errorMsg}\n\nTip: Make sure GEMINI_API_KEY is set in your .env.local file.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
