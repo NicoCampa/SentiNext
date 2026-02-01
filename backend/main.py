@@ -219,11 +219,14 @@ async def auth_middleware(request: Request, call_next):
 
 def _resolve_user_id(request: Request) -> str:
     if not AUTH_ENABLED:
+        logger.debug("Auth disabled, using 'local' user_id")
         return "local"
     payload = getattr(request.state, "user", None) or {}
     user_id = payload.get("sub") or payload.get("user_id") or payload.get("id")
     if not user_id:
+        logger.warning("Missing user identity in JWT payload: %s", payload.keys())
         raise HTTPException(status_code=401, detail="Missing user identity.")
+    logger.info(f"Resolved user_id: {user_id} from JWT (sub={payload.get('sub')}, user_id={payload.get('user_id')}, id={payload.get('id')})")
     return str(user_id)
 
 
