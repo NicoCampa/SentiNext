@@ -1,22 +1,36 @@
 # SentiNext Website
 
-Marketing site for the SentiNext desktop app (local-first Steam review intelligence).
+The official marketing and documentation site for SentiNext, built with Next.js 16 (App Router) and Tailwind CSS v4.
 
-## Pages
-- `/` – Landing page
-- `/download` – Download instructions (links to GitHub Releases)
-- `/docs` – Quickstart + product notes
+## Deploying on Vercel (Production)
 
-## Local dev
+This site is designed to be deployed on Vercel.
+
+1. **Connect Repository**: Import the `SentiNext` repo.
+2. **Root Directory**: Set the "Root Directory" to `web`.
+3. **Environment Variables**:
+   - `NEXT_PUBLIC_APP_URL`: The URL of the hosted SentiNext product App (e.g., `https://sentinext-frontend.onrender.com`).
+
+## Running Locally
+
 ```bash
 cd web
 npm install
 npm run dev
 ```
 
-## Build
-```bash
-cd web
-npm run build
-npm run start
-```
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Project Structure
+
+- `src/app`: App Router pages.
+- `src/components/ui`: Reusable UI components (buttons, cards).
+- `src/components/layout`: Global layout components (Header, Footer).
+- `src/lib`: Utilities (clsx, tailwind-merge).
+
+## Key Features
+
+- **Performance**: Static generation where possible, optimized images, minimal client-side JS.
+- **Styling**: Tailwind CSS v4 with design tokens for the "Deep Intelligence" theme.
+- **Animation**: Framer Motion for scroll reveals and layout transitions.
+- **Docs**: Markdown-based documentation pages in `src/app/docs`.

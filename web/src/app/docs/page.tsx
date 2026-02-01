@@ -1,184 +1,72 @@
+
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 
-const RELEASES_URL = "https://github.com/NicoCampa/SentiNext/releases/latest";
+export default function DocsIndex() {
+    return (
+        <div>
+            <h1>Welcome to SentiNext Docs</h1>
+            <p className="lead text-xl text-muted-foreground mb-8">
+                Learn how to turn raw Steam reviews into actionable product insights.
+            </p>
 
-export default function DocsPage() {
-  return (
-    <div className="container">
-      <span className="eyebrow">Docs</span>
-      <h1 className="title" style={{ fontSize: "clamp(34px, 4.1vw, 54px)" }}>
-        Quickstart + product notes
-      </h1>
-      <p className="lead">
-        SentiNext is a local-first desktop app. This page explains the basic workflow, what “chat with sources” means,
-        and how to keep cost and speed predictable.
-      </p>
-
-      <section className="section" style={{ marginTop: 34 }}>
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Quickstart</h2>
-            <p className="sectionLead">From zero to insights.</p>
-          </div>
-          <Link href="/download" className="btn btnSmall btnPrimary">
-            Download →
-          </Link>
-        </div>
-
-        <div className="steps">
-          {[
-            "Install and launch SentiNext.",
-            "Open Settings → choose OpenAI or Ollama, set model + key/host.",
-            "Analyze a game (use Estimate to preview LLM calls).",
-            "Use the dashboard + chat to create top actions and export what you need.",
-          ].map((text, index) => (
-            <div key={text} className="step">
-              <div className="stepNumber">{index + 1}</div>
-              <div className="stepText">{text}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-12">
+                <DocsCard
+                    title="Getting Started"
+                    description="Create your account and analyze your first game in under 5 minutes."
+                    href="/docs/getting-started"
+                />
+                <DocsCard
+                    title="Ingesting Reviews"
+                    description="Learn how SentiNext fetches, cleans, and caches Steam Community data."
+                    href="/docs/ingesting-reviews"
+                />
+                <DocsCard
+                    title="Insights & Taxonomy"
+                    description="Understand how our AI classifies issues, requests, and sentiment."
+                    href="/docs/insights-and-taxonomy"
+                />
+                <DocsCard
+                    title="API & Developers"
+                    description="Technical reference for the open-source backend and local deployment."
+                    href="/docs/developers"
+                />
             </div>
-          ))}
-        </div>
-      </section>
 
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Providers</h2>
-            <p className="sectionLead">Bring your own key — choose what fits your workflow.</p>
-          </div>
-        </div>
-
-        <div className="grid2">
-          <div className="card">
-            <p className="cardTitle">OpenAI</p>
-            <p className="cardText">
-              Use hosted models (e.g. <span className="mono">gpt-5-mini</span>). Keys are stored locally in the OS
-              keychain. You pay OpenAI directly.
+            <h2>What is SentiNext?</h2>
+            <p>
+                SentiNext is an intelligence tool for game developers. It moves beyond simple "thumbs up/down" ratios to specific, categorized feedback.
             </p>
-          </div>
-          <div className="card">
-            <p className="cardTitle">Ollama</p>
-            <p className="cardText">
-              Use a local model via an Ollama host (e.g. <span className="mono">http://127.0.0.1:11434</span>). Great
-              for privacy and cost control.
+            <p>
+                By ingesting thousands of reviews and passing them through a specialized LLM pipeline, SentiNext answers questions like:
             </p>
-          </div>
-        </div>
-      </section>
+            <ul>
+                <li>What are the top 5 technical issues causing negative reviews this week?</li>
+                <li>Which feature requests are most correlated with high playtime users?</li>
+                <li>Is the sentiment for "Combat Balance" improving after the last patch?</li>
+            </ul>
 
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Chat with sources</h2>
-            <p className="sectionLead">Answers are grounded in your labeled reviews.</p>
-          </div>
-        </div>
-
-        <div className="grid2">
-          <div className="card">
-            <p className="cardTitle">What you see</p>
-            <p className="cardText">
-              Chat responses include citations. Clicking a citation opens the full review and highlights the quoted
-              snippet.
-            </p>
-          </div>
-          <div className="card">
-            <p className="cardTitle">How retrieval works</p>
-            <p className="cardText">
-              Retrieval uses full-text search and then cites evidence stored during labeling. No embeddings database
-              required.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Global filters</h2>
-            <p className="sectionLead">One set of filters applied across dashboard, reviews, compare, and chat.</p>
-          </div>
-        </div>
-
-        <div className="grid3">
-          {[
-            ["Sentiment", "All / Recommended / Not recommended"],
-            ["Recency", "All time / last 30d / 90d / 365d"],
-            ["Quality", "Minimum helpful votes + playtime buckets"],
-          ].map(([title, desc]) => (
-            <div key={title} className="card">
-              <p className="cardTitle">{title}</p>
-              <p className="cardText">{desc}</p>
+            <div className="mt-8">
+                <Button asChild>
+                    <Link href="/docs/getting-started">
+                        Get Started <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                </Button>
             </div>
-          ))}
         </div>
-      </section>
+    );
+}
 
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Cost + speed control</h2>
-            <p className="sectionLead">Keep runs predictable.</p>
-          </div>
-        </div>
-
-        <div className="grid2">
-          <div className="card">
-            <p className="cardTitle">Estimate before you run</p>
-            <p className="cardText">
-              The dashboard includes an Estimate button that predicts how many reviews will use cache/rules vs require
-              new LLM calls.
-            </p>
-          </div>
-          <div className="card">
-            <p className="cardTitle">Keep runs small</p>
-            <p className="cardText">
-              Start with 100–200 reviews, validate the output, then scale up only when it’s worth the cost.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Troubleshooting</h2>
-            <p className="sectionLead">If something feels “stuck”, here’s what to check.</p>
-          </div>
-        </div>
-
-        <div className="faq">
-          <div className="faqItem">
-            <p className="faqQ">The app says the backend is offline</p>
-            <p className="faqA">
-              Open Settings → Diagnostics to check backend status and logs. If it still fails, restart the app.
-            </p>
-          </div>
-          <div className="faqItem">
-            <p className="faqQ">Chat answers are too generic</p>
-            <p className="faqA">
-              Run an analysis first so reviews are labeled with evidence. Also try narrowing with global filters (e.g.
-              Not recommended + last 30 days).
-            </p>
-          </div>
-          <div className="faqItem">
-            <p className="faqQ">macOS won’t open the app</p>
-            <p className="faqA">
-              Download the latest signed build from Releases. If Gatekeeper blocks it, right‑click → Open once.
-            </p>
-          </div>
-          <div className="faqItem">
-            <p className="faqQ">Where do downloads live?</p>
-            <p className="faqA">
-              Builds are published on GitHub Releases. Grab the installer that matches your OS and architecture.
-            </p>
-          </div>
-        </div>
-
-        <div className="codeBlock" aria-label="Download link">
-          <code>{`Latest builds: ${RELEASES_URL}`}</code>
-        </div>
-      </section>
-    </div>
-  );
+function DocsCard({ title, description, href }: any) {
+    return (
+        <Link href={href} className="block group">
+            <div className="h-full p-6 border border-border/40 rounded-lg bg-card/30 hover:bg-card/50 transition-colors">
+                <h3 className="text-lg font-bold mb-2 group-hover:text-primary transition-colors flex items-center">
+                    {title} <ArrowRight className="ml-2 h-4 w-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                </h3>
+                <p className="text-muted-foreground text-sm no-underline">{description}</p>
+            </div>
+        </Link>
+    )
 }

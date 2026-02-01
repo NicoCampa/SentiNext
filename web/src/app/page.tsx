@@ -1,250 +1,209 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { ArrowRight, BarChart3, Database, Search, Zap } from "lucide-react";
 
-const FEATURE_CARDS: Array<{ title: string; text: string }> = [
-  {
-    title: "Global filters",
-    text: "Slice everything by sentiment, recency, helpful votes, playtime bucket, and language — including chat.",
-  },
-  {
-    title: "Actionable dashboard",
-    text: "Recommendation rate and volume by category/subcategory so you can spot what actually moves sentiment.",
-  },
-  {
-    title: "Issues vs requests",
-    text: "Separate bugs from feature requests, with subcategory counts and evidence you can paste into tickets.",
-  },
-  {
-    title: "Chat with sources",
-    text: "Ask questions like “what are players saying about AI?” and jump to the exact cited reviews.",
-  },
-  {
-    title: "Cost + speed control",
-    text: "Estimate LLM calls before you run. Reuse cache, apply rules for easy cases, and stay in control.",
-  },
-  {
-    title: "Local-first storage",
-    text: "Reviews, labels, evidence, and exports are stored locally in PostgreSQL. No accounts. No shared database.",
-  },
-];
-
-const FAQ: Array<{ q: string; a: string }> = [
-  {
-    q: "Do you store my API key?",
-    a: "The desktop app stores your settings locally. OpenAI keys are stored in the OS keychain; nothing is sent to SentiNext servers.",
-  },
-  {
-    q: "Can I use it offline?",
-    a: "Once reviews are fetched and stored, you can browse insights offline. New analyses and chat require your chosen model provider.",
-  },
-  {
-    q: "What does “chat with sources” mean?",
-    a: "Every answer includes citations. Click a citation to open the full review, so you can validate insights fast.",
-  },
-  {
-    q: "Is this a vector database / embeddings system?",
-    a: "No. Chat retrieval uses full‑text search and cites only evidence from your labeled reviews.",
-  },
-];
-
-export default function HomePage() {
+export default function Home() {
   return (
-    <div className="container">
-      <section className="hero">
-        <div>
-          <span className="eyebrow">Local desktop app · bring your own AI key</span>
-          <h1 className="title">
-            Turn Steam reviews into{" "}
-            <span className="gradientText">decisions you can ship</span>.
-          </h1>
-          <p className="lead">
-            SentiNext is a local-first Steam review intelligence app. It classifies reviews into a consistent taxonomy,
-            surfaces issues and feature requests, and lets you chat with insights — with clickable sources.
-          </p>
+    <div className="flex flex-col items-center">
+      {/* Hero Section */}
+      <section className="relative w-full py-24 md:py-32 lg:py-40 overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
+        <div className="container px-4 md:px-6 relative z-10 flex flex-col items-center text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-6"
+          >
+            <span className="flex h-2 w-2 rounded-full bg-primary mr-2 animate-pulse"></span>
+            SentiNext is now available
+          </motion.div>
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/70 mb-6 max-w-4xl"
+          >
+            Turn Steam reviews into actionable insights.
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-10 leading-relaxed"
+          >
+            SentiNext analyzes thousands of player reviews to tell you exactly what’s driving sentiment, what’s broken, and what to build next.
+          </motion.p>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto"
+          >
+            <Button size="lg" className="h-12 px-8 text-base bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_20px_-5px_var(--primary)]" asChild>
+              <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
+                Open SentiNext <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" className="h-12 px-8 text-base" asChild>
+              <Link href="/how-it-works">
+                How it works
+              </Link>
+            </Button>
+          </motion.div>
+        </div>
+      </section>
 
-          <div className="heroActions">
-            <Link href="/download" className="btn btnPrimary">
-              Download the app →
-            </Link>
-            <Link href="/docs" className="btn">
-              Read docs
-            </Link>
-            <a href="#features" className="btn">
-              See features ↓
-            </a>
+      {/* Features Grid */}
+      <section className="w-full py-20 bg-card border-y border-border/40">
+        <div className="container px-4 md:px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Beyond simple sentiment</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              We go deeper than "Negative" or "Positive". SentiNext builds a structured taxonomy of every issue and request found in your reviews.
+            </p>
           </div>
-
-          <div className="chips" aria-label="Product highlights">
-            <span className="chip">Chat with sources</span>
-            <span className="chip">Global filters</span>
-            <span className="chip">Issues + requests</span>
-            <span className="chip">Segmentation</span>
-            <span className="chip">Compare games</span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <FeatureCard
+              icon={<Search className="h-8 w-8 text-primary" />}
+              title="Ingest & Search"
+              description="Instantly fetch reviews for any Steam app. Filter by language, date range, and playtime to get the most relevant feedback."
+              delay={0.1}
+            />
+            <FeatureCard
+              icon={<Database className="h-8 w-8 text-secondary" />}
+              title="Auto-Classification"
+              description="Our LLM-powered pipeline tags every review with specific issues (e.g., 'Performance/Stuttering') and requests."
+              delay={0.2}
+            />
+            <FeatureCard
+              icon={<BarChart3 className="h-8 w-8 text-blue-400" />}
+              title="Aggregate Insights"
+              description="See the big picture. Identify the top 5 issues driving negative sentiment and prioritize your roadmap with data."
+              delay={0.3}
+            />
           </div>
         </div>
+      </section>
 
-        <div className="heroMock" aria-label="SentiNext dashboard preview">
-          <div className="mockHeader">
-            <div className="mockTitle">Dashboard · Cyberpunk 2077</div>
-            <div className="mockPills" aria-label="Global filters preview">
-              <span className="mockPill">Not recommended</span>
-              <span className="mockPill">30d</span>
-              <span className="mockPill">25+ helpful</span>
-            </div>
-          </div>
-
-          <div className="mockGrid">
-            <div className="mockCard">
-              <div className="mockCardTitle">Top issues</div>
-              <div className="mockList">
-                {[
-                  ["technical/performance", "24"],
-                  ["ui_ux_accessibility/controls", "16"],
-                  ["gameplay/ai_behavior", "12"],
-                ].map(([label, count]) => (
-                  <div className="mockListItem" key={label}>
-                    <span className="mono">{label}</span>
-                    <span className="mockListMeta">{count}</span>
+      {/* Preview / How it works Teaser */}
+      <section className="w-full py-24">
+        <div className="container px-4 md:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-6">Designed for Product Teams</h2>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Zap className="h-3.5 w-3.5 text-primary" />
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="mockCard">
-              <div className="mockCardTitle">Top requests</div>
-              <div className="mockList">
-                {[
-                  ["ui_ux_accessibility/key_remapping", "Top ask"],
-                  ["content_design/more_content", "Top ask"],
-                  ["presentation/photo_mode", "Top ask"],
-                ].map(([label, meta]) => (
-                  <div className="mockListItem" key={label}>
-                    <span className="mono">{label}</span>
-                    <span className="mockListMeta">{meta}</span>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Real-time Analysis</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Don't wait for monthly reports. Run analysis whenever you need fresh insights.</p>
                   </div>
-                ))}
+                </li>
+                <li className="flex items-start gap-3">
+                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Zap className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Transparent Taxonomy</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Drill down from a high-level "Bug" category to specific reviews mentioning "Crash on Startup".</p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Zap className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Hosted or Local</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Use our hosted version or run the open-source engine locally for full data control.</p>
+                  </div>
+                </li>
+              </ul>
+              <div className="mt-8">
+                <Button variant="link" className="p-0 text-primary h-auto" asChild>
+                  <Link href="/product">Explore all features <ArrowRight className="ml-1 h-4 w-4" /></Link>
+                </Button>
+              </div>
+            </div>
+            <div className="relative aspect-square md:aspect-video rounded-xl bg-gradient-to-br from-card to-background border border-border/50 shadow-2xl p-6 flex flex-col justify-center items-center overflow-hidden group">
+              {/* Abstract UI representation */}
+              <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(68,68,68,.2)_50%,transparent_75%,transparent_100%)] bg-[length:250%_250%,100%_100%] bg-[position:-100%_0,0_0] bg-no-repeat transition-[background-position_0s] duration-0 ease-in-out group-hover:bg-[position:200%_0,0_0] group-hover:duration-[1500ms]" />
+              <div className="w-full h-full border border-border/30 rounded-lg bg-background/50 backdrop-blur flex flex-col p-4">
+                <div className="h-8 w-full border-b border-border/30 mb-4 flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-red-500/50" />
+                  <div className="h-3 w-3 rounded-full bg-yellow-500/50" />
+                  <div className="h-3 w-3 rounded-full bg-green-500/50" />
+                </div>
+                <div className="flex-1 w-full grid grid-cols-3 gap-4">
+                  <div className="col-span-1 border-r border-border/30 pr-4 space-y-3">
+                    <div className="h-4 w-3/4 bg-border/20 rounded" />
+                    <div className="h-4 w-1/2 bg-border/20 rounded" />
+                    <div className="h-4 w-2/3 bg-border/20 rounded" />
+                  </div>
+                  <div className="col-span-2 space-y-3">
+                    <div className="h-32 w-full bg-border/10 rounded flex items-end p-2 gap-2">
+                      <div className="w-8 h-12 bg-primary/40 rounded-t" />
+                      <div className="w-8 h-20 bg-primary/60 rounded-t" />
+                      <div className="w-8 h-16 bg-primary/50 rounded-t" />
+                      <div className="w-8 h-24 bg-primary rounded-t" />
+                    </div>
+                    <div className="h-4 w-full bg-border/20 rounded" />
+                    <div className="h-4 w-5/6 bg-border/20 rounded" />
+                  </div>
+
+                </div>
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div className="mockCard" style={{ marginTop: 12, position: "relative" }}>
-            <div className="mockCardTitle">Chat with sources</div>
-            <div className="mockList" aria-label="Chat preview">
-              <div className="mockListItem">
-                <span>“Why are players not recommending?”</span>
-                <span className="mockListMeta">Ask →</span>
-              </div>
-              <div className="mockListItem">
-                <span>Answer cites 6 reviews</span>
-                <span className="mockListMeta">Click to open</span>
-              </div>
+      {/* CTA Section */}
+      <section className="w-full py-24 mb-10">
+        <div className="container px-4 md:px-6">
+          <div className="rounded-3xl bg-gradient-to-br from-primary/10 to-secondary/5 border border-border/50 p-8 md:p-16 text-center">
+            <h2 className="text-3xl md:text-5xl font-bold mb-6">Ready to see your game clearly?</h2>
+            <p className="text-muted-foreground text-lg mb-8 max-w-2xl mx-auto">
+              Join developers who are using SentiNext to prioritize their roadmap and improve player sentiment.
+            </p>
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <Button size="lg" className="h-12 px-8 text-base bg-foreground text-background hover:bg-foreground/90" asChild>
+                <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
+                  Try SentiNext for Free
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" className="h-12 px-8 text-base bg-transparent border-primary/20 hover:bg-primary/5 hover:text-primary hover:border-primary/50" asChild>
+                <Link href="/contact">
+                  Contact Sales
+                </Link>
+              </Button>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section id="features" className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Built for action, not vanity charts</h2>
-            <p className="sectionLead">
-              Everything is evidence-backed. If the dashboard says “performance is killing sentiment”, you can click into
-              the reviews that prove it.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid3">
-          {FEATURE_CARDS.map((item) => (
-            <div key={item.title} className="card">
-              <p className="cardTitle">{item.title}</p>
-              <p className="cardText">{item.text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="workflow" className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">How it works</h2>
-            <p className="sectionLead">Download, add your provider, analyze, and explore — all on your machine.</p>
-          </div>
-        </div>
-
-        <div className="steps">
-          {[
-            "Download the desktop app (macOS or Windows).",
-            "Choose OpenAI or Ollama and set your model + key.",
-            "Analyze a Steam game (estimate LLM calls first).",
-            "Use dashboard + chat to create top actions and export.",
-          ].map((text, index) => (
-            <div key={text} className="step">
-              <div className="stepNumber">{index + 1}</div>
-              <div className="stepText">{text}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">Privacy and control</h2>
-            <p className="sectionLead">
-              You own your data and your costs. SentiNext is built to run locally and stay predictable.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid2">
-          <div className="card">
-            <p className="cardTitle">Local database</p>
-            <p className="cardText">
-              Reviews, labels, evidence, and logs are stored locally. The app works without accounts or hosted storage.
-            </p>
-          </div>
-          <div className="card">
-            <p className="cardTitle">Deterministic chat retrieval</p>
-            <p className="cardText">
-              Chat is grounded in your data. Retrieval uses local full-text search and citations always link back to real
-              reviews.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
-            <h2 className="sectionTitle">FAQ</h2>
-            <p className="sectionLead">The most common questions from teams evaluating SentiNext.</p>
-          </div>
-        </div>
-
-        <div className="faq">
-          {FAQ.map((item) => (
-            <div key={item.q} className="faqItem">
-              <p className="faqQ">{item.q}</p>
-              <p className="faqA">{item.a}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="cta">
-        <p className="ctaTitle">Ready to explore your Steam reviews locally?</p>
-        <p className="ctaText">
-          Download the app and run your first analysis. Use the dashboard + chat to turn feedback into a clear set of
-          top actions.
-        </p>
-        <div className="ctaActions">
-          <Link href="/download" className="btn btnPrimary">
-            Download →
-          </Link>
-          <a className="btn" href="https://github.com/NicoCampa/SentiNext" target="_blank" rel="noreferrer">
-            View GitHub →
-          </a>
         </div>
       </section>
     </div>
   );
+}
+
+function FeatureCard({ icon, title, description, delay }: { icon: React.ReactNode, title: string, description: string, delay: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5, delay }}
+      className="flex flex-col items-center text-center p-6 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 transition-colors"
+    >
+      <div className="mb-4 p-3 rounded-full bg-background border border-border/50 shadow-sm">
+        {icon}
+      </div>
+      <h3 className="text-xl font-bold mb-3">{title}</h3>
+      <p className="text-muted-foreground">{description}</p>
+    </motion.div>
+  )
 }
