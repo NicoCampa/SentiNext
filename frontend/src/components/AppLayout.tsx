@@ -1,12 +1,13 @@
 'use client';
 
-import { ReactNode } from "react";
+import { ReactNode, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { CreditBar } from "@/components/CreditBar";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 
@@ -22,15 +23,24 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { t } = useLanguage();
   const { openUserProfile } = useClerk();
   const { user } = useUser();
+  const { isAdmin } = useAdminStatus();
   const compact = density === "compact";
 
-  const navItems = [
-    { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
-    { href: "/chat", label: t('nav.chat'), code: "02" },
-    { href: "/compare", label: t('nav.compare'), code: "03" },
-    { href: "/database", label: t('nav.database'), code: "04" },
-    { href: "/settings", label: t('nav.settings'), code: "05" },
-  ];
+  const navItems = useMemo(() => {
+    const items = [
+      { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
+      { href: "/chat", label: t('nav.chat'), code: "02" },
+      { href: "/compare", label: t('nav.compare'), code: "03" },
+      { href: "/database", label: t('nav.database'), code: "04" },
+    ];
+    // Add admin item after database if user is admin
+    if (isAdmin) {
+      items.push({ href: "/admin", label: "Admin", code: "0A" });
+    }
+    items.push({ href: "/settings", label: t('nav.settings'), code: "05" });
+    return items;
+  }, [t, isAdmin]);
+
   // Filter out settings from main nav - it goes at bottom
   const sidebarNavItems = navItems.filter((item) => item.href !== "/settings");
 

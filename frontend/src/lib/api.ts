@@ -584,6 +584,22 @@ export interface EnhancedChatResponse {
   games_used: Array<{ app_id: number; name: string }>;
   reviews_searched: number;
   has_game_context: boolean;
+  /** Suggested follow-up questions */
+  suggested_questions?: string[];
+  /** True if the agent needs clarification from user */
+  needs_clarification?: boolean;
+  /** Clarification options to present to user */
+  clarification_options?: string[];
+  /** Number of tool calls made by agent (for debugging) */
+  tool_calls_made?: number;
+  /** True if the agent is suggesting games to select */
+  suggest_game_selection?: boolean;
+  /** Games suggested for selection */
+  suggested_games?: Array<{ app_id: number; name: string }>;
+  /** True if the agent suggests searching for a game (not found in starred) */
+  suggest_search_game?: boolean;
+  /** The game name that wasn't found */
+  search_game_name?: string;
 }
 
 export async function sendEnhancedChat(
@@ -698,6 +714,49 @@ export function subscribeToChatStream(
     aborted = true;
     eventSource?.close();
   };
+}
+
+// ============================================================================
+// Admin Chat API
+// ============================================================================
+
+export interface AdminChatSession {
+  session_id: string;
+  user_id: string;
+  title: string | null;
+  app_ids: number[];
+  first_user_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  message_count: number;
+  positive_feedback: number;
+  negative_feedback: number;
+}
+
+export interface AdminChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp?: string;
+}
+
+export async function fetchAdminChatSessions(
+  limit: number = 100
+): Promise<AdminChatSession[]> {
+  const response = await authFetch(apiUrl(`/admin/chat-sessions?limit=${limit}`), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<AdminChatSession[]>(response);
+}
+
+export async function fetchAdminChatHistory(
+  sessionId: string
+): Promise<AdminChatMessage[]> {
+  const response = await authFetch(apiUrl(`/admin/chat-history/${sessionId}`), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<AdminChatMessage[]>(response);
 }
 
 // ============================================================================
@@ -835,4 +894,80 @@ export async function summarizeSubcategory(
     body: JSON.stringify(payload),
   });
   return handleResponse<SubcategorySummaryResponse>(response);
+}
+
+// ============================================================================
+// Citation Feedback API
+// ============================================================================
+
+export interface CitationFeedbackPayload {
+  review_id: string;
+  session_id: string;
+  helpful: boolean;
+}
+
+/**
+ * Submit feedback on whether a citation was helpful.
+ */
+export async function submitCitationFeedback(
+  payload: CitationFeedbackPayload
+): Promise<{ status: string }> {
+  const response = await authFetch(apiUrl("/chat/citation-feedback"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<{ status: string }>(response);
+}
+
+// ============================================================================
+// Chat Export API
+// ============================================================================
+
+export type ChatExportFormat = "markdown" | "json";
+
+/**
+ * Export a chat session as markdown or JSON.
+ * Returns the content as a string.
+ */
+export async function exportChatSession(
+  sessionId: string,
+  format: ChatExportFormat = "markdown"
+): Promise<string> {
+  const url = new URL(
+    apiUrl(`/chat/export/${sessionId}`),
+    typeof window !== "undefined" ? window.location.origin : "http://localhost"
+  );
+  url.searchParams.set("format", format);
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Export failed (status ${response.status})`);
+  }
+  return response.text();
+}
+
+/**
+ * Download a chat session as a file.
+ */
+export async function downloadChatSession(
+  sessionId: string,
+  format: ChatExportFormat = "markdown"
+): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  const content = await exportChatSession(sessionId, format);
+  const extension = format === "markdown" ? "md" : "json";
+  const mimeType = format === "markdown" ? "text/markdown" : "application/json";
+  const filename = `chat-${sessionId.slice(0, 8)}.${extension}`;
+
+  const blob = new Blob([content], { type: mimeType });
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict, Any
 
 
 class ChatIntent(Enum):
@@ -510,3 +510,198 @@ def extract_topic_or_entity(message: str) -> Tuple[Optional[str], bool]:
             return (topic, False)
 
     return (None, False)
+
+
+# Follow-up Detection for Conversation Memory
+
+FOLLOW_UP_PATTERNS = [
+    # Direct follow-ups
+    r"^(and|also|what about|how about|tell me more)",
+    r"^(why|how come|explain|elaborate)",
+    r"^(compared to|versus|vs|vs\.)",
+    r"^(the same for|same question for|same thing for)",
+    r"^(more|show more|any more|see more)",
+    r"^(details?|more details?|specifics?)",
+
+    # Implicit follow-ups (assume context from previous turn)
+    r"^(what else|anything else|other)",
+    r"^(examples?|show me|give me)",
+    r"^(positive ones?|negative ones?)",
+    r"^(recent ones?|older ones?)",
+
+    # References to previous content
+    r"\b(those|these|that|this)\s+(issue|issues|problem|review|reviews|topic|category)\b",
+    r"\b(the same|same thing)\b",
+    r"\b(mentioned|said|showed|listed)\s+(earlier|before|above)\b",
+]
+
+
+def is_follow_up(message: str, turn_count: int = 0) -> bool:
+    """Check if a message is a follow-up to a previous conversation turn.
+
+    Args:
+        message: The user's message
+        turn_count: Number of previous turns in conversation (0 = first message)
+
+    Returns:
+        True if this appears to be a follow-up question
+
+    Examples:
+        "And what about performance?" → True
+        "Tell me more" → True
+        "What are the main issues?" → False (standalone question)
+        "Show me examples of those" → True (references previous)
+    """
+    # First message can't be a follow-up
+    if turn_count == 0:
+        return False
+
+    normalized = message.strip().lower()
+
+    # Short messages without specific content are likely follow-ups
+    if len(normalized.split()) <= 3 and not re.search(r'\b(what|how|why|when|where|who)\b.*\b(is|are|do|does|did)\b', normalized):
+        return True
+
+    # Check follow-up patterns
+    for pattern in FOLLOW_UP_PATTERNS:
+        if re.search(pattern, normalized, re.IGNORECASE):
+            return True
+
+    return False
+
+
+def resolve_follow_up_context(
+    message: str,
+    last_intent: Optional[str],
+    last_subcategories: Optional[List[str]],
+    accumulated_facts: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Resolve context for a follow-up question.
+
+    Given a follow-up message and previous conversation context, determine
+    what the user is likely asking about.
+
+    Args:
+        message: The user's follow-up message
+        last_intent: Intent from previous turn
+        last_subcategories: Subcategories discussed in previous turn
+        accumulated_facts: Facts accumulated during conversation
+
+    Returns:
+        Dict with resolved context:
+        - resolved_subcategories: List of subcategories to focus on
+        - resolved_sentiment: "positive", "negative", or None
+        - drill_down: True if user wants more detail on same topic
+        - compare: True if user wants comparison
+
+    Examples:
+        message="Show me positive ones" + last_subcategories=["technical/bugs"]
+        → {"resolved_subcategories": ["technical/bugs"], "resolved_sentiment": "positive"}
+
+        message="And performance?" + last_intent="TOPIC_EXAMPLES"
+        → {"resolved_subcategories": ["technical/performance"], "drill_down": False}
+    """
+    normalized = message.strip().lower()
+    result: Dict[str, Any] = {
+        "resolved_subcategories": [],
+        "resolved_sentiment": None,
+        "drill_down": False,
+        "compare": False,
+    }
+
+    # Detect sentiment filter requests
+    if re.search(r"\b(positive|good|happy)\s*(ones?|reviews?|examples?)?\b", normalized):
+        result["resolved_sentiment"] = "positive"
+    elif re.search(r"\b(negative|bad|unhappy|critical)\s*(ones?|reviews?|examples?)?\b", normalized):
+        result["resolved_sentiment"] = "negative"
+
+    # Detect drill-down requests
+    if re.search(r"\b(more|details?|specifics?|elaborate|examples?|evidence|quotes?)\b", normalized):
+        result["drill_down"] = True
+
+    # Detect comparison requests
+    if re.search(r"\b(compare|versus|vs\.?|compared to|difference)\b", normalized):
+        result["compare"] = True
+
+    # Check if user is asking about a new topic
+    _, is_entity = extract_topic_or_entity(message)
+    search_term, _ = extract_topic_or_entity(message)
+
+    if search_term and not is_entity:
+        # User mentioned a new topic - this overrides previous context
+        # Try to map to a subcategory
+        topic_mappings = {
+            "performance": "technical/performance",
+            "bugs": "technical/bugs",
+            "crashes": "technical/crashes",
+            "ai": "gameplay/ai",
+            "difficulty": "gameplay/difficulty",
+            "controls": "gameplay/controls",
+            "story": "content_design/narrative_characters",
+            "price": "monetization_value/price",
+            "dlc": "monetization_value/dlc",
+        }
+        if search_term.lower() in topic_mappings:
+            result["resolved_subcategories"] = [topic_mappings[search_term.lower()]]
+        else:
+            # Use partial matching
+            for key, subcat in topic_mappings.items():
+                if key in search_term.lower() or search_term.lower() in key:
+                    result["resolved_subcategories"] = [subcat]
+                    break
+
+    # If no new topic, use previous subcategories
+    if not result["resolved_subcategories"] and last_subcategories:
+        result["resolved_subcategories"] = list(last_subcategories)
+
+    return result
+
+
+def get_conversation_context_summary(
+    turn_count: int,
+    last_intent: Optional[str],
+    last_subcategories: Optional[List[str]],
+    accumulated_facts: Optional[Dict[str, Any]],
+) -> str:
+    """Generate a context summary for the LLM prompt.
+
+    Args:
+        turn_count: Number of turns in conversation
+        last_intent: Last detected intent
+        last_subcategories: Last discussed subcategories
+        accumulated_facts: Accumulated facts
+
+    Returns:
+        String summary to include in LLM prompt
+    """
+    if turn_count == 0:
+        return ""
+
+    parts = []
+
+    if last_subcategories:
+        subcat_str = ", ".join(last_subcategories[:3])
+        parts.append(f"Previously discussed: {subcat_str}")
+
+    if last_intent:
+        intent_descriptions = {
+            "aggregation": "statistics/metrics",
+            "topic_examples": "review examples",
+            "trend": "time trends",
+            "comparison": "comparisons",
+            "feature_requests": "feature requests",
+        }
+        intent_desc = intent_descriptions.get(last_intent.lower(), last_intent)
+        parts.append(f"Last query type: {intent_desc}")
+
+    if accumulated_facts:
+        # Include key facts (limit to 3)
+        fact_items = list(accumulated_facts.items())[:3]
+        facts_str = ", ".join(f"{k}: {v}" for k, v in fact_items)
+        if facts_str:
+            parts.append(f"Key facts: {facts_str}")
+
+    if parts:
+        return "Conversation context:\n- " + "\n- ".join(parts)
+
+    return ""

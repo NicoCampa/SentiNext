@@ -1757,3 +1757,518 @@ def get_reviews_by_subcategory(
         rows = result.fetchall()
 
     return [_parse_json_field(row[0], {}) for row in rows]
+
+
+# Chat Context Functions (for agentic conversation memory)
+
+def save_chat_context(
+    session_id: str,
+    user_id: str,
+    app_ids: List[int],
+    last_intent: Optional[str] = None,
+    last_subcategories: Optional[List[str]] = None,
+    accumulated_facts: Optional[Dict[str, Any]] = None,
+    game_names: Optional[Dict[int, str]] = None,
+    turn_count: int = 0,
+) -> None:
+    """Save or update chat context for a session.
+
+    Args:
+        session_id: Unique session identifier
+        user_id: User ID
+        app_ids: List of game app IDs in context
+        last_intent: Last detected intent
+        last_subcategories: Last discussed subcategories
+        accumulated_facts: Key facts established in conversation
+        game_names: Mapping of app_id to game name
+        turn_count: Number of conversation turns
+    """
+    from . import db as db_module
+
+    facts_json = json.dumps(accumulated_facts) if accumulated_facts else "{}"
+    names_json = json.dumps({str(k): v for k, v in (game_names or {}).items()})
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO chat_context (
+                    session_id, user_id, app_ids, last_intent, last_subcategories,
+                    accumulated_facts, game_names, turn_count, created_at, updated_at
+                )
+                VALUES (
+                    :session_id, :user_id, :app_ids, :last_intent, :last_subcategories,
+                    :accumulated_facts, :game_names, :turn_count, :created_at, :updated_at
+                )
+                ON CONFLICT(session_id) DO UPDATE SET
+                    app_ids = EXCLUDED.app_ids,
+                    last_intent = EXCLUDED.last_intent,
+                    last_subcategories = EXCLUDED.last_subcategories,
+                    accumulated_facts = EXCLUDED.accumulated_facts,
+                    game_names = EXCLUDED.game_names,
+                    turn_count = EXCLUDED.turn_count,
+                    updated_at = EXCLUDED.updated_at
+            """),
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "app_ids": app_ids or [],
+                "last_intent": last_intent,
+                "last_subcategories": last_subcategories or [],
+                "accumulated_facts": facts_json,
+                "game_names": names_json,
+                "turn_count": turn_count,
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            },
+        )
+        conn.commit()
+
+
+def load_chat_context(session_id: str) -> Optional[Dict[str, Any]]:
+    """Load chat context for a session.
+
+    Returns:
+        Dict with context fields, or None if session doesn't exist
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        row = conn.execute(
+            text("""
+                SELECT user_id, app_ids, last_intent, last_subcategories,
+                       accumulated_facts, game_names, turn_count, created_at, updated_at
+                FROM chat_context
+                WHERE session_id = :session_id
+            """),
+            {"session_id": session_id},
+        ).mappings().fetchone()
+
+    if row is None:
+        return None
+
+    game_names_raw = _parse_json_field(row["game_names"], {})
+    game_names = {int(k): v for k, v in game_names_raw.items()}
+
+    return {
+        "session_id": session_id,
+        "user_id": row["user_id"],
+        "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+        "last_intent": row["last_intent"],
+        "last_subcategories": list(row["last_subcategories"]) if row["last_subcategories"] else [],
+        "accumulated_facts": _parse_json_field(row["accumulated_facts"], {}),
+        "game_names": game_names,
+        "turn_count": int(row["turn_count"]) if row["turn_count"] else 0,
+        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+    }
+
+
+def update_chat_context_turn(
+    session_id: str,
+    last_intent: Optional[str] = None,
+    last_subcategories: Optional[List[str]] = None,
+    new_facts: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Update chat context after a conversation turn.
+
+    Args:
+        session_id: Session to update
+        last_intent: New intent to set
+        last_subcategories: New subcategories to set
+        new_facts: Facts to merge into accumulated_facts
+    """
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        if new_facts:
+            # Merge new facts into existing accumulated_facts
+            conn.execute(
+                text("""
+                    UPDATE chat_context
+                    SET last_intent = COALESCE(:last_intent, last_intent),
+                        last_subcategories = COALESCE(:last_subcategories, last_subcategories),
+                        accumulated_facts = accumulated_facts || :new_facts,
+                        turn_count = turn_count + 1,
+                        updated_at = :updated_at
+                    WHERE session_id = :session_id
+                """),
+                {
+                    "session_id": session_id,
+                    "last_intent": last_intent,
+                    "last_subcategories": last_subcategories,
+                    "new_facts": json.dumps(new_facts),
+                    "updated_at": timestamp,
+                },
+            )
+        else:
+            conn.execute(
+                text("""
+                    UPDATE chat_context
+                    SET last_intent = COALESCE(:last_intent, last_intent),
+                        last_subcategories = COALESCE(:last_subcategories, last_subcategories),
+                        turn_count = turn_count + 1,
+                        updated_at = :updated_at
+                    WHERE session_id = :session_id
+                """),
+                {
+                    "session_id": session_id,
+                    "last_intent": last_intent,
+                    "last_subcategories": last_subcategories,
+                    "updated_at": timestamp,
+                },
+            )
+        conn.commit()
+
+
+def delete_chat_context(session_id: str) -> None:
+    """Delete chat context for a session."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("DELETE FROM chat_context WHERE session_id = :session_id"),
+            {"session_id": session_id},
+        )
+        conn.commit()
+
+
+# Citation Feedback Functions
+
+def save_citation_feedback(
+    user_id: str,
+    session_id: str,
+    review_id: str,
+    helpful: bool,
+) -> None:
+    """Save user feedback on a citation.
+
+    Args:
+        user_id: User providing feedback
+        session_id: Chat session where citation appeared
+        review_id: ID of the review being rated
+        helpful: True if user found citation helpful, False otherwise
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO citation_feedback (user_id, session_id, review_id, helpful)
+                VALUES (:user_id, :session_id, :review_id, :helpful)
+            """),
+            {
+                "user_id": user_id,
+                "session_id": session_id,
+                "review_id": review_id,
+                "helpful": helpful,
+            },
+        )
+        conn.commit()
+
+
+def get_citation_feedback_stats(review_id: str) -> Dict[str, int]:
+    """Get feedback statistics for a review citation.
+
+    Returns:
+        Dict with helpful_count, not_helpful_count, total keys
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT
+                    COUNT(*) FILTER (WHERE helpful = true) as helpful_count,
+                    COUNT(*) FILTER (WHERE helpful = false) as not_helpful_count,
+                    COUNT(*) as total
+                FROM citation_feedback
+                WHERE review_id = :review_id
+            """),
+            {"review_id": review_id},
+        )
+        row = result.fetchone()
+
+    if not row:
+        return {"helpful_count": 0, "not_helpful_count": 0, "total": 0}
+
+    return {
+        "helpful_count": int(row[0]) if row[0] else 0,
+        "not_helpful_count": int(row[1]) if row[1] else 0,
+        "total": int(row[2]) if row[2] else 0,
+    }
+
+
+def get_user_citation_feedback(
+    user_id: str,
+    session_id: str,
+) -> Dict[str, bool]:
+    """Get all citation feedback from a user in a session.
+
+    Returns:
+        Dict mapping review_id to helpful boolean
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT review_id, helpful
+                FROM citation_feedback
+                WHERE user_id = :user_id AND session_id = :session_id
+            """),
+            {"user_id": user_id, "session_id": session_id},
+        )
+        rows = result.fetchall()
+
+    return {row[0]: row[1] for row in rows}
+
+
+# Chat Session Functions
+
+def save_chat_session(
+    session_id: str,
+    user_id: str,
+    title: Optional[str] = None,
+    app_ids: Optional[List[int]] = None,
+    first_user_message: Optional[str] = None,
+) -> None:
+    """Save or update a chat session metadata.
+
+    Args:
+        session_id: Unique session identifier
+        user_id: User ID
+        title: Optional session title
+        app_ids: List of game app IDs
+        first_user_message: First message from user (for preview)
+    """
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO chat_sessions (
+                    session_id, user_id, title, app_ids, first_user_message,
+                    created_at, updated_at
+                )
+                VALUES (
+                    :session_id, :user_id, :title, :app_ids, :first_user_message,
+                    :created_at, :updated_at
+                )
+                ON CONFLICT(session_id) DO UPDATE SET
+                    title = COALESCE(EXCLUDED.title, chat_sessions.title),
+                    app_ids = COALESCE(EXCLUDED.app_ids, chat_sessions.app_ids),
+                    first_user_message = COALESCE(EXCLUDED.first_user_message, chat_sessions.first_user_message),
+                    updated_at = EXCLUDED.updated_at
+            """),
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "title": title,
+                "app_ids": app_ids or [],
+                "first_user_message": first_user_message,
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            },
+        )
+        conn.commit()
+
+
+def update_chat_session_timestamp(session_id: str) -> None:
+    """Update the last activity timestamp for a session."""
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                UPDATE chat_sessions
+                SET updated_at = :updated_at
+                WHERE session_id = :session_id
+            """),
+            {"session_id": session_id, "updated_at": timestamp},
+        )
+        conn.commit()
+
+
+def get_chat_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """Get chat session metadata."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        row = conn.execute(
+            text("""
+                SELECT user_id, title, app_ids, first_user_message, created_at, updated_at
+                FROM chat_sessions
+                WHERE session_id = :session_id
+            """),
+            {"session_id": session_id},
+        ).mappings().fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "session_id": session_id,
+        "user_id": row["user_id"],
+        "title": row["title"],
+        "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+        "first_user_message": row["first_user_message"],
+        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+    }
+
+
+def list_chat_sessions_for_user(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """List all chat sessions for a user, most recent first.
+
+    Args:
+        user_id: User ID
+        limit: Maximum number of sessions to return
+
+    Returns:
+        List of session metadata dicts
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT session_id, title, app_ids, first_user_message, created_at, updated_at
+                FROM chat_sessions
+                WHERE user_id = :user_id
+                ORDER BY updated_at DESC
+                LIMIT :limit
+            """),
+            {"user_id": user_id, "limit": limit},
+        ).mappings().fetchall()
+
+    sessions = []
+    for row in rows:
+        sessions.append({
+            "session_id": row["session_id"],
+            "title": row["title"],
+            "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+            "first_user_message": row["first_user_message"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        })
+
+    return sessions
+
+
+def list_all_chat_sessions_with_feedback(limit: int = 100) -> List[Dict[str, Any]]:
+    """List all chat sessions from all users with feedback summary (admin only).
+
+    Returns sessions with:
+    - Basic session info (id, user_id, title, timestamps)
+    - Feedback summary (positive_count, negative_count)
+    - Message count
+
+    Args:
+        limit: Maximum number of sessions to return
+
+    Returns:
+        List of session metadata dicts with feedback info
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT
+                    s.session_id,
+                    s.user_id,
+                    s.title,
+                    s.app_ids,
+                    s.first_user_message,
+                    s.created_at,
+                    s.updated_at,
+                    COALESCE(m.message_count, 0) as message_count,
+                    COALESCE(f.positive_count, 0) as positive_feedback,
+                    COALESCE(f.negative_count, 0) as negative_feedback
+                FROM chat_sessions s
+                LEFT JOIN (
+                    SELECT session_id, COUNT(*) as message_count
+                    FROM chat_messages
+                    GROUP BY session_id
+                ) m ON s.session_id = m.session_id
+                LEFT JOIN (
+                    SELECT
+                        session_id,
+                        SUM(CASE WHEN helpful = true THEN 1 ELSE 0 END) as positive_count,
+                        SUM(CASE WHEN helpful = false THEN 1 ELSE 0 END) as negative_count
+                    FROM citation_feedback
+                    GROUP BY session_id
+                ) f ON s.session_id = f.session_id
+                ORDER BY s.updated_at DESC
+                LIMIT :limit
+            """),
+            {"limit": limit},
+        ).mappings().fetchall()
+
+    sessions = []
+    for row in rows:
+        sessions.append({
+            "session_id": row["session_id"],
+            "user_id": row["user_id"],
+            "title": row["title"],
+            "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+            "first_user_message": row["first_user_message"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            "message_count": row["message_count"],
+            "positive_feedback": row["positive_feedback"],
+            "negative_feedback": row["negative_feedback"],
+        })
+
+    return sessions
+
+
+def delete_chat_session(session_id: str) -> int:
+    """Delete a chat session and all its messages.
+
+    Returns:
+        Number of messages deleted
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        # Delete messages
+        result = conn.execute(
+            text("DELETE FROM chat_messages WHERE session_id = :session_id"),
+            {"session_id": session_id},
+        )
+        messages_deleted = result.rowcount
+
+        # Delete context
+        conn.execute(
+            text("DELETE FROM chat_context WHERE session_id = :session_id"),
+            {"session_id": session_id},
+        )
+
+        # Delete citation feedback
+        conn.execute(
+            text("DELETE FROM citation_feedback WHERE session_id = :session_id"),
+            {"session_id": session_id},
+        )
+
+        # Delete session
+        conn.execute(
+            text("DELETE FROM chat_sessions WHERE session_id = :session_id"),
+            {"session_id": session_id},
+        )
+
+        conn.commit()
+
+    return messages_deleted
+
+
+def _get_cutoff_timestamp(seconds_ago: int) -> datetime:
+    """Get a datetime object for seconds ago from now."""
+    return datetime.fromtimestamp(_get_timestamp() - seconds_ago, tz=timezone.utc)

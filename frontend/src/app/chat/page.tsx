@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from "react";
+import Link from "next/link";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -32,7 +33,10 @@ import {
   sendEnhancedChat,
   subscribeToChatStream,
   fetchStarredGames,
+  submitCitationFeedback,
+  downloadChatSession,
   ChatCitationItem,
+  EnhancedChatResponse,
 } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -200,11 +204,38 @@ const CHART_BORDER_COLORS = [
   'rgba(134, 239, 212, 1)',
 ];
 
+function normalizeChartData(spec: ChartSpec): ChartSpec["data"] {
+  // Handle simplified format: {data: [{label, value}, ...]}
+  if (Array.isArray(spec.data)) {
+    const simplified = spec.data as Array<{label: string; value: number}>;
+    return {
+      labels: simplified.map(d => d.label),
+      datasets: [{ data: simplified.map(d => d.value) }],
+    };
+  }
+  // Handle case where data array is nested under data property
+  if (spec.data && Array.isArray((spec.data as any).data)) {
+    const simplified = (spec.data as any).data as Array<{label: string; value: number}>;
+    return {
+      labels: simplified.map(d => d.label),
+      datasets: [{ data: simplified.map(d => d.value) }],
+    };
+  }
+  // Already in Chart.js format
+  return spec.data;
+}
+
 function enhanceChartData(spec: ChartSpec): any {
-  const data = { ...spec.data };
+  const normalizedData = normalizeChartData(spec);
+  const data = { ...normalizedData };
+
+  // Ensure datasets exists
+  if (!data.datasets || !Array.isArray(data.datasets)) {
+    data.datasets = [{ data: [] }];
+  }
 
   // Apply colors to datasets if not already present
-  if (data.datasets && Array.isArray(data.datasets)) {
+  if (data.datasets.length > 0) {
     data.datasets = data.datasets.map((dataset: any, idx: number) => {
       const colorIdx = idx % CHART_COLORS.length;
       const enhanced = { ...dataset };
@@ -369,6 +400,13 @@ type Message = {
   content: string;
   timestamp: Date;
   citations?: ChatCitationItem[];
+  suggestedQuestions?: string[];
+  needsClarification?: boolean;
+  clarificationOptions?: string[];
+  suggestGameSelection?: boolean;
+  suggestedGames?: Array<{ app_id: number; name: string }>;
+  suggestSearchGame?: boolean;
+  searchGameName?: string;
 };
 
 type ChatSession = {
@@ -384,12 +422,6 @@ type StarredGame = {
   name: string;
 };
 
-const DATE_FILTER_OPTIONS = [
-  { value: "all", label: "All time" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "365d", label: "Last year" },
-];
 
 export default function ChatPage() {
   const { language, t } = useLanguage();
@@ -404,9 +436,12 @@ export default function ChatPage() {
   // Game context state (Chat with Your Data)
   const [starredGames, setStarredGames] = useState<StarredGame[]>([]);
   const [selectedGames, setSelectedGames] = useState<number[]>([]);
-  const [dateFilter, setDateFilter] = useState("all");
   const [chatStatus, setChatStatus] = useState<string | null>(null);
   const [loadingGames, setLoadingGames] = useState(false);
+
+  // Message feedback state: tracks which message indices user has voted on
+  const [messageFeedback, setMessageFeedback] = useState<Record<number, boolean>>({});
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState<number | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -479,7 +514,87 @@ export default function ChatPage() {
   }, []);
 
   async function handleSend() {
-    const message = input.trim();
+    await sendMessage(input);
+  }
+
+  function toggleGameSelection(appId: number) {
+    setSelectedGames((prev) => {
+      if (prev.includes(appId)) {
+        return prev.filter((id) => id !== appId);
+      }
+      // Max 2 games
+      if (prev.length >= 2) {
+        return [prev[1], appId];
+      }
+      return [...prev, appId];
+    });
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  function formatTime(date: Date) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  async function handleMessageFeedback(messageIndex: number, helpful: boolean) {
+    if (!currentSessionId || feedbackSubmitting !== null) return;
+
+    setFeedbackSubmitting(messageIndex);
+    try {
+      // Submit feedback for the message (using session_id and message index)
+      await submitCitationFeedback({
+        review_id: `msg_${messageIndex}`, // Use message index as identifier
+        session_id: currentSessionId,
+        helpful,
+      });
+      setMessageFeedback((prev) => ({ ...prev, [messageIndex]: helpful }));
+    } catch (error) {
+      console.error("Failed to submit message feedback:", error);
+    } finally {
+      setFeedbackSubmitting(null);
+    }
+  }
+
+  async function handleExportChat() {
+    if (!currentSessionId) return;
+    try {
+      await downloadChatSession(currentSessionId, "markdown");
+    } catch (error) {
+      console.error("Failed to export chat:", error);
+    }
+  }
+
+  async function handleSuggestedQuestion(question: string) {
+    if (loading) return;
+    setInput(question);
+    // Use setTimeout to allow state to update, then trigger send
+    setTimeout(() => {
+      sendMessage(question);
+    }, 0);
+  }
+
+  async function handleClarificationOption(option: string) {
+    if (loading) return;
+    setInput(option);
+    setTimeout(() => {
+      sendMessage(option);
+    }, 0);
+  }
+
+  function handleSelectSuggestedGame(appId: number) {
+    if (!selectedGames.includes(appId)) {
+      setSelectedGames(prev => [...prev, appId].slice(-2)); // Keep max 2 games
+    }
+  }
+
+  // Extract the core send logic to be reusable
+  async function sendMessage(messageText: string) {
+    const message = messageText.trim();
     if (!message || loading) return;
 
     const userMessage: Message = {
@@ -516,15 +631,8 @@ export default function ChatPage() {
         message,
         session_id: sessionId,
         app_ids: selectedGames.length > 0 ? selectedGames : undefined,
-        date_filter: selectedGames.length > 0 ? dateFilter : undefined,
         max_reviews_per_game: 100,
         language: language,
-      });
-
-      console.log("Received chat response", {
-        hasGameContext: data.has_game_context,
-        reviewsSearched: data.reviews_searched,
-        citationsCount: data.citations?.length ?? 0,
       });
 
       // Update session ID if changed
@@ -537,9 +645,24 @@ export default function ChatPage() {
         content: data.response,
         timestamp: new Date(),
         citations: data.citations,
+        suggestedQuestions: data.suggested_questions,
+        needsClarification: data.needs_clarification,
+        clarificationOptions: data.clarification_options,
+        suggestGameSelection: data.suggest_game_selection,
+        suggestedGames: data.suggested_games,
+        suggestSearchGame: data.suggest_search_game,
+        searchGameName: data.search_game_name,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // If games were suggested, auto-select them if only one
+      if (data.suggest_game_selection && data.suggested_games?.length === 1) {
+        const game = data.suggested_games[0];
+        if (!selectedGames.includes(game.app_id)) {
+          setSelectedGames(prev => [...prev, game.app_id].slice(-2));
+        }
+      }
 
       // Reload sessions to update sidebar
       reloadSessions();
@@ -557,30 +680,6 @@ export default function ChatPage() {
       setChatStatus(null);
       if (unsubscribe) unsubscribe();
     }
-  }
-
-  function toggleGameSelection(appId: number) {
-    setSelectedGames((prev) => {
-      if (prev.includes(appId)) {
-        return prev.filter((id) => id !== appId);
-      }
-      // Max 2 games
-      if (prev.length >= 2) {
-        return [prev[1], appId];
-      }
-      return [...prev, appId];
-    });
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }
-
-  function formatTime(date: Date) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
   async function handleNewConversation() {
@@ -649,6 +748,18 @@ export default function ChatPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            {currentSessionId && messages.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={handleExportChat}
+                className="text-xs"
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Export
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={handleNewConversation}
@@ -711,22 +822,6 @@ export default function ChatPage() {
                       </button>
                     ))}
                   </div>
-                  {selectedGames.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-white/5">
-                      <label className="text-[10px] text-slate-500 block mb-1">Date Range:</label>
-                      <select
-                        value={dateFilter}
-                        onChange={(e) => setDateFilter(e.target.value)}
-                        className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-xs text-white focus:border-[rgb(0,255,255)] focus:outline-none"
-                      >
-                        {DATE_FILTER_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                   {selectedGames.length > 0 && (
                     <button
                       onClick={() => setSelectedGames([])}
@@ -814,13 +909,28 @@ export default function ChatPage() {
               <div className="h-full flex items-center justify-center">
                 <div className="text-center space-y-4">
                   <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                    </svg>
+                    {selectedGames.length === 0 ? (
+                      <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                      </svg>
+                    ) : (
+                      <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      </svg>
+                    )}
                   </div>
                   <div>
-                    <p className="text-sm text-slate-300">{t('chat.startConversation')}</p>
-                    <p className="text-xs text-slate-500 mt-1">{t('chat.askAnything')}</p>
+                    {selectedGames.length === 0 ? (
+                      <>
+                        <p className="text-sm text-slate-300">Select a game to start chatting</p>
+                        <p className="text-xs text-slate-500 mt-1">Choose games from the sidebar to analyze reviews and get insights</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-slate-300">{t('chat.startConversation')}</p>
+                        <p className="text-xs text-slate-500 mt-1">{t('chat.askAnything')}</p>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -940,9 +1050,119 @@ export default function ChatPage() {
                         </div>
                       </div>
                     )}
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      {formatTime(msg.timestamp)}
-                    </p>
+                    {/* Suggested follow-up questions */}
+                    {msg.role === "assistant" && msg.suggestedQuestions && msg.suggestedQuestions.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Suggested Questions</p>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.suggestedQuestions.map((q, qIdx) => (
+                            <button
+                              key={qIdx}
+                              onClick={() => handleSuggestedQuestion(q)}
+                              className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Clarification options */}
+                    {msg.role === "assistant" && msg.needsClarification && msg.clarificationOptions && msg.clarificationOptions.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Please clarify</p>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.clarificationOptions.map((opt, optIdx) => (
+                            <button
+                              key={optIdx}
+                              onClick={() => handleClarificationOption(opt)}
+                              className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition"
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Game selection suggestions */}
+                    {msg.role === "assistant" && msg.suggestGameSelection && msg.suggestedGames && msg.suggestedGames.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Select a game</p>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.suggestedGames.map((game) => (
+                            <button
+                              key={game.app_id}
+                              onClick={() => handleSelectSuggestedGame(game.app_id)}
+                              disabled={selectedGames.includes(game.app_id)}
+                              className={`text-xs px-3 py-1.5 rounded-lg border transition ${
+                                selectedGames.includes(game.app_id)
+                                  ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                  : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
+                              }`}
+                            >
+                              {selectedGames.includes(game.app_id) ? "✓ " : ""}{game.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Search for game suggestion */}
+                    {msg.role === "assistant" && msg.suggestSearchGame && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <Link
+                          href="/"
+                          className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 transition"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          Search for {msg.searchGameName ? `"${msg.searchGameName}"` : "games"}
+                        </Link>
+                      </div>
+                    )}
+                    {/* Timestamp and message feedback */}
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-[10px] text-slate-500">
+                        {formatTime(msg.timestamp)}
+                      </p>
+                      {/* Message feedback buttons - only for assistant messages */}
+                      {msg.role === "assistant" && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleMessageFeedback(idx, true)}
+                            disabled={feedbackSubmitting === idx || messageFeedback[idx] !== undefined}
+                            className={`p-1.5 rounded-lg transition ${
+                              messageFeedback[idx] === true
+                                ? "text-green-400 bg-green-400/10"
+                                : messageFeedback[idx] === false
+                                ? "text-slate-600"
+                                : "text-slate-500 hover:text-green-400 hover:bg-green-400/10"
+                            }`}
+                            title="Helpful response"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleMessageFeedback(idx, false)}
+                            disabled={feedbackSubmitting === idx || messageFeedback[idx] !== undefined}
+                            className={`p-1.5 rounded-lg transition ${
+                              messageFeedback[idx] === false
+                                ? "text-red-400 bg-red-400/10"
+                                : messageFeedback[idx] === true
+                                ? "text-slate-600"
+                                : "text-slate-500 hover:text-red-400 hover:bg-red-400/10"
+                            }`}
+                            title="Not helpful"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))

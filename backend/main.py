@@ -44,6 +44,7 @@ from .senti_next import storage
 from .senti_next import llm
 from .senti_next import license as license_guard
 from .senti_next import chat
+from .senti_next import chat_agent
 from .senti_next import redis_client
 from .senti_next import jobs as job_runner
 from .senti_next import logging_config
@@ -426,6 +427,17 @@ class SimpleChatResponse(BaseModel):
     games_used: List[Dict[str, Any]] = Field(default_factory=list)
     reviews_searched: int = 0
     has_game_context: bool = False
+    # Agentic chat enhancements
+    suggested_questions: List[str] = Field(default_factory=list)
+    needs_clarification: bool = False
+    clarification_options: List[str] = Field(default_factory=list)
+    tool_calls_made: int = 0
+    # Game selection suggestions
+    suggest_game_selection: bool = False
+    suggested_games: List[Dict[str, Any]] = Field(default_factory=list)
+    # Suggest searching for a game (shows button to go to home)
+    suggest_search_game: bool = False
+    search_game_name: str = ""
 
 
 class ChatMessage(BaseModel):
@@ -441,6 +453,20 @@ class ChatSession(BaseModel):
     started_at: Optional[str] = None
     last_message_at: Optional[str] = None
     first_user_message: Optional[str] = None
+
+
+class AdminChatSession(BaseModel):
+    """Chat session info for admin view, includes user_id and feedback stats."""
+    session_id: str
+    user_id: str
+    title: Optional[str] = None
+    app_ids: List[int] = []
+    first_user_message: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    message_count: int = 0
+    positive_feedback: int = 0
+    negative_feedback: int = 0
 
 
 class ChatCitation(BaseModel):
@@ -1368,7 +1394,7 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
 
 
 @app.post("/chat/simple", response_model=SimpleChatResponse)
-def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_id)) -> SimpleChatResponse:
+async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_id)) -> SimpleChatResponse:
     """Simple chatbot endpoint that uses Gemini for general conversation with memory.
 
     If app_ids are provided, enables "Chat with Your Data" mode which searches
@@ -1408,33 +1434,128 @@ def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_
         has_game_context = bool(app_ids)
 
         if has_game_context:
-            # Game-aware chat: search reviews and build context
+            # Game-aware chat: use agentic chat with tool calling
             logger.info(f"Chat with game context: app_ids={app_ids}, date_filter={request.date_filter}")
 
             # Create status callback that emits to SSE store
             def status_callback(status: str) -> None:
                 _emit_chat_status(session_id, status)
 
-            result = chat.answer_game_aware_chat(
+            # Load game metadata for context
+            game_metadata = storage.load_game_metadata_for_chat(user_id, app_ids)
+            game_names = {g["app_id"]: g["name"] for g in game_metadata}
+
+            # Build agent context
+            agent_context = chat_agent.AgentContext(
                 user_id=user_id,
+                session_id=session_id,
                 app_ids=app_ids,
+                conversation_history=[
+                    {"role": msg["role"], "content": msg["content"]}
+                    for msg in history
+                ],
+                game_names=game_names,
+            )
+
+            # Run the agentic chat
+            agent_result = await chat_agent.run_agent(
                 message=message,
-                date_filter=request.date_filter,
-                max_reviews_per_game=request.max_reviews_per_game,
-                history=history,
+                context=agent_context,
                 status_callback=status_callback,
-                language=request.language,
             )
 
             # Clear status after completion
             _clear_chat_status(session_id)
 
-            response_text = result.get("response", "")
-            citations = [
-                ChatCitationItem(**c) for c in result.get("citations", [])
-            ]
-            games_used = result.get("games_used", [])
-            reviews_searched = result.get("reviews_searched", 0)
+            # Handle clarification response
+            if agent_result.needs_clarification:
+                clarification_text = chat_agent.build_clarification_response(
+                    agent_result.clarification_options,
+                    agent_result.clarification_context,
+                )
+                return SimpleChatResponse(
+                    response=clarification_text,
+                    session_id=session_id,
+                    citations=[],
+                    games_used=game_metadata,
+                    reviews_searched=0,
+                    has_game_context=True,
+                    suggested_questions=[],
+                    needs_clarification=True,
+                    clarification_options=agent_result.clarification_options,
+                    tool_calls_made=len(agent_result.tool_calls_made),
+                )
+
+            # Handle game selection suggestion
+            if agent_result.suggest_game_selection:
+                return SimpleChatResponse(
+                    response=agent_result.response or agent_result.game_selection_message,
+                    session_id=session_id,
+                    citations=[],
+                    games_used=game_metadata,
+                    reviews_searched=0,
+                    has_game_context=True,
+                    suggested_questions=[],
+                    needs_clarification=False,
+                    clarification_options=[],
+                    tool_calls_made=len(agent_result.tool_calls_made),
+                    suggest_game_selection=True,
+                    suggested_games=agent_result.suggested_games,
+                )
+
+            # Handle suggest searching for a game
+            if agent_result.suggest_search_game:
+                return SimpleChatResponse(
+                    response=agent_result.response,
+                    session_id=session_id,
+                    citations=[],
+                    games_used=game_metadata,
+                    reviews_searched=0,
+                    has_game_context=True,
+                    suggested_questions=[],
+                    needs_clarification=False,
+                    clarification_options=[],
+                    tool_calls_made=len(agent_result.tool_calls_made),
+                    suggest_game_selection=False,
+                    suggested_games=[],
+                    suggest_search_game=True,
+                    search_game_name=agent_result.search_game_name,
+                )
+
+            response_text = agent_result.response
+            suggested_questions = agent_result.suggested_questions
+            tool_calls_made = len(agent_result.tool_calls_made)
+
+            # Extract citations from tool results
+            citations = []
+            for tc in agent_result.tool_calls_made:
+                if tc.get("tool") == "search_reviews":
+                    result_data = tc.get("result", {})
+                    for review in result_data.get("reviews", []):
+                        if review.get("review_id"):
+                            # Find the game name for this citation
+                            citation_app_id = app_ids[0] if app_ids else 0
+                            citation = ChatCitationItem(
+                                review_id=str(review.get("review_id", "")),
+                                app_id=citation_app_id,
+                                game_name=game_names.get(citation_app_id, f"Game {citation_app_id}"),
+                                snippet=review.get("text", "")[:200],
+                                votes_up=review.get("votes_up", 0),
+                                voted_up=review.get("sentiment") == "positive",
+                                playtime_hours=review.get("playtime_hours", 0),
+                            )
+                            citations.append(citation)
+                            if len(citations) >= 5:
+                                break
+                if len(citations) >= 5:
+                    break
+
+            games_used = game_metadata
+            reviews_searched = sum(
+                tc.get("result", {}).get("total_found", 0)
+                for tc in agent_result.tool_calls_made
+                if tc.get("tool") == "search_reviews"
+            )
         else:
             # Standard chat: general conversation
             conversation_text = ""
@@ -1463,6 +1584,8 @@ Example:
             citations = []
             games_used = []
             reviews_searched = 0
+            suggested_questions = []
+            tool_calls_made = 0
 
         # Deduct credits for this chat message
         credits.deduct_credits(
@@ -1484,6 +1607,14 @@ Example:
             games_used=games_used,
             reviews_searched=reviews_searched,
             has_game_context=has_game_context,
+            suggested_questions=suggested_questions,
+            needs_clarification=False,
+            clarification_options=[],
+            tool_calls_made=tool_calls_made,
+            suggest_game_selection=False,
+            suggested_games=[],
+            suggest_search_game=False,
+            search_game_name="",
         )
     except Exception as exc:
         logger.exception("Simple chat failed: %s", exc)
@@ -1521,6 +1652,103 @@ def clear_chat_history_endpoint(session_id: Optional[str] = None, user_id: str =
     except Exception as exc:
         logger.exception("Failed to clear chat history: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to clear chat history.") from exc
+
+
+class CitationFeedbackRequest(BaseModel):
+    review_id: str
+    session_id: str
+    helpful: bool
+
+
+@app.post("/chat/citation-feedback")
+def submit_citation_feedback(
+    request: CitationFeedbackRequest,
+    user_id: str = Depends(require_user_id),
+) -> Dict[str, str]:
+    """Submit feedback on whether a citation was helpful."""
+    try:
+        storage.save_citation_feedback(
+            user_id=user_id,
+            session_id=request.session_id,
+            review_id=request.review_id,
+            helpful=request.helpful,
+        )
+        return {"status": "ok"}
+    except Exception as exc:
+        logger.exception("Failed to save citation feedback: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to save feedback.") from exc
+
+
+@app.get("/admin/chat-sessions", response_model=List[AdminChatSession])
+def get_admin_chat_sessions(
+    limit: int = 100,
+    _: None = Depends(require_admin),
+) -> List[AdminChatSession]:
+    """Get all chat sessions from all users with feedback info (admin only)."""
+    try:
+        sessions = storage.list_all_chat_sessions_with_feedback(limit=limit)
+        return [AdminChatSession(**session) for session in sessions]
+    except Exception as exc:
+        logger.exception("Failed to load admin chat sessions: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load chat sessions.") from exc
+
+
+@app.get("/admin/chat-history/{session_id}", response_model=List[ChatMessage])
+def get_admin_chat_history(
+    session_id: str,
+    _: None = Depends(require_admin),
+) -> List[ChatMessage]:
+    """Get chat history for any session (admin only)."""
+    try:
+        # Get session to find user_id
+        session = storage.get_chat_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found.")
+
+        history = storage.load_chat_history(session["user_id"], limit=500, session_id=session_id)
+        return [ChatMessage(**msg) for msg in history]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to load chat history: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load chat history.") from exc
+
+
+@app.get("/chat/export/{session_id}")
+def export_chat_session(
+    session_id: str,
+    format: str = "markdown",
+    user_id: str = Depends(require_user_id),
+):
+    """Export a chat session as markdown or JSON."""
+    messages = storage.load_chat_history(user_id, limit=500, session_id=session_id)
+
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages found for this session.")
+
+    if format == "json":
+        return JSONResponse(
+            content={"session_id": session_id, "messages": messages},
+            headers={"Content-Disposition": f"attachment; filename=chat-{session_id}.json"},
+        )
+
+    # Default to markdown
+    md_lines = [f"# Chat Session {session_id}\n"]
+    for msg in messages:
+        role_label = "**User**" if msg["role"] == "user" else "**Assistant**"
+        timestamp = msg.get("timestamp", "")
+        if timestamp:
+            md_lines.append(f"{role_label} ({timestamp}):\n")
+        else:
+            md_lines.append(f"{role_label}:\n")
+        md_lines.append(f"{msg['content']}\n\n---\n")
+
+    md_content = "\n".join(md_lines)
+    return Response(
+        content=md_content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename=chat-{session_id}.md"},
+    )
 
 
 @app.get("/chat/stream/{session_id}")

@@ -580,8 +580,9 @@ def answer_chat(
 
     try:
         payload = llm._load_json_mapping(raw)
-    except Exception:
-        payload = {}
+    except Exception as e:
+        logger.warning(f"JSON parse failed for chat response: {e}. Raw response (first 500 chars): {raw[:500] if raw else 'empty'}")
+        payload = {"error": "parse_failed", "raw_preview": raw[:200] if raw else ""}
 
     answer = str(payload.get("answer") or "").strip()
     used_subcategories = payload.get("used_subcategories")
@@ -1362,8 +1363,32 @@ def answer_game_aware_chat(
         language=language,
     )
 
-    # Call LLM
-    response_text, model_id = llm.run_chat_completion(prompt)
+    # Call LLM with retry logic
+    max_retries = 2
+    response_text = ""
+    model_id = "unknown"
+
+    for attempt in range(max_retries):
+        try:
+            response_text, model_id = llm.run_chat_completion(prompt)
+            break
+        except Exception as e:
+            logger.warning(f"LLM call attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt == max_retries - 1:
+                # Final attempt failed - return error response
+                logger.error(f"All LLM call attempts failed for message: {message[:100]}")
+                return {
+                    "response": "I encountered an error processing your request. Please try again in a moment.",
+                    "citations": [],
+                    "games_used": [{"app_id": g["app_id"], "name": g["name"]} for g in games],
+                    "reviews_searched": total_reviews,
+                    "has_game_context": True,
+                    "model": "error",
+                    "error": str(e),
+                }
+            # Brief pause before retry
+            import time
+            time.sleep(1)
 
     # Extract citations from the response (look for review ID mentions)
     citations = []

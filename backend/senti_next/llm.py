@@ -1,10 +1,12 @@
 """Review classification helpers (Google Gemini)."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 import random
 import re
@@ -12,7 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from string import Template
 from textwrap import dedent
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -930,6 +932,281 @@ def _model_id(provider: str, model: str) -> str:
     return f"{provider}:{model}"
 
 
+@dataclass
+class LLMResponse:
+    """Response from an LLM call, potentially with tool calls."""
+
+    content: Optional[str] = None
+    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    model: str = ""
+
+
+async def call_llm_with_tools(
+    messages: List[Dict[str, Any]],
+    tools: List[Dict[str, Any]],
+    model: Optional[str] = None,
+) -> LLMResponse:
+    """Call Gemini with function calling enabled.
+
+    Args:
+        messages: List of message dicts with 'role' and 'content' keys.
+                  Roles: 'system', 'user', 'assistant', 'tool'
+        tools: List of tool definitions in Gemini function declaration format.
+        model: Optional model override (defaults to GEMINI_MODEL).
+
+    Returns:
+        LLMResponse with either content or tool_calls populated.
+    """
+    _maybe_load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not set.")
+
+    model_name = model or GEMINI_MODEL
+
+    try:
+        from google import genai
+        from google.genai import types
+        from google.genai.errors import ClientError
+
+        logger.info(f"Starting Gemini tool-calling API request with model {model_name}")
+        start_time = time.time()
+
+        client = genai.Client(api_key=api_key)
+
+        # Convert messages to Gemini format
+        gemini_contents = _convert_messages_to_gemini(messages)
+
+        # Build function declarations for tools
+        function_declarations = []
+        for tool in tools:
+            # Build proper parameter schema
+            properties = tool.get("parameters", {}).get("properties", {})
+            required = tool.get("parameters", {}).get("required", [])
+
+            # Convert to Gemini schema format
+            gemini_properties = {}
+            for prop_name, prop_def in properties.items():
+                gemini_prop = {"type": prop_def.get("type", "string").upper()}
+                if "description" in prop_def:
+                    gemini_prop["description"] = prop_def["description"]
+                if prop_def.get("type") == "array" and "items" in prop_def:
+                    gemini_prop["items"] = {"type": prop_def["items"].get("type", "string").upper()}
+                gemini_properties[prop_name] = gemini_prop
+
+            func_decl = types.FunctionDeclaration(
+                name=tool["name"],
+                description=tool.get("description", ""),
+                parameters=types.Schema(
+                    type="OBJECT",
+                    properties=gemini_properties,
+                    required=required,
+                ) if gemini_properties else None,
+            )
+            function_declarations.append(func_decl)
+
+        # Create tool config
+        gemini_tools = [types.Tool(function_declarations=function_declarations)]
+
+        max_retries = 3
+        attempt = 0
+
+        while attempt < max_retries:
+            attempt += 1
+            try:
+                # Run the async-compatible call
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model_name,
+                    contents=gemini_contents,
+                    config=types.GenerateContentConfig(
+                        tools=gemini_tools,
+                        # Allow model to decide when to use tools
+                        tool_config=types.ToolConfig(
+                            function_calling_config=types.FunctionCallingConfig(
+                                mode="AUTO",
+                            )
+                        ),
+                    ),
+                )
+
+                elapsed = time.time() - start_time
+                logger.info(f"Gemini tool-calling API call completed in {elapsed:.2f}s (attempt {attempt})")
+
+                # Parse response for tool calls or content
+                tool_calls = []
+                content = None
+
+                if response.candidates and response.candidates[0].content.parts:
+                    for part in response.candidates[0].content.parts:
+                        # Check for function call
+                        if hasattr(part, 'function_call') and part.function_call:
+                            fc = part.function_call
+                            tool_calls.append({
+                                "name": fc.name,
+                                "parameters": dict(fc.args) if fc.args else {},
+                            })
+                        # Check for text content
+                        elif hasattr(part, 'text') and part.text:
+                            content = part.text
+
+                return LLMResponse(
+                    content=content,
+                    tool_calls=tool_calls,
+                    model=_model_id("google", model_name),
+                )
+
+            except ClientError as e:
+                status_code = _extract_status_code(e)
+
+                # Handle rate limiting (429)
+                if status_code == 429:
+                    retry_delay = _extract_retry_delay(e, default=20)
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Gemini rate limit hit (429), retrying in {retry_delay:.1f}s "
+                            f"(attempt {attempt}/{max_retries})"
+                        )
+                        await asyncio.sleep(retry_delay)
+                        continue
+                    else:
+                        logger.error(f"Gemini rate limit exceeded after {max_retries} attempts")
+                        raise ValueError(
+                            "Gemini rate limit exceeded. Free tier allows 10 requests/minute."
+                        )
+                else:
+                    raise
+
+        raise ValueError(f"Gemini API call failed after {max_retries} attempts")
+
+    except ImportError:
+        raise ValueError("google-genai package not installed. Run: pip install google-genai")
+    except Exception as e:
+        logger.error(f"Gemini tool-calling API error: {e}")
+        raise ValueError(f"Gemini tool-calling API error: {str(e)}")
+
+
+def _convert_messages_to_gemini(messages: List[Dict[str, Any]]) -> List[Any]:
+    """Convert chat messages to Gemini content format.
+
+    Args:
+        messages: List of message dicts with 'role' and 'content'.
+
+    Returns:
+        List of Gemini Content objects.
+    """
+    from google.genai import types
+
+    gemini_contents = []
+    system_instruction = None
+
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+
+        if role == "system":
+            # Gemini handles system as a separate instruction, prepend to first user message
+            system_instruction = content
+            continue
+
+        elif role == "user":
+            # Prepend system instruction to first user message if present
+            if system_instruction:
+                content = f"{system_instruction}\n\n{content}"
+                system_instruction = None
+            gemini_contents.append(
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=content)],
+                )
+            )
+
+        elif role == "assistant":
+            # Check if this is a tool call response
+            tool_calls = msg.get("tool_calls")
+            if tool_calls:
+                parts = []
+                for tc in tool_calls:
+                    parts.append(
+                        types.Part.from_function_call(
+                            name=tc.get("name", ""),
+                            args=tc.get("parameters", {}),
+                        )
+                    )
+                gemini_contents.append(
+                    types.Content(role="model", parts=parts)
+                )
+            elif content:
+                gemini_contents.append(
+                    types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=content)],
+                    )
+                )
+
+        elif role == "tool":
+            # Tool results - parse JSON content and create function response parts
+            try:
+                tool_results = json.loads(content) if isinstance(content, str) else content
+                if isinstance(tool_results, list):
+                    parts = []
+                    for result in tool_results:
+                        tool_name = result.get("tool", "unknown")
+                        tool_result = result.get("result", {})
+                        parts.append(
+                            types.Part.from_function_response(
+                                name=tool_name,
+                                response=tool_result,
+                            )
+                        )
+                    gemini_contents.append(
+                        types.Content(role="user", parts=parts)
+                    )
+            except (json.JSONDecodeError, TypeError):
+                # If can't parse as JSON, just add as text
+                gemini_contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=str(content))],
+                    )
+                )
+
+    return gemini_contents
+
+
+def _extract_status_code(error: Exception) -> Optional[int]:
+    """Extract HTTP status code from a Gemini ClientError."""
+    status_code = getattr(error, "status_code", None)
+    if status_code is None:
+        status_code = getattr(error, "status", None)
+    if status_code is None:
+        status_code = getattr(error, "code", None)
+    if status_code is None:
+        match = re.search(r"code[\"']?\s*:\s*(\d{3})", str(error))
+        if match:
+            try:
+                status_code = int(match.group(1))
+            except ValueError:
+                pass
+    return status_code
+
+
+def _extract_retry_delay(error: Exception, default: float = 20) -> float:
+    """Extract retry delay from a Gemini error message."""
+    try:
+        raw_message = getattr(error, "message", None)
+        if raw_message is not None:
+            raw_text = str(raw_message)
+        else:
+            raw_text = str(error)
+        match = re.search(r"retry in ([\d.]+)s", raw_text, flags=re.IGNORECASE)
+        if match:
+            return float(match.group(1)) + 1
+    except Exception:
+        pass
+    return default
+
+
 def _run_llm(
     prompt: str,
 ) -> tuple[str, str]:
@@ -1575,8 +1852,10 @@ def summarize_subcategory_reviews(
 
 __all__ = [
     "apply_review_labels",
+    "call_llm_with_tools",
     "classify_review",
     "ensure_review_labels",
+    "LLMResponse",
     "run_chat_completion",
     "summarize_subcategory_reviews",
 ]

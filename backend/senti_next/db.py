@@ -402,6 +402,63 @@ def init_postgresql_schema() -> None:
             ON credit_transactions(user_id, created_at DESC)
         """))
 
+        # Chat context table for conversation memory
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chat_context (
+                session_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                app_ids INTEGER[] DEFAULT '{}',
+                last_intent TEXT,
+                last_subcategories TEXT[],
+                accumulated_facts JSONB DEFAULT '{}',
+                game_names JSONB DEFAULT '{}',
+                turn_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_chat_context_user
+            ON chat_context(user_id, updated_at DESC)
+        """))
+
+        # Citation feedback table for learning from user interactions
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS citation_feedback (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                review_id TEXT NOT NULL,
+                helpful BOOLEAN NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_citation_feedback_user
+            ON citation_feedback(user_id, session_id, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_citation_feedback_review
+            ON citation_feedback(review_id)
+        """))
+
+        # Chat sessions table for managing chat history metadata
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                session_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                title TEXT,
+                app_ids INTEGER[] DEFAULT '{}',
+                first_user_message TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_user
+            ON chat_sessions(user_id, updated_at DESC)
+        """))
+
         logger.info("PostgreSQL schema initialized and migrated")
 
 
