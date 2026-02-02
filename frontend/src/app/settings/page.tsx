@@ -8,6 +8,7 @@ import { fetchLogTail } from "@/lib/api";
 import { isTauriApp } from "@/lib/settings";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAdminStatus } from "@/hooks/useAdminStatus";
 
 export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -18,6 +19,7 @@ export default function SettingsPage() {
   const [copyError, setCopyError] = useState<string | null>(null);
   const { language, setLanguage, t } = useLanguage();
   const [showLogs, setShowLogs] = useState(false);
+  const { isAdmin } = useAdminStatus();
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -115,7 +117,7 @@ export default function SettingsPage() {
           <div className="h-[1px] bg-gradient-to-r from-[rgb(0,255,255)]/50 via-[rgb(0,255,255)]/20 to-transparent" />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-xl'}`}>
           {/* Left Column */}
           <div className="space-y-6">
             {/* Language Section */}
@@ -221,89 +223,91 @@ export default function SettingsPage() {
             </Card>
           </div>
 
-          {/* Right Column - Diagnostics */}
-          <div className="space-y-6">
-            <Card variant="glass" className="p-6">
-              <div className="mb-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-base">🔧</span>
-                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                    {t('settings.diagnostics')}
-                  </p>
-                </div>
-                <p className="text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="flex flex-wrap gap-2 mb-5">
-                <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
-                  {t('settings.recheckBackend')}
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => { loadLogTail(); setShowLogs(true); }}>
-                  {t('settings.refreshLogs')}
-                </Button>
-                <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
-                  {t('settings.copyDiagnostics')}
-                </Button>
-              </div>
-
-              {copiedDiagnostics && (
-                <div className="flex items-center gap-2 mb-4 p-2 bg-[rgb(0,255,136)]/10 border border-[rgb(0,255,136)]/30">
-                  <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
-                  <span className="text-xs text-[rgb(0,255,136)]">{t('settings.copied')}</span>
-                </div>
-              )}
-
-              {copyError && (
-                <p className="text-xs text-rose-400 mb-4">{copyError}</p>
-              )}
-
-              {/* Backend Boot Error */}
-              {backendBootError && (
-                <div className="space-y-3 p-4 border border-rose-500/30 bg-rose-500/5 mb-5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
-                    <p className="text-xs uppercase tracking-[0.2em] text-rose-400">
-                      Backend Error
+          {/* Right Column - Diagnostics (Admin Only) */}
+          {isAdmin && (
+            <div className="space-y-6">
+              <Card variant="glass" className="p-6">
+                <div className="mb-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-base">🔧</span>
+                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                      {t('settings.diagnostics')}
                     </p>
                   </div>
-                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-3 text-[11px] text-rose-200 font-mono">
-                    {backendBootError}
-                  </pre>
-                  <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
-                    Copy Error
+                  <p className="text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="flex flex-wrap gap-2 mb-5">
+                  <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
+                    {t('settings.recheckBackend')}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => { loadLogTail(); setShowLogs(true); }}>
+                    {t('settings.refreshLogs')}
+                  </Button>
+                  <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
+                    {t('settings.copyDiagnostics')}
                   </Button>
                 </div>
-              )}
 
-              {/* Log Tail (Collapsible) */}
-              <div className="space-y-3">
-                <button
-                  onClick={() => setShowLogs(!showLogs)}
-                  className="flex items-center gap-2 text-left w-full"
-                >
-                  <span className={`text-[rgb(0,255,255)]/50 transition-transform ${showLogs ? 'rotate-90' : ''}`}>
-                    ▶
-                  </span>
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
-                    System Logs
-                  </p>
-                </button>
-
-                {showLogs && (
-                  <>
-                    {logTailError ? (
-                      <p className="text-xs text-rose-400">{logTailError}</p>
-                    ) : (
-                      <pre className="max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-[10px] text-[rgb(200,200,210)] font-mono">
-                        {logTail || "No logs yet."}
-                      </pre>
-                    )}
-                  </>
+                {copiedDiagnostics && (
+                  <div className="flex items-center gap-2 mb-4 p-2 bg-[rgb(0,255,136)]/10 border border-[rgb(0,255,136)]/30">
+                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
+                    <span className="text-xs text-[rgb(0,255,136)]">{t('settings.copied')}</span>
+                  </div>
                 )}
-              </div>
-            </Card>
-          </div>
+
+                {copyError && (
+                  <p className="text-xs text-rose-400 mb-4">{copyError}</p>
+                )}
+
+                {/* Backend Boot Error */}
+                {backendBootError && (
+                  <div className="space-y-3 p-4 border border-rose-500/30 bg-rose-500/5 mb-5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
+                      <p className="text-xs uppercase tracking-[0.2em] text-rose-400">
+                        Backend Error
+                      </p>
+                    </div>
+                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-3 text-[11px] text-rose-200 font-mono">
+                      {backendBootError}
+                    </pre>
+                    <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
+                      Copy Error
+                    </Button>
+                  </div>
+                )}
+
+                {/* Log Tail (Collapsible) */}
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setShowLogs(!showLogs)}
+                    className="flex items-center gap-2 text-left w-full"
+                  >
+                    <span className={`text-[rgb(0,255,255)]/50 transition-transform ${showLogs ? 'rotate-90' : ''}`}>
+                      ▶
+                    </span>
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
+                      System Logs
+                    </p>
+                  </button>
+
+                  {showLogs && (
+                    <>
+                      {logTailError ? (
+                        <p className="text-xs text-rose-400">{logTailError}</p>
+                      ) : (
+                        <pre className="max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-[10px] text-[rgb(200,200,210)] font-mono">
+                          {logTail || "No logs yet."}
+                        </pre>
+                      )}
+                    </>
+                  )}
+                </div>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
     </AppLayout>
