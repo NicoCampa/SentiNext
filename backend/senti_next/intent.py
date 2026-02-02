@@ -67,7 +67,7 @@ def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
         r'\b(low playtime|high playtime|little playtime)\b',
     ]
 
-    # NEW: COMPARISON indicators (before/after, EA vs release)
+    # NEW: COMPARISON indicators (before/after, EA vs release, time periods)
     comparison_patterns = [
         r'\b(early access|ea)\s*(vs?|versus|compared to|vs\.?)\s*(release|full|1\.0)\b',
         r'\b(release|full|1\.0)\s*(vs?|versus|compared to|vs\.?)\s*(early access|ea)\b',
@@ -75,6 +75,10 @@ def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
         r'\b(before|after)\s+(release|launch|patch|update|1\.0)\b',
         r'\b(pre.?release|post.?release|pre.?launch|post.?launch)\b',
         r'\b(difference|differences) between\b.*\b(early|release|patch)\b',
+        r'\b(divide|split|break down|segment)\s+(reviews|data)\s+(into|in|by)\b',
+        r'\b(first|last)\s+\d+\s+(days?|weeks?)\s+(vs?|versus|compared to)\s+(second|last|next)\b',
+        r'\b(category|period|segment)\s+\d+.*category\s+\d+\b',
+        r'\b(compare|comparison)\s+(first|last)\s+\d+',
     ]
 
     # NEW: RISK indicators (refund risk, churn, retention)
@@ -233,6 +237,60 @@ def should_load_full_insights(intent: ChatIntent) -> bool:
         ChatIntent.RISK,
         ChatIntent.FEATURE_REQUESTS,
     )
+
+
+def extract_time_comparison_params(message: str) -> Optional[Dict[str, int]]:
+    """Extract time period comparison parameters from a message.
+
+    Args:
+        message: User's question
+
+    Returns:
+        Dict with keys days_ago_start, days_ago_end, num_periods, or None
+
+    Examples:
+        "divide last 30 days into 2 periods" → {"days_ago_start": 30, "days_ago_end": 0, "num_periods": 2}
+        "first 15 days vs second 15 days of last 30 days" → {"days_ago_start": 30, "days_ago_end": 0, "num_periods": 2}
+        "compare last 7 days to previous 7 days" → {"days_ago_start": 14, "days_ago_end": 0, "num_periods": 2}
+    """
+    normalized = message.lower()
+
+    # Pattern 1: "divide/split last X days into Y periods"
+    match = re.search(r'\b(?:last|past)\s+(\d+)\s+days?\s+(?:into|in)\s+(\d+)\s+(?:periods?|parts?|categories?|segments?)', normalized)
+    if match:
+        days = int(match.group(1))
+        periods = int(match.group(2))
+        return {"days_ago_start": days, "days_ago_end": 0, "num_periods": periods}
+
+    # Pattern 2: "first X days vs second X days" (implies 2X total days)
+    match = re.search(r'\bfirst\s+(\d+)\s+days?\s+(?:vs?|versus|compared to|category \d+).*(?:second|last)\s+(\d+)\s+days?', normalized)
+    if match:
+        days1 = int(match.group(1))
+        days2 = int(match.group(2))
+        total_days = days1 + days2
+        return {"days_ago_start": total_days, "days_ago_end": 0, "num_periods": 2}
+
+    # Pattern 3: "last X days vs previous X days"
+    match = re.search(r'\blast\s+(\d+)\s+days?\s+(?:vs?|versus|compared to).*previous\s+(\d+)\s+days?', normalized)
+    if match:
+        days1 = int(match.group(1))
+        days2 = int(match.group(2))
+        total_days = days1 + days2
+        return {"days_ago_start": total_days, "days_ago_end": 0, "num_periods": 2}
+
+    # Pattern 4: "of last X days" with period splitting
+    match = re.search(r'\b(?:of|in|within)\s+(?:the\s+)?last\s+(\d+)\s+days?', normalized)
+    if match and re.search(r'\b(divide|split|category|period|segment)\b', normalized):
+        days = int(match.group(1))
+        # Look for number of periods
+        period_match = re.search(r'\b(?:into|in)\s+(\d+)\s+(?:periods?|parts?|categories?|segments?)', normalized)
+        if period_match:
+            periods = int(period_match.group(1))
+            return {"days_ago_start": days, "days_ago_end": 0, "num_periods": periods}
+        # Default to 2 periods if not specified
+        return {"days_ago_start": days, "days_ago_end": 0, "num_periods": 2}
+
+    return None
 
 
 def detect_sort_preference(message: str) -> Optional[str]:

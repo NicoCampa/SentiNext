@@ -1390,6 +1390,116 @@ def get_recommendation_split(
     }
 
 
+def get_time_period_comparison(
+    app_id: int,
+    days_ago_start: int,
+    days_ago_end: int,
+    num_periods: int = 2,
+) -> List[Dict[str, Any]]:
+    """Compare recommendation rates across multiple time periods.
+
+    Args:
+        app_id: The Steam app ID
+        days_ago_start: Start of the time window (days ago from now)
+        days_ago_end: End of the time window (days ago from now, usually 0 for "now")
+        num_periods: Number of equal periods to divide the time window into
+
+    Returns:
+        List of dicts, one per period, with:
+            - period_label: Human-readable label (e.g., "Days 1-15", "Days 16-30")
+            - start_date: ISO date string
+            - end_date: ISO date string
+            - recommended: Count of positive reviews
+            - not_recommended: Count of negative reviews
+            - total: Total reviews
+            - recommendation_rate: Float 0-1
+
+    Example:
+        >>> get_time_period_comparison(1091500, days_ago_start=30, days_ago_end=0, num_periods=2)
+        [
+            {
+                "period_label": "Days 1-15 (most recent)",
+                "recommended": 450,
+                "not_recommended": 50,
+                "total": 500,
+                "recommendation_rate": 0.9,
+                ...
+            },
+            {
+                "period_label": "Days 16-30",
+                "recommended": 380,
+                "not_recommended": 120,
+                "total": 500,
+                "recommendation_rate": 0.76,
+                ...
+            }
+        ]
+    """
+    from . import db as db_module
+    import time
+    from datetime import datetime, timedelta
+
+    now = time.time()
+    window_start = now - (days_ago_start * 24 * 60 * 60)
+    window_end = now - (days_ago_end * 24 * 60 * 60)
+    total_window = window_end - window_start
+    period_length = total_window / num_periods
+
+    results = []
+
+    with db_module.get_connection() as conn:
+        for i in range(num_periods):
+            # Most recent period first
+            period_end = window_end - (i * period_length)
+            period_start = period_end - period_length
+
+            result = conn.execute(
+                text("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended,
+                        COUNT(*) as total
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND timestamp_created >= :start_ts
+                      AND timestamp_created < :end_ts
+                      AND data->>'voted_up' IS NOT NULL
+                """),
+                {
+                    "app_id": int(app_id),
+                    "start_ts": int(period_start),
+                    "end_ts": int(period_end),
+                },
+            )
+
+            row = result.fetchone()
+            recommended = int(row[0]) if row[0] else 0
+            not_recommended = int(row[1]) if row[1] else 0
+            total = int(row[2]) if row[2] else 0
+            rec_rate = (recommended / total) if total > 0 else 0.0
+
+            # Calculate day ranges
+            days_from_end_start = int((window_end - period_end) / (24 * 60 * 60))
+            days_from_end_end = int((window_end - period_start) / (24 * 60 * 60))
+
+            if i == 0:
+                period_label = f"Days {days_from_end_start + 1}-{days_from_end_end} (most recent)"
+            else:
+                period_label = f"Days {days_from_end_start + 1}-{days_from_end_end}"
+
+            results.append({
+                "period_label": period_label,
+                "start_date": datetime.fromtimestamp(period_start).isoformat(),
+                "end_date": datetime.fromtimestamp(period_end).isoformat(),
+                "recommended": recommended,
+                "not_recommended": not_recommended,
+                "total": total,
+                "recommendation_rate": rec_rate,
+            })
+
+    return results
+
+
 def sample_reviews_by_sentiment(
     app_id: int,
     sentiment: str,

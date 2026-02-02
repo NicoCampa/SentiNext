@@ -786,6 +786,7 @@ def build_game_aware_prompt(
     recommendation_splits: Optional[Dict[int, Dict[str, Any]]] = None,
     subcategory_insights: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     full_insights: Optional[Dict[int, Dict[str, Any]]] = None,
+    time_period_comparisons: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     intent: Optional[Any] = None,
     sort_preference: Optional[str] = None,
     history: List[Dict[str, Any]] = None,
@@ -890,6 +891,29 @@ def build_game_aware_prompt(
                     if top_issues:
                         issues_str = ", ".join(top_issues[:5])
                         prompt_parts.append(f"{label}: {issues_str}")
+                prompt_parts.append("")
+
+        # NEW: COMPARISON Section - Time Period Comparison
+        if intent == ChatIntent.COMPARISON and time_period_comparisons:
+            periods = time_period_comparisons.get(app_id) or []
+            if periods:
+                prompt_parts.append("\n### Time Period Comparison (AUTHORITATIVE - use for charts):")
+                prompt_parts.append(f"Divided into {len(periods)} equal periods:\n")
+                for period in periods:
+                    label = period.get("period_label", "Unknown")
+                    rec = period.get("recommended", 0)
+                    not_rec = period.get("not_recommended", 0)
+                    total = period.get("total", 0)
+                    rec_rate = period.get("recommendation_rate", 0) * 100
+                    start_date = period.get("start_date", "")[:10]  # YYYY-MM-DD
+                    end_date = period.get("end_date", "")[:10]
+
+                    prompt_parts.append(
+                        f"**{label}** ({start_date} to {end_date}):\n"
+                        f"  - Total reviews: {total}\n"
+                        f"  - Recommended: {rec} ({rec_rate:.1f}%)\n"
+                        f"  - Not Recommended: {not_rec}"
+                    )
                 prompt_parts.append("")
 
         # NEW: COMPARISON Section - Early Access vs Release
@@ -1096,6 +1120,7 @@ def answer_game_aware_chat(
         should_use_sql_aggregation,
         should_load_full_insights,
         detect_sort_preference,
+        extract_time_comparison_params,
         ChatIntent,
     )
 
@@ -1115,9 +1140,13 @@ def answer_game_aware_chat(
     # Step 1: Classify intent and extract search term
     intent, search_term, is_entity = classify_intent(message)
     sort_preference = detect_sort_preference(message)
+    time_comparison_params = None
+    if intent == ChatIntent.COMPARISON:
+        time_comparison_params = extract_time_comparison_params(message)
     logger.info(
         f"Classified intent: {intent.value}, search_term: {search_term}, "
-        f"is_entity: {is_entity}, sort_preference: {sort_preference} "
+        f"is_entity: {is_entity}, sort_preference: {sort_preference}, "
+        f"time_comparison: {time_comparison_params} "
         f"for message: {message[:100]}"
     )
 
@@ -1154,6 +1183,7 @@ def answer_game_aware_chat(
     subcategory_insights: Dict[int, List[Dict[str, Any]]] = {}
     full_insights: Dict[int, Dict[str, Any]] = {}
     reviews_by_game: Dict[int, List[dict]] = {}
+    time_period_comparisons: Dict[int, List[Dict[str, Any]]] = {}
 
     # Load full insights for advanced intents
     if should_load_full_insights(intent):
@@ -1168,6 +1198,21 @@ def answer_game_aware_chat(
                 subcat_list = insights.get("subcategory_insights") or []
                 subcategory_insights[app_id] = subcat_list
                 logger.info(f"App {app_id}: Loaded full insights with {len(subcat_list)} subcategories")
+
+    # Handle time period comparisons
+    if time_comparison_params:
+        if status_callback:
+            status_callback("Computing time period comparison...")
+
+        for app_id in app_ids:
+            periods = storage.get_time_period_comparison(
+                app_id=app_id,
+                days_ago_start=time_comparison_params["days_ago_start"],
+                days_ago_end=time_comparison_params["days_ago_end"],
+                num_periods=time_comparison_params["num_periods"],
+            )
+            time_period_comparisons[app_id] = periods
+            logger.info(f"App {app_id}: Computed {len(periods)} time period comparisons")
 
     if should_use_sql_aggregation(intent):
         # AGGREGATION/MIXED/TREND/SEGMENT/COMPARISON/RISK/FEATURE_REQUESTS: Use SQL for accurate stats
@@ -1260,6 +1305,7 @@ def answer_game_aware_chat(
         recommendation_splits=recommendation_splits if recommendation_splits else None,
         subcategory_insights=subcategory_insights if subcategory_insights else None,
         full_insights=full_insights if full_insights else None,
+        time_period_comparisons=time_period_comparisons if time_period_comparisons else None,
         intent=intent,
         sort_preference=sort_preference,
         history=history or [],
