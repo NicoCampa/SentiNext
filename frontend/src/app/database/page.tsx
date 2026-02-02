@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useGlobalFilters } from '@/contexts/GlobalFiltersContext';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { applyGlobalReviewFilters } from '@/lib/reviewFilters';
 import { deleteGame, downloadDatabaseExport, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
 import type { DatabaseReviewsResponse, DatabaseReviewItem, DatabaseGameOption } from '@/types';
@@ -83,6 +84,7 @@ function formatReviewDate(value?: string | null): string {
 export default function DatabasePage() {
   const { filters } = useGlobalFilters();
   const { density } = useUiPreferences();
+  const { t } = useLanguage();
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [games, setGames] = useState<DatabaseGameOption[]>([]);
   const [reviewsResponse, setReviewsResponse] = useState<DatabaseReviewsResponse | null>(null);
@@ -375,19 +377,17 @@ export default function DatabasePage() {
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">
             <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-              Database Explorer
+              {t('database.title')}
             </span>
           </h1>
           <p className="text-sm text-slate-400">
-            {scope === 'all'
-              ? 'Browse every stored review across all accounts.'
-              : 'Browse every stored review across your dataset.'}
+            {t('database.subtitle')}
           </p>
         </div>
 
         <Card variant="glass" className="p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-white">Database statistics</h2>
+            <h2 className="text-base font-semibold text-white">{t('database.stats')}</h2>
             {isAdmin && (
               <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-[10px] uppercase tracking-[0.25em] text-slate-400">
                 <button
@@ -399,7 +399,7 @@ export default function DatabasePage() {
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  My data
+                  {t('database.myData')}
                 </button>
                 <button
                   type="button"
@@ -410,37 +410,37 @@ export default function DatabasePage() {
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  All users
+                  {t('database.allUsers')}
                 </button>
               </div>
             )}
           </div>
           {loadingStats ? (
-            <p className="text-sm text-slate-400">Loading stats...</p>
+            <p className="text-sm text-slate-400">{t('database.loadingStats')}</p>
           ) : stats ? (
             <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
               <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
-                <span className="text-slate-400">Games</span> · {stats.games.toLocaleString()}
+                <span className="text-slate-400">{t('common.games')}</span> · {stats.games.toLocaleString()}
               </span>
               <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
-                <span className="text-slate-400">Reviews</span> · {stats.reviews.toLocaleString()}
+                <span className="text-slate-400">{t('common.reviews')}</span> · {stats.reviews.toLocaleString()}
               </span>
               <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
-                <span className="text-slate-400">Starred</span> · {stats.starred_games.toLocaleString()}
+                <span className="text-slate-400">{t('database.starred')}</span> · {stats.starred_games.toLocaleString()}
               </span>
               <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs">
-                <span className="text-slate-400">Labels</span> · {stats.labels.toLocaleString()}
+                <span className="text-slate-400">{t('common.labels')}</span> · {stats.labels.toLocaleString()}
               </span>
             </div>
           ) : (
             <EmptyState
-              title="No local data yet"
-              description="Run your first analysis to populate the database."
+              title={t('database.noData')}
+              description={t('database.noDataDesc')}
               icon="DB"
               variant="info"
               action={
                 <a href="/dashboard">
-                  <Button variant="primary">Analyze a Game</Button>
+                  <Button variant="primary">{t('dashboard.analyze')}</Button>
                 </a>
               }
             />
@@ -450,8 +450,8 @@ export default function DatabasePage() {
         <Card variant="glass" className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-white">Dataset filters</h2>
-              <p className="text-xs text-slate-400">Search and filter across the entire database.</p>
+              <h2 className="text-lg font-semibold text-white">{t('database.filters')}</h2>
+              <p className="text-xs text-slate-400">{t('database.filtersDesc')}</p>
             </div>
             <div className="flex flex-col items-start gap-2 text-xs text-slate-500 sm:items-end">
               <div>
@@ -464,7 +464,7 @@ export default function DatabasePage() {
                   disabled={downloadBusy || loadingReviews}
                   onClick={() => handleDownload('csv')}
                 >
-                  {downloadBusy ? 'Preparing…' : 'Download CSV'}
+                  {downloadBusy ? 'Preparing…' : t('database.downloadCSV')}
                 </Button>
                 <Button
                   size="sm"
@@ -472,7 +472,7 @@ export default function DatabasePage() {
                   disabled={downloadBusy || loadingReviews}
                   onClick={() => handleDownload('jsonl')}
                 >
-                  {downloadBusy ? 'Preparing…' : 'Download JSONL'}
+                  {downloadBusy ? 'Preparing…' : t('database.downloadJSON')}
                 </Button>
               </div>
             </div>
@@ -481,13 +481,13 @@ export default function DatabasePage() {
 
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Search text</span>
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.searchText')}</span>
               <div className="flex gap-3">
                 <input
                   value={queryInput}
                   onChange={(event) => setQueryInput(event.target.value)}
                   onKeyDown={(event) => event.key === 'Enter' && handleApplyQuery()}
-                  placeholder="Search review text"
+                  placeholder={t('database.searchPlaceholder')}
                   className="flex-1 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
                 />
                 <Button variant="secondary" onClick={handleApplyQuery}>
@@ -497,7 +497,7 @@ export default function DatabasePage() {
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Game</span>
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.game')}</span>
               <select
                 value={selectedAppId ?? ''}
                 onChange={(event) => {
@@ -507,7 +507,7 @@ export default function DatabasePage() {
                 }}
                 className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
               >
-                <option value="">All games</option>
+                <option value="">{t('database.allGames')}</option>
                 {games.map((game) => (
                   <option key={game.app_id} value={game.app_id}>
                     {game.name ? `${game.name} (${game.app_id})` : `App ${game.app_id}`}
@@ -517,7 +517,7 @@ export default function DatabasePage() {
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Language</span>
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.language')}</span>
               <input
                 value={languageFilter}
                 onChange={(event) => {
@@ -532,7 +532,7 @@ export default function DatabasePage() {
 
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Category</span>
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.category')}</span>
               <select
                 value={selectedCategory}
                 onChange={(event) => {
@@ -542,7 +542,7 @@ export default function DatabasePage() {
                 }}
                 className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
               >
-                <option value="all">All categories</option>
+                <option value="all">{t('database.allCategories')}</option>
                 {categoryOptions.map((category) => (
                   <option key={category.value} value={category.value}>
                     {category.label}
@@ -552,7 +552,7 @@ export default function DatabasePage() {
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Subcategory</span>
+              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.subcategory')}</span>
               <select
                 value={selectedSubcategory}
                 onChange={(event) => {
@@ -561,7 +561,7 @@ export default function DatabasePage() {
                 }}
                 className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
               >
-                <option value="all">All subcategories</option>
+                <option value="all">{t('database.allSubcategories')}</option>
                 {subcategoryOptions
                   .filter((opt) => !selectedCategory || selectedCategory === 'all' || opt.main === selectedCategory)
                   .map((subcategory) => (
@@ -574,7 +574,7 @@ export default function DatabasePage() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Quick filters</span>
+            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">{t('database.quickFilters')}</span>
             {(['all', 'positive', 'negative'] as const).map((value) => (
               <button
                 key={value}
@@ -586,7 +586,7 @@ export default function DatabasePage() {
                 }`}
                 type="button"
               >
-                {value === 'all' ? 'All sentiment' : value === 'positive' ? 'Recommended' : 'Not recommended'}
+                {value === 'all' ? t('database.allSentiment') : value === 'positive' ? t('common.recommended') : t('common.notRecommended')}
               </button>
             ))}
             {(['all', 'issue', 'request'] as const).map((value) => (
@@ -600,7 +600,7 @@ export default function DatabasePage() {
                 }`}
                 type="button"
               >
-                {value === 'all' ? 'All labels' : value === 'issue' ? 'Issues' : 'Requests'}
+                {value === 'all' ? t('database.allLabels') : value === 'issue' ? t('common.issues') : t('common.requests')}
               </button>
             ))}
           </div>
@@ -633,7 +633,7 @@ export default function DatabasePage() {
           <Card variant="glass" className="flex flex-col p-5">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-white">Reviews</h2>
+                <h2 className="text-lg font-semibold text-white">{t('common.reviews')}</h2>
                 <p className="text-xs text-slate-400">Use Up/Down or J/K to navigate</p>
               </div>
               <div className="text-xs text-slate-500">
@@ -652,7 +652,7 @@ export default function DatabasePage() {
                 <p className="text-sm text-rose-400">{error}</p>
               ) : filteredReviews.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-center text-sm text-slate-400">
-                  No reviews match these filters. Try adjusting search or global filters.
+                  {t('database.noReviews')}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -682,7 +682,7 @@ export default function DatabasePage() {
                                 review.voted_up ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'
                               }`}
                             >
-                              {review.voted_up ? 'Recommended' : 'Not recommended'}
+                              {review.voted_up ? t('common.recommended') : t('common.notRecommended')}
                             </span>
                             <span className="rounded-full bg-white/10 px-2 py-1 text-[11px] text-slate-200">
                               {appLabel}
@@ -694,12 +694,12 @@ export default function DatabasePage() {
                             ) : null}
                             {hasIssue(review) ? (
                               <span className="rounded-full bg-rose-500/15 px-2 py-1 text-[11px] text-rose-200">
-                                Issue
+                                {t('common.issues')}
                               </span>
                             ) : null}
                             {hasRequest(review) ? (
                               <span className="rounded-full bg-cyan-500/15 px-2 py-1 text-[11px] text-cyan-200">
-                                Request
+                                {t('common.requests')}
                               </span>
                             ) : null}
                           </div>
@@ -760,7 +760,7 @@ export default function DatabasePage() {
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-white">Review details</h2>
+                <h2 className="text-lg font-semibold text-white">{t('database.reviewDetails')}</h2>
                 <p className="text-xs text-slate-400">
                   {formatReviewDate(expandedReview.created_at)} - {expandedReview.votes_up || 0} helpful
                 </p>
@@ -771,7 +771,7 @@ export default function DatabasePage() {
                     expandedReview.voted_up ? 'bg-emerald-500/15 text-emerald-200' : 'bg-rose-500/15 text-rose-200'
                   }`}
                 >
-                  {expandedReview.voted_up ? 'Recommended' : 'Not recommended'}
+                  {expandedReview.voted_up ? t('common.recommended') : t('common.notRecommended')}
                 </span>
                 {expandedReview.llm_main_category ? (
                   <span className="rounded-full bg-indigo-500/15 px-3 py-1 text-xs text-indigo-200">
@@ -787,7 +787,7 @@ export default function DatabasePage() {
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Labels</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t('common.labels')}</p>
                 {expandedReview.llm_subcategories?.length ? (
                   <div className="flex flex-wrap gap-2">
                     {expandedReview.llm_subcategories.map((value, idx) => (
@@ -802,11 +802,11 @@ export default function DatabasePage() {
               </div>
 
               <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Issues & Requests</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t('common.issues')} & {t('common.requests')}</p>
                 <div className="space-y-3 text-xs text-slate-300">
                   {expandedReview.llm_issue_subcategories?.length ? (
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300">Issues</p>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300">{t('common.issues')}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {expandedReview.llm_issue_subcategories.map((value, idx) => (
                           <span key={`${value}-${idx}`} className="rounded-full bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
@@ -820,7 +820,7 @@ export default function DatabasePage() {
                   )}
                   {expandedReview.llm_request_subcategories?.length ? (
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">Requests</p>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">{t('common.requests')}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {expandedReview.llm_request_subcategories.map((value, idx) => (
                           <span key={`${value}-${idx}`} className="rounded-full bg-cyan-500/15 px-2 py-1 text-xs text-cyan-200">
@@ -835,7 +835,7 @@ export default function DatabasePage() {
             </div>
 
             <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Evidence</p>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t('common.evidence')}</p>
               {expandedReview.llm_subcategory_evidence && Object.keys(expandedReview.llm_subcategory_evidence).length ? (
                 <div className="mt-3 space-y-3 text-sm text-slate-200">
                   {Object.entries(expandedReview.llm_subcategory_evidence).map(([subcategory, snippets]) => (
@@ -858,7 +858,7 @@ export default function DatabasePage() {
 
             <div className="mt-6 flex justify-end">
               <Button variant="secondary" onClick={() => setExpandedReview(null)}>
-                Close
+                {t('common.close')}
               </Button>
             </div>
           </Card>

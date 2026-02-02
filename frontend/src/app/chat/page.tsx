@@ -391,7 +391,7 @@ const DATE_FILTER_OPTIONS = [
 ];
 
 export default function ChatPage() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -640,13 +640,13 @@ export default function ChatPage() {
           <div>
             <h1 className="text-xl font-bold">
               <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                AI Assistant
+                {t('chat.title')}
               </span>
             </h1>
             <p className="text-xs text-slate-400">
               {selectedGames.length > 0
                 ? `Chatting with ${selectedGames.length} game${selectedGames.length > 1 ? "s" : ""} selected`
-                : "Your intelligent conversation partner"}
+                : t('chat.subtitle')}
             </p>
           </div>
           <div className="flex gap-2">
@@ -658,7 +658,7 @@ export default function ChatPage() {
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
               </svg>
-              Context
+              {t('chat.context')}
             </Button>
             <Button
               variant="secondary"
@@ -668,7 +668,7 @@ export default function ChatPage() {
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              History
+              {t('chat.history')}
             </Button>
             <Button
               variant="secondary"
@@ -678,7 +678,7 @@ export default function ChatPage() {
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              New Chat
+              {t('chat.newChat')}
             </Button>
           </div>
         </div>
@@ -695,15 +695,15 @@ export default function ChatPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
                     </svg>
-                    Chat with Your Data
+                    {t('chat.chatWithData')}
                   </h2>
                   {loadingGames ? (
-                    <p className="text-xs text-slate-500 text-center py-2">Loading games...</p>
+                    <p className="text-xs text-slate-500 text-center py-2">{t('chat.loadingGames')}</p>
                   ) : starredGames.length === 0 ? (
-                    <p className="text-xs text-slate-500 text-center py-2">No starred games yet</p>
+                    <p className="text-xs text-slate-500 text-center py-2">{t('chat.noStarredGames')}</p>
                   ) : (
                     <div className="space-y-2">
-                      <p className="text-[10px] text-slate-500 mb-2">Select up to 2 games to search reviews:</p>
+                      <p className="text-[10px] text-slate-500 mb-2">{t('chat.selectGames')}</p>
                       <div className="max-h-32 overflow-y-auto space-y-1 scrollbar-hide">
                         {starredGames.map((game) => (
                           <button
@@ -755,7 +755,7 @@ export default function ChatPage() {
                           onClick={() => setSelectedGames([])}
                           className="text-[10px] text-slate-500 hover:text-slate-300 mt-1"
                         >
-                          Clear selection
+                          {t('chat.clearSelection')}
                         </button>
                       )}
                     </div>
@@ -774,11 +774,11 @@ export default function ChatPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Chat History
+                    {t('chat.history')}
                   </h2>
                   <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
                     {sessions.length === 0 ? (
-                      <p className="text-xs text-slate-500 text-center py-4">No conversations yet</p>
+                      <p className="text-xs text-slate-500 text-center py-4">{t('chat.noConversations')}</p>
                     ) : (
                       <div className="space-y-2">
                         {sessions.map((session) => (
@@ -843,8 +843,8 @@ export default function ChatPage() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-300">Start a conversation</p>
-                    <p className="text-xs text-slate-500 mt-1">Ask me anything!</p>
+                    <p className="text-sm text-slate-300">{t('chat.startConversation')}</p>
+                    <p className="text-xs text-slate-500 mt-1">{t('chat.askAnything')}</p>
                   </div>
                 </div>
               </div>
@@ -939,7 +939,7 @@ export default function ChatPage() {
                     {/* Citations for game-aware responses */}
                     {msg.citations && msg.citations.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Sources ({msg.citations.length})</p>
+                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">{t('chat.sources')} ({msg.citations.length})</p>
                         <div className="space-y-2">
                           {msg.citations.slice(0, 3).map((citation, citIdx) => (
                             <div
@@ -997,7 +997,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
+                placeholder={t('chat.placeholder')}
                 rows={2}
                 disabled={loading}
                 className="flex-1 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-[rgb(0,255,255)] focus:outline-none resize-none disabled:opacity-50"

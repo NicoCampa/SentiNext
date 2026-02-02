@@ -99,17 +99,17 @@ export default function SettingsPage() {
           <div className="space-y-2">
             <h1 className="text-2xl font-semibold tracking-tight">
               <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                Settings
+                {t('settings.title')}
               </span>
             </h1>
             <p className="text-sm text-slate-400">
-              Account, storage, and diagnostics for this service.
+              {t('settings.subtitle')}
             </p>
           </div>
           {isTauriApp() ? (
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-right">
-              <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">App version</p>
-              <p className="mt-1 font-mono text-xs text-slate-200">{appVersion ?? "Loading..."}</p>
+              <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">{t('settings.appVersion')}</p>
+              <p className="mt-1 font-mono text-xs text-slate-200">{appVersion ?? t('common.loading')}</p>
             </div>
           ) : null}
         </div>
@@ -117,8 +117,8 @@ export default function SettingsPage() {
         <SignedIn>
           <Card variant="glass" className="flex flex-wrap items-center justify-between gap-4 p-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Account</p>
-              <p className="mt-2 text-sm text-slate-300">Manage your session and sign out.</p>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('settings.account')}</p>
+              <p className="mt-2 text-sm text-slate-300">{t('settings.accountDesc')}</p>
             </div>
             <UserButton
               appearance={{
@@ -155,30 +155,30 @@ export default function SettingsPage() {
 
         <Card variant="glass" className="space-y-4 p-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Diagnostics</p>
-            <p className="mt-2 text-sm text-slate-300">Use this when the backend is slow or unresponsive.</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('settings.diagnostics')}</p>
+            <p className="mt-2 text-sm text-slate-300">{t('settings.diagnosticsDesc')}</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
-              Recheck backend
+              {t('settings.recheckBackend')}
             </Button>
             <Button size="sm" variant="secondary" onClick={() => loadLogTail()}>
-              Refresh logs
+              {t('settings.refreshLogs')}
             </Button>
             <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
-              Copy diagnostics
+              {t('settings.copyDiagnostics')}
             </Button>
-            {copiedDiagnostics ? <span className="text-sm text-emerald-400">Copied.</span> : null}
+            {copiedDiagnostics ? <span className="text-sm text-emerald-400">{t('settings.copied')}</span> : null}
           </div>
           {copyError ? (
             <p className="text-xs text-rose-400">{copyError}</p>
           ) : null}
 
           <div className="text-xs text-slate-400">
-            Backend status:{" "}
+            {t('settings.backendStatus')}{" "}
             <span className="text-slate-200">
-              {health.state === "online" ? "online" : health.state === "offline" ? "offline" : "checking"}
+              {health.state === "online" ? t('settings.online') : health.state === "offline" ? t('settings.offline') : t('settings.checking')}
             </span>
           </div>
 
