@@ -10,7 +10,7 @@ export default function AuthenticationPage() {
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Authentication</h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    Managed identity protocols and session security. SentiNext uses industry-standard encryption to protect your project telemetry.
+                    Enterprise-grade managed identity protocols. SentiNext uses industry-standard encryption to protect your project telemetry.
                 </p>
             </section>
 

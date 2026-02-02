@@ -16,7 +16,7 @@ export default function FaqPage() {
             <div className="space-y-12 mt-16 max-w-3xl">
                 <FaqItem
                     question="Is SentiNext affiliated with Valve/Steam?"
-                    answer="No. SentiNext is an independent autonomous tool that consumes the public Steam Community telemetry. We operate as a high-precision analysis layer for developers, not as a branch of Valve Corporation."
+                    answer="No. SentiNext is an independent autonomous tool that consumes the public Steam Community telemetry. We operate as a high-precision analysis layer for developers, not as a branch of Valve Corporation. We are not endorsed by or affiliated with Valve."
                 />
                 <FaqItem
                     question="Can I analyze competitive telemetry?"
@@ -27,8 +27,8 @@ export default function FaqPage() {
                     answer="Neural processing is horizontally scaled. Depending on volume, a job may take 30-60 minutes to complete extraction of 50,000+ data nodes. The system will dispatch an email once the analysis is committed to the database."
                 />
                 <FaqItem
-                    question="Can I customize the classification taxonomy?"
-                    answer="On the Enterprise Protocol (Team Plan), our team can fine-tune the agent to recognize industry-specific tags (e.g., 'Gunplay' for FPS or 'Tickrate' for Netcoding)."
+                    question="When will billing be enabled?"
+                    answer="We are currently in Public Beta. All plans are free during this period. We expect to enable credit-based billing models in Late 2026. Beta users will receive legacy discounts."
                 />
             </div>
         </div>

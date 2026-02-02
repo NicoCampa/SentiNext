@@ -39,10 +39,10 @@ export default function PricingPage() {
                             period="/ beta"
                             description="For indie developers trying out AI analysis."
                             features={[
-                                "Cloud Ingestion",
-                                "1 Active Project",
-                                "Basic AI Taxonomy",
-                                "7-day history",
+                                "2,000 review ingestion / job",
+                                "1 Active Project Cluster",
+                                "Standard AI Taxonomy",
+                                "7-day telemetry retention",
                             ]}
                             cta="Initialize Session"
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"}
@@ -55,11 +55,12 @@ export default function PricingPage() {
                             period="/ beta"
                             description="Full AI power for growing studios."
                             features={[
-                                "Priority Cloud Queue",
-                                "5 Active Projects",
-                                "Advanced Evidence Extraction",
-                                "90-day history",
-                                "Export Data"
+                                "5,000+ review ingestion / job",
+                                "Priority Neural Queue",
+                                "5 Active Project Clusters",
+                                "Deep Evidence Extraction",
+                                "90-day telemetry retention",
+                                "CSV/JSON Telemetry Export"
                             ]}
                             cta="Get Pro Access"
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"}

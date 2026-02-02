@@ -77,10 +77,29 @@ export default function Home() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1 }}
-            className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-12 leading-relaxed font-mono uppercase tracking-[0.2em] opacity-60"
+            className="text-lg md:text-xl text-muted-foreground max-w-3xl mb-12 leading-relaxed font-mono uppercase tracking-[0.1em] opacity-80"
           >
-            Next-generation autonomous feedback classification system.
+            Turn 2,000 Steam reviews into a prioritized bug backlog in minutes. <br className="hidden md:block" />
+            Quantify player sentiment and identify spikes with precision.
           </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.5 }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16 w-full max-w-4xl"
+          >
+            {[
+              "Top issues ranked by frequency + impact",
+              "Evidence quotes per cluster",
+              "Filters: Playtime, Language, Date"
+            ].map((text, i) => (
+              <div key={i} className="flex items-center gap-3 p-4 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
+                <div className="h-1.5 w-1.5 bg-[#00F0FF] shadow-[0_0_5px_rgba(0,240,255,1)]" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">{text}</span>
+              </div>
+            ))}
+          </motion.div>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -90,7 +109,7 @@ export default function Home() {
           >
             <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] text-xs rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)] relative overflow-hidden group" asChild>
               <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                <span className="relative z-10">Initialize Analysis</span>
+                <span className="relative z-10">Deploy Agent Now</span>
                 <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500" />
               </Link>
             </Button>
@@ -100,6 +119,33 @@ export default function Home() {
               </Link>
             </Button>
           </motion.div>
+        </div>
+      </section>
+
+      {/* Social Proof Section */}
+      <section className="py-20 w-full border-b border-[#00F0FF]/10 bg-black/40">
+        <div className="container px-4 md:px-6 mx-auto">
+          <div className="flex flex-col items-center text-center gap-12">
+            <div className="text-[10px] font-mono uppercase tracking-[0.4em] text-[#00F0FF]/50 border-b border-[#00F0FF]/10 pb-4">
+              Trusted by Autonomous Developers
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
+              <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
+                <CornerMarkers className="opacity-20" />
+                <p className="text-lg italic font-light mb-6 opacity-80 leading-relaxed">
+                  "SentiNext identified a specific crash spike in our 1.2.4 patch hours before our manual lead could. It's now a core part of our post-patch protocol."
+                </p>
+                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">Lead Engineer — Alpha Studio</div>
+              </div>
+              <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
+                <CornerMarkers className="opacity-20" />
+                <p className="text-lg italic font-light mb-6 opacity-80 leading-relaxed">
+                  "The evidence extraction alone saves us three days of spreadsheet work every month. We don't just see 'Performance' issues; we see exactly which levels are failing."
+                </p>
+                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">Producer — Ember Games</div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

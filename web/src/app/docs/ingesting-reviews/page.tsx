@@ -22,7 +22,7 @@ export default function IngestingReviewsPage() {
                     description="The agent initiates a secure handshake with the Steam Community interface."
                 >
                     <p>
-                        Every cycle, the agent performs a deep scan of the target <code>AppID</code>. It retrieves metadata including playtime, purchase verification, and review text in a structured telemetry format.
+                        Every cycle, the agent performs a deep scan of the target <code>AppID</code>. It retrieves metadata including playtime, purchase verification, and review text in a structured telemetry format. The system can ingest <span className="text-[#00F0FF]">5,000+ reviews</span> per job for Pro accounts.
                     </p>
                 </DocsStep>
 
@@ -54,12 +54,12 @@ export default function IngestingReviewsPage() {
                 <h2 className="text-2xl font-bold tracking-widest uppercase mb-6">Quota Protocols</h2>
                 <div className="grid md:grid-cols-2 gap-8">
                     <div className="space-y-2">
-                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Max Throughput</div>
-                        <div className="text-3xl font-bold font-mono">2,000 ENV/JOB</div>
+                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Max Throughput (Pro)</div>
+                        <div className="text-3xl font-bold font-mono">5,000+ ENV/JOB</div>
                     </div>
                     <div className="space-y-2">
-                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Active Clusters</div>
-                        <div className="text-3xl font-bold font-mono">1 PER USER</div>
+                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Free Tier</div>
+                        <div className="text-3xl font-bold font-mono">2,000 ENV/JOB</div>
                     </div>
                 </div>
             </section>

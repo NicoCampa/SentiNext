@@ -9,8 +9,21 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "SentiNext - Steam Review Intelligence",
-  description: "Turn raw Steam reviews into clear, actionable product insights.",
+  title: "SentiNext | Steam Review Intelligence & AI Analytics",
+  description: "Turn 2,000+ Steam reviews into a prioritized bug backlog in minutes. Autonomous LLM classification for game developers and publishers.",
+  openGraph: {
+    title: "SentiNext | Steam Review Intelligence",
+    description: "Autonomous LLM classification for game feedback.",
+    url: "https://sentinext.com",
+    siteName: "SentiNext",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SentiNext | Steam Review Intelligence",
+    description: "Autonomous LLM classification for game feedback.",
+  },
 };
 
 import { Header } from "@/components/layout/header";
