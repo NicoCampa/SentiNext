@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const { language, setLanguage, t } = useLanguage();
+  const [activeTab, setActiveTab] = useState<'general' | 'diagnostics'>('general');
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -94,119 +95,249 @@ export default function SettingsPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-4xl space-y-8 sm:space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                {t('settings.title')}
-              </span>
-            </h1>
-            <p className="text-sm text-slate-400">
-              {t('settings.subtitle')}
-            </p>
-          </div>
-          {isTauriApp() ? (
-            <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-right">
-              <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">{t('settings.appVersion')}</p>
-              <p className="mt-1 font-mono text-xs text-slate-200">{appVersion ?? t('common.loading')}</p>
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+        {/* Header */}
+        <div className="mb-8 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center">
+              <span className="text-[rgb(0,255,255)] text-lg">⚙</span>
             </div>
-          ) : null}
+            <div>
+              <h1 className="text-2xl font-bold tracking-wider">
+                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                  {t('settings.title').toUpperCase()}
+                </span>
+              </h1>
+              <p className="text-xs text-[rgb(150,150,170)] uppercase tracking-[0.2em]">
+                System Configuration
+              </p>
+            </div>
+          </div>
+          <div className="h-[1px] bg-gradient-to-r from-[rgb(0,255,255)]/50 via-[rgb(0,255,255)]/20 to-transparent" />
         </div>
 
-        <SignedIn>
-          <Card variant="glass" className="flex flex-wrap items-center justify-between gap-4 p-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('settings.account')}</p>
-              <p className="mt-2 text-sm text-slate-300">{t('settings.accountDesc')}</p>
-            </div>
-            <UserButton
-              appearance={{
-                elements: {
-                  userButtonAvatarBox: "h-10 w-10",
-                },
-              }}
-            />
-          </Card>
-        </SignedIn>
-
-        <Card variant="glass" className="space-y-4 p-6">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('settings.language')}</p>
-            <p className="mt-2 text-sm text-slate-300">{t('settings.selectLanguage')}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {(['en', 'it', 'fr', 'de'] as const).map((lang) => (
-              <button
-                key={lang}
-                onClick={() => setLanguage(lang)}
-                className={`rounded-xl border p-4 text-left transition ${
-                  language === lang
-                    ? 'border-sky-500 bg-sky-500/10'
-                    : 'border-white/10 bg-slate-900/30 hover:border-slate-600'
-                }`}
-              >
-                <p className="text-sm font-semibold text-white">{t(`lang.${lang}`)}</p>
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <Card variant="glass" className="space-y-4 p-6">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('settings.diagnostics')}</p>
-            <p className="mt-2 text-sm text-slate-300">{t('settings.diagnosticsDesc')}</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
-              {t('settings.recheckBackend')}
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => loadLogTail()}>
-              {t('settings.refreshLogs')}
-            </Button>
-            <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
-              {t('settings.copyDiagnostics')}
-            </Button>
-            {copiedDiagnostics ? <span className="text-sm text-emerald-400">{t('settings.copied')}</span> : null}
-          </div>
-          {copyError ? (
-            <p className="text-xs text-rose-400">{copyError}</p>
-          ) : null}
-
-          <div className="text-xs text-slate-400">
-            {t('settings.backendStatus')}{" "}
-            <span className="text-slate-200">
-              {health.state === "online" ? t('settings.online') : health.state === "offline" ? t('settings.offline') : t('settings.checking')}
-            </span>
-          </div>
-
-          {backendBootError ? (
-            <div className="space-y-2 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 text-xs text-rose-200">
-              <p className="font-semibold">Backend failed to start</p>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950/40 p-3 text-[11px] text-rose-100">
-                {backendBootError}
-              </pre>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
-                  Copy error
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Log tail</p>
-            {logTailError ? (
-              <p className="text-xs text-rose-400">{logTailError}</p>
-            ) : (
-              <pre className="max-h-64 overflow-auto rounded-xl border border-white/10 bg-slate-950/40 p-3 text-[11px] text-slate-200">
-                {logTail || "No logs yet."}
-              </pre>
+        {/* Tab Navigation */}
+        <div className="mb-6 flex gap-2 border-b border-[rgb(0,255,255)]/10 pb-2">
+          <button
+            onClick={() => setActiveTab('general')}
+            className={`px-4 py-2 text-xs uppercase tracking-[0.2em] transition-all ${
+              activeTab === 'general'
+                ? 'text-[rgb(0,255,255)] border-b-2 border-[rgb(0,255,255)]'
+                : 'text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]'
+            }`}
+          >
+            General
+          </button>
+          <button
+            onClick={() => setActiveTab('diagnostics')}
+            className={`px-4 py-2 text-xs uppercase tracking-[0.2em] transition-all relative ${
+              activeTab === 'diagnostics'
+                ? 'text-[rgb(0,255,255)] border-b-2 border-[rgb(0,255,255)]'
+                : 'text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]'
+            }`}
+          >
+            Diagnostics
+            {health.state === "offline" && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
             )}
-          </div>
-        </Card>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="space-y-6">
+          {activeTab === 'general' && (
+            <>
+              {/* Account Section */}
+              <SignedIn>
+                <Card variant="glass" className="p-6">
+                  <div className="flex items-start justify-between gap-4 mb-6">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
+                        <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                          {t('settings.account')}
+                        </p>
+                      </div>
+                      <p className="text-sm text-[rgb(150,150,170)]">{t('settings.accountDesc')}</p>
+                    </div>
+                    <UserButton
+                      appearance={{
+                        elements: {
+                          userButtonAvatarBox: "h-12 w-12 border border-[rgb(0,255,255)]/30",
+                        },
+                      }}
+                    />
+                  </div>
+                </Card>
+              </SignedIn>
+
+              {/* Language Section */}
+              <Card variant="glass" className="p-6">
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
+                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                      {t('settings.language')}
+                    </p>
+                  </div>
+                  <p className="text-sm text-[rgb(150,150,170)]">{t('settings.selectLanguage')}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {(['en', 'it', 'fr', 'de'] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      onClick={() => setLanguage(lang)}
+                      className={`group relative p-4 border transition-all ${
+                        language === lang
+                          ? 'border-[rgb(0,255,255)] bg-[rgb(0,255,255)]/10'
+                          : 'border-[rgb(0,255,255)]/20 hover:border-[rgb(0,255,255)]/50 bg-[rgb(10,10,25)]'
+                      }`}
+                    >
+                      {language === lang && (
+                        <>
+                          <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
+                          <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
+                          <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-[rgb(0,255,255)]" />
+                          <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-[rgb(0,255,255)]" />
+                        </>
+                      )}
+                      <p className={`text-sm font-semibold ${
+                        language === lang ? 'text-[rgb(0,255,255)]' : 'text-[rgb(200,200,210)]'
+                      }`}>
+                        {t(`lang.${lang}`)}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+
+              {/* System Info */}
+              {isTauriApp() && (
+                <Card variant="glass" className="p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
+                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                      System Information
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                      <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                        {t('settings.appVersion')}
+                      </span>
+                      <span className="font-mono text-xs text-[rgb(0,255,255)]">
+                        {appVersion ?? t('common.loading')}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+
+          {activeTab === 'diagnostics' && (
+            <>
+              {/* Backend Status */}
+              <Card variant="glass" className="p-6">
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
+                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                      {t('settings.diagnostics')}
+                    </p>
+                  </div>
+                  <p className="text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
+                </div>
+
+                {/* Status Display */}
+                <div className="mb-6 p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                      {t('settings.backendStatus')}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${
+                        health.state === "online"
+                          ? 'bg-[rgb(0,255,136)] animate-pulse'
+                          : health.state === "offline"
+                          ? 'bg-rose-500'
+                          : 'bg-amber-500 animate-pulse'
+                      }`} />
+                      <span className={`text-xs font-mono uppercase ${
+                        health.state === "online"
+                          ? 'text-[rgb(0,255,136)]'
+                          : health.state === "offline"
+                          ? 'text-rose-400'
+                          : 'text-amber-400'
+                      }`}>
+                        {health.state === "online" ? t('settings.online') : health.state === "offline" ? t('settings.offline') : t('settings.checking')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2 mb-6">
+                  <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
+                    {t('settings.recheckBackend')}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => loadLogTail()}>
+                    {t('settings.refreshLogs')}
+                  </Button>
+                  <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
+                    {t('settings.copyDiagnostics')}
+                  </Button>
+                  {copiedDiagnostics && (
+                    <span className="flex items-center gap-1.5 text-xs text-[rgb(0,255,136)]">
+                      <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
+                      {t('settings.copied')}
+                    </span>
+                  )}
+                </div>
+
+                {copyError && (
+                  <p className="text-xs text-rose-400 mb-4">{copyError}</p>
+                )}
+
+                {/* Backend Boot Error */}
+                {backendBootError && (
+                  <div className="space-y-3 p-4 border border-rose-500/30 bg-rose-500/5 mb-6">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
+                      <p className="text-xs uppercase tracking-[0.2em] text-rose-400">
+                        Backend Failed to Start
+                      </p>
+                    </div>
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-3 text-[11px] text-rose-200 font-mono">
+                      {backendBootError}
+                    </pre>
+                    <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
+                      Copy Error
+                    </Button>
+                  </div>
+                )}
+
+                {/* Log Tail */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
+                      Log Tail
+                    </p>
+                  </div>
+                  {logTailError ? (
+                    <p className="text-xs text-rose-400">{logTailError}</p>
+                  ) : (
+                    <pre className="max-h-64 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-[11px] text-[rgb(200,200,210)] font-mono">
+                      {logTail || "No logs yet."}
+                    </pre>
+                  )}
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
       </div>
     </AppLayout>
   );

@@ -95,40 +95,32 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
             )}
 
             {/* Bottom section */}
-            <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10">
+            <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
               {/* User Profile */}
-              <div className="flex items-center justify-between p-4 bg-[rgb(10,10,25)] border border-[rgb(0,255,255)]/20 mb-3">
-                <div className="space-y-1">
-                  <p className="text-[9px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
-                    Operator
-                  </p>
-                  <p className="text-xs text-[rgb(200,200,210)]">Active Session</p>
-                </div>
-                <SignedIn>
+              <SignedIn>
+                <div className="flex items-center gap-3 p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 rounded">
                   <UserButton
                     appearance={{
                       elements: {
-                        userButtonAvatarBox: "h-9 w-9 border border-[rgb(0,255,255)]/30",
+                        userButtonAvatarBox: "h-10 w-10 border border-[rgb(0,255,255)]/30",
                       },
                     }}
                   />
-                </SignedIn>
-              </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[9px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
+                      Operator
+                    </p>
+                    <p className="text-xs text-[rgb(200,200,210)] truncate">Active Session</p>
+                  </div>
+                </div>
+              </SignedIn>
 
-              {/* Settings Link */}
-              <Link
-                href="/settings"
-                className="flex items-center justify-between p-4 border border-[rgb(0,255,255)]/10 text-[rgb(150,150,170)] hover:border-[rgb(0,255,255)]/30 hover:text-[rgb(0,255,255)] transition-all duration-200 group"
-              >
-                <span className="text-xs uppercase tracking-[0.2em]">System Config</span>
-              </Link>
-
-              {/* Version Info */}
-              <div className="mt-4 flex items-center justify-between text-[9px] text-[rgb(0,255,255)]/30 uppercase tracking-wider">
+              {/* System Info */}
+              <div className="flex items-center justify-between text-[9px] text-[rgb(0,255,255)]/30 uppercase tracking-wider px-1">
                 <span>v0.1.0</span>
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
-                  Stable
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full animate-pulse" />
+                  Online
                 </span>
               </div>
             </div>
