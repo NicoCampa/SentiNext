@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Sparkles, Zap, BrainCircuit, ShieldCheck, Cpu, Bot, Terminal } from "lucide-react";
@@ -28,94 +29,97 @@ function TerminalLine({ text, delay, color = "text-[#00F0FF]/70", className, cur
 }
 
 export default function HomeClient({ dict, lang }: { dict: any, lang: string }) {
+    const [bootPhase, setBootPhase] = useState<"booting" | "complete">("booting");
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setBootPhase("complete");
+        }, 3500); // 2s (boot) + 1.5s (buffer)
+        return () => clearTimeout(timer);
+    }, []);
+
     return (
         <div className="flex flex-col items-center w-full min-h-screen">
             {/* Hero Section */}
-            <section className="relative w-full py-24 md:py-32 lg:py-48 flex flex-col items-center justify-center border-b border-[#00F0FF]/10 overflow-hidden">
+            <section className="relative w-full py-24 md:py-32 lg:py-48 flex flex-col items-center justify-center border-b border-[#00F0FF]/10 overflow-hidden min-h-[80vh]">
                 <div className="scanline" />
 
                 <div className="container px-4 md:px-6 relative z-10 flex flex-col items-center text-center max-w-6xl mx-auto">
-                    {/* Terminal Boot Sequence (Dashboard Inspired) */}
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="mb-12 font-mono text-[10px] md:text-xs text-[#00F0FF]/70 text-left w-full max-w-md p-6 border border-[#00F0FF]/20 bg-[#00F0FF]/5 relative rounded-sm backdrop-blur-sm"
-                    >
-                        <div className="absolute -top-1 -left-1 w-2 h-2 border-t border-l border-[#00F0FF]" />
-                        <div className="absolute -bottom-1 -right-1 w-2 h-2 border-b border-r border-[#00F0FF]" />
+                    {/* Terminal Boot Sequence (Transient) */}
+                    <AnimatePresence mode="wait">
+                        {bootPhase === "booting" && (
+                            <motion.div
+                                key="terminal-boot"
+                                initial={{ opacity: 0, scale: 0.98 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 1.05, height: 0, marginBottom: 0, padding: 0, filter: "blur(20px)" }}
+                                transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+                                className="mb-12 font-mono text-[10px] md:text-xs text-[#00F0FF]/70 text-left w-full max-w-md p-6 border border-[#00F0FF]/20 bg-[#00F0FF]/5 relative rounded-sm backdrop-blur-sm overflow-hidden"
+                            >
+                                <div className="absolute -top-1 -left-1 w-2 h-2 border-t border-l border-[#00F0FF]" />
+                                <div className="absolute -bottom-1 -right-1 w-2 h-2 border-b border-r border-[#00F0FF]" />
 
-                        <div className="space-y-1">
-                            <TerminalLine text="> INITIALIZING SYSTEM..." delay={0} />
-                            <TerminalLine text="> CONNECTING TO DATA STREAMS..." delay={0.5} />
-                            <TerminalLine text="> SENTIMENT ANALYSIS MODULE: ONLINE" delay={1} color="text-green-400" />
-                            <TerminalLine text="> REVIEW PROCESSOR: ACTIVE" delay={1.5} color="text-green-400" />
-                            <TerminalLine text="> SYSTEM READY" delay={2} color="text-green-400" className="font-bold flex items-center gap-2" cursor />
+                                <div className="space-y-1">
+                                    <TerminalLine text="> INITIALIZING SYSTEM..." delay={0} />
+                                    <TerminalLine text="> CONNECTING TO DATA STREAMS..." delay={0.5} />
+                                    <TerminalLine text="> SENTIMENT ANALYSIS MODULE: ONLINE" delay={1} color="text-green-400" />
+                                    <TerminalLine text="> REVIEW PROCESSOR: ACTIVE" delay={1.5} color="text-green-400" />
+                                    <TerminalLine text="> SYSTEM READY" delay={2} color="text-green-400" className="font-bold flex items-center gap-2" cursor />
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Main Hero Content (Revealed after boot) */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 30, filter: "blur(10px)" }}
+                        animate={bootPhase === "complete" ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 30, filter: "blur(10px)" }}
+                        transition={{ duration: 1, ease: [0.4, 0, 0.2, 1], delay: 0.2 }}
+                        className={cn(
+                            "flex flex-col items-center w-full",
+                            bootPhase === "booting" ? "pointer-events-none scale-95" : "scale-100"
+                        )}
+                    >
+                        <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-8 backdrop-blur-md glass">
+                            <Sparkles className="h-3.5 w-3.5 mr-2 text-primary animate-pulse" />
+                            <span className="tracking-widest uppercase text-xs font-bold">{dict.hero.badge}</span>
                         </div>
-                    </motion.div>
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.5 }}
-                        className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-8 backdrop-blur-md glass"
-                    >
-                        <Sparkles className="h-3.5 w-3.5 mr-2 text-primary animate-pulse" />
-                        <span className="tracking-widest uppercase text-xs font-bold">{dict.hero.badge}</span>
-                    </motion.div>
 
-                    <motion.h1
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.8 }}
-                        className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-[ -0.05em] mb-10 leading-[0.85] uppercase"
-                    >
-                        {dict.hero.title1} <br />
-                        <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{dict.hero.title2}</span>
-                    </motion.h1>
+                        <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-[ -0.05em] mb-10 leading-[0.85] uppercase">
+                            {dict.hero.title1} <br />
+                            <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{dict.hero.title2}</span>
+                        </h1>
 
-                    <motion.p
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 1 }}
-                        className="text-lg md:text-xl text-muted-foreground max-w-3xl mb-12 leading-relaxed font-mono uppercase tracking-[0.1em] opacity-80"
-                    >
-                        {dict.hero.subtitle}
-                    </motion.p>
+                        <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mb-12 leading-relaxed font-mono uppercase tracking-[0.1em] opacity-80">
+                            {dict.hero.subtitle}
+                        </p>
 
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 1.5 }}
-                        className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16 w-full max-w-4xl"
-                    >
-                        {[
-                            dict.hero.bullet1,
-                            dict.hero.bullet2,
-                            dict.hero.bullet3
-                        ].map((text, i) => (
-                            <div key={i} className="flex items-center gap-3 p-4 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
-                                <div className="h-1.5 w-1.5 bg-[#00F0FF] shadow-[0_0_5px_rgba(0,240,255,1)]" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">{text}</span>
-                            </div>
-                        ))}
-                    </motion.div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16 w-full max-w-4xl">
+                            {[
+                                dict.hero.bullet1,
+                                dict.hero.bullet2,
+                                dict.hero.bullet3
+                            ].map((text, i) => (
+                                <div key={i} className="flex items-center gap-3 p-4 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
+                                    <div className="h-1.5 w-1.5 bg-[#00F0FF] shadow-[0_0_5px_rgba(0,240,255,1)]" />
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/70">{text}</span>
+                                </div>
+                            ))}
+                        </div>
 
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 2.2 }}
-                        className="flex flex-col sm:flex-row gap-8 w-full sm:w-auto items-center justify-center"
-                    >
-                        <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] text-xs rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)] relative overflow-hidden group" asChild>
-                            <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                                <span className="relative z-10">{dict.common.initialize}</span>
-                                <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500" />
-                            </Link>
-                        </Button>
-                        <Button size="lg" variant="outline" className="h-14 px-12 border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-[0.2em] text-xs rounded-none relative group" asChild>
-                            <Link href={`/${lang}/how-it-works`}>
-                                {lang === 'it' ? 'Panoramica Pipeline' : lang === 'fr' ? 'Aperçu Pipeline' : lang === 'de' ? 'Pipeline-Übersicht' : 'Pipeline Overview'}
-                            </Link>
-                        </Button>
+                        <div className="flex flex-col sm:flex-row gap-8 w-full sm:w-auto items-center justify-center">
+                            <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] text-xs rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)] relative overflow-hidden group" asChild>
+                                <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
+                                    <span className="relative z-10">{dict.common.initialize}</span>
+                                    <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500" />
+                                </Link>
+                            </Button>
+                            <Button size="lg" variant="outline" className="h-14 px-12 border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-[0.2em] text-xs rounded-none relative group" asChild>
+                                <Link href={`/${lang}/how-it-works`}>
+                                    {lang === 'it' ? 'Panoramica Pipeline' : lang === 'fr' ? 'Aperçu Pipeline' : lang === 'de' ? 'Pipeline-Übersicht' : 'Pipeline Overview'}
+                                </Link>
+                            </Button>
+                        </div>
                     </motion.div>
                 </div>
             </section>
