@@ -2162,6 +2162,42 @@ def list_chat_sessions_for_user(user_id: str, limit: int = 50) -> List[Dict[str,
     return sessions
 
 
+def load_chat_history_by_session(session_id: str, limit: int = 500) -> List[Dict[str, Any]]:
+    """Load chat history for a session (admin use - no user_id filter).
+
+    Args:
+        session_id: Session ID to load
+        limit: Maximum messages to return
+
+    Returns:
+        List of message dicts in chronological order
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT role, content, created_at, session_id
+                FROM chat_messages
+                WHERE session_id = :session_id
+                ORDER BY created_at ASC
+                LIMIT :limit
+            """),
+            {"session_id": session_id, "limit": limit},
+        ).mappings().fetchall()
+
+    messages = []
+    for row in rows:
+        messages.append({
+            "role": row["role"],
+            "content": row["content"],
+            "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
+            "session_id": row["session_id"],
+        })
+
+    return messages
+
+
 def list_all_chat_sessions_with_feedback(limit: int = 100) -> List[Dict[str, Any]]:
     """List all chat sessions from all users with feedback summary (admin only).
 
@@ -2179,25 +2215,25 @@ def list_all_chat_sessions_with_feedback(limit: int = 100) -> List[Dict[str, Any
     from . import db as db_module
 
     with db_module.get_connection() as conn:
+        # Query from chat_messages (source of truth) and join with feedback
         rows = conn.execute(
             text("""
                 SELECT
-                    s.session_id,
-                    s.user_id,
-                    s.title,
-                    s.app_ids,
-                    s.first_user_message,
-                    s.created_at,
-                    s.updated_at,
-                    COALESCE(m.message_count, 0) as message_count,
+                    cm.session_id,
+                    cm.user_id,
+                    COUNT(*) as message_count,
+                    MIN(cm.created_at) as started_at,
+                    MAX(cm.created_at) as last_message_at,
+                    (
+                        SELECT content
+                        FROM chat_messages
+                        WHERE session_id = cm.session_id AND role = 'user'
+                        ORDER BY created_at ASC
+                        LIMIT 1
+                    ) as first_user_message,
                     COALESCE(f.positive_count, 0) as positive_feedback,
                     COALESCE(f.negative_count, 0) as negative_feedback
-                FROM chat_sessions s
-                LEFT JOIN (
-                    SELECT session_id, COUNT(*) as message_count
-                    FROM chat_messages
-                    GROUP BY session_id
-                ) m ON s.session_id = m.session_id
+                FROM chat_messages cm
                 LEFT JOIN (
                     SELECT
                         session_id,
@@ -2205,8 +2241,10 @@ def list_all_chat_sessions_with_feedback(limit: int = 100) -> List[Dict[str, Any
                         SUM(CASE WHEN helpful = false THEN 1 ELSE 0 END) as negative_count
                     FROM citation_feedback
                     GROUP BY session_id
-                ) f ON s.session_id = f.session_id
-                ORDER BY s.updated_at DESC
+                ) f ON cm.session_id = f.session_id
+                WHERE cm.session_id IS NOT NULL
+                GROUP BY cm.session_id, cm.user_id, f.positive_count, f.negative_count
+                ORDER BY last_message_at DESC
                 LIMIT :limit
             """),
             {"limit": limit},
@@ -2217,11 +2255,11 @@ def list_all_chat_sessions_with_feedback(limit: int = 100) -> List[Dict[str, Any
         sessions.append({
             "session_id": row["session_id"],
             "user_id": row["user_id"],
-            "title": row["title"],
-            "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+            "title": None,  # Not stored in chat_messages
+            "app_ids": [],  # Not stored in chat_messages
             "first_user_message": row["first_user_message"],
-            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            "created_at": row["started_at"].isoformat() if row["started_at"] else None,
+            "updated_at": row["last_message_at"].isoformat() if row["last_message_at"] else None,
             "message_count": row["message_count"],
             "positive_feedback": row["positive_feedback"],
             "negative_feedback": row["negative_feedback"],

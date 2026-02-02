@@ -1700,12 +1700,11 @@ def get_admin_chat_history(
 ) -> List[ChatMessage]:
     """Get chat history for any session (admin only)."""
     try:
-        # Get session to find user_id
-        session = storage.get_chat_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found.")
+        # Load history directly by session_id (no user_id filter)
+        history = storage.load_chat_history_by_session(session_id, limit=500)
+        if not history:
+            raise HTTPException(status_code=404, detail="Session not found or empty.")
 
-        history = storage.load_chat_history(session["user_id"], limit=500, session_id=session_id)
         return [ChatMessage(**msg) for msg in history]
     except HTTPException:
         raise
