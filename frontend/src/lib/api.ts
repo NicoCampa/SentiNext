@@ -549,6 +549,8 @@ export interface EnhancedChatPayload {
   date_filter?: string;
   /** Max reviews per game (default 50) */
   max_reviews_per_game?: number;
+  /** Preferred language for chatbot responses: "en", "it", "fr", "de" */
+  language?: string;
 }
 
 export interface ChatCitationItem {

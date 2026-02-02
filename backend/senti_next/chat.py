@@ -790,6 +790,7 @@ def build_game_aware_prompt(
     intent: Optional[Any] = None,
     sort_preference: Optional[str] = None,
     history: List[Dict[str, Any]] = None,
+    language: Optional[str] = None,
 ) -> str:
     """Build a prompt for game-aware chat with review context.
 
@@ -807,6 +808,7 @@ def build_game_aware_prompt(
         intent: Optional ChatIntent for the current query
         sort_preference: Optional sort preference for subcategories
         history: Conversation history
+        language: Preferred language for responses (e.g., 'en', 'it', 'fr', 'de')
 
     Returns:
         Complete prompt string for the LLM
@@ -823,6 +825,20 @@ def build_game_aware_prompt(
         "You are a game review analyst with access to real player reviews from Steam. "
         "Your role is to answer questions about games based on actual player feedback.\n"
     )
+
+    # Add language instruction if specified
+    if language:
+        language_map = {
+            'it': 'Italian',
+            'fr': 'French',
+            'de': 'German',
+            'en': 'English'
+        }
+        language_name = language_map.get(language, 'English')
+        prompt_parts.append(
+            f"IMPORTANT: Respond in {language_name}. All your responses should be in {language_name}. "
+            f"However, keep technical terms, category names, and subcategory names in English as they appear in the data.\n"
+        )
 
     # Add game context and reviews
     for game in games:
@@ -1090,6 +1106,7 @@ def answer_game_aware_chat(
     max_reviews_per_game: int = 50,
     history: Optional[List[Dict[str, Any]]] = None,
     status_callback: Optional[Callable[[str], None]] = None,
+    language: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Answer a chat question with game review context.
 
@@ -1111,6 +1128,7 @@ def answer_game_aware_chat(
         max_reviews_per_game: Maximum reviews per game (default 50)
         history: Optional conversation history
         status_callback: Optional callback for status updates
+        language: Preferred language for responses (e.g., 'en', 'it', 'fr', 'de')
 
     Returns:
         Dict with response, citations, and metadata
@@ -1309,6 +1327,7 @@ def answer_game_aware_chat(
         intent=intent,
         sort_preference=sort_preference,
         history=history or [],
+        language=language,
     )
 
     # Call LLM

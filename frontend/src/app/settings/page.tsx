@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { fetchLogTail } from "@/lib/api";
 import { isTauriApp } from "@/lib/settings";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -16,6 +17,7 @@ export default function SettingsPage() {
   const [logTailError, setLogTailError] = useState<string | null>(null);
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const { language, setLanguage, t } = useLanguage();
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -127,6 +129,32 @@ export default function SettingsPage() {
             />
           </Card>
         </SignedIn>
+
+        <Card variant="glass" className="space-y-4 p-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('settings.language')}</p>
+            <p className="mt-2 text-sm text-slate-300">{t('settings.selectLanguage')}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(['en', 'it', 'fr', 'de'] as const).map((lang) => (
+              <button
+                key={lang}
+                onClick={() => setLanguage(lang)}
+                className={`rounded-xl border p-4 text-left transition ${
+                  language === lang
+                    ? 'border-sky-500 bg-sky-500/10'
+                    : 'border-white/10 bg-slate-900/30 hover:border-slate-600'
+                }`}
+              >
+                <div className="text-2xl mb-2">
+                  {lang === 'en' ? '🇬🇧' : lang === 'it' ? '🇮🇹' : lang === 'fr' ? '🇫🇷' : '🇩🇪'}
+                </div>
+                <p className="text-sm font-semibold text-white">{t(`lang.${lang}`)}</p>
+              </button>
+            ))}
+          </div>
+        </Card>
 
         <Card variant="glass" className="space-y-4 p-6">
           <div>

@@ -399,6 +399,7 @@ class SimpleChatRequest(BaseModel):
     app_ids: Optional[List[int]] = Field(None, max_length=2, description="App IDs for game context (max 2)")
     date_filter: str = Field("all", description="Date filter: 30d, 90d, 365d, or all")
     max_reviews_per_game: int = Field(50, ge=1, le=100, description="Max reviews per game")
+    language: Optional[str] = Field(None, description="Preferred language for responses (e.g., 'en', 'it', 'fr', 'de')")
 
 
 class ChatCitationItem(BaseModel):
@@ -1108,6 +1109,7 @@ def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_
                 max_reviews_per_game=request.max_reviews_per_game,
                 history=history,
                 status_callback=status_callback,
+                language=request.language,
             )
 
             # Clear status after completion

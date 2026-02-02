@@ -37,6 +37,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const markdownComponents = {
   h1: (props: ComponentPropsWithoutRef<"h1">) => (
@@ -390,6 +391,7 @@ const DATE_FILTER_OPTIONS = [
 ];
 
 export default function ChatPage() {
+  const { language } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -517,6 +519,7 @@ export default function ChatPage() {
         app_ids: selectedGames.length > 0 ? selectedGames : undefined,
         date_filter: selectedGames.length > 0 ? dateFilter : undefined,
         max_reviews_per_game: 100,
+        language: language,
       });
 
       console.log("Received chat response", {
