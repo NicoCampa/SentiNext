@@ -34,7 +34,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
     useEffect(() => {
         const timer = setTimeout(() => {
             setBootPhase("complete");
-        }, 3500); // 2s (boot) + 1.5s (buffer)
+        }, 2800); // reduced from 3500
         return () => clearTimeout(timer);
     }, []);
 
@@ -53,7 +53,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                                 initial={{ opacity: 0, scale: 0.98 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 1.05, height: 0, marginBottom: 0, padding: 0, filter: "blur(20px)" }}
-                                transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+                                transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                                 className="mb-12 font-mono text-[10px] md:text-xs text-[#00F0FF]/70 text-left w-full max-w-md p-6 border border-[#00F0FF]/20 bg-[#00F0FF]/5 relative rounded-sm backdrop-blur-sm overflow-hidden"
                             >
                                 <div className="absolute -top-1 -left-1 w-2 h-2 border-t border-l border-[#00F0FF]" />
@@ -74,7 +74,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                     <motion.div
                         initial={{ opacity: 0, y: 30, filter: "blur(10px)" }}
                         animate={bootPhase === "complete" ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 30, filter: "blur(10px)" }}
-                        transition={{ duration: 1, ease: [0.4, 0, 0.2, 1], delay: 0.2 }}
+                        transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1], delay: 0.1 }}
                         className={cn(
                             "flex flex-col items-center w-full",
                             bootPhase === "booting" ? "pointer-events-none scale-95" : "scale-100"
