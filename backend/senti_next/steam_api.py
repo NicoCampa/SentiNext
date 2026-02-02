@@ -318,6 +318,95 @@ def clear_app_details_cache(app_id: Optional[int] = None) -> None:
             _CONTEXT_CACHE.clear()
 
 
+def fetch_reviews_multi_language(
+    app_id: int,
+    count: int = 100,
+    languages: Optional[List[str]] = None,
+    filter_type: str = "recent",
+    day_range: Optional[int] = None,
+) -> List[dict]:
+    """Fetch reviews across multiple languages.
+
+    Distributes the count evenly across languages, then fetches from each.
+    Reviews are deduplicated by recommendationid and sorted by timestamp.
+
+    Args:
+        app_id: Steam application ID
+        count: Total number of reviews to fetch across all languages
+        languages: List of language codes (e.g., ["english", "german", "french"])
+                   If None or empty, defaults to ["all"] which fetches all languages
+        filter_type: "recent" or "all"
+        day_range: Optional day range filter
+
+    Returns:
+        List of review dicts, deduplicated and sorted by timestamp
+    """
+    if not languages:
+        # Default to "all" which Steam API interprets as all languages
+        return fetch_reviews(app_id, count, "all", filter_type, day_range)
+
+    if len(languages) == 1:
+        return fetch_reviews(app_id, count, languages[0], filter_type, day_range)
+
+    # Distribute count across languages
+    per_language = max(1, count // len(languages))
+    # First language gets any remainder
+    first_language_count = count - (per_language * (len(languages) - 1))
+
+    all_reviews: List[dict] = []
+    seen_ids: set = set()
+
+    for i, lang in enumerate(languages):
+        lang_count = first_language_count if i == 0 else per_language
+        try:
+            reviews = fetch_reviews(app_id, lang_count, lang, filter_type, day_range)
+            for review in reviews:
+                review_id = review.get("recommendationid")
+                if review_id and review_id not in seen_ids:
+                    seen_ids.add(review_id)
+                    all_reviews.append(review)
+        except SteamAPIError as e:
+            logger.warning(f"Failed to fetch {lang} reviews for app {app_id}: {e}")
+            continue
+
+    # Sort by timestamp (most recent first) and limit to requested count
+    all_reviews.sort(key=lambda r: r.get("timestamp_created", 0), reverse=True)
+    return all_reviews[:count]
+
+
+# Steam language codes mapping (display name -> API code)
+STEAM_LANGUAGES = {
+    "english": "english",
+    "german": "german",
+    "french": "french",
+    "spanish": "spanish",
+    "italian": "italian",
+    "polish": "polish",
+    "portuguese": "portuguese",
+    "brazilian": "brazilian",
+    "russian": "russian",
+    "turkish": "turkish",
+    "japanese": "japanese",
+    "koreana": "koreana",
+    "schinese": "schinese",
+    "tchinese": "tchinese",
+    "thai": "thai",
+    "czech": "czech",
+    "danish": "danish",
+    "dutch": "dutch",
+    "finnish": "finnish",
+    "greek": "greek",
+    "hungarian": "hungarian",
+    "norwegian": "norwegian",
+    "romanian": "romanian",
+    "swedish": "swedish",
+    "ukrainian": "ukrainian",
+    "vietnamese": "vietnamese",
+    "arabic": "arabic",
+    "indonesian": "indonesian",
+}
+
+
 def iter_review_fields() -> Iterable[str]:
     """Return all review-level fields available from the API."""
     return REVIEW_METADATA_FIELDS.keys()

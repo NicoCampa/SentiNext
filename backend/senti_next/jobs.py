@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from . import storage
 from . import llm
+from . import credits
 from .insights import prepare_insights
 from .analysis import build_reviews_dataframe
 
@@ -78,12 +79,30 @@ def run_analysis_job(
         storage.clear_progress(user_id, app_id)
 
     try:
+        # Get breakdown of cached vs new reviews before processing
+        review_estimate = llm.estimate_review_labeling(app_id, all_reviews)
+        llm_review_count = int(review_estimate.get("llm_reviews", 0) or 0)
+        cached_review_count = int(review_estimate.get("cached_reviews", 0) or 0)
+
         llm_labels = llm.ensure_review_labels(
             app_id,
             all_reviews,
             progress_callback=_progress_callback if progress_active else None,
             game_context=game_context,
         )
+
+        # Deduct credits for the reviews that were processed
+        # New LLM reviews cost 1 credit each, cached reviews cost 0.5 credits each
+        total_processed = llm_review_count + cached_review_count
+        if total_processed > 0:
+            credit_cost = credits.estimate_analysis_cost(llm_review_count, cached_review_count)
+            credits.deduct_credits(
+                user_id=user_id,
+                amount=credit_cost,
+                operation="classify",
+                description=f"Analyzed {total_processed} reviews ({llm_review_count} new, {cached_review_count} cached) for app {app_id}",
+                app_id=app_id,
+            )
 
         df = build_reviews_dataframe(all_reviews)
         df = llm.apply_review_labels(df, llm_labels)

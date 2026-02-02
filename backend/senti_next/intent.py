@@ -18,6 +18,7 @@ class ChatIntent(Enum):
     COMPARISON = "comparison"          # Before/after comparisons (EA vs release, patches)
     RISK = "risk"                      # Refund risk, churn, retention analysis
     FEATURE_REQUESTS = "feature_requests"  # What players want (most requested features)
+    LANGUAGE = "language"              # Language-based queries (issues by language, sentiment by region)
 
 
 def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
@@ -42,8 +43,20 @@ def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
         "compare early access vs release" → (COMPARISON, None, False)
         "what's the refund risk?" → (RISK, None, False)
         "what features do players want?" → (FEATURE_REQUESTS, None, False)
+        "what issues are German players having?" → (LANGUAGE, None, False)
     """
     normalized = message.lower()
+
+    # NEW: LANGUAGE indicators (language/region-based queries)
+    language_patterns = [
+        r'\b(by language|per language|by region|per region)\b',
+        r'\b(language|languages)\s*(breakdown|distribution|split)\b',
+        r'\b(english|german|french|spanish|russian|chinese|japanese|korean|brazilian|portuguese|italian|polish|turkish)\s+(player|players|reviewer|reviewers|review|reviews|user|users)\b',
+        r'\b(player|players|reviewer|reviewers|user|users)\s+(from|in|speaking)\s+(english|german|french|spanish|russian|chinese|japan|korea|brazil|portugal|italy|poland|turkey)\b',
+        r'\b(what).*(issues|problems|complaints|feedback).*(language|region|country|english|german|french|spanish|russian|chinese|japanese)\b',
+        r'\b(different languages|different regions|various languages)\b',
+        r'\b(international|localization|non.?english)\s+(player|players|review|reviews|user|users|feedback)\b',
+    ]
 
     # NEW: TREND indicators (time-based queries)
     trend_patterns = [
@@ -130,6 +143,7 @@ def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
     def count_matches(patterns: List[str]) -> int:
         return sum(1 for pattern in patterns if re.search(pattern, normalized))
 
+    language_matches = count_matches(language_patterns)
     trend_matches = count_matches(trend_patterns)
     segment_matches = count_matches(segment_patterns)
     comparison_matches = count_matches(comparison_patterns)
@@ -143,6 +157,10 @@ def classify_intent(message: str) -> Tuple[ChatIntent, Optional[str], bool]:
     search_term, is_entity = extract_topic_or_entity(message)
 
     # Decision logic - prioritize specific new intents first
+    # LANGUAGE: Language-based queries have high priority when detected
+    if language_matches >= 1:
+        return (ChatIntent.LANGUAGE, search_term, is_entity)
+
     # TREND: Time-based queries have highest priority when detected
     if trend_matches >= 1:
         return (ChatIntent.TREND, search_term, is_entity)
@@ -216,6 +234,7 @@ def should_use_sql_aggregation(intent: ChatIntent) -> bool:
         ChatIntent.COMPARISON,
         ChatIntent.RISK,
         ChatIntent.FEATURE_REQUESTS,
+        ChatIntent.LANGUAGE,
     )
 
 
@@ -236,6 +255,7 @@ def should_load_full_insights(intent: ChatIntent) -> bool:
         ChatIntent.COMPARISON,
         ChatIntent.RISK,
         ChatIntent.FEATURE_REQUESTS,
+        ChatIntent.LANGUAGE,
     )
 
 

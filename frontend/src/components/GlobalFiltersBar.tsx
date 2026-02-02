@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from "react";
 import {
   HelpfulFilter,
   PlaytimeFilter,
@@ -9,103 +8,85 @@ import {
   useGlobalFilters,
 } from "@/contexts/GlobalFiltersContext";
 
-const LANGUAGE_SUGGESTIONS = [
-  "english",
-  "german",
-  "french",
-  "spanish",
-  "italian",
-  "polish",
-  "portuguese",
-  "brazilian",
-  "russian",
-  "turkish",
-  "japanese",
-  "koreana",
-  "schinese",
-  "tchinese",
+// Language display names
+const LANGUAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "All languages" },
+  { value: "english", label: "English" },
+  { value: "german", label: "German" },
+  { value: "french", label: "French" },
+  { value: "spanish", label: "Spanish" },
+  { value: "italian", label: "Italian" },
+  { value: "portuguese", label: "Portuguese" },
+  { value: "brazilian", label: "Brazilian PT" },
+  { value: "russian", label: "Russian" },
+  { value: "polish", label: "Polish" },
+  { value: "turkish", label: "Turkish" },
+  { value: "japanese", label: "Japanese" },
+  { value: "koreana", label: "Korean" },
+  { value: "schinese", label: "Simplified CN" },
+  { value: "tchinese", label: "Traditional CN" },
 ];
 
 export function GlobalFiltersBar() {
   const { filters, updateFilters } = useGlobalFilters();
 
-  const languageValue = useMemo(() => {
-    return filters.language && filters.language !== "all" ? filters.language : "";
-  }, [filters.language]);
-
   return (
-    <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-      <div className="grid gap-5 sm:gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Sentiment</p>
-          <select
-            value={filters.sentiment}
-            onChange={(event) => updateFilters({ sentiment: event.target.value as SentimentFilter })}
-            className="mt-2 w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 focus:border-sky-400 focus:outline-none"
-          >
-            <option value="all">All</option>
-            <option value="positive">Recommended</option>
-            <option value="negative">Not recommended</option>
-          </select>
-        </div>
+    <div className="rounded-lg border border-white/10 bg-slate-900/40 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[9px] uppercase tracking-wider text-slate-500">Filters:</span>
 
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Date</p>
-          <select
-            value={filters.dateRange}
-            onChange={(event) => updateFilters({ dateRange: event.target.value as DateRangeFilter })}
-            className="mt-2 w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 focus:border-sky-400 focus:outline-none"
-          >
-            <option value="all">All time</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
-            <option value="365d">Last year</option>
-          </select>
-        </div>
+        <select
+          value={filters.sentiment}
+          onChange={(event) => updateFilters({ sentiment: event.target.value as SentimentFilter })}
+          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+        >
+          <option value="all">All sentiment</option>
+          <option value="positive">Recommended</option>
+          <option value="negative">Not recommended</option>
+        </select>
 
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Helpful</p>
-          <select
-            value={filters.minHelpful}
-            onChange={(event) => updateFilters({ minHelpful: Number(event.target.value) as HelpfulFilter })}
-            className="mt-2 w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 focus:border-sky-400 focus:outline-none"
-          >
-            <option value={0}>All</option>
-            <option value={10}>10+</option>
-            <option value={25}>25+</option>
-            <option value={50}>50+</option>
-          </select>
-        </div>
+        <select
+          value={filters.dateRange}
+          onChange={(event) => updateFilters({ dateRange: event.target.value as DateRangeFilter })}
+          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+        >
+          <option value="all">All time</option>
+          <option value="30d">30 days</option>
+          <option value="90d">90 days</option>
+          <option value="365d">1 year</option>
+        </select>
 
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Playtime</p>
-          <select
-            value={filters.playtime}
-            onChange={(event) => updateFilters({ playtime: event.target.value as PlaytimeFilter })}
-            className="mt-2 w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 focus:border-sky-400 focus:outline-none"
-          >
-            <option value="all">All</option>
-            <option value="lt2h">&lt;2h</option>
-            <option value="2to20h">2–20h</option>
-            <option value="20hplus">20h+</option>
-          </select>
-        </div>
+        <select
+          value={filters.minHelpful}
+          onChange={(event) => updateFilters({ minHelpful: Number(event.target.value) as HelpfulFilter })}
+          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+        >
+          <option value={0}>All helpful</option>
+          <option value={10}>10+ votes</option>
+          <option value={25}>25+ votes</option>
+          <option value={50}>50+ votes</option>
+        </select>
 
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Language</p>
-          <input
-            value={languageValue}
-            onChange={(event) => updateFilters({ language: event.target.value })}
-            placeholder="All languages"
-            list="sentinext-language-suggestions"
-            className="mt-2 w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
-          />
-          <datalist id="sentinext-language-suggestions">
-            {LANGUAGE_SUGGESTIONS.map((item) => (
-              <option key={item} value={item} />
-            ))}
-          </datalist>
-        </div>
+        <select
+          value={filters.playtime}
+          onChange={(event) => updateFilters({ playtime: event.target.value as PlaytimeFilter })}
+          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+        >
+          <option value="all">All playtime</option>
+          <option value="lt2h">&lt;2h</option>
+          <option value="2to20h">2–20h</option>
+          <option value="20hplus">20h+</option>
+        </select>
+
+        <select
+          value={filters.language || "all"}
+          onChange={(event) => updateFilters({ language: event.target.value === "all" ? "" : event.target.value })}
+          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+        >
+          {LANGUAGE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
       </div>
     </div>
   );

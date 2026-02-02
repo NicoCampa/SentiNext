@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { AnalysisProvider } from "@/contexts/AnalysisContext";
+import { CreditsProvider } from "@/contexts/CreditsContext";
 import { GameProvider } from "@/contexts/GameContext";
 import { GlobalFiltersProvider } from "@/contexts/GlobalFiltersContext";
 import { UiPreferencesProvider } from "@/contexts/UiPreferencesContext";
@@ -11,13 +12,15 @@ export function ClientProviders({ children }: { children: ReactNode }) {
   return (
     <LanguageProvider>
       <UiPreferencesProvider>
-        <GlobalFiltersProvider>
-          <GameProvider>
-            <AnalysisProvider>
-              {children}
-            </AnalysisProvider>
-          </GameProvider>
-        </GlobalFiltersProvider>
+        <CreditsProvider>
+          <GlobalFiltersProvider>
+            <GameProvider>
+              <AnalysisProvider>
+                {children}
+              </AnalysisProvider>
+            </GameProvider>
+          </GlobalFiltersProvider>
+        </CreditsProvider>
       </UiPreferencesProvider>
     </LanguageProvider>
   );
