@@ -172,6 +172,82 @@ function downloadChartImage(chart: ChartJS | null, filename: string) {
   link.click();
 }
 
+// Vibrant color palette for dark backgrounds
+const CHART_COLORS = [
+  'rgba(96, 165, 250, 0.8)',   // bright blue
+  'rgba(134, 239, 172, 0.8)',  // bright green
+  'rgba(251, 146, 60, 0.8)',   // bright orange
+  'rgba(244, 114, 182, 0.8)',  // bright pink
+  'rgba(167, 139, 250, 0.8)',  // bright purple
+  'rgba(253, 224, 71, 0.8)',   // bright yellow
+  'rgba(248, 113, 113, 0.8)',  // bright red
+  'rgba(103, 232, 249, 0.8)',  // bright cyan
+  'rgba(196, 181, 253, 0.8)',  // light purple
+  'rgba(134, 239, 212, 0.8)',  // bright teal
+];
+
+const CHART_BORDER_COLORS = [
+  'rgba(96, 165, 250, 1)',
+  'rgba(134, 239, 172, 1)',
+  'rgba(251, 146, 60, 1)',
+  'rgba(244, 114, 182, 1)',
+  'rgba(167, 139, 250, 1)',
+  'rgba(253, 224, 71, 1)',
+  'rgba(248, 113, 113, 1)',
+  'rgba(103, 232, 249, 1)',
+  'rgba(196, 181, 253, 1)',
+  'rgba(134, 239, 212, 1)',
+];
+
+function enhanceChartData(spec: ChartSpec): any {
+  const data = { ...spec.data };
+
+  // Apply colors to datasets if not already present
+  if (data.datasets && Array.isArray(data.datasets)) {
+    data.datasets = data.datasets.map((dataset: any, idx: number) => {
+      const colorIdx = idx % CHART_COLORS.length;
+      const enhanced = { ...dataset };
+
+      // For pie/doughnut charts, apply different color to each segment
+      if (spec.type === 'pie' || spec.type === 'doughnut' || spec.type === 'polarArea') {
+        if (!enhanced.backgroundColor) {
+          const dataLength = Array.isArray(enhanced.data) ? enhanced.data.length : 0;
+          enhanced.backgroundColor = Array.from({ length: dataLength }, (_, i) =>
+            CHART_COLORS[i % CHART_COLORS.length]
+          );
+          enhanced.borderColor = Array.from({ length: dataLength }, (_, i) =>
+            CHART_BORDER_COLORS[i % CHART_BORDER_COLORS.length]
+          );
+          enhanced.borderWidth = 2;
+        }
+      } else {
+        // For bar/line/radar charts, use single color per dataset
+        if (!enhanced.backgroundColor) {
+          enhanced.backgroundColor = CHART_COLORS[colorIdx];
+        }
+        if (!enhanced.borderColor) {
+          enhanced.borderColor = CHART_BORDER_COLORS[colorIdx];
+        }
+        if (!enhanced.borderWidth) {
+          enhanced.borderWidth = 2;
+        }
+
+        // Line-specific styling
+        if (spec.type === 'line') {
+          enhanced.tension = enhanced.tension ?? 0.3;
+          enhanced.pointRadius = enhanced.pointRadius ?? 4;
+          enhanced.pointHoverRadius = enhanced.pointHoverRadius ?? 6;
+          enhanced.pointBackgroundColor = enhanced.pointBackgroundColor ?? CHART_BORDER_COLORS[colorIdx];
+        }
+      }
+
+      return enhanced;
+    });
+  }
+
+  return data;
+}
+
 function buildChartOptions(spec: ChartSpec) {
   const base = {
     responsive: true,
@@ -180,28 +256,69 @@ function buildChartOptions(spec: ChartSpec) {
     plugins: {
       legend: {
         display: true,
-        labels: { color: "#cbd5f5" },
+        labels: {
+          color: "#cbd5f5",
+          font: {
+            size: 12,
+            weight: '500' as const,
+          },
+          padding: 12,
+        },
       },
       title: spec.title
-        ? { display: true, text: spec.title, color: "#e2e8f0" }
+        ? {
+            display: true,
+            text: spec.title,
+            color: "#e2e8f0",
+            font: {
+              size: 14,
+              weight: '600' as const,
+            },
+            padding: { bottom: 16 },
+          }
         : { display: false },
       tooltip: {
         enabled: true,
-        backgroundColor: "rgba(15, 23, 42, 0.9)",
+        backgroundColor: "rgba(15, 23, 42, 0.95)",
         titleColor: "#e2e8f0",
         bodyColor: "#e2e8f0",
-        borderColor: "rgba(148, 163, 184, 0.2)",
+        borderColor: "rgba(148, 163, 184, 0.3)",
         borderWidth: 1,
+        padding: 12,
+        cornerRadius: 8,
+        titleFont: {
+          size: 13,
+          weight: '600' as const,
+        },
+        bodyFont: {
+          size: 12,
+        },
       },
     },
     scales: {
       x: {
-        ticks: { color: "#cbd5f5" },
-        grid: { color: "rgba(148, 163, 184, 0.15)" },
+        ticks: {
+          color: "#cbd5f5",
+          font: {
+            size: 11,
+          },
+        },
+        grid: {
+          color: "rgba(148, 163, 184, 0.1)",
+          drawBorder: false,
+        },
       },
       y: {
-        ticks: { color: "#cbd5f5" },
-        grid: { color: "rgba(148, 163, 184, 0.15)" },
+        ticks: {
+          color: "#cbd5f5",
+          font: {
+            size: 11,
+          },
+        },
+        grid: {
+          color: "rgba(148, 163, 184, 0.1)",
+          drawBorder: false,
+        },
       },
     },
   } as Record<string, unknown>;
@@ -739,13 +856,13 @@ export default function ChatPage() {
 
                         const chartRef = { current: null as ChartJS | null };
                         const spec = part.spec;
-                        const chartData = spec.data as any;
+                        const chartData = enhanceChartData(spec);
                         const chartOptions = buildChartOptions(spec) as any;
 
                         return (
                           <div
                             key={`chart-${partIdx}`}
-                            className="rounded-2xl border border-white/10 bg-slate-900/40 p-4"
+                            className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-sm p-5"
                           >
                             {spec.title ? (
                               <p className="text-sm font-semibold text-white mb-2">{spec.title}</p>
@@ -753,7 +870,7 @@ export default function ChatPage() {
                             {spec.description ? (
                               <p className="text-xs text-slate-400 mb-3">{spec.description}</p>
                             ) : null}
-                            <div className="h-72">
+                            <div className="h-80">
                               <Chart
                                 ref={(instance) => {
                                   chartRef.current = instance ?? null;
