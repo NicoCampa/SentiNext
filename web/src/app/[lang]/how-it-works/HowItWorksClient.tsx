@@ -67,7 +67,7 @@ export default function HowItWorksClient({ dict, lang }: { dict: any, lang: stri
                 <div className="container px-4 mx-auto">
                     <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase leading-none">Pipeline <span className="text-[#00F0FF]">{lang === 'it' ? 'Pronta' : 'Ready'}</span></h2>
                     <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>
-                        <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
+                        <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank">
                             {dict.common.initialize}
                         </Link>
                     </Button>

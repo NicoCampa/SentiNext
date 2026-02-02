@@ -47,10 +47,10 @@ export default async function GettingStartedPage({ params }: { params: Promise<{
                 >
                     <p>
                         {lang === 'it' ? 'Naviga verso la ' : 'Navigate to the '}
-                        <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank" className="font-bold underline decoration-[#00F0FF]/30 hover:decoration-[#00F0FF]">
+                        <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank" className="font-bold underline decoration-[#00F0FF]/30 hover:decoration-[#00F0FF]">
                             SentiNext App Dashboard
                         </Link>. {lang === 'it' ? 'Verifica la tua connessione al server sicuro su ' : 'Verify your connection to the secure server at '}
-                        <code>sentinext-frontend.onrender.com</code>.
+                        <code>app.sentinext.nicolocampagnoli.com</code>.
                     </p>
                 </StepSection>
 

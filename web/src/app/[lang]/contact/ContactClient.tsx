@@ -33,8 +33,8 @@ export function ContactClient({ dict, lang }: { dict: any, lang: string }) {
                             icon={<Mail className="h-8 w-8 text-[#00F0FF]" />}
                             title={lang === 'it' ? "Mail Diretta" : "Direct Mail"}
                             description={lang === 'it' ? "Per richieste enterprise e protocolli di partnership." : "For enterprise inquiries and partnership protocols."}
-                            link="mailto:hello@sentinext.com"
-                            label="hello@sentinext.com"
+                            link="mailto:nicolocampagnoli20@icloud.com"
+                            label="nicolocampagnoli20@icloud.com"
                         />
                         <ContactCard
                             icon={<Github className="h-8 w-8 text-[#00F0FF]" />}

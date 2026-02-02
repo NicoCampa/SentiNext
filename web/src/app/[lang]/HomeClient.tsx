@@ -34,7 +34,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
     useEffect(() => {
         const timer = setTimeout(() => {
             setBootPhase("complete");
-        }, 1800); // reduced from 2800
+        }, 1500); // reduced from 1800
         return () => clearTimeout(timer);
     }, []);
 
@@ -61,10 +61,10 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
 
                                 <div className="space-y-1">
                                     <TerminalLine text="> INITIALIZING SYSTEM..." delay={0} />
-                                    <TerminalLine text="> CONNECTING TO DATA STREAMS..." delay={0.3} />
-                                    <TerminalLine text="> SENTIMENT ANALYSIS MODULE: ONLINE" delay={0.6} color="text-green-400" />
-                                    <TerminalLine text="> REVIEW PROCESSOR: ACTIVE" delay={0.9} color="text-green-400" />
-                                    <TerminalLine text="> SYSTEM READY" delay={1.2} color="text-green-400" className="font-bold flex items-center gap-2" cursor />
+                                    <TerminalLine text="> CONNECTING TO DATA STREAMS..." delay={0.2} />
+                                    <TerminalLine text="> SENTIMENT ANALYSIS MODULE: ONLINE" delay={0.4} color="text-green-400" />
+                                    <TerminalLine text="> REVIEW PROCESSOR: ACTIVE" delay={0.6} color="text-green-400" />
+                                    <TerminalLine text="> SYSTEM READY" delay={0.8} color="text-green-400" className="font-bold flex items-center gap-2" cursor />
                                 </div>
                             </motion.div>
                         )}
@@ -76,7 +76,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                         animate={bootPhase === "complete" ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 10, filter: "blur(10px)" }}
                         transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1], delay: 0 }}
                         className={cn(
-                            "flex flex-col items-center w-full mt-0 md:-mt-12",
+                            "flex flex-col items-center w-full mt-0 md:-mt-24",
                             bootPhase === "booting" ? "pointer-events-none scale-95" : "scale-100"
                         )}
                     >
@@ -109,7 +109,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
 
                         <div className="flex flex-col sm:flex-row gap-8 w-full sm:w-auto items-center justify-center">
                             <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] text-xs rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)] relative overflow-hidden group" asChild>
-                                <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
+                                <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank">
                                     <span className="relative z-10">{dict.common.initialize}</span>
                                     <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500" />
                                 </Link>
@@ -223,7 +223,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                         </p>
                         <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
                             <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>
-                                <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
+                                <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank">
                                     {dict.common.initialize}
                                 </Link>
                             </Button>

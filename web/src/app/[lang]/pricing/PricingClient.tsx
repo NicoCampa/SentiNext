@@ -46,7 +46,7 @@ export default function PricingClient({ dict, lang }: { dict: any, lang: string 
                                 lang === 'it' ? "Ritenzione telemetria 7 giorni" : "7-day telemetry retention",
                             ]}
                             cta={dict.common.initialize}
-                            href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"}
+                            href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
                         />
 
                         {/* Pro Tier (Highlighted) */}
@@ -64,7 +64,7 @@ export default function PricingClient({ dict, lang }: { dict: any, lang: string 
                                 lang === 'it' ? "Esportazione Telemetria CSV/JSON" : "CSV/JSON Telemetry Export"
                             ]}
                             cta={lang === 'it' ? 'Ottieni Accesso Pro' : 'Get Pro Access'}
-                            href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"}
+                            href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
                             popular
                         />
 

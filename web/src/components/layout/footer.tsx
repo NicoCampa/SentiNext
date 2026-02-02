@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Github, Mail, Info } from "lucide-react";
+import { Github, Mail, Info, Linkedin } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 
 export function Footer({ lang }: { lang: string }) {
@@ -108,10 +108,14 @@ export function Footer({ lang }: { lang: string }) {
                                 <Github className="h-5 w-5" />
                                 <span className="sr-only">GitHub</span>
                             </Link>
-                            <Link href="https://x.com" target="_blank" className="text-muted-foreground hover:text-[#00F0FF] transition-colors font-bold text-lg">
+                            <Link href="https://x.com/NicoGrigio" target="_blank" className="text-muted-foreground hover:text-[#00F0FF] transition-colors font-bold text-lg">
                                 𝕏
                             </Link>
-                            <Link href="mailto:hello@sentinext.com" className="text-muted-foreground hover:text-[#00F0FF] transition-colors">
+                            <Link href="https://www.linkedin.com/in/nicolo-campagnoli" target="_blank" className="text-muted-foreground hover:text-[#00F0FF] transition-colors">
+                                <Linkedin className="h-5 w-5" />
+                                <span className="sr-only">LinkedIn</span>
+                            </Link>
+                            <Link href="mailto:nicolocampagnoli20@icloud.com" className="text-muted-foreground hover:text-[#00F0FF] transition-colors">
                                 <Mail className="h-5 w-5" />
                                 <span className="sr-only">Email</span>
                             </Link>

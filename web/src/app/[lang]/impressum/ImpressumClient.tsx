@@ -39,7 +39,7 @@ export function ImpressumClient({ dict, lang }: { dict: any, lang: string }) {
                         <div>
                             <h2 className="text-[#00F0FF] text-xl font-bold mb-4">{lang === 'it' ? 'Contatti' : 'Contact'}</h2>
                             <p>
-                                {lang === 'it' ? 'E-mail:' : 'E-mail:'} hello@sentinext.com
+                                {lang === 'it' ? 'E-mail:' : 'E-mail:'} nicolocampagnoli20@icloud.com
                             </p>
                         </div>
 
