@@ -27,7 +27,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     { href: "/database", label: t('nav.database'), code: "04" },
     { href: "/settings", label: t('nav.settings'), code: "05" },
   ];
-  const sidebarNavItems = navItems.filter((item) => item.href !== "/settings");
+  const sidebarNavItems = navItems; // Show all items including Settings
 
   const isActiveRoute = (href: string) => {
     const path = href.split("?")[0];
