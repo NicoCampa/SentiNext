@@ -3,7 +3,8 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-import { searchGames, estimateAnalysis } from "@/lib/api";
+import { searchGames, estimateAnalysis, fetchCreditEstimate, CreditEstimate, summarizeSubcategory, SubcategorySummaryResponse } from "@/lib/api";
+import { useCredits } from "@/contexts/CreditsContext";
 import type {
   AnalyzeResponse,
   AnalyzeEstimateResponse,
@@ -21,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
+import { LanguageSelector } from "@/components/LanguageSelector";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
@@ -107,12 +109,14 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [forceRefresh, setForceRefresh] = useState(false);
   const [reviewCount, setReviewCount] = useState<number>(() => loadDefaultAnalysisReviewCount());
-  const [language, setLanguage] = useState<string>("english");
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [fetchFilter, setFetchFilter] = useState<string>("recent");
   const [refreshDays, setRefreshDays] = useState<number>(30);
   const [estimate, setEstimate] = useState<AnalyzeEstimateResponse | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [creditEstimate, setCreditEstimate] = useState<CreditEstimate | null>(null);
+  const { credits, refresh: refreshCredits } = useCredits();
 
   const currentTask = selectedGame ? getTask(selectedGame.appid) : undefined;
   const isAnalyzing = currentTask?.status === "analyzing";
@@ -175,11 +179,12 @@ function DashboardContent() {
     if (currentTask?.status === "completed" && currentTask.result) {
       setAnalysis(currentTask.result);
       refreshGames().catch(() => null);
+      refreshCredits().catch(() => null);
       if (selectedGame) {
         selectGameById(selectedGame.appid);
       }
     }
-  }, [currentTask, refreshGames, selectGameById, selectedGame]);
+  }, [currentTask, refreshGames, refreshCredits, selectGameById, selectedGame]);
 
   async function handleSearch() {
     if (!searchQuery.trim()) return;
@@ -207,12 +212,14 @@ function DashboardContent() {
     setForceRefresh(false);
     setEstimate(null);
     setEstimateError(null);
+    setCreditEstimate(null);
   }
 
   useEffect(() => {
     setEstimate(null);
     setEstimateError(null);
-  }, [reviewCount, language, fetchFilter, forceRefresh, refreshDays]);
+    setCreditEstimate(null);
+  }, [reviewCount, selectedLanguages, fetchFilter, forceRefresh, refreshDays]);
 
   async function handleEstimate() {
     if (!selectedGame) return;
@@ -222,13 +229,23 @@ function DashboardContent() {
       const result = await estimateAnalysis({
         app_id: selectedGame.appid,
         review_count: reviewCount,
-        language,
+        language: selectedLanguages.length === 0 ? "all" : selectedLanguages[0],
+        languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
         filter: fetchFilter,
         persist: true,
         refresh: forceRefresh,
         refresh_days: forceRefresh ? refreshDays : undefined,
       });
       setEstimate(result);
+
+      // Also fetch credit estimate based on expected LLM calls vs cached
+      // New reviews cost 1 credit, cached reviews cost 0.5 credits
+      const creditResult = await fetchCreditEstimate(
+        result.llm_reviews + result.cached_reviews,
+        result.llm_reviews,
+        result.cached_reviews
+      );
+      setCreditEstimate(creditResult);
     } catch (err) {
       console.error("Estimate failed", err);
       setEstimateError((err as Error).message || "Failed to estimate analysis.");
@@ -240,6 +257,9 @@ function DashboardContent() {
   async function handleAnalyze() {
     if (!selectedGame) return;
     setError(null);
+    // Clear old analysis state and prevent starred game from restoring it
+    setAnalysis(null);
+    selectGameById(null);
     try {
       if (estimate && estimate.llm_reviews >= 200) {
         const ok = confirm(
@@ -250,7 +270,8 @@ function DashboardContent() {
       await startAnalysis(selectedGame, {
         refresh: forceRefresh,
         review_count: reviewCount,
-        language,
+        language: selectedLanguages.length === 0 ? "all" : selectedLanguages[0],
+        languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
         filter: fetchFilter,
         refresh_days: forceRefresh ? refreshDays : undefined,
       });
@@ -269,6 +290,7 @@ function DashboardContent() {
     setTemporaryGame(null);
     setEstimate(null);
     setEstimateError(null);
+    setCreditEstimate(null);
     selectGameById(null);
     router.replace("/dashboard");
   }, [router, selectGameById, setTemporaryGame]);
@@ -456,130 +478,189 @@ function DashboardContent() {
 
         {selectedGame && !analysis && (
           <Card variant="glass" className="p-6">
-            <div className="flex flex-col gap-6 md:flex-row">
+            {/* Game Header */}
+            <div className="flex items-start gap-4 pb-4 border-b border-white/10">
               <SteamImage
                 appId={selectedGame.appid}
                 variant="header"
                 alt={selectedGame.name}
-                className="h-32 w-full max-w-xs rounded-xl object-cover"
+                className="h-16 w-28 rounded-lg object-cover flex-shrink-0"
                 imageUrl={selectedGame.image_url}
               />
-              <div className="flex-1 space-y-4">
-                <div>
-                  <h2 className="text-lg font-bold text-white">{selectedGame.name}</h2>
-                  {selectedGame.price && <p className="text-sm text-slate-400">{selectedGame.price}</p>}
-                  <p className="mt-3 text-sm text-slate-400">
-                    Run an analysis to classify up to {reviewCount.toLocaleString()} Steam reviews.
-                  </p>
-                </div>
-                <label className="flex items-center gap-2 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border border-white/30 bg-slate-900 text-sky-500 focus:ring-sky-500"
-                    checked={forceRefresh}
-                    onChange={(event) => setForceRefresh(event.target.checked)}
-                  />
-                  Refresh from Steam (fetch new reviews)
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-bold text-white truncate">{selectedGame.name}</h2>
+                {selectedGame.price && <p className="text-sm text-slate-400">{selectedGame.price}</p>}
+              </div>
+              <Button onClick={handleReset} variant="ghost" size="sm" className="flex-shrink-0 text-slate-400 hover:text-white">
+                Change
+              </Button>
+            </div>
+
+            {/* Analysis Settings */}
+            <div className="space-y-4 py-4">
+              <h3 className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">Settings</h3>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Reviews</span>
+                  <select
+                    value={reviewCount}
+                    onChange={(event) => setReviewCount(Number(event.target.value))}
+                    className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+                  >
+                    {ANALYSIS_REVIEW_COUNT_OPTIONS.map((value) => (
+                      <option key={value} value={value}>{value.toLocaleString()}</option>
+                    ))}
+                  </select>
                 </label>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <label className="flex flex-col gap-2 text-sm text-slate-300">
-                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Reviews</span>
-	                    <select
-	                      value={reviewCount}
-	                      onChange={(event) => setReviewCount(Number(event.target.value))}
-	                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-	                    >
-	                      {ANALYSIS_REVIEW_COUNT_OPTIONS.map((value) => (
-	                        <option key={value} value={value}>
-	                          {value.toLocaleString()}
-	                        </option>
-	                      ))}
-	                    </select>
-                  </label>
 
-                  <label className="flex flex-col gap-2 text-sm text-slate-300">
-                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Language</span>
-                    <input
-                      value={language}
-                      onChange={(event) => setLanguage(event.target.value)}
-                      placeholder="english"
-                      list="sentinext-analyze-language"
-                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-                    />
-                    <datalist id="sentinext-analyze-language">
-                      {["english", "german", "french", "spanish", "italian", "polish", "russian", "japanese", "koreana", "schinese", "tchinese"].map(
-                        (item) => (
-                          <option key={item} value={item} />
-                        ),
-                      )}
-                    </datalist>
-                  </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Languages</span>
+                  <LanguageSelector
+                    selectedLanguages={selectedLanguages}
+                    onChange={setSelectedLanguages}
+                    mode="multi"
+                  />
+                </label>
 
-                  <label className="flex flex-col gap-2 text-sm text-slate-300">
-                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Steam filter</span>
-                    <select
-                      value={fetchFilter}
-                      onChange={(event) => setFetchFilter(event.target.value)}
-                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-                    >
-                      <option value="recent">Recent</option>
-                      <option value="updated">Recently updated</option>
-                      <option value="best">Most helpful</option>
-                      <option value="all">All</option>
-                    </select>
-                  </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Filter</span>
+                  <select
+                    value={fetchFilter}
+                    onChange={(event) => setFetchFilter(event.target.value)}
+                    className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
+                  >
+                    <option value="recent">Recent</option>
+                    <option value="updated">Recently updated</option>
+                    <option value="best">Most helpful</option>
+                    <option value="all">All</option>
+                  </select>
+                </label>
+              </div>
 
-                  <label className="flex flex-col gap-2 text-sm text-slate-300">
-                    <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Fetch window</span>
-                    <select
-                      value={refreshDays}
-                      onChange={(event) => setRefreshDays(Number(event.target.value))}
-                      disabled={!forceRefresh}
-                      className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 disabled:opacity-40 focus:border-sky-500 focus:outline-none"
-                    >
-                      {[7, 30, 90, 365].map((value) => (
-                        <option key={value} value={value}>
-                          Last {value} days
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
+            </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button onClick={handleEstimate} disabled={estimating || isAnalyzing} variant="secondary">
-                    {estimating ? "Estimating..." : "Estimate"}
-                  </Button>
-                  {estimate ? (
-                    <p className="text-xs text-slate-400">
-                      LLM calls: <span className="text-slate-200">{estimate.llm_reviews}</span> -cached:{" "}
-                      <span className="text-slate-200">{estimate.cached_reviews}</span>
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-500">Estimate shows how many reviews need new LLM calls vs cache.</p>
+            {/* Cost Preview */}
+            <div className="space-y-3 py-4 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">Cost Preview</h3>
+                <Button onClick={handleEstimate} disabled={estimating || isAnalyzing} variant="ghost" size="sm">
+                  {estimating ? "Calculating..." : estimate ? "Refresh" : "Calculate"}
+                </Button>
+              </div>
+
+              {!estimate && !estimating && (
+                <p className="text-xs text-slate-500">Click Calculate to see the credit cost for this analysis.</p>
+              )}
+
+              {estimate && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Processing</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">New reviews</span>
+                        <span className="text-slate-200 font-mono">{estimate.llm_reviews}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Cached</span>
+                        <span className="text-slate-200 font-mono">{estimate.cached_reviews}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {creditEstimate && (
+                    <div className={`rounded-lg border p-3 ${
+                      creditEstimate.would_exceed_hard_limit
+                        ? "border-rose-500/30 bg-rose-500/10"
+                        : creditEstimate.would_exceed_soft_limit
+                        ? "border-amber-500/30 bg-amber-500/10"
+                        : "border-emerald-500/30 bg-emerald-500/10"
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] uppercase tracking-wider text-slate-500">Credits</p>
+                        <span className={`text-[10px] uppercase tracking-wider ${
+                          creditEstimate.would_exceed_hard_limit ? "text-rose-400" :
+                          creditEstimate.would_exceed_soft_limit ? "text-amber-400" : "text-emerald-400"
+                        }`}>
+                          {creditEstimate.would_exceed_hard_limit ? "Insufficient" :
+                           creditEstimate.would_exceed_soft_limit ? "Over Limit" : "OK"}
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Cost</span>
+                          <span className="text-slate-200 font-mono">{creditEstimate.credits_needed}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Balance</span>
+                          <span className={`font-mono ${creditEstimate.can_afford ? "text-emerald-400" : "text-rose-400"}`}>
+                            {creditEstimate.current_balance}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
-                {estimateError ? <p className="text-sm text-rose-400">{estimateError}</p> : null}
-                <Button onClick={handleAnalyze} disabled={isAnalyzing} variant="primary" size="lg" className="w-full md:w-auto">
-                  {isAnalyzing ? t('dashboard.analyzing') : `${t('dashboard.analyze')} ${reviewCount.toLocaleString()} ${t('common.reviews')}`}
-                </Button>
-                {isAnalyzing && progress ? <ProgressPill progress={progress} /> : null}
-              </div>
+              )}
+
+              {estimateError && <p className="text-sm text-rose-400">{estimateError}</p>}
+            </div>
+
+            {/* Action */}
+            <div className="pt-4 border-t border-white/10 space-y-3">
+              {creditEstimate?.would_exceed_hard_limit && (
+                <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+                  Insufficient credits. Upgrade your plan or reduce reviews.
+                </p>
+              )}
+              {creditEstimate?.would_exceed_soft_limit && !creditEstimate?.would_exceed_hard_limit && (
+                <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                  This will exceed your monthly limit but you can still proceed.
+                </p>
+              )}
+
+              <Button
+                onClick={handleAnalyze}
+                disabled={isAnalyzing || (creditEstimate?.would_exceed_hard_limit ?? false)}
+                variant="primary"
+                size="lg"
+                className="w-full"
+              >
+                {isAnalyzing ? t('dashboard.analyzing') : `${t('dashboard.analyze')} ${reviewCount.toLocaleString()} ${t('common.reviews')}`}
+              </Button>
+
+              {isAnalyzing && progress && <ProgressPill progress={progress} />}
             </div>
           </Card>
         )}
 
-        {selectedGame && !analysis && !isAnalyzing && (
-          <EmptyState
-            title="No analysis yet"
-            description="Kick off an analysis to surface recommendation rates by category and subcategory."
-          />
+        {/* Show loading state when analysis is complete but insights not yet available */}
+        {analysis && !analysis.insights && !isAnalyzing && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center space-y-4">
+              <div className="animate-spin h-8 w-8 border-2 border-sky-500 border-t-transparent rounded-full mx-auto" />
+              <p className="text-slate-400">Loading analysis results...</p>
+            </div>
+          </div>
         )}
 
         {analysis && analysis.insights && (
           <AnalysisResults
             analysis={analysis}
             selectedGame={selectedGame}
+            onAnalyzeMore={() => {
+              // Find next higher review count option
+              const currentRetrieved = analysis.metadata.retrieved;
+              const nextOption = ANALYSIS_REVIEW_COUNT_OPTIONS.find(opt => opt > currentRetrieved)
+                ?? ANALYSIS_REVIEW_COUNT_OPTIONS[ANALYSIS_REVIEW_COUNT_OPTIONS.length - 1];
+              setReviewCount(nextOption);
+              // Clear starred game link to prevent effect from re-setting analysis
+              selectGameById(null);
+              setAnalysis(null); // Show the setup card
+              setEstimate(null);
+              setCreditEstimate(null);
+            }}
           />
         )}
       </div>
@@ -607,20 +688,24 @@ function ProgressPill({ progress }: { progress: ProgressStatus }) {
 function AnalysisResults({
   analysis,
   selectedGame,
+  onAnalyzeMore,
 }: {
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
+  onAnalyzeMore?: () => void;
 }) {
   const { t } = useLanguage();
   const router = useRouter();
   const { filters: globalFilters, filtersActive: globalFiltersActive, resetFilters: resetGlobalFilters } = useGlobalFilters();
   const insights = analysis.insights ?? null;
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => new Set());
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set());
   const [reviewQuery, setReviewQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [subcategorySummary, setSubcategorySummary] = useState<SubcategorySummaryResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const resetFilters = () => {
     resetGlobalFilters();
     setReviewQuery("");
@@ -687,12 +772,7 @@ function AnalysisResults({
     });
   }, [activeCategoryRates, subcatsByMain, theme.palette.accent]);
 
-  const categoryKeys = useMemo(() => categories.map((category) => category.key), [categories]);
-  const allCategoriesExpanded = useMemo(() => {
-    if (categoryKeys.length === 0) return false;
-    return categoryKeys.every((key) => expandedCategories.has(key));
-  }, [categoryKeys, expandedCategories]);
-
+  
   const issueItems = useMemo(() => {
     return (activeSubcategoryInsights ?? [])
       .filter((entry) => Number(entry.issue_count ?? 0) > 0)
@@ -831,18 +911,45 @@ function AnalysisResults({
 
   useEffect(() => {
     setExpandedReviews(new Set());
+    setSubcategorySummary(null);
+    setSummaryError(null);
+    setSummaryLoading(false);
   }, [selectedSubcategory]);
 
-  const toggleCategoryExpand = (key: string, expanded: boolean) => {
-    setExpandedCategories((prev) => {
-      const next = new Set(prev);
-      if (expanded) {
-        next.add(key);
-      } else {
-        next.delete(key);
-      }
-      return next;
-    });
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (selectedSubcategory) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedSubcategory]);
+
+  const handleSummarize = async () => {
+    if (!selectedSubcategory || !selectedGame || selectedReviews.length === 0) return;
+
+    setSummaryLoading(true);
+    setSummaryError(null);
+
+    try {
+      const result = await summarizeSubcategory({
+        app_id: selectedGame.appid,
+        subcategory: selectedSubcategory,
+        reviews: selectedReviews.slice(0, 50).map((r) => ({
+          review_id: String(r.review_id ?? ""),
+          review: r.review ?? "",
+          voted_up: r.voted_up,
+        })),
+      });
+      setSubcategorySummary(result);
+    } catch (err) {
+      setSummaryError((err as Error).message || "Failed to generate summary");
+    } finally {
+      setSummaryLoading(false);
+    }
   };
 
   return (
@@ -878,6 +985,11 @@ function AnalysisResults({
           </div>
 
         <div className="flex flex-wrap items-center justify-end gap-3">
+          {onAnalyzeMore && (
+            <Button onClick={onAnalyzeMore} variant="ghost" size="sm">
+              + Analyze More Reviews
+            </Button>
+          )}
           <Button
             onClick={() => {
               if (!selectedGame) return;
@@ -890,55 +1002,38 @@ function AnalysisResults({
         </div>
       </div>
 
-        <Card variant="glass" className="mt-4 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold text-white">{t('common.filters')}</h3>
-              <p className="mt-1 text-sm text-slate-400">
-                Global filters and text search apply to every insight below.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {filtersActive ? (
-                <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-emerald-300">
-                  {t('dashboard.filtersActive')}
-                </span>
-              ) : null}
-              {filtersActive ? (
-                <Button variant="secondary" size="sm" onClick={resetFilters}>
-                  {t('common.reset')} {t('common.filters').toLowerCase()}
-                </Button>
-              ) : null}
-              <Button variant="secondary" size="sm" onClick={() => setFiltersOpen((prev) => !prev)}>
-                {filtersOpen ? t('dashboard.hideFilters') : t('dashboard.showFilters')}
-              </Button>
-            </div>
-          </div>
-          {filtersOpen ? (
-            <>
-              <div className="mt-4">
-                <GlobalFiltersBar />
-              </div>
+        {/* Filters toggle */}
+        <div className="mt-4 flex items-center gap-3">
+          {filtersActive && (
+            <button onClick={resetFilters} className="text-[10px] text-slate-500 hover:text-slate-300">
+              Reset filters
+            </button>
+          )}
+          {filtersActive && <span className="text-[10px] text-emerald-400">•</span>}
+          <button
+            onClick={() => setFiltersOpen((prev) => !prev)}
+            className="text-xs text-slate-400 hover:text-sky-400 transition-colors"
+          >
+            {filtersOpen ? "Hide filters" : "Show filters"} {filtersOpen ? "↑" : "→"}
+          </button>
+        </div>
 
-              <div className="mt-4 flex flex-wrap items-end gap-4 text-sm text-slate-200">
-                <label className="flex min-w-0 w-full flex-1 flex-col gap-2 sm:min-w-[240px]">
-                  <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">Search reviews</span>
-                  <input
-                    value={reviewQuery}
-                    onChange={(event) => setReviewQuery(event.target.value)}
-                    placeholder="Search review text"
-                    className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
-                  />
-                </label>
-                <div className="flex flex-1 justify-end text-xs text-slate-400">
-                  <span>
-                    {filteredReviewSample.length.toLocaleString()} / {reviewSample.length.toLocaleString()} reviews
-                  </span>
-                </div>
-              </div>
-            </>
-          ) : null}
-        </Card>
+        {filtersOpen && (
+          <Card variant="glass" className="mt-2 p-4">
+            <GlobalFiltersBar />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <input
+                value={reviewQuery}
+                onChange={(event) => setReviewQuery(event.target.value)}
+                placeholder="Search review text..."
+                className="flex-1 min-w-[200px] rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
+              />
+              <span className="text-[10px] text-slate-500">
+                {filteredReviewSample.length} / {reviewSample.length} reviews
+              </span>
+            </div>
+          </Card>
+        )}
 
         <div className="mt-5 grid gap-4 sm:gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
@@ -959,28 +1054,15 @@ function AnalysisResults({
       <div className="space-y-6">
 
         <Card variant="glass" className="p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h4 className="text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
-              <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                setExpandedCategories(() => new Set(allCategoriesExpanded ? [] : categoryKeys))
-              }
-            >
-              {allCategoriesExpanded ? "Collapse all" : "Expand all"}
-            </Button>
+          <div>
+            <h4 className="text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
+            <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
             {categories.map((category) => {
               const rateText = formatPercentOrDash(category.rate);
               const rateColor = getRecommendationColor(category.rate);
-              const isExpanded = expandedCategories.has(category.key);
-              const visibleSubcategories = isExpanded ? category.subcategories : category.subcategories.slice(0, 4);
               return (
                 <div
                   key={category.key}
@@ -1000,7 +1082,7 @@ function AnalysisResults({
                     {category.subcategories.length === 0 ? (
                       <p className="text-sm text-slate-500 col-span-2">No tagged subcategories.</p>
                     ) : (
-                      visibleSubcategories.map((sub) => (
+                      category.subcategories.map((sub) => (
                         <button
                           key={sub.subcategory}
                           type="button"
@@ -1031,33 +1113,6 @@ function AnalysisResults({
                       ))
                     )}
                   </div>
-                  {category.subcategories.length > 4 ? (
-                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                      <span>
-                        Showing {Math.min(visibleSubcategories.length, category.subcategories.length)} of{" "}
-                        {category.subcategories.length}
-                      </span>
-                      {isExpanded ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleCategoryExpand(category.key, false)}
-                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
-                          aria-label={`Collapse ${category.label} subcategories`}
-                        >
-                          −
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => toggleCategoryExpand(category.key, true)}
-                          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
-                          aria-label={`Expand ${category.label} subcategories`}
-                        >
-                          +
-                        </button>
-                      )}
-                    </div>
-                  ) : null}
                 </div>
               );
             })}
@@ -1303,10 +1358,75 @@ function AnalysisResults({
                   {filtersActive ? " -filters applied" : ""}
                 </p>
               </div>
-              <Button variant="secondary" onClick={() => setSelectedSubcategory(null)}>
-                Close
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  onClick={handleSummarize}
+                  disabled={summaryLoading || selectedReviews.length === 0}
+                >
+                  {summaryLoading ? "Summarizing..." : subcategorySummary ? "Refresh Summary" : "Summarize"}
+                </Button>
+                <Button variant="secondary" onClick={() => setSelectedSubcategory(null)}>
+                  Close
+                </Button>
+              </div>
             </div>
+
+            {/* Summary Section */}
+            {summaryError && (
+              <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
+                <p className="text-sm text-rose-400">{summaryError}</p>
+              </div>
+            )}
+
+            {subcategorySummary && (
+              <div className="mt-4 space-y-4 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+                <div>
+                  <h4 className="text-xs uppercase tracking-wider text-sky-400 mb-2">Summary</h4>
+                  <p className="text-sm text-slate-200 leading-relaxed">{subcategorySummary.summary}</p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {subcategorySummary.pros.length > 0 && (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        Pros
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {subcategorySummary.pros.map((pro, idx) => (
+                          <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                            <span className="text-emerald-400 mt-1">+</span>
+                            <span>{pro}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {subcategorySummary.cons.length > 0 && (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-rose-400 mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                        Cons
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {subcategorySummary.cons.map((con, idx) => (
+                          <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                            <span className="text-rose-400 mt-1">−</span>
+                            <span>{con}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-slate-500 pt-2 border-t border-white/10">
+                  Based on {Math.min(selectedReviews.length, 50)} reviews -2 credits used
+                </p>
+              </div>
+            )}
             {selectedReviews.length === 0 ? (
               <p className="mt-4 text-sm text-slate-500">No reviews found for this subcategory.</p>
             ) : (

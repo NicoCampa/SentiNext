@@ -101,7 +101,7 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
                 conn.execute(
                     text("""
                         UPDATE reviews
-                        SET search_vector = to_tsvector('english', :review_text)
+                        SET search_vector = to_tsvector('simple', :review_text)
                         WHERE review_id = :review_id
                     """),
                     {"review_text": review_text, "review_id": review_id},
@@ -190,8 +190,8 @@ def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Op
                     FROM reviews
                     WHERE app_id = :app_id
                       AND data->>'language' = :language
-                      AND search_vector @@ to_tsquery('english', :query)
-                    ORDER BY ts_rank(search_vector, to_tsquery('english', :query)) DESC
+                      AND search_vector @@ to_tsquery('simple', :query)
+                    ORDER BY ts_rank(search_vector, to_tsquery('simple', :query)) DESC
                     LIMIT :limit
                 """),
                 {"app_id": int(app_id), "language": lang, "query": ts_query, "limit": int(limit)},
@@ -202,8 +202,8 @@ def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Op
                     SELECT review_id
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND search_vector @@ to_tsquery('english', :query)
-                    ORDER BY ts_rank(search_vector, to_tsquery('english', :query)) DESC
+                      AND search_vector @@ to_tsquery('simple', :query)
+                    ORDER BY ts_rank(search_vector, to_tsquery('simple', :query)) DESC
                     LIMIT :limit
                 """),
                 {"app_id": int(app_id), "query": ts_query, "limit": int(limit)},
@@ -717,7 +717,7 @@ def load_database_reviews(
     from . import db as db_module
     with db_module.get_connection() as conn:
         if raw_query:
-            where_parts = ["reviews.search_vector @@ plainto_tsquery('english', :query)"]
+            where_parts = ["reviews.search_vector @@ plainto_tsquery('simple', :query)"]
             params: Dict[str, Any] = {"query": raw_query}
             if app_id:
                 if allowed_ids is not None and int(app_id) not in allowed_ids:
@@ -751,7 +751,7 @@ def load_database_reviews(
                 LEFT JOIN review_labels
                   ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
                 WHERE {where_sql}
-                ORDER BY ts_rank(reviews.search_vector, plainto_tsquery('english', :query)) DESC
+                ORDER BY ts_rank(reviews.search_vector, plainto_tsquery('simple', :query)) DESC
                 LIMIT :limit OFFSET :offset
             """
             rows = conn.execute(text(query_sql), params).mappings().fetchall()
@@ -1207,7 +1207,7 @@ def search_reviews_with_date_filter(
                         SELECT data
                         FROM reviews
                         WHERE app_id = :app_id
-                          AND search_vector @@ to_tsquery('english', :query)
+                          AND search_vector @@ to_tsquery('simple', :query)
                           AND timestamp_created > :cutoff
                         ORDER BY (data->>'votes_up')::int DESC NULLS LAST
                         LIMIT :limit
@@ -1220,7 +1220,7 @@ def search_reviews_with_date_filter(
                         SELECT data
                         FROM reviews
                         WHERE app_id = :app_id
-                          AND search_vector @@ to_tsquery('english', :query)
+                          AND search_vector @@ to_tsquery('simple', :query)
                         ORDER BY (data->>'votes_up')::int DESC NULLS LAST
                         LIMIT :limit
                     """),
@@ -1496,6 +1496,92 @@ def get_time_period_comparison(
                 "total": total,
                 "recommendation_rate": rec_rate,
             })
+
+    return results
+
+
+def get_language_breakdown(
+    app_id: int,
+    date_filter: str = "all",
+    limit: int = 15,
+) -> List[Dict[str, Any]]:
+    """Get breakdown of reviews by language with recommendation rates.
+
+    Args:
+        app_id: The Steam app ID
+        date_filter: One of "30d", "90d", "365d", "all"
+        limit: Maximum number of languages to return
+
+    Returns:
+        List of dicts with keys:
+            - language: Language code (e.g., "english", "german")
+            - count: Total reviews in this language
+            - recommended: Count with voted_up=true
+            - not_recommended: Count with voted_up=false
+            - recommendation_rate: Percentage recommended (0.0-1.0)
+            - issue_count: Count with issues (from labels)
+    """
+    from . import db as db_module
+    import time
+
+    max_days = _parse_date_filter(date_filter)
+    cutoff = None
+
+    with db_module.get_connection() as conn:
+        if max_days is not None:
+            cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+            result = conn.execute(
+                text("""
+                    SELECT
+                        COALESCE(data->>'language', 'unknown') as language,
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND timestamp_created > :cutoff
+                      AND data->>'voted_up' IS NOT NULL
+                    GROUP BY COALESCE(data->>'language', 'unknown')
+                    ORDER BY total DESC
+                    LIMIT :limit
+                """),
+                {"app_id": int(app_id), "cutoff": cutoff, "limit": limit},
+            )
+        else:
+            result = conn.execute(
+                text("""
+                    SELECT
+                        COALESCE(data->>'language', 'unknown') as language,
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
+                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended
+                    FROM reviews
+                    WHERE app_id = :app_id
+                      AND data->>'voted_up' IS NOT NULL
+                    GROUP BY COALESCE(data->>'language', 'unknown')
+                    ORDER BY total DESC
+                    LIMIT :limit
+                """),
+                {"app_id": int(app_id), "limit": limit},
+            )
+
+        rows = result.fetchall()
+
+    results = []
+    for row in rows:
+        language = row[0] or "unknown"
+        total = int(row[1]) if row[1] else 0
+        recommended = int(row[2]) if row[2] else 0
+        not_recommended = int(row[3]) if row[3] else 0
+        rec_rate = (recommended / total) if total > 0 else 0.0
+
+        results.append({
+            "language": language,
+            "count": total,
+            "recommended": recommended,
+            "not_recommended": not_recommended,
+            "recommendation_rate": rec_rate,
+        })
 
     return results
 

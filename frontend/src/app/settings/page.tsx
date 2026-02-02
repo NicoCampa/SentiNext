@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { fetchLogTail } from "@/lib/api";
+import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, CreditStatus } from "@/lib/api";
 import { isTauriApp } from "@/lib/settings";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
+import { useCredits } from "@/contexts/CreditsContext";
 
 export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -20,6 +21,9 @@ export default function SettingsPage() {
   const { language, setLanguage, t } = useLanguage();
   const [showLogs, setShowLogs] = useState(false);
   const { isAdmin } = useAdminStatus();
+  const { credits, loading: creditsLoading, refresh: refreshCredits } = useCredits();
+  const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -69,6 +73,42 @@ export default function SettingsPage() {
       await navigator.clipboard.writeText(text);
     } catch (err) {
       console.error("Failed to copy text", err);
+    }
+  }
+
+  async function handleUpgrade(tier: "pro" | "max") {
+    setUpgradeLoading(tier);
+    try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const result = await createCheckoutSession(
+        tier,
+        `${baseUrl}/settings?upgrade=success`,
+        `${baseUrl}/settings?upgrade=cancelled`
+      );
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      }
+    } catch (err) {
+      console.error("Failed to create checkout session", err);
+      alert("Failed to start upgrade. Please try again.");
+    } finally {
+      setUpgradeLoading(null);
+    }
+  }
+
+  async function handleManageSubscription() {
+    setPortalLoading(true);
+    try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const result = await getBillingPortalUrl(`${baseUrl}/settings`);
+      if (result.portal_url) {
+        window.location.href = result.portal_url;
+      }
+    } catch (err) {
+      console.error("Failed to open billing portal", err);
+      alert("Failed to open billing portal. Please try again.");
+    } finally {
+      setPortalLoading(false);
     }
   }
 
@@ -220,6 +260,147 @@ export default function SettingsPage() {
                   </span>
                 </div>
               </div>
+            </Card>
+
+            {/* Subscription & Credits */}
+            <Card variant="glass" className="p-6">
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">💎</span>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                    Subscription & Credits
+                  </p>
+                </div>
+                <p className="text-sm text-[rgb(150,150,170)]">Manage your plan and credit usage</p>
+              </div>
+
+              {creditsLoading && !credits ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-10 bg-[rgb(0,255,255)]/10 rounded" />
+                  <div className="h-3 bg-[rgb(0,255,255)]/10 rounded w-2/3" />
+                </div>
+              ) : credits ? (
+                <>
+                  {/* Current Plan */}
+                  <div className="mb-4 p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                        Current Plan
+                      </span>
+                      <span className={`text-sm font-bold uppercase tracking-wider ${
+                        credits.tier === "max"
+                          ? "text-purple-400"
+                          : credits.tier === "pro"
+                          ? "text-[rgb(0,255,255)]"
+                          : "text-[rgb(150,150,170)]"
+                      }`}>
+                        {credits.tier}
+                      </span>
+                    </div>
+
+                    {/* Credit Usage Bar */}
+                    <div className="mb-2">
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="text-[rgb(150,150,170)]">Credits Used</span>
+                        <span className={`font-mono ${
+                          credits.blocked
+                            ? "text-rose-400"
+                            : credits.warning
+                            ? "text-amber-400"
+                            : "text-[rgb(0,255,255)]"
+                        }`}>
+                          {credits.used.toLocaleString()} / {credits.limit.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            credits.blocked
+                              ? "bg-rose-500"
+                              : credits.warning
+                              ? "bg-amber-500"
+                              : "bg-[rgb(0,255,255)]"
+                          }`}
+                          style={{ width: `${Math.min(credits.percent_used, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Reset Date */}
+                    {credits.period_end && (
+                      <p className="text-[10px] text-[rgb(150,150,170)]">
+                        Resets on {new Date(credits.period_end).toLocaleDateString(undefined, {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Warning/Blocked Messages */}
+                  {credits.blocked && (
+                    <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/30">
+                      <p className="text-xs text-rose-400">
+                        You&apos;ve exceeded your credit limit. Upgrade your plan or wait for credits to reset.
+                      </p>
+                    </div>
+                  )}
+                  {credits.warning && !credits.blocked && (
+                    <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30">
+                      <p className="text-xs text-amber-400">
+                        You&apos;ve used over 100% of your monthly credits. Consider upgrading.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Upgrade Options */}
+                  {credits.tier !== "max" && (
+                    <div className="space-y-3 mb-4">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
+                        Upgrade Your Plan
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {credits.tier === "free" && (
+                          <button
+                            onClick={() => handleUpgrade("pro")}
+                            disabled={upgradeLoading !== null}
+                            className="p-3 border border-[rgb(0,255,255)]/30 bg-[rgb(10,10,25)] hover:bg-[rgb(0,255,255)]/10 hover:border-[rgb(0,255,255)]/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <p className="text-sm font-bold text-[rgb(0,255,255)]">Pro</p>
+                            <p className="text-xs text-[rgb(150,150,170)]">$19/mo</p>
+                            <p className="text-[10px] text-[rgb(0,255,255)]/50 mt-1">5,000 credits</p>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleUpgrade("max")}
+                          disabled={upgradeLoading !== null}
+                          className="p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <p className="text-sm font-bold text-purple-400">Max</p>
+                          <p className="text-xs text-[rgb(150,150,170)]">$49/mo</p>
+                          <p className="text-[10px] text-purple-400/50 mt-1">25,000 credits</p>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Manage Subscription (for paid users) */}
+                  {credits.stripe_customer_id && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleManageSubscription}
+                      disabled={portalLoading}
+                      className="w-full"
+                    >
+                      {portalLoading ? "Loading..." : "Manage Subscription"}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-rose-400">Failed to load credit information</p>
+              )}
             </Card>
           </div>
 

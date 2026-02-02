@@ -787,6 +787,7 @@ def build_game_aware_prompt(
     subcategory_insights: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     full_insights: Optional[Dict[int, Dict[str, Any]]] = None,
     time_period_comparisons: Optional[Dict[int, List[Dict[str, Any]]]] = None,
+    language_breakdowns: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     intent: Optional[Any] = None,
     sort_preference: Optional[str] = None,
     history: List[Dict[str, Any]] = None,
@@ -996,6 +997,24 @@ def build_game_aware_prompt(
                     )
                 prompt_parts.append("")
 
+        # NEW: LANGUAGE Section - Sentiment breakdown by language
+        if intent == ChatIntent.LANGUAGE and language_breakdowns:
+            lang_data = language_breakdowns.get(app_id, [])
+            if lang_data:
+                prompt_parts.append("\n### Sentiment by Language (AUTHORITATIVE - use for charts):")
+                prompt_parts.append(f"Total languages analyzed: {len(lang_data)}\n")
+                for entry in lang_data:
+                    lang_name = entry.get("language", "unknown")
+                    count = entry.get("count", 0)
+                    rec = entry.get("recommended", 0)
+                    not_rec = entry.get("not_recommended", 0)
+                    rec_rate = entry.get("recommendation_rate", 0) * 100
+                    prompt_parts.append(
+                        f"**{lang_name}**: {count} reviews, {rec_rate:.1f}% recommend "
+                        f"({rec} positive, {not_rec} negative)"
+                    )
+                prompt_parts.append("")
+
         # Subcategory breakdown (with smart sorting based on intent)
         if subcats and intent not in (ChatIntent.FEATURE_REQUESTS,):
             prompt_parts.append("\n### Subcategory Breakdown:")
@@ -1089,6 +1108,7 @@ def build_game_aware_prompt(
     prompt_parts.append("10. **For comparison questions** (EA vs release, before/after): Use 'Early Access vs Release Comparison' data")
     prompt_parts.append("11. **For risk questions** (refund risk, churn): Use 'Risk Indicators' data and explain what each metric means")
     prompt_parts.append("12. **For feature request questions**: Use 'Most Requested Features' sorted by request count")
+    prompt_parts.append("13. **For language questions** (issues by language, regional feedback): Use 'Sentiment by Language' data to compare feedback across different player communities")
 
     # Current question
     prompt_parts.append(f"\n## Current Question:\n{message}")
@@ -1202,6 +1222,7 @@ def answer_game_aware_chat(
     full_insights: Dict[int, Dict[str, Any]] = {}
     reviews_by_game: Dict[int, List[dict]] = {}
     time_period_comparisons: Dict[int, List[Dict[str, Any]]] = {}
+    language_breakdowns: Dict[int, List[Dict[str, Any]]] = {}
 
     # Load full insights for advanced intents
     if should_load_full_insights(intent):
@@ -1231,6 +1252,16 @@ def answer_game_aware_chat(
             )
             time_period_comparisons[app_id] = periods
             logger.info(f"App {app_id}: Computed {len(periods)} time period comparisons")
+
+    # Handle language breakdown queries
+    if intent == ChatIntent.LANGUAGE:
+        if status_callback:
+            status_callback("Computing language breakdown...")
+
+        for app_id in app_ids:
+            lang_data = storage.get_language_breakdown(app_id, date_filter)
+            language_breakdowns[app_id] = lang_data
+            logger.info(f"App {app_id}: Found {len(lang_data)} languages in reviews")
 
     if should_use_sql_aggregation(intent):
         # AGGREGATION/MIXED/TREND/SEGMENT/COMPARISON/RISK/FEATURE_REQUESTS: Use SQL for accurate stats
@@ -1324,6 +1355,7 @@ def answer_game_aware_chat(
         subcategory_insights=subcategory_insights if subcategory_insights else None,
         full_insights=full_insights if full_insights else None,
         time_period_comparisons=time_period_comparisons if time_period_comparisons else None,
+        language_breakdowns=language_breakdowns if language_breakdowns else None,
         intent=intent,
         sort_preference=sort_preference,
         history=history or [],

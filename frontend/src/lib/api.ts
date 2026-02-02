@@ -103,11 +103,25 @@ export interface AnalyzePayload {
   app_id: number;
   review_count: number;
   language: string;
+  languages?: string[];
   filter: string;
   day_range?: number | null;
   persist?: boolean;
   refresh?: boolean;
   refresh_days?: number | null;
+}
+
+export interface LanguagesResponse {
+  languages: string[];
+  default: string;
+  popular: string[];
+}
+
+export async function fetchLanguages(): Promise<LanguagesResponse> {
+  const response = await authFetch(apiUrl("/languages"), {
+    cache: "force-cache",
+  });
+  return handleResponse<LanguagesResponse>(response);
 }
 
 export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeResponse> {
@@ -684,4 +698,141 @@ export function subscribeToChatStream(
     aborted = true;
     eventSource?.close();
   };
+}
+
+// ============================================================================
+// Credit System API
+// ============================================================================
+
+export type SubscriptionTier = "free" | "pro" | "max";
+
+export interface CreditStatus {
+  balance: number;
+  limit: number;
+  used: number;
+  tier: SubscriptionTier;
+  period_end: string | null;
+  percent_used: number;
+  warning: boolean;
+  blocked: boolean;
+  stripe_customer_id: string | null;
+}
+
+export interface CreditEstimate {
+  review_count: number;
+  credits_needed: number;
+  current_balance: number;
+  can_afford: boolean;
+  would_exceed_soft_limit: boolean;
+  would_exceed_hard_limit: boolean;
+}
+
+export interface CheckoutResponse {
+  checkout_url: string;
+}
+
+export interface BillingPortalResponse {
+  portal_url: string;
+}
+
+/**
+ * Fetch current credit status for the authenticated user.
+ */
+export async function fetchCreditStatus(): Promise<CreditStatus> {
+  const response = await authFetch(apiUrl("/credits"), { cache: "no-store" });
+  return handleResponse<CreditStatus>(response);
+}
+
+/**
+ * Estimate credits needed for an analysis operation.
+ */
+export async function fetchCreditEstimate(
+  reviewCount: number,
+  newReviews?: number,
+  cachedReviews?: number
+): Promise<CreditEstimate> {
+  const url = new URL(apiUrl("/credits/estimate"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  url.searchParams.set("review_count", String(reviewCount));
+  if (newReviews !== undefined) {
+    url.searchParams.set("new_reviews", String(newReviews));
+  }
+  if (cachedReviews !== undefined) {
+    url.searchParams.set("cached_reviews", String(cachedReviews));
+  }
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<CreditEstimate>(response);
+}
+
+/**
+ * Create a Stripe checkout session for subscription upgrade.
+ */
+export async function createCheckoutSession(
+  tier: "pro" | "max",
+  successUrl: string,
+  cancelUrl: string
+): Promise<CheckoutResponse> {
+  const response = await authFetch(apiUrl("/credits/checkout"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tier,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    }),
+  });
+  return handleResponse<CheckoutResponse>(response);
+}
+
+/**
+ * Get Stripe customer portal URL for subscription management.
+ */
+export async function getBillingPortalUrl(returnUrl: string): Promise<BillingPortalResponse> {
+  const url = new URL(apiUrl("/credits/portal"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  url.searchParams.set("return_url", returnUrl);
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<BillingPortalResponse>(response);
+}
+
+/**
+ * Sync subscription status from Stripe (for debugging).
+ */
+export async function syncCreditStatus(): Promise<{ synced: boolean; tier?: string; message?: string }> {
+  const response = await authFetch(apiUrl("/credits/sync"), {
+    method: "POST",
+  });
+  return handleResponse<{ synced: boolean; tier?: string; message?: string }>(response);
+}
+
+// ============================================================================
+// Subcategory Summary API
+// ============================================================================
+
+export interface SubcategorySummaryPayload {
+  app_id: number;
+  subcategory: string;
+  reviews: Array<{
+    review_id?: string;
+    review?: string;
+    voted_up?: boolean;
+  }>;
+}
+
+export interface SubcategorySummaryResponse {
+  summary: string;
+  pros: string[];
+  cons: string[];
+}
+
+/**
+ * Generate a summary with pros/cons for reviews in a specific subcategory.
+ */
+export async function summarizeSubcategory(
+  payload: SubcategorySummaryPayload
+): Promise<SubcategorySummaryResponse> {
+  const response = await authFetch(apiUrl("/summarize/subcategory"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<SubcategorySummaryResponse>(response);
 }

@@ -30,9 +30,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .senti_next import (
+    STEAM_LANGUAGES,
     SteamAPIError,
     build_reviews_dataframe,
     fetch_reviews,
+    fetch_reviews_multi_language,
     search_applications,
 )
 from .senti_next import ingest
@@ -45,6 +47,8 @@ from .senti_next import chat
 from .senti_next import redis_client
 from .senti_next import jobs as job_runner
 from .senti_next import logging_config
+from .senti_next import credits
+from .senti_next import stripe_billing
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +174,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/credits/stripe-webhook"}
 SSE_PATHS = {"/progress/{app_id}/stream"}  # SSE endpoints get token from query param
 
 
@@ -302,7 +306,8 @@ class SearchResult(BaseModel):
 class AnalyzeRequest(BaseModel):
     app_id: int = Field(..., gt=0)
     review_count: int = Field(FETCH_LIMIT, ge=0, le=FETCH_LIMIT)
-    language: str = Field("english", min_length=2, max_length=32)
+    language: str = Field("all", min_length=2, max_length=32)
+    languages: Optional[List[str]] = Field(None, description="List of language codes for multi-language analysis")
     filter: str = Field("recent")
     day_range: Optional[int] = Field(None, ge=1, le=365)
     persist: bool = Field(True)
@@ -315,6 +320,7 @@ class AnalyzeMetadata(BaseModel):
     requested: int
     retrieved: int
     language: str
+    languages: Optional[List[str]] = None
     fetched_at: str
     header_image: Optional[str] = None
 
@@ -506,6 +512,33 @@ class DatabaseGameOption(BaseModel):
     name: Optional[str] = None
 
 
+class CreditStatusResponse(BaseModel):
+    balance: int
+    limit: int
+    used: int
+    tier: str
+    period_end: Optional[str] = None
+    percent_used: float
+    warning: bool
+    blocked: bool
+    stripe_customer_id: Optional[str] = None
+
+
+class CreditEstimateResponse(BaseModel):
+    review_count: int
+    credits_needed: int
+    current_balance: int
+    can_afford: bool
+    would_exceed_soft_limit: bool
+    would_exceed_hard_limit: bool
+
+
+class CheckoutSessionRequest(BaseModel):
+    tier: str = Field(..., pattern="^(pro|max)$")
+    success_url: str
+    cancel_url: str
+
+
 REVIEW_EXPORT_COLUMNS = [
     "app_id",
     "app_name",
@@ -645,6 +678,16 @@ def healthcheck() -> dict:
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
 
 
+@app.get("/languages")
+def get_available_languages() -> dict:
+    """Return the list of available Steam language codes for review fetching."""
+    return {
+        "languages": list(STEAM_LANGUAGES.keys()),
+        "default": "all",
+        "popular": ["english", "german", "french", "spanish", "russian", "schinese", "japanese", "portuguese", "brazilian"],
+    }
+
+
 @app.get("/settings/storage")
 def storage_paths() -> dict:
     from platformdirs import user_data_dir
@@ -723,6 +766,140 @@ def auth_status(user_id: str = Depends(require_user_id)) -> AuthStatusResponse:
     return AuthStatusResponse(user_id=user_id, is_admin=is_admin_user_id(user_id))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Credit System Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@app.get("/credits", response_model=CreditStatusResponse)
+def get_credit_status(user_id: str = Depends(require_user_id)) -> CreditStatusResponse:
+    """Get current credit status for the authenticated user."""
+    status = credits.get_credit_status(user_id)
+    return CreditStatusResponse(**status)
+
+
+@app.get("/credits/estimate", response_model=CreditEstimateResponse)
+def get_credit_estimate(
+    review_count: int = 0,
+    new_reviews: int = 0,
+    cached_reviews: int = 0,
+    user_id: str = Depends(require_user_id),
+) -> CreditEstimateResponse:
+    """Estimate credits needed for an analysis operation.
+
+    Args:
+        review_count: Total review count (legacy param, used if new_reviews not specified)
+        new_reviews: Number of new reviews requiring LLM classification (1 credit each)
+        cached_reviews: Number of cached reviews (0.5 credits each)
+    """
+    # If new_reviews/cached_reviews provided, use them; otherwise treat all as new
+    if new_reviews > 0 or cached_reviews > 0:
+        credits_needed = credits.estimate_analysis_cost(new_reviews, cached_reviews)
+    else:
+        credits_needed = credits.estimate_analysis_cost(review_count)
+
+    subscription = credits.get_user_subscription(user_id)
+    balance = subscription["credits_balance"]
+    limit = subscription["credits_monthly_limit"]
+    used = subscription["credits_used_this_period"]
+    hard_limit = int(limit * (1 + credits.SOFT_LIMIT_BUFFER))
+
+    return CreditEstimateResponse(
+        review_count=review_count or (new_reviews + cached_reviews),
+        credits_needed=credits_needed,
+        current_balance=balance,
+        can_afford=used + credits_needed <= hard_limit,
+        would_exceed_soft_limit=used + credits_needed > limit,
+        would_exceed_hard_limit=used + credits_needed > hard_limit,
+    )
+
+
+@app.post("/credits/checkout")
+def create_checkout(
+    request: CheckoutSessionRequest,
+    http_request: Request,
+    user_id: str = Depends(require_user_id),
+) -> dict:
+    """Create a Stripe Checkout session for subscription upgrade."""
+    if not stripe_billing.is_stripe_configured():
+        raise HTTPException(status_code=503, detail="Stripe is not configured.")
+
+    # Get user email from JWT if available
+    payload = getattr(http_request.state, "user", None) or {}
+    user_email = payload.get("email")
+
+    try:
+        checkout_url = stripe_billing.create_checkout_session(
+            user_id=user_id,
+            tier=request.tier,
+            success_url=request.success_url,
+            cancel_url=request.cancel_url,
+            user_email=user_email,
+        )
+        return {"checkout_url": checkout_url}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to create checkout session: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create checkout session.") from exc
+
+
+@app.get("/credits/portal")
+def get_billing_portal(
+    return_url: str,
+    user_id: str = Depends(require_user_id),
+) -> dict:
+    """Get a Stripe Customer Portal URL for subscription management."""
+    if not stripe_billing.is_stripe_configured():
+        raise HTTPException(status_code=503, detail="Stripe is not configured.")
+
+    try:
+        portal_url = stripe_billing.create_customer_portal_session(
+            user_id=user_id,
+            return_url=return_url,
+        )
+        return {"portal_url": portal_url}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to create portal session: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create billing portal session.") from exc
+
+
+@app.post("/credits/stripe-webhook")
+async def stripe_webhook(request: Request) -> dict:
+    """Handle incoming Stripe webhook events."""
+    if not stripe_billing.is_stripe_configured():
+        raise HTTPException(status_code=503, detail="Stripe is not configured.")
+
+    signature = request.headers.get("stripe-signature")
+    if not signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe signature header.")
+
+    try:
+        payload = await request.body()
+        result = stripe_billing.handle_webhook_event(payload, signature)
+        return result
+    except ValueError as exc:
+        logger.warning("Stripe webhook validation failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Stripe webhook processing failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Webhook processing failed.") from exc
+
+
+@app.post("/credits/sync")
+def sync_credits(user_id: str = Depends(require_user_id)) -> dict:
+    """Sync subscription status from Stripe (useful for debugging)."""
+    if not stripe_billing.is_stripe_configured():
+        raise HTTPException(status_code=503, detail="Stripe is not configured.")
+
+    result = stripe_billing.sync_subscription_status(user_id)
+    if result is None:
+        return {"synced": False, "message": "No Stripe customer found"}
+    return result
+
+
 @app.get("/search", response_model=List[SearchResult])
 def search(query: str) -> List[SearchResult]:
     if not query or len(query.strip()) < 2:
@@ -767,12 +944,30 @@ def _run_analysis_job(
         storage.clear_progress(user_id, app_id)
 
     try:
+        # Get breakdown of cached vs new reviews before processing
+        review_estimate = llm.estimate_review_labeling(app_id, all_reviews)
+        llm_review_count = int(review_estimate.get("llm_reviews", 0) or 0)
+        cached_review_count = int(review_estimate.get("cached_reviews", 0) or 0)
+
         llm_labels = llm.ensure_review_labels(
             app_id,
             all_reviews,
             progress_callback=_progress_callback if progress_active else None,
             game_context=game_context,
         )
+
+        # Deduct credits for the reviews that were processed
+        # New LLM reviews cost 1 credit each, cached reviews cost 0.5 credits each
+        total_processed = llm_review_count + cached_review_count
+        if total_processed > 0:
+            credit_cost = credits.estimate_analysis_cost(llm_review_count, cached_review_count)
+            credits.deduct_credits(
+                user_id=user_id,
+                amount=credit_cost,
+                operation="classify",
+                description=f"Analyzed {total_processed} reviews ({llm_review_count} new, {cached_review_count} cached) for app {app_id}",
+                app_id=app_id,
+            )
 
         df = build_reviews_dataframe(all_reviews)
         df = llm.apply_review_labels(df, llm_labels)
@@ -842,16 +1037,30 @@ def analyze(
     has_enough_cached = len(stored_reviews) >= int(request.review_count or 0)
     should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
+    # Determine which languages to fetch
+    languages_to_fetch = request.languages or ([request.language] if request.language and request.language != "all" else None)
+
     fetched_reviews: List[dict] = []
     if should_fetch:
         try:
-            fetched_reviews = fetch_reviews(
-                request.app_id,
-                count=request.review_count,
-                language=request.language,
-                filter_type=filter_type,
-                day_range=request.refresh_days or request.day_range,
-            )
+            if languages_to_fetch and len(languages_to_fetch) > 1:
+                # Multi-language fetch
+                fetched_reviews = fetch_reviews_multi_language(
+                    request.app_id,
+                    count=request.review_count,
+                    languages=languages_to_fetch,
+                    filter_type=filter_type,
+                    day_range=request.refresh_days or request.day_range,
+                )
+            else:
+                # Single language fetch (or "all")
+                fetched_reviews = fetch_reviews(
+                    request.app_id,
+                    count=request.review_count,
+                    language=languages_to_fetch[0] if languages_to_fetch else "all",
+                    filter_type=filter_type,
+                    day_range=request.refresh_days or request.day_range,
+                )
         except SteamAPIError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -870,6 +1079,26 @@ def analyze(
     if request.review_count and len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
+    # Get estimate of cached vs new reviews for credit calculation
+    review_estimate = llm.estimate_review_labeling(request.app_id, all_reviews)
+    llm_reviews = int(review_estimate.get("llm_reviews", 0) or 0)
+    cached_reviews = int(review_estimate.get("cached_reviews", 0) or 0)
+
+    # Check if user has enough credits for this analysis
+    # New reviews cost 1 credit, cached reviews cost 0.5 credits
+    estimated_cost = credits.estimate_analysis_cost(llm_reviews, cached_reviews)
+    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, estimated_cost)
+    if not can_proceed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": credit_message,
+                "credits_needed": estimated_cost,
+                "credits_available": credit_status["balance"],
+                "tier": credit_status["tier"],
+            },
+        )
+
     game_context = fetch_app_details(request.app_id)
     header_image = None
     if game_context:
@@ -880,6 +1109,7 @@ def analyze(
         requested=request.review_count,
         retrieved=len(all_reviews),
         language=request.language,
+        languages=languages_to_fetch,
         fetched_at=datetime.utcnow().isoformat() + "Z",
         header_image=header_image,
     )
@@ -943,16 +1173,29 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
 
     has_enough_cached = len(stored_reviews) >= int(request.review_count or 0)
     should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
+
+    # Determine which languages to fetch
+    languages_to_fetch = request.languages or ([request.language] if request.language and request.language != "all" else None)
+
     fetched_reviews: List[dict] = []
     if should_fetch:
         try:
-            fetched_reviews = fetch_reviews(
-                request.app_id,
-                count=request.review_count,
-                language=request.language,
-                filter_type=filter_type,
-                day_range=request.refresh_days or request.day_range,
-            )
+            if languages_to_fetch and len(languages_to_fetch) > 1:
+                fetched_reviews = fetch_reviews_multi_language(
+                    request.app_id,
+                    count=request.review_count,
+                    languages=languages_to_fetch,
+                    filter_type=filter_type,
+                    day_range=request.refresh_days or request.day_range,
+                )
+            else:
+                fetched_reviews = fetch_reviews(
+                    request.app_id,
+                    count=request.review_count,
+                    language=languages_to_fetch[0] if languages_to_fetch else "all",
+                    filter_type=filter_type,
+                    day_range=request.refresh_days or request.day_range,
+                )
         except SteamAPIError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -1035,6 +1278,62 @@ def get_analysis_result(
     )
 
 
+class SummarizeSubcategoryRequest(BaseModel):
+    app_id: int = Field(..., gt=0)
+    subcategory: str = Field(..., min_length=3)
+    reviews: List[dict] = Field(..., min_length=1, max_length=100)
+
+
+class SummarizeSubcategoryResponse(BaseModel):
+    summary: str
+    pros: List[str]
+    cons: List[str]
+
+
+@app.post("/summarize/subcategory", response_model=SummarizeSubcategoryResponse, dependencies=[Depends(require_license)])
+def summarize_subcategory(
+    request: SummarizeSubcategoryRequest,
+    user_id: str = Depends(require_user_id),
+) -> SummarizeSubcategoryResponse:
+    """Generate a summary with pros/cons for reviews in a specific subcategory."""
+    summarize_cost = credits.CREDIT_COSTS["summarize"]
+    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, summarize_cost)
+    if not can_proceed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": credit_message,
+                "credits_needed": summarize_cost,
+                "credits_available": credit_status["balance"],
+                "tier": credit_status["tier"],
+            },
+        )
+
+    # Get game context
+    game_context = fetch_app_details(request.app_id)
+
+    try:
+        result = llm.summarize_subcategory_reviews(
+            reviews=request.reviews,
+            subcategory=request.subcategory,
+            game_context=game_context,
+        )
+
+        # Deduct credits
+        credits.deduct_credits(
+            user_id=user_id,
+            amount=summarize_cost,
+            operation="summarize",
+            description=f"Summarized {len(request.reviews)} reviews for {request.subcategory}",
+            app_id=request.app_id,
+        )
+
+        return SummarizeSubcategoryResponse(**result)
+    except Exception as exc:
+        logger.exception("Summarize failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate summary.") from exc
+
+
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_license)])
 def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id)) -> ChatResponse:
     question = (request.question or "").strip()
@@ -1077,6 +1376,20 @@ def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_
     message = (request.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    # Check credits for chat (costs 3 credits per message)
+    chat_cost = credits.CREDIT_COSTS["chat"]
+    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, chat_cost)
+    if not can_proceed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": credit_message,
+                "credits_needed": chat_cost,
+                "credits_available": credit_status["balance"],
+                "tier": credit_status["tier"],
+            },
+        )
 
     try:
         import uuid
@@ -1149,6 +1462,15 @@ Example:
             citations = []
             games_used = []
             reviews_searched = 0
+
+        # Deduct credits for this chat message
+        credits.deduct_credits(
+            user_id=user_id,
+            amount=chat_cost,
+            operation="chat",
+            description="Chat message",
+            session_id=session_id,
+        )
 
         # Save both user message and assistant response with session_id
         storage.save_chat_message(user_id, "user", message, session_id=session_id)

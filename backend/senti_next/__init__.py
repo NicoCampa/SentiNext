@@ -44,8 +44,10 @@ from .ingest import (
 from .steam_api import (
     AUTHOR_METADATA_FIELDS,
     REVIEW_METADATA_FIELDS,
+    STEAM_LANGUAGES,
     SteamAPIError,
     fetch_reviews,
+    fetch_reviews_multi_language,
     iter_author_fields,
     iter_review_fields,
     resolve_app_id,
@@ -55,7 +57,9 @@ from .steam_api import (
 __all__ = [
     "AUTHOR_METADATA_FIELDS",
     "REVIEW_METADATA_FIELDS",
+    "STEAM_LANGUAGES",
     "SteamAPIError",
+    "fetch_reviews_multi_language",
     "build_reviews_dataframe",
     "churn_signal_rate",
     "core_fan_disappointment",

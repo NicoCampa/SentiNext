@@ -7,6 +7,8 @@ import clsx from "clsx";
 import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { CreditBar } from "@/components/CreditBar";
+import { AnalysisWidget } from "@/components/AnalysisWidget";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -99,6 +101,9 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Bottom section */}
             <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
+              {/* Credit Bar */}
+              <CreditBar />
+
               {/* User Profile - Fully Clickable */}
               <SignedIn>
                 <button
@@ -202,6 +207,9 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
           </div>
         </nav>
       )}
+
+      {/* Global Analysis Progress Widget */}
+      <AnalysisWidget />
     </div>
   );
 }

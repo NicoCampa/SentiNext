@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef, useMemo } from 'react';
 import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
@@ -22,6 +22,7 @@ interface StartAnalysisOptions {
   persist?: boolean;
   review_count?: number;
   language?: string;
+  languages?: string[];
   filter?: string;
   day_range?: number | null;
   refresh_days?: number | null;
@@ -105,19 +106,40 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  // Compute a stable key for active tasks - only changes when the set of analyzing appIds changes
+  const activeTaskIds = useMemo(() => {
+    const ids = Array.from(tasks.entries())
+      .filter(([, task]) => task.status === 'analyzing')
+      .map(([appId]) => appId)
+      .sort((a, b) => a - b);
+    return ids.join(',');
+  }, [tasks]);
+
+  // Store tasks in a ref so the effect can access current state without re-running
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+
   // Track progress for active analyses using SSE with polling fallback
+  // Only re-run when the SET of active task IDs changes, not on every progress update
   useEffect(() => {
-    const activeTasks = Array.from(tasks.entries()).filter(
-      ([, task]) => task.status === 'analyzing'
-    );
+    const activeIds = activeTaskIds ? activeTaskIds.split(',').map(Number) : [];
+    if (activeIds.length === 0) return;
+
+    const activeTasks = activeIds
+      .map((appId) => [appId, tasksRef.current.get(appId)] as const)
+      .filter((entry): entry is [number, AnalysisTask] => entry[1] !== undefined);
 
     if (activeTasks.length === 0) return;
 
     const cleanups: (() => void)[] = [];
     const pollingFallbacks = new Map<number, NodeJS.Timeout>();
+    const completedTasks = new Set<number>(); // Track completed to avoid duplicate handling
 
     // Helper to handle completion
     const handleCompletion = async (appId: number, task: AnalysisTask) => {
+      if (completedTasks.has(appId)) return; // Avoid duplicate completion handling
+      completedTasks.add(appId);
+
       try {
         const analysis = await fetchAnalysisResult(appId);
         if (analysis.status === 'completed') {
@@ -174,9 +196,13 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             }
             return newTasks;
           });
+        } else {
+          // Status is still 'analyzing' or something else - remove from completed so we can retry
+          completedTasks.delete(appId);
         }
       } catch {
-        // Ignore fetch errors during completion check
+        // Fetch failed - remove from completed so we can retry
+        completedTasks.delete(appId);
       }
     };
 
@@ -185,6 +211,14 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       if (pollingFallbacks.has(appId)) return;
 
       const interval = setInterval(async () => {
+        // Check if task is still analyzing
+        const currentTask = tasksRef.current.get(appId);
+        if (!currentTask || currentTask.status !== 'analyzing') {
+          clearInterval(interval);
+          pollingFallbacks.delete(appId);
+          return;
+        }
+
         try {
           const progress = await fetchProgress(appId);
           const progressWithEstimate = attachProgressEstimate(appId, progress);
@@ -197,8 +231,12 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             return newTasks;
           });
 
-          // Check if completed
-          if (!progressWithEstimate.active && progressWithEstimate.total > 0) {
+          // Check if completed - improved condition
+          const isComplete =
+            (!progressWithEstimate.active && progressWithEstimate.total > 0) ||
+            (progressWithEstimate.processed >= progressWithEstimate.total && progressWithEstimate.total > 0);
+
+          if (isComplete) {
             await handleCompletion(appId, task);
             clearInterval(interval);
             pollingFallbacks.delete(appId);
@@ -216,6 +254,10 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       try {
         const cleanup = subscribeToProgress(appId, {
           onProgress: (processed, total, active) => {
+            // Check if task is still analyzing
+            const currentTask = tasksRef.current.get(appId);
+            if (!currentTask || currentTask.status !== 'analyzing') return;
+
             setTasks((prev) => {
               const newTasks = new Map(prev);
               const existing = newTasks.get(appId);
@@ -234,6 +276,14 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
               }
               return newTasks;
             });
+
+            // Also check for completion in SSE progress updates
+            const isComplete =
+              (!active && total > 0) ||
+              (processed >= total && total > 0);
+            if (isComplete) {
+              handleCompletion(appId, task);
+            }
           },
           onCompleted: () => {
             handleCompletion(appId, task);
@@ -258,14 +308,15 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       cleanups.forEach((cleanup) => cleanup());
       pollingFallbacks.forEach((interval) => clearInterval(interval));
     };
-  }, [tasks, resetProgressStats]);
+  }, [activeTaskIds, resetProgressStats, attachProgressEstimate]);
 
   const startAnalysis = useCallback(async (game: SearchResult, options: StartAnalysisOptions = {}) => {
     const appId = game.appid;
     const persist = options.persist ?? true;
     const refresh = options.refresh ?? false;
     const reviewCount = options.review_count ?? loadDefaultAnalysisReviewCount();
-    const language = options.language ?? "english";
+    const language = options.language ?? "all";
+    const languages = options.languages;
     const filter = options.filter ?? "recent";
     const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
     const dayRange = options.day_range ?? undefined;
@@ -296,6 +347,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         app_id: appId,
         review_count: reviewCount,
         language,
+        languages,
         filter,
         day_range: dayRange,
         persist,
@@ -330,7 +382,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         return newTasks;
       });
     }
-  }, [tasks, attachProgressEstimate, resetProgressStats]);
+  }, [tasks, resetProgressStats]);
 
   const getTask = useCallback(
     (appId: number) => {

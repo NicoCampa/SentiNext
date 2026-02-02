@@ -86,6 +86,7 @@ _PROMPT_TEMPLATE = Template(
         Description: $game_description
 
         REVIEWER CONTEXT:
+        Review Language: $review_language
         Playtime: $reviewer_playtime hours
         Recommendation: $reviewer_recommendation
 
@@ -795,6 +796,7 @@ def _build_prompt(
     game_context: Optional[Dict[str, Any]] = None,
     reviewer_playtime: float = 0,
     reviewer_voted_up: bool = True,
+    review_language: Optional[str] = None,
 ) -> str:
     truncated = _sanitize_review_text(review_text or "")
 
@@ -827,6 +829,7 @@ def _build_prompt(
         game_genres=game_genres,
         game_categories=game_categories,
         game_description=game_description,
+        review_language=review_language or "english",
         reviewer_playtime=playtime_hours,
         reviewer_recommendation=recommendation,
     )
@@ -1021,6 +1024,7 @@ def _build_batch_prompt(
     for item in items:
         review_id = str(item.get("review_id") or "")
         review_text = str(item.get("review_text") or "")
+        review_language = str(item.get("review_language") or "english")
         reviewer_playtime = float(item.get("reviewer_playtime") or 0)
         reviewer_voted_up = bool(item.get("reviewer_voted_up", True))
         truncated = _sanitize_review_text(review_text or "")
@@ -1029,6 +1033,7 @@ def _build_batch_prompt(
         blocks.append(
             dedent(
                 f"""[review_id={review_id}]
+                Language: {review_language}
                 Playtime_hours: {playtime_hours}
                 Recommendation: {recommendation}
                 <<<BEGIN REVIEW>>>
@@ -1090,6 +1095,7 @@ def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Option
                 game_context=game_context,
                 reviewer_playtime=float(item.get("reviewer_playtime") or 0),
                 reviewer_voted_up=bool(item.get("reviewer_voted_up", True)),
+                review_language=str(item.get("review_language") or "english"),
             )
             review_id = str(item.get("review_id") or "")
             if not review_id:
@@ -1108,11 +1114,12 @@ def classify_review(
     game_context: Optional[Dict[str, Any]] = None,
     reviewer_playtime: float = 0,
     reviewer_voted_up: bool = True,
+    review_language: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], str]:
     clean_text = (review_text or "").strip()
     if not clean_text:
         raise ValueError("Empty review text.")
-    prompt = _build_prompt(clean_text, game_context, reviewer_playtime, reviewer_voted_up)
+    prompt = _build_prompt(clean_text, game_context, reviewer_playtime, reviewer_voted_up, review_language)
     raw, model_used = _run_llm(prompt)
     payload = _parse_payload(raw)
     return payload, model_used
@@ -1226,6 +1233,7 @@ def ensure_review_labels(
         # Extract reviewer context from review
         reviewer_playtime = review.get("author", {}).get("playtime_forever", 0)
         reviewer_voted_up = review.get("voted_up", True)
+        review_language = review.get("language", "english")
 
         pending.append(
             {
@@ -1234,6 +1242,7 @@ def ensure_review_labels(
                 "review_hash": review_hash,
                 "reviewer_playtime": reviewer_playtime,
                 "reviewer_voted_up": reviewer_voted_up,
+                "review_language": review_language,
             }
         )
         if len(pending) >= BATCH_SIZE:
@@ -1423,9 +1432,151 @@ def apply_review_labels(df: pd.DataFrame, labels: Mapping[str, Mapping[str, Any]
     return df_labeled
 
 
+_SUMMARIZE_PROMPT_TEMPLATE = Template(
+    dedent(
+        """You are analyzing Steam game reviews for a specific subcategory. Generate a concise, actionable summary.
+
+        GAME CONTEXT:
+        Name: $game_name
+        Type: $game_type
+        Genres: $game_genres
+        Description: $game_description
+
+        SUBCATEGORY: $subcategory
+        TOTAL REVIEWS IN CATEGORY: $review_count
+
+        OUTPUT JSON SCHEMA (use these exact keys; no extras):
+        {
+          "summary": "<2-4 sentence overview of what players are saying about this aspect>",
+          "pros": ["<positive point 1>", "<positive point 2>", "..."],
+          "cons": ["<negative point 1>", "<negative point 2>", "..."]
+        }
+
+        RULES:
+        - summary: A concise 2-4 sentence overview capturing the main sentiment and key points
+        - pros: 2-5 specific positive aspects mentioned by players (empty list if none)
+        - cons: 2-5 specific issues or complaints mentioned by players (empty list if none)
+        - Be specific and actionable, not generic
+        - Use player language where appropriate
+        - Focus on patterns across multiple reviews, not single opinions
+        - JSON MUST be valid: double quotes only, no trailing commas
+
+        REVIEWS (sample from this subcategory):
+        <<<BEGIN REVIEWS>>>
+        $reviews_text
+        <<<END REVIEWS>>>
+        """
+    )
+)
+
+
+def summarize_subcategory_reviews(
+    reviews: Sequence[Mapping[str, Any]],
+    subcategory: str,
+    game_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Generate a summary with pros/cons for reviews in a subcategory.
+
+    Args:
+        reviews: List of review dicts with 'review' text field
+        subcategory: The subcategory being summarized (e.g., "technical/performance")
+        game_context: Optional game details (name, genres, etc.)
+
+    Returns:
+        Dict with 'summary', 'pros', 'cons' keys
+    """
+    if not reviews:
+        return {
+            "summary": "No reviews available for this subcategory.",
+            "pros": [],
+            "cons": [],
+        }
+
+    # Build game context strings
+    if game_context:
+        game_name = game_context.get("name", "Unknown")
+        game_type = game_context.get("type", "game")
+        genres = game_context.get("genres", [])
+        description = game_context.get("short_description", "")[:200]
+
+        game_genres = ", ".join(genres) if genres else "Unknown"
+        game_description = description if description else "Not available"
+    else:
+        game_name = "Unknown"
+        game_type = "game"
+        game_genres = "Unknown"
+        game_description = "Not available"
+
+    # Build reviews text (limit to ~15 reviews to stay within context)
+    max_reviews = min(15, len(reviews))
+    sampled_reviews = reviews[:max_reviews]
+
+    review_blocks = []
+    for i, review in enumerate(sampled_reviews, 1):
+        text = (review.get("review") or "").strip()
+        if not text:
+            continue
+        # Truncate long reviews
+        if len(text) > 500:
+            text = text[:500] + "..."
+        voted_up = review.get("voted_up", True)
+        sentiment = "Positive" if voted_up else "Negative"
+        review_blocks.append(f"[Review {i}] ({sentiment})\n{text}")
+
+    if not review_blocks:
+        return {
+            "summary": "No review text available for this subcategory.",
+            "pros": [],
+            "cons": [],
+        }
+
+    reviews_text = "\n\n".join(review_blocks)
+
+    prompt = _SUMMARIZE_PROMPT_TEMPLATE.substitute(
+        game_name=game_name,
+        game_type=game_type,
+        game_genres=game_genres,
+        game_description=game_description,
+        subcategory=subcategory,
+        review_count=len(reviews),
+        reviews_text=reviews_text,
+    )
+
+    try:
+        raw, model_used = _run_llm(prompt)
+        payload = _load_json_mapping(raw)
+
+        summary = str(payload.get("summary", "")).strip()
+        pros = payload.get("pros", [])
+        cons = payload.get("cons", [])
+
+        # Validate and clean
+        if not isinstance(pros, list):
+            pros = []
+        if not isinstance(cons, list):
+            cons = []
+
+        pros = [str(p).strip() for p in pros if p][:5]
+        cons = [str(c).strip() for c in cons if c][:5]
+
+        return {
+            "summary": summary or "Unable to generate summary.",
+            "pros": pros,
+            "cons": cons,
+        }
+    except Exception as exc:
+        logger.error(f"Failed to summarize reviews: {exc}")
+        return {
+            "summary": f"Failed to generate summary: {str(exc)}",
+            "pros": [],
+            "cons": [],
+        }
+
+
 __all__ = [
     "apply_review_labels",
     "classify_review",
     "ensure_review_labels",
     "run_chat_completion",
+    "summarize_subcategory_reviews",
 ]
