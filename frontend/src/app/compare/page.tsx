@@ -234,6 +234,7 @@ function ComparisonDashboard({
   onRemove: (appId: number) => void;
 }) {
   const { filters, filtersActive } = useGlobalFilters();
+  const { t } = useLanguage();
   const [sortBy, setSortBy] = useState<"difference" | "highest" | "lowest" | "reviews">("difference");
   const [showOnlySignificant, setShowOnlySignificant] = useState(false);
   const [reviewsModal, setReviewsModal] = useState<{ subcategory: string; label: string } | null>(null);
