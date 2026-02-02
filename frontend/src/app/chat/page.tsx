@@ -249,10 +249,22 @@ function enhanceChartData(spec: ChartSpec): any {
 }
 
 function buildChartOptions(spec: ChartSpec) {
+  // Check if it's a horizontal bar chart
+  const isHorizontalBar = spec.type === 'bar' && spec.options?.indexAxis === 'y';
+
   const base = {
     responsive: true,
     maintainAspectRatio: false,
     color: "#e2e8f0",
+    // Add layout padding for horizontal bar charts to prevent label cutoff
+    ...(isHorizontalBar && {
+      layout: {
+        padding: {
+          left: 20,
+          right: 20,
+        },
+      },
+    }),
     plugins: {
       legend: {
         display: true,
@@ -302,6 +314,7 @@ function buildChartOptions(spec: ChartSpec) {
           font: {
             size: 11,
           },
+          ...(isHorizontalBar && { padding: 8 }),
         },
         grid: {
           color: "rgba(148, 163, 184, 0.1)",
@@ -314,11 +327,17 @@ function buildChartOptions(spec: ChartSpec) {
           font: {
             size: 11,
           },
+          ...(isHorizontalBar && { padding: 8 }),
         },
         grid: {
           color: "rgba(148, 163, 184, 0.1)",
           drawBorder: false,
         },
+        // Add spacing between bars for horizontal charts
+        ...(isHorizontalBar && {
+          barPercentage: 0.7,
+          categoryPercentage: 0.8,
+        }),
       },
     },
   } as Record<string, unknown>;
@@ -833,7 +852,9 @@ export default function ChatPage() {
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                    className={`${
+                      msg.role === "user" ? "max-w-[75%]" : "max-w-[95%]"
+                    } rounded-2xl px-4 py-3 ${
                       msg.role === "user"
                         ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-white"
                         : "bg-slate-900/60 border border-white/10 text-slate-100"
@@ -859,10 +880,24 @@ export default function ChatPage() {
                         const chartData = enhanceChartData(spec);
                         const chartOptions = buildChartOptions(spec) as any;
 
+                        // Calculate adaptive height for bar charts
+                        let chartHeight = "h-80"; // default
+                        if (spec.type === "bar" && spec.data.labels) {
+                          const numItems = spec.data.labels.length;
+                          // For horizontal bar charts, give more height per item
+                          const isHorizontal = spec.options?.indexAxis === "y";
+                          if (isHorizontal) {
+                            if (numItems <= 3) chartHeight = "h-64";
+                            else if (numItems <= 5) chartHeight = "h-80";
+                            else if (numItems <= 8) chartHeight = "h-96";
+                            else chartHeight = "h-[32rem]";
+                          }
+                        }
+
                         return (
                           <div
                             key={`chart-${partIdx}`}
-                            className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-sm p-5"
+                            className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-sm p-5 -mx-2"
                           >
                             {spec.title ? (
                               <p className="text-sm font-semibold text-white mb-2">{spec.title}</p>
@@ -870,7 +905,7 @@ export default function ChatPage() {
                             {spec.description ? (
                               <p className="text-xs text-slate-400 mb-3">{spec.description}</p>
                             ) : null}
-                            <div className="h-80">
+                            <div className={chartHeight}>
                               <Chart
                                 ref={(instance) => {
                                   chartRef.current = instance ?? null;
