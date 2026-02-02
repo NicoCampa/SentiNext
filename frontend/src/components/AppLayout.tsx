@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { SignedIn, UserButton } from "@clerk/nextjs";
+import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -18,6 +18,8 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const pathname = usePathname();
   const { density } = useUiPreferences();
   const { t } = useLanguage();
+  const { openUserProfile } = useClerk();
+  const { user } = useUser();
   const compact = density === "compact";
 
   const navItems = [
@@ -27,7 +29,8 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     { href: "/database", label: t('nav.database'), code: "04" },
     { href: "/settings", label: t('nav.settings'), code: "05" },
   ];
-  const sidebarNavItems = navItems; // Show all items including Settings
+  // Filter out settings from main nav - it goes at bottom
+  const sidebarNavItems = navItems.filter((item) => item.href !== "/settings");
 
   const isActiveRoute = (href: string) => {
     const path = href.split("?")[0];
@@ -96,24 +99,61 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Bottom section */}
             <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
-              {/* User Profile */}
+              {/* User Profile - Fully Clickable */}
               <SignedIn>
-                <div className="flex items-center gap-3 p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 rounded">
-                  <UserButton
-                    appearance={{
-                      elements: {
-                        userButtonAvatarBox: "h-10 w-10 border border-[rgb(0,255,255)]/30",
-                      },
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[9px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
-                      Operator
-                    </p>
-                    <p className="text-xs text-[rgb(200,200,210)] truncate">Active Session</p>
+                <button
+                  onClick={() => openUserProfile()}
+                  className="w-full flex items-center gap-3 p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 hover:border-[rgb(0,255,255)]/30 hover:bg-[rgb(10,10,25)] transition-all group text-left"
+                >
+                  {/* Avatar */}
+                  <div className="relative">
+                    {user?.imageUrl ? (
+                      <img
+                        src={user.imageUrl}
+                        alt="Profile"
+                        className="h-10 w-10 rounded-full border border-[rgb(0,255,255)]/30 group-hover:border-[rgb(0,255,255)]/60 transition-colors"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 flex items-center justify-center">
+                        <span className="text-[rgb(0,255,255)] text-sm font-bold">
+                          {user?.firstName?.[0] || user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() || '?'}
+                        </span>
+                      </div>
+                    )}
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[rgb(0,255,136)] rounded-full border-2 border-[rgb(10,10,25)]" />
                   </div>
-                </div>
+                  {/* User Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[rgb(200,200,210)] truncate group-hover:text-white transition-colors">
+                      {user?.firstName || user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 'User'}
+                    </p>
+                    <p className="text-[9px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50 group-hover:text-[rgb(0,255,255)]/70 transition-colors">
+                      Manage Account
+                    </p>
+                  </div>
+                  {/* Arrow */}
+                  <span className="text-[rgb(0,255,255)]/30 group-hover:text-[rgb(0,255,255)] transition-colors">
+                    →
+                  </span>
+                </button>
               </SignedIn>
+
+              {/* Settings Link */}
+              <Link
+                href="/settings"
+                className={clsx(
+                  "flex items-center gap-3 px-4 py-3 transition-all duration-200",
+                  isActiveRoute("/settings")
+                    ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-[rgb(0,255,255)]"
+                    : "border border-[rgb(0,255,255)]/10 text-[rgb(150,150,170)] hover:text-[rgb(0,255,255)] hover:border-[rgb(0,255,255)]/30 hover:bg-[rgb(0,255,255)]/5"
+                )}
+              >
+                <span className="text-sm">⚙</span>
+                <span className="text-xs uppercase tracking-[0.2em]">{t('nav.settings')}</span>
+                {isActiveRoute("/settings") && (
+                  <span className="ml-auto w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
+                )}
+              </Link>
 
               {/* System Info */}
               <div className="flex items-center justify-between text-[9px] text-[rgb(0,255,255)]/30 uppercase tracking-wider px-1">
