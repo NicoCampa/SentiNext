@@ -34,7 +34,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
     useEffect(() => {
         const timer = setTimeout(() => {
             setBootPhase("complete");
-        }, 2800); // reduced from 3500
+        }, 1800); // reduced from 2800
         return () => clearTimeout(timer);
     }, []);
 
@@ -53,18 +53,18 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                                 initial={{ opacity: 0, scale: 0.98 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 1.05, height: 0, marginBottom: 0, padding: 0, filter: "blur(20px)" }}
-                                transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-                                className="mb-12 font-mono text-[10px] md:text-xs text-[#00F0FF]/70 text-left w-full max-w-md p-6 border border-[#00F0FF]/20 bg-[#00F0FF]/5 relative rounded-sm backdrop-blur-sm overflow-hidden"
+                                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                                className="mb-8 font-mono text-[10px] md:text-xs text-[#00F0FF]/70 text-left w-full max-w-md p-6 border border-[#00F0FF]/20 bg-[#00F0FF]/5 relative rounded-sm backdrop-blur-sm overflow-hidden"
                             >
                                 <div className="absolute -top-1 -left-1 w-2 h-2 border-t border-l border-[#00F0FF]" />
                                 <div className="absolute -bottom-1 -right-1 w-2 h-2 border-b border-r border-[#00F0FF]" />
 
                                 <div className="space-y-1">
                                     <TerminalLine text="> INITIALIZING SYSTEM..." delay={0} />
-                                    <TerminalLine text="> CONNECTING TO DATA STREAMS..." delay={0.5} />
-                                    <TerminalLine text="> SENTIMENT ANALYSIS MODULE: ONLINE" delay={1} color="text-green-400" />
-                                    <TerminalLine text="> REVIEW PROCESSOR: ACTIVE" delay={1.5} color="text-green-400" />
-                                    <TerminalLine text="> SYSTEM READY" delay={2} color="text-green-400" className="font-bold flex items-center gap-2" cursor />
+                                    <TerminalLine text="> CONNECTING TO DATA STREAMS..." delay={0.3} />
+                                    <TerminalLine text="> SENTIMENT ANALYSIS MODULE: ONLINE" delay={0.6} color="text-green-400" />
+                                    <TerminalLine text="> REVIEW PROCESSOR: ACTIVE" delay={0.9} color="text-green-400" />
+                                    <TerminalLine text="> SYSTEM READY" delay={1.2} color="text-green-400" className="font-bold flex items-center gap-2" cursor />
                                 </div>
                             </motion.div>
                         )}
@@ -72,11 +72,11 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
 
                     {/* Main Hero Content (Revealed after boot) */}
                     <motion.div
-                        initial={{ opacity: 0, y: 30, filter: "blur(10px)" }}
-                        animate={bootPhase === "complete" ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 30, filter: "blur(10px)" }}
-                        transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1], delay: 0.1 }}
+                        initial={{ opacity: 0, y: 10, filter: "blur(10px)" }}
+                        animate={bootPhase === "complete" ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 10, filter: "blur(10px)" }}
+                        transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1], delay: 0 }}
                         className={cn(
-                            "flex flex-col items-center w-full",
+                            "flex flex-col items-center w-full mt-0 md:-mt-12",
                             bootPhase === "booting" ? "pointer-events-none scale-95" : "scale-100"
                         )}
                     >
