@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
-import { SignedIn, UserButton } from "@clerk/nextjs";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ export default function SettingsPage() {
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const { language, setLanguage, t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'general' | 'diagnostics'>('general');
+  const [showLogs, setShowLogs] = useState(false);
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -73,16 +72,16 @@ export default function SettingsPage() {
 
   async function handleCopyDiagnostics() {
     try {
-    const payload = {
-      timestamp: new Date().toISOString(),
-      app_version: appVersion,
-      api_base: typeof window !== "undefined" ? window.__SENTINEXT_API_BASE__ ?? null : null,
-      backend_boot_error: backendBootError,
-      backend_boot_log_file: backendBootLogFile,
-      backend_health: health,
-      log_tail: logTail ? logTail.slice(-20000) : "",
-      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-    };
+      const payload = {
+        timestamp: new Date().toISOString(),
+        app_version: appVersion,
+        api_base: typeof window !== "undefined" ? window.__SENTINEXT_API_BASE__ ?? null : null,
+        backend_boot_error: backendBootError,
+        backend_boot_log_file: backendBootLogFile,
+        backend_health: health,
+        log_tail: logTail ? logTail.slice(-20000) : "",
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      };
       await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
       setCopiedDiagnostics(true);
       setTimeout(() => setCopiedDiagnostics(false), 2000);
@@ -95,7 +94,7 @@ export default function SettingsPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         {/* Header */}
         <div className="mb-8 space-y-4">
           <div className="flex items-center gap-3">
@@ -116,227 +115,195 @@ export default function SettingsPage() {
           <div className="h-[1px] bg-gradient-to-r from-[rgb(0,255,255)]/50 via-[rgb(0,255,255)]/20 to-transparent" />
         </div>
 
-        {/* Tab Navigation */}
-        <div className="mb-6 flex gap-2 border-b border-[rgb(0,255,255)]/10 pb-2">
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`px-4 py-2 text-xs uppercase tracking-[0.2em] transition-all ${
-              activeTab === 'general'
-                ? 'text-[rgb(0,255,255)] border-b-2 border-[rgb(0,255,255)]'
-                : 'text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]'
-            }`}
-          >
-            General
-          </button>
-          <button
-            onClick={() => setActiveTab('diagnostics')}
-            className={`px-4 py-2 text-xs uppercase tracking-[0.2em] transition-all relative ${
-              activeTab === 'diagnostics'
-                ? 'text-[rgb(0,255,255)] border-b-2 border-[rgb(0,255,255)]'
-                : 'text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]'
-            }`}
-          >
-            Diagnostics
-            {health.state === "offline" && (
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
-            )}
-          </button>
-        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Left Column */}
+          <div className="space-y-6">
+            {/* Language Section */}
+            <Card variant="glass" className="p-6">
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">🌐</span>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                    {t('settings.language')}
+                  </p>
+                </div>
+                <p className="text-sm text-[rgb(150,150,170)]">{t('settings.selectLanguage')}</p>
+              </div>
 
-        {/* Content */}
-        <div className="space-y-6">
-          {activeTab === 'general' && (
-            <>
-              {/* Account Section */}
-              <SignedIn>
-                <Card variant="glass" className="p-6">
-                  <div className="flex items-start justify-between gap-4 mb-6">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
-                        <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                          {t('settings.account')}
-                        </p>
-                      </div>
-                      <p className="text-sm text-[rgb(150,150,170)]">{t('settings.accountDesc')}</p>
-                    </div>
-                    <UserButton
-                      appearance={{
-                        elements: {
-                          userButtonAvatarBox: "h-12 w-12 border border-[rgb(0,255,255)]/30",
-                        },
-                      }}
-                    />
-                  </div>
-                </Card>
-              </SignedIn>
-
-              {/* Language Section */}
-              <Card variant="glass" className="p-6">
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                      {t('settings.language')}
+              <div className="grid grid-cols-2 gap-2">
+                {(['en', 'it', 'fr', 'de'] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    onClick={() => setLanguage(lang)}
+                    className={`group relative p-3 border transition-all ${
+                      language === lang
+                        ? 'border-[rgb(0,255,255)] bg-[rgb(0,255,255)]/10'
+                        : 'border-[rgb(0,255,255)]/20 hover:border-[rgb(0,255,255)]/50 bg-[rgb(10,10,25)]'
+                    }`}
+                  >
+                    {language === lang && (
+                      <>
+                        <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
+                        <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
+                        <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-[rgb(0,255,255)]" />
+                        <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-[rgb(0,255,255)]" />
+                      </>
+                    )}
+                    <p className={`text-sm font-medium ${
+                      language === lang ? 'text-[rgb(0,255,255)]' : 'text-[rgb(200,200,210)]'
+                    }`}>
+                      {t(`lang.${lang}`)}
                     </p>
-                  </div>
-                  <p className="text-sm text-[rgb(150,150,170)]">{t('settings.selectLanguage')}</p>
+                  </button>
+                ))}
+              </div>
+            </Card>
+
+            {/* System Status */}
+            <Card variant="glass" className="p-6">
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">📡</span>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                    System Status
+                  </p>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  {(['en', 'it', 'fr', 'de'] as const).map((lang) => (
-                    <button
-                      key={lang}
-                      onClick={() => setLanguage(lang)}
-                      className={`group relative p-4 border transition-all ${
-                        language === lang
-                          ? 'border-[rgb(0,255,255)] bg-[rgb(0,255,255)]/10'
-                          : 'border-[rgb(0,255,255)]/20 hover:border-[rgb(0,255,255)]/50 bg-[rgb(10,10,25)]'
-                      }`}
-                    >
-                      {language === lang && (
-                        <>
-                          <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
-                          <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
-                          <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-[rgb(0,255,255)]" />
-                          <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-[rgb(0,255,255)]" />
-                        </>
-                      )}
-                      <p className={`text-sm font-semibold ${
-                        language === lang ? 'text-[rgb(0,255,255)]' : 'text-[rgb(200,200,210)]'
-                      }`}>
-                        {t(`lang.${lang}`)}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </Card>
-
-              {/* System Info */}
-              {isTauriApp() && (
-                <Card variant="glass" className="p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                      System Information
-                    </p>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                      <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
-                        {t('settings.appVersion')}
-                      </span>
-                      <span className="font-mono text-xs text-[rgb(0,255,255)]">
-                        {appVersion ?? t('common.loading')}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </>
-          )}
-
-          {activeTab === 'diagnostics' && (
-            <>
-              {/* Backend Status */}
-              <Card variant="glass" className="p-6">
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                      {t('settings.diagnostics')}
-                    </p>
-                  </div>
-                  <p className="text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
-                </div>
-
-                {/* Status Display */}
-                <div className="mb-6 p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
-                      {t('settings.backendStatus')}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${
-                        health.state === "online"
-                          ? 'bg-[rgb(0,255,136)] animate-pulse'
-                          : health.state === "offline"
-                          ? 'bg-rose-500'
-                          : 'bg-amber-500 animate-pulse'
-                      }`} />
-                      <span className={`text-xs font-mono uppercase ${
-                        health.state === "online"
-                          ? 'text-[rgb(0,255,136)]'
-                          : health.state === "offline"
-                          ? 'text-rose-400'
-                          : 'text-amber-400'
-                      }`}>
-                        {health.state === "online" ? t('settings.online') : health.state === "offline" ? t('settings.offline') : t('settings.checking')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-wrap gap-2 mb-6">
-                  <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
-                    {t('settings.recheckBackend')}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => loadLogTail()}>
-                    {t('settings.refreshLogs')}
-                  </Button>
-                  <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
-                    {t('settings.copyDiagnostics')}
-                  </Button>
-                  {copiedDiagnostics && (
-                    <span className="flex items-center gap-1.5 text-xs text-[rgb(0,255,136)]">
-                      <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
-                      {t('settings.copied')}
-                    </span>
-                  )}
-                </div>
-
-                {copyError && (
-                  <p className="text-xs text-rose-400 mb-4">{copyError}</p>
-                )}
-
-                {/* Backend Boot Error */}
-                {backendBootError && (
-                  <div className="space-y-3 p-4 border border-rose-500/30 bg-rose-500/5 mb-6">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
-                      <p className="text-xs uppercase tracking-[0.2em] text-rose-400">
-                        Backend Failed to Start
-                      </p>
-                    </div>
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-3 text-[11px] text-rose-200 font-mono">
-                      {backendBootError}
-                    </pre>
-                    <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
-                      Copy Error
-                    </Button>
-                  </div>
-                )}
-
-                {/* Log Tail */}
-                <div className="space-y-3">
+              <div className="space-y-3">
+                {/* Backend Status */}
+                <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                  <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                    Backend
+                  </span>
                   <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
-                    <p className="text-[10px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
-                      Log Tail
+                    <span className={`w-2 h-2 rounded-full ${
+                      health.state === "online"
+                        ? 'bg-[rgb(0,255,136)]'
+                        : health.state === "offline"
+                        ? 'bg-rose-500'
+                        : 'bg-amber-500 animate-pulse'
+                    }`} />
+                    <span className={`text-xs font-mono uppercase ${
+                      health.state === "online"
+                        ? 'text-[rgb(0,255,136)]'
+                        : health.state === "offline"
+                        ? 'text-rose-400'
+                        : 'text-amber-400'
+                    }`}>
+                      {health.state === "online" ? t('settings.online') : health.state === "offline" ? t('settings.offline') : t('settings.checking')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* App Version (if Tauri) */}
+                {isTauriApp() && (
+                  <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                    <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                      {t('settings.appVersion')}
+                    </span>
+                    <span className="font-mono text-xs text-[rgb(0,255,255)]">
+                      {appVersion ?? t('common.loading')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Frontend Version */}
+                <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                  <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                    Frontend
+                  </span>
+                  <span className="font-mono text-xs text-[rgb(0,255,255)]">
+                    v0.1.0
+                  </span>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Right Column - Diagnostics */}
+          <div className="space-y-6">
+            <Card variant="glass" className="p-6">
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">🔧</span>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                    {t('settings.diagnostics')}
+                  </p>
+                </div>
+                <p className="text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex flex-wrap gap-2 mb-5">
+                <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
+                  {t('settings.recheckBackend')}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => { loadLogTail(); setShowLogs(true); }}>
+                  {t('settings.refreshLogs')}
+                </Button>
+                <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
+                  {t('settings.copyDiagnostics')}
+                </Button>
+              </div>
+
+              {copiedDiagnostics && (
+                <div className="flex items-center gap-2 mb-4 p-2 bg-[rgb(0,255,136)]/10 border border-[rgb(0,255,136)]/30">
+                  <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
+                  <span className="text-xs text-[rgb(0,255,136)]">{t('settings.copied')}</span>
+                </div>
+              )}
+
+              {copyError && (
+                <p className="text-xs text-rose-400 mb-4">{copyError}</p>
+              )}
+
+              {/* Backend Boot Error */}
+              {backendBootError && (
+                <div className="space-y-3 p-4 border border-rose-500/30 bg-rose-500/5 mb-5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
+                    <p className="text-xs uppercase tracking-[0.2em] text-rose-400">
+                      Backend Error
                     </p>
                   </div>
-                  {logTailError ? (
-                    <p className="text-xs text-rose-400">{logTailError}</p>
-                  ) : (
-                    <pre className="max-h-64 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-[11px] text-[rgb(200,200,210)] font-mono">
-                      {logTail || "No logs yet."}
-                    </pre>
-                  )}
+                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-3 text-[11px] text-rose-200 font-mono">
+                    {backendBootError}
+                  </pre>
+                  <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
+                    Copy Error
+                  </Button>
                 </div>
-              </Card>
-            </>
-          )}
+              )}
+
+              {/* Log Tail (Collapsible) */}
+              <div className="space-y-3">
+                <button
+                  onClick={() => setShowLogs(!showLogs)}
+                  className="flex items-center gap-2 text-left w-full"
+                >
+                  <span className={`text-[rgb(0,255,255)]/50 transition-transform ${showLogs ? 'rotate-90' : ''}`}>
+                    ▶
+                  </span>
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
+                    System Logs
+                  </p>
+                </button>
+
+                {showLogs && (
+                  <>
+                    {logTailError ? (
+                      <p className="text-xs text-rose-400">{logTailError}</p>
+                    ) : (
+                      <pre className="max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-[10px] text-[rgb(200,200,210)] font-mono">
+                        {logTail || "No logs yet."}
+                      </pre>
+                    )}
+                  </>
+                )}
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
     </AppLayout>
