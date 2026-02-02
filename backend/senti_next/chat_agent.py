@@ -101,6 +101,15 @@ Subcategories MUST be full paths with "/" separator:
 1. Call get_subcategory_stats(app_id=X, subcategory="technical/performance")
 2. Call final_answer with the stats
 
+**"What do players say specifically?" or "Show me examples"** (after discussing a topic)
+1. Call search_reviews(app_id=X, subcategory="the/subcategory/discussed", limit=5)
+2. Call final_answer with actual review quotes
+
+**"Summarize [subcategory]" then "What do they say?"**
+1. First call: get_subcategory_stats for numbers
+2. Follow-up: search_reviews to get actual review text
+3. Call final_answer with review snippets/quotes
+
 ## Chart Format (in final_answer response)
 Use Chart.js format with labels array and datasets array:
 

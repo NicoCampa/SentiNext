@@ -60,13 +60,13 @@ CHAT_TOOLS = [
     ),
     Tool(
         name="search_reviews",
-        description="Search reviews by keywords, subcategory, or sentiment. Returns matching review snippets with helpful vote counts.",
+        description="Get actual review text/quotes. Use this when user asks 'what do they say specifically?' or wants examples. Returns review snippets (up to 500 chars each) that mention the subcategory.",
         parameters={
             "app_id": "int - Game ID (required)",
             "query": "str - Search keywords (optional)",
-            "subcategory": "str - Filter by FULL subcategory path like 'technical/performance' or 'gameplay/difficulty'. Must include both main category and subcategory separated by '/' (optional)",
+            "subcategory": "str - Filter by subcategory like 'monetization_value/pay_to_win_grind' or 'gameplay/ai'. Use to get reviews about a specific issue (optional)",
             "sentiment": "str - 'positive' or 'negative' (optional)",
-            "limit": "int - Max results, default 10 (optional)",
+            "limit": "int - Max results, default 5 (optional)",
         }
     ),
     Tool(

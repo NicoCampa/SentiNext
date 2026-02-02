@@ -1699,7 +1699,7 @@ def get_reviews_by_subcategory(
     subcategory_lower = subcategory.lower().strip()
 
     with db_module.get_connection() as conn:
-        # Build the query
+        # Build the query - check subcategories, issue_subcategories, and request_subcategories
         if max_days is not None:
             cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
             # Join reviews with review_labels, filter by subcategory in JSONB payload
@@ -1712,10 +1712,22 @@ def get_reviews_by_subcategory(
                       AND r.timestamp_created > :cutoff
                       AND rl.payload IS NOT NULL
                       AND (
-                          -- Match subcategory in the subcategories array (case-insensitive, partial match)
+                          -- Match in subcategories array
                           EXISTS (
                               SELECT 1
                               FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat
+                              WHERE LOWER(subcat) LIKE :subcategory_pattern
+                          )
+                          -- Also check issue_subcategories (for complaints)
+                          OR EXISTS (
+                              SELECT 1
+                              FROM jsonb_array_elements_text(rl.payload->'issue_subcategories') AS subcat
+                              WHERE LOWER(subcat) LIKE :subcategory_pattern
+                          )
+                          -- Also check request_subcategories (for feature requests)
+                          OR EXISTS (
+                              SELECT 1
+                              FROM jsonb_array_elements_text(rl.payload->'request_subcategories') AS subcat
                               WHERE LOWER(subcat) LIKE :subcategory_pattern
                           )
                       )
@@ -1738,9 +1750,22 @@ def get_reviews_by_subcategory(
                     WHERE r.app_id = :app_id
                       AND rl.payload IS NOT NULL
                       AND (
+                          -- Match in subcategories array
                           EXISTS (
                               SELECT 1
                               FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat
+                              WHERE LOWER(subcat) LIKE :subcategory_pattern
+                          )
+                          -- Also check issue_subcategories (for complaints)
+                          OR EXISTS (
+                              SELECT 1
+                              FROM jsonb_array_elements_text(rl.payload->'issue_subcategories') AS subcat
+                              WHERE LOWER(subcat) LIKE :subcategory_pattern
+                          )
+                          -- Also check request_subcategories (for feature requests)
+                          OR EXISTS (
+                              SELECT 1
+                              FROM jsonb_array_elements_text(rl.payload->'request_subcategories') AS subcat
                               WHERE LOWER(subcat) LIKE :subcategory_pattern
                           )
                       )
