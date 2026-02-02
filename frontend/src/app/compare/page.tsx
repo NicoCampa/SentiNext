@@ -362,7 +362,7 @@ function ComparisonDashboard({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {categories.map((category) => (
             <div
               key={category.key}
