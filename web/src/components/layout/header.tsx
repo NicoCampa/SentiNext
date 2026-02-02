@@ -2,48 +2,48 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Gamepad2, Menu } from "lucide-react";
+import { Menu, Terminal } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { Logo } from "@/components/ui/logo";
 
 export function Header() {
     const [isOpen, setIsOpen] = useState(false);
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
-            <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
-                <Link href="/" className="flex items-center gap-2 font-heading text-xl font-bold tracking-tight text-foreground transition-opacity hover:opacity-80">
-                    <Gamepad2 className="h-6 w-6 text-primary" />
-                    <span>SentiNext</span>
+            <div className="container mx-auto flex h-20 items-center justify-between px-4 md:px-6">
+                <Link href="/" className="transition-opacity hover:opacity-80">
+                    <Logo />
                 </Link>
 
                 {/* Desktop Nav */}
-                <nav className="hidden md:flex items-center gap-6">
-                    <Link href="/product" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                <nav className="hidden md:flex items-center gap-8">
+                    <Link href="/product" className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground transition-colors hover:text-[#00F0FF]">
                         Product
                     </Link>
-                    <Link href="/how-it-works" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                    <Link href="/how-it-works" className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground transition-colors hover:text-[#00F0FF]">
                         How it Works
                     </Link>
-                    <Link href="/pricing" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                    <Link href="/pricing" className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground transition-colors hover:text-[#00F0FF]">
                         Pricing
                     </Link>
-                    <Link href="/docs" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                    <Link href="/docs" className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground transition-colors hover:text-[#00F0FF]">
                         Docs
                     </Link>
                 </nav>
 
                 {/* Desktop Actions */}
-                <div className="hidden md:flex items-center gap-4">
-                    <Button variant="ghost" className="text-muted-foreground hover:text-foreground" asChild>
+                <div className="hidden md:flex items-center gap-6">
+                    <Button variant="ghost" className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF]" asChild>
                         <Link href="https://sentinext-frontend.onrender.com" target="_blank" rel="noopener noreferrer">
                             Log in
                         </Link>
                     </Button>
-                    <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-[0_0_15px_-3px_var(--primary)] hover:shadow-[0_0_20px_-3px_var(--primary)] transition-all">
+                    <Button asChild className="h-11 px-8 bg-transparent border border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-widest text-[10px] shadow-[0_0_15px_rgba(0,240,255,0.1)] rounded-sm">
                         <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                            Open App
+                            Entering System...
                         </Link>
                     </Button>
                 </div>

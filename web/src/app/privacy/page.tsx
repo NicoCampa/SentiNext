@@ -1,53 +1,49 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { CornerMarkers } from "@/components/ui/corner-markers";
 
 export default function PrivacyPage() {
     return (
-        <div className="container px-4 md:px-6 py-20 max-w-3xl mx-auto prose prose-invert prose-headings:font-heading prose-a:text-primary">
-            <h1>Privacy Policy</h1>
-            <p className="text-muted-foreground">Last updated: February 1, 2026</p>
+        <div className="flex flex-col min-h-screen items-center w-full">
+            <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10 w-full">
+                <div className="scanline" />
+                <div className="container px-4 md:px-6 text-center max-w-5xl mx-auto relative z-10">
+                    <motion.h1
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.8 }}
+                        className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase"
+                    >
+                        Security <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">Protocols.</span>
+                    </motion.h1>
+                    <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
+                        Data handling and privacy standards.
+                    </p>
+                </div>
+            </section>
 
-            <p>
-                This Privacy Policy describes how SentiNext ("we", "us", or "our") collects, uses, and discloses your personal information when you use our service.
-            </p>
-
-            <h2>1. Information We Collect</h2>
-            <p>
-                <strong>Account Information:</strong> When you create an account via Clerk, we collect your email address and authentication provider ID (e.g., GitHub ID).
-            </p>
-            <p>
-                <strong>Usage Data:</strong> We collect anonymous metrics about how you interact with the dashboard (e.g., number of searches, error rates) to improve performance.
-            </p>
-            <p>
-                <strong>Review Data:</strong> We ingest and store public review data from the Steam Community API on your behalf. This data is public information.
-            </p>
-
-            <h2>2. How We Use Your Information</h2>
-            <ul>
-                <li>To provide and maintain the Service.</li>
-                <li>To generate aggregated insights for your games.</li>
-                <li>To notify you about changes to our Service.</li>
-                <li>To provide customer support.</li>
-            </ul>
-
-            <h2>3. Data Retention</h2>
-            <p>
-                We generally retain data for as long as your account is active. For Free tier users, we may clear cached analysis data after 7 days of inactivity to save resources.
-            </p>
-
-            <h2>4. Third-Party Services</h2>
-            <p>
-                We use the following third-party services:
-            </p>
-            <ul>
-                <li><strong>Vercel & Render:</strong> For hosting and infrastructure.</li>
-                <li><strong>Clerk:</strong> For authentication and user management.</li>
-                <li><strong>Neon / PostgreSQL:</strong> For database storage.</li>
-                <li><strong>Google Gemini / OpenAI:</strong> For LLM processing (your review text is sent to these providers for classification).</li>
-            </ul>
-
-            <h2>5. Contact Us</h2>
-            <p>
-                If you have any questions about this Privacy Policy, please contact us at <a href="mailto:privacy@sentinext.com">privacy@sentinext.com</a>.
-            </p>
+            <section className="py-24 w-full flex justify-center relative">
+                <div className="container px-4 md:px-6 mx-auto relative z-10">
+                    <div className="max-w-4xl mx-auto p-12 rounded-sm border border-[#00F0FF]/10 bg-black/40 backdrop-blur-xl relative">
+                        <CornerMarkers />
+                        <div className="prose prose-invert max-w-none font-mono text-sm leading-relaxed uppercase opacity-80 space-y-8">
+                            <div>
+                                <h2 className="text-[#00F0FF] text-xl font-bold mb-4">1. Data Ingestion</h2>
+                                <p>SentiNext processes public Steam review data. We do not ingest private player communications or sensitive identifiable information beyond what is provided publicly via the Steam API.</p>
+                            </div>
+                            <div>
+                                <h2 className="text-[#00F0FF] text-xl font-bold mb-4">2. AI Processing</h2>
+                                <p>Classification occurs in secure neural environments. Your proprietary analysis data is isolated and encrypted. We do not use your feedback data to train global models without explicit consent.</p>
+                            </div>
+                            <div>
+                                <h2 className="text-[#00F0FF] text-xl font-bold mb-4">3. Local Deployment</h2>
+                                <p>For enterprise clients, SentiNext supports full on-premise installation where no data leaves your internal network.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
     );
 }
