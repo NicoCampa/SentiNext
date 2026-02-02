@@ -266,6 +266,7 @@ function ComparisonDashboard({
         subcategoriesByMain,
         sampleCount: sample.length,
         filteredCount: filteredSample.length,
+        sample: sample,
       };
     });
   }, [games, filters]);
