@@ -83,43 +83,6 @@ export default function ComparePage() {
     }
   }
 
-  function downloadSummary() {
-    const summary = selectedGames.map((g) => {
-      const filteredSample = applyGlobalReviewFilters(g.sample ?? [], filters);
-      const total = filteredSample.length || 1;
-      const recommendation_rate =
-        filteredSample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / total;
-      const feature_request_rate =
-        filteredSample.reduce(
-          (sum, review) => sum + (Array.isArray(review.llm_request_subcategories) && review.llm_request_subcategories.length ? 1 : 0),
-          0,
-        ) / total;
-      const issue_rate =
-        filteredSample.reduce(
-          (sum, review) => sum + (Array.isArray(review.llm_issue_subcategories) && review.llm_issue_subcategories.length ? 1 : 0),
-          0,
-        ) / total;
-
-      return {
-        app_id: g.app_id,
-        name: g.name,
-        filters,
-        sample_reviews: g.sample?.length ?? 0,
-        filtered_reviews: filteredSample.length,
-        recommendation_rate,
-        feature_request_rate,
-        issue_rate,
-        category_recommendation_rates: buildCategoryRates(filteredSample),
-      };
-    });
-    const blob = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "comparison-summary.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   if (loading) {
     return (
@@ -168,16 +131,6 @@ export default function ComparePage() {
             Compare two games side-by-side - {selectedIds.length} selected
             {filtersActive ? " - global filters applied" : ""}
           </p>
-          {selectedGames.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => window.print()}>
-                Print-friendly view
-              </Button>
-              <Button variant="secondary" onClick={downloadSummary}>
-                Download JSON summary
-              </Button>
-            </div>
-          )}
         </div>
 
         <Card variant="glass" className="p-6">
