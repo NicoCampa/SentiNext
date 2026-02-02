@@ -1,41 +1,72 @@
+"use client";
+
+import { ShieldAlert, Database, Trash2, FileText } from "lucide-react";
+import { CornerMarkers } from "@/components/ui/corner-markers";
 
 export default function AdminAndDataPage() {
     return (
-        <div>
-            <h1>Admin & Data Policies</h1>
-            <p>
-                We take data integrity and safety seriously. SentiNext is designed to prevent accidental data loss.
-            </p>
+        <div className="space-y-12 pb-20">
+            <section className="space-y-4">
+                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Data Governance</h1>
+                <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
+                    Protocols for data integrity, retention, and destructive operations within the SentiNext cluster.
+                </p>
+            </section>
 
-            <h2>Destructive Actions</h2>
-            <p>
-                By default, <strong>Destructive Actions</strong> (Deleting a game, Clearing the database) are:
-            </p>
-            <ol>
-                <li><strong>Disabled via Environment Variables</strong>: The server must be started with <code>SENTINEXT_ENABLE_DESTRUCTIVE=1</code>.</li>
-                <li><strong>Gated by Admin Token</strong>: Even if enabled, requests must include a secret <code>x-admin-token</code> header or be performed by an allowed Admin User ID.</li>
-            </ol>
-            <p>
-                In the Hosted Web App, these features are strictly limited to System Administrators. You cannot accidentally delete your team's data.
-            </p>
+            <div className="space-y-16 mt-16">
+                <section className="space-y-8">
+                    <div className="flex items-center gap-6">
+                        <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-sm">
+                            <ShieldAlert className="h-6 w-6" />
+                        </div>
+                        <h2 className="text-2xl font-bold tracking-widest uppercase m-0 text-red-500/80">Destructive Actions</h2>
+                        <div className="h-px flex-1 bg-gradient-to-r from-red-500/20 to-transparent" />
+                    </div>
 
-            <h2>Data Retention</h2>
-            <p>
-                We store public Steam reviews that you ask us to ingest.
-            </p>
-            <ul>
-                <li><strong>Free Tier</strong>: Data is retained for 7 days. Afterward, the cached reviews may be flushed, requiring a re-fetch.</li>
-                <li><strong>Pro/Team</strong>: Data is retained for 90 days or indefinitely, depending on your plan.</li>
-            </ul>
+                    <div className="pl-16 space-y-6">
+                        <p className="font-light text-foreground/70 leading-relaxed max-w-2xl">
+                            Operation SN_WIPE is strictly gated to prevent accidental telemetry loss. Destructive requests require dual-layer authorization:
+                        </p>
+                        <div className="grid gap-4 max-w-2xl">
+                            <div className="p-6 border border-red-500/10 bg-red-500/5 rounded-sm">
+                                <div className="text-[10px] font-mono text-red-500 uppercase tracking-[0.3em] mb-2">Requirement 01</div>
+                                <code className="text-sm">SENTINEXT_ENABLE_DESTRUCTIVE=1</code>
+                            </div>
+                            <div className="p-6 border border-red-500/10 bg-red-500/5 rounded-sm">
+                                <div className="text-[10px] font-mono text-red-500 uppercase tracking-[0.3em] mb-2">Requirement 02</div>
+                                <code className="text-sm">x-admin-token authorization</code>
+                            </div>
+                        </div>
+                    </div>
+                </section>
 
-            <h2>Removing Data</h2>
-            <p>
-                If you wish to remove your account or specific analysis data:
-            </p>
-            <ul>
-                <li><strong>Self-Service</strong>: Use the "Delete Account" option in your Profile settings. This will wipe your user record and disassociate any analysis jobs.</li>
-                <li><strong>Contact Support</strong>: Email us at <a href="mailto:privacy@sentinext.com">privacy@sentinext.com</a> for a full GDPR/CCPA request.</li>
-            </ul>
+                <section className="space-y-8">
+                    <div className="flex items-center gap-6">
+                        <div className="p-3 bg-[#00F0FF]/10 border border-[#00F0FF]/20 text-[#00F0FF] rounded-sm">
+                            <Database className="h-6 w-6" />
+                        </div>
+                        <h2 className="text-2xl font-bold tracking-widest uppercase m-0">Retention Protocols</h2>
+                        <div className="h-px flex-1 bg-gradient-to-r from-[#00F0FF]/20 to-transparent" />
+                    </div>
+
+                    <div className="pl-16 space-y-8">
+                        <div className="grid md:grid-cols-2 gap-8">
+                            <div className="p-8 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm relative">
+                                <CornerMarkers className="opacity-30" />
+                                <h4 className="text-sm font-bold uppercase tracking-widest mb-4">Beta / Free</h4>
+                                <div className="text-3xl font-bold font-mono text-[#00F0FF]">7 DAYS</div>
+                                <p className="text-xs text-muted-foreground mt-4 font-mono uppercase tracking-wider leading-relaxed">Cache flushes automatically after 168 hours of inactivity.</p>
+                            </div>
+                            <div className="p-8 border border-white/10 bg-white/5 rounded-sm relative">
+                                <CornerMarkers className="opacity-30" />
+                                <h4 className="text-sm font-bold uppercase tracking-widest mb-4">Enterprise</h4>
+                                <div className="text-3xl font-bold font-mono">90+ DAYS</div>
+                                <p className="text-xs text-muted-foreground mt-4 font-mono uppercase tracking-wider leading-relaxed">Permanent cold storage options available for longitudinal analysis.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </div>
     );
 }

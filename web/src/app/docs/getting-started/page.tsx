@@ -1,45 +1,107 @@
+"use client";
 
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Terminal, Rocket } from "lucide-react";
+import { CornerMarkers } from "@/components/ui/corner-markers";
 
 export default function GettingStartedPage() {
     return (
-        <div>
-            <h1>Getting Started</h1>
-            <p>
-                Welcome to the SentiNext Closed Beta. This guide will help you set up your account and start your first AI analysis.
-            </p>
+        <div className="space-y-12 pb-20">
+            <section className="space-y-4">
+                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Getting Started</h1>
+                <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
+                    Welcome to the SentiNext Closed Beta. This protocol will guide you through initializing your first AI agent and quantifying review intelligence.
+                </p>
+            </section>
 
-            <div className="p-4 bg-secondary/10 border border-secondary/20 rounded-lg my-6 flex gap-4 items-start">
-                <AlertTriangle className="h-5 w-5 text-secondary mt-0.5 flex-shrink-0" />
+            {/* Banner */}
+            <div className="relative p-8 border border-[#00F0FF]/20 bg-[#00F0FF]/5 rounded-sm flex gap-6 items-start group overflow-hidden">
+                <CornerMarkers className="opacity-40" />
+                <div className="p-3 bg-[#00F0FF]/10 border border-[#00F0FF]/20 rounded-sm text-[#00F0FF]">
+                    <Terminal className="h-6 w-6" />
+                </div>
                 <div>
-                    <h4 className="font-bold text-secondary mb-1 text-sm font-mono uppercase">Beta Notice</h4>
-                    <p className="text-sm text-muted-foreground m-0">
-                        You are using the Hosted Cloud version. No local installation or GPU is required.
+                    <h4 className="font-mono text-xs font-bold text-[#00F0FF] mb-2 uppercase tracking-[0.2em]">Deployment: Hosted Cloud</h4>
+                    <p className="text-sm text-foreground/70 m-0 font-mono uppercase tracking-wide leading-relaxed">
+                        No local hardware or GPU required. The system is operating in autonomous cloud-agent mode.
                     </p>
                 </div>
+                <div className="absolute -top-1 -right-1 w-24 h-24 bg-[#00F0FF]/5 blur-3xl rounded-full" />
             </div>
 
-            <h2>1. Access the Cloud Dashboard</h2>
-            <p>
-                Navigate to the <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">SentiNext App</Link>.
-            </p>
+            <div className="space-y-16 mt-16">
+                <StepSection
+                    number="01"
+                    title="Access the Platform"
+                    description="The dashboard is the central hub for all agent operations."
+                >
+                    <p>
+                        Navigate to the <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank" className="font-bold underline decoration-[#00F0FF]/30 hover:decoration-[#00F0FF]">SentiNext App Dashboard</Link>. Verify your connection to the secure server at <code>sentinext-frontend.onrender.com</code>.
+                    </p>
+                </StepSection>
 
-            <h2>2. Authenticate</h2>
-            <p>
-                You must log in to trigger AI jobs. We use secure passwordless auth (Clerk).
-            </p>
+                <StepSection
+                    number="02"
+                    title="Initialize Identity"
+                    description="Secure authentication is required for job persistence."
+                >
+                    <p>
+                        Authenticate using your developer credentials. The system uses <span className="text-[#00F0FF]">Clerk-managed authentication</span> to ensure encrypted session handling and project isolation.
+                    </p>
+                </StepSection>
 
-            <h2>3. Run Your First Agent Job</h2>
-            <ol>
-                <li>Click <strong>New Analysis</strong>.</li>
-                <li>Enter a Steam App ID (e.g., <code>1086940</code>).</li>
-                <li>Select <strong>Recent Reviews</strong> (recommended for faster results).</li>
-                <li>Click <strong>Deploy Agent</strong>.</li>
-            </ol>
-            <p>
-                The agent will queue your job. You can close the tab—we'll email you when the analysis is complete.
-            </p>
+                <StepSection
+                    number="03"
+                    title="Deploy First Agent"
+                    description="Configure the extraction parameters for your Steam project."
+                >
+                    <div className="grid gap-6">
+                        <ul className="space-y-4 list-none p-0">
+                            <li className="flex items-start gap-4">
+                                <span className="text-[#00F0FF] font-bold font-mono">{" > "}</span>
+                                <div><strong>Click "New Analysis"</strong> on the main command center.</div>
+                            </li>
+                            <li className="flex items-start gap-4">
+                                <span className="text-[#00F0FF] font-bold font-mono">{" > "}</span>
+                                <div><strong>Target Steam App ID</strong>: For example, use <code>1086940</code> for Baldur's Gate 3 telemetry.</div>
+                            </li>
+                            <li className="flex items-start gap-4">
+                                <span className="text-[#00F0FF] font-bold font-mono">{" > "}</span>
+                                <div><strong>Select "Recent Reviews"</strong>: Optimized for real-time sentiment shifts after updates.</div>
+                            </li>
+                            <li className="flex items-start gap-4">
+                                <span className="text-[#00F0FF] font-bold font-mono">{" > "}</span>
+                                <div><strong>Initialize (Commit)</strong>: Confirm parameters and deploy the agent.</div>
+                            </li>
+                        </ul>
+
+                        <div className="p-4 bg-black/40 border border-[#00F0FF]/10 rounded-sm font-mono text-xs text-[#00F0FF]/60 flex items-center gap-3">
+                            <Rocket className="h-4 w-4" />
+                            <span>System: Agent successfully deployed to cluster. Job ID: SN_ALPHA_001</span>
+                        </div>
+                    </div>
+                </StepSection>
+            </div>
         </div>
+    );
+}
+
+function StepSection({ number, title, description, children }: any) {
+    return (
+        <section className="space-y-6">
+            <div className="flex items-center gap-6">
+                <div className="text-4xl font-bold font-mono text-[#00F0FF]/20 leading-none">
+                    {number}
+                </div>
+                <div className="h-px flex-1 bg-gradient-to-r from-[#00F0FF]/20 to-transparent" />
+            </div>
+            <div className="space-y-4">
+                <h2 className="text-2xl font-bold tracking-widest uppercase m-0">{title}</h2>
+                <p className="text-muted-foreground font-mono text-xs uppercase tracking-[0.2em]">{description}</p>
+                <div className="pt-4 border-l-2 border-[#00F0FF]/10 pl-8">
+                    {children}
+                </div>
+            </div>
+        </section>
     );
 }

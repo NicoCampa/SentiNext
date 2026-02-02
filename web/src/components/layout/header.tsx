@@ -36,14 +36,9 @@ export function Header() {
 
                 {/* Desktop Actions */}
                 <div className="hidden md:flex items-center gap-6">
-                    <Button variant="ghost" className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF]" asChild>
-                        <Link href="https://sentinext-frontend.onrender.com" target="_blank" rel="noopener noreferrer">
-                            Log in
-                        </Link>
-                    </Button>
                     <Button asChild className="h-11 px-8 bg-transparent border border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-widest text-[10px] shadow-[0_0_15px_rgba(0,240,255,0.1)] rounded-sm">
                         <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                            Entering System...
+                            Log in to Dashboard
                         </Link>
                     </Button>
                 </div>
