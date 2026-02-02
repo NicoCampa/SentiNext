@@ -440,6 +440,7 @@ class ChatSession(BaseModel):
     message_count: int
     started_at: Optional[str] = None
     last_message_at: Optional[str] = None
+    first_user_message: Optional[str] = None
 
 
 class ChatCitation(BaseModel):

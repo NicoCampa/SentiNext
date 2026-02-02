@@ -76,7 +76,7 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                         animate={bootPhase === "complete" ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 10, filter: "blur(10px)" }}
                         transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1], delay: 0 }}
                         className={cn(
-                            "flex flex-col items-center w-full mt-0 md:-mt-24",
+                            "flex flex-col items-center w-full mt-0 md:-mt-36",
                             bootPhase === "booting" ? "pointer-events-none scale-95" : "scale-100"
                         )}
                     >

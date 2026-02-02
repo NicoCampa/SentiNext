@@ -1108,13 +1108,20 @@ def get_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
         rows = conn.execute(
             text("""
             SELECT
-                session_id,
+                cm.session_id,
                 COUNT(*) as message_count,
-                MIN(created_at) as started_at,
-                MAX(created_at) as last_message_at
-            FROM chat_messages
-            WHERE user_id = :user_id AND session_id IS NOT NULL
-            GROUP BY session_id
+                MIN(cm.created_at) as started_at,
+                MAX(cm.created_at) as last_message_at,
+                (
+                    SELECT content
+                    FROM chat_messages
+                    WHERE session_id = cm.session_id AND role = 'user' AND user_id = :user_id
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                ) as first_user_message
+            FROM chat_messages cm
+            WHERE cm.user_id = :user_id AND cm.session_id IS NOT NULL
+            GROUP BY cm.session_id
             ORDER BY last_message_at DESC
             """),
             {"user_id": user_id},
@@ -1127,6 +1134,7 @@ def get_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
             "message_count": row["message_count"],
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,
             "last_message_at": row["last_message_at"].isoformat() if row["last_message_at"] else None,
+            "first_user_message": row["first_user_message"],
         })
     return sessions
 
