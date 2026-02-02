@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Check, Sparkles } from "lucide-react";
@@ -7,23 +8,27 @@ import { Check, Sparkles } from "lucide-react";
 export default function PricingPage() {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
-            <section className="py-20 bg-background border-b border-border/40 w-full flex justify-center">
-                <div className="container px-4 md:px-6 text-center max-w-4xl mx-auto">
-                    <div className="inline-block rounded-full bg-secondary/10 px-3 py-1 text-sm font-medium text-secondary border border-secondary/20 mb-6 font-mono tracking-wide">
+            <section className="py-20 md:py-32 bg-transparent relative overflow-hidden">
+                <div className="container px-4 md:px-6 text-center max-w-5xl mx-auto relative z-10">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="inline-block rounded-full bg-secondary/10 px-4 py-1.5 text-xs font-bold text-secondary border border-secondary/20 mb-8 font-mono tracking-[0.3em] uppercase glass"
+                    >
                         BETA ACCESS ACTIVE
-                    </div>
-                    <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-8">
-                        Free during Beta.
+                    </motion.div>
+                    <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight">
+                        Free <span className="text-primary italic">Beta.</span>
                     </h1>
-                    <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10">
+                    <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-light leading-relaxed">
                         We are actively refining our AI agent. All features are currently free to use on the hosted platform.
                     </p>
                 </div>
             </section>
 
-            <section className="py-20 w-full flex justify-center">
-                <div className="container px-4 md:px-6 mx-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-start">
+            <section className="py-20 w-full flex justify-center relative">
+                <div className="container px-4 md:px-6 mx-auto relative z-10">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-10 max-w-7xl mx-auto items-start">
 
                         {/* Starter */}
                         <PricingCard
@@ -43,8 +48,8 @@ export default function PricingPage() {
                         />
 
                         {/* Pro Tier (Highlighted) */}
-                        <div className="relative transform md:-translate-y-4">
-                            <div className="absolute inset-0 bg-gradient-to-b from-primary/20 to-secondary/20 blur-xl opacity-50 pointer-events-none" />
+                        <div className="relative group">
+                            <div className="absolute inset-0 bg-primary/20 blur-[80px] rounded-[3rem] opacity-50 group-hover:opacity-100 transition-opacity" />
                             <PricingCard
                                 name="Pro Agent"
                                 price="$0"
@@ -83,10 +88,10 @@ export default function PricingPage() {
                 </div>
             </section>
 
-            <section className="pb-24 w-full flex justify-center">
+            <section className="pb-32 w-full flex justify-center opacity-50">
                 <div className="container px-4 text-center">
-                    <p className="text-sm text-muted-foreground">
-                        * Pricing models will be introduced in late 2026. Beta users will receive a legacy discount.
+                    <p className="text-sm text-muted-foreground font-mono uppercase tracking-widest">
+                        * Pricing models will be introduced in late 2026. Beta users receive a legacy discount.
                     </p>
                 </div>
             </section>
@@ -96,35 +101,38 @@ export default function PricingPage() {
 
 function PricingCard({ name, price, period, description, features, cta, href, variant, popular }: any) {
     return (
-        <div className={`relative flex flex-col p-8 rounded-2xl border ${popular ? 'border-primary bg-card/80 shadow-2xl skew-y-0 z-10' : 'border-border/50 bg-card/30'} backdrop-blur-sm transition-all hover:bg-card/50 h-full`}>
+        <motion.div
+            whileHover={{ y: -10 }}
+            className={`relative flex flex-col p-10 rounded-[2.5rem] border ${popular ? 'border-primary/50 bg-white/[0.05] shadow-2xl skew-y-0 z-10 scale-105' : 'border-white/10 bg-white/[0.02]'} glass-morphism transition-all h-full`}
+        >
             {popular && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary to-secondary text-black text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg flex items-center gap-2">
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary to-secondary text-white text-[10px] font-bold px-6 py-2 rounded-full uppercase tracking-[0.3em] shadow-[0_0_20px_rgba(79,70,229,0.5)] flex items-center gap-2 border border-white/20">
                     <Sparkles className="h-3 w-3" /> Recommended
                 </div>
             )}
-            <div className="mb-8">
-                <h3 className="text-xl font-bold mb-4 font-mono uppercase tracking-wider text-muted-foreground">{name}</h3>
-                <div className="flex items-baseline gap-1 mb-4">
-                    <span className="text-5xl font-bold tracking-tight">{price}</span>
-                    {period && <span className="text-sm text-muted-foreground font-mono">{period}</span>}
+            <div className="mb-10">
+                <h3 className="text-lg font-bold mb-6 font-mono uppercase tracking-[0.4em] text-primary/70">{name}</h3>
+                <div className="flex items-baseline gap-2 mb-6">
+                    <span className="text-6xl font-bold tracking-tighter">{price}</span>
+                    {period && <span className="text-sm text-muted-foreground font-mono tracking-widest uppercase opacity-50">{period}</span>}
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed min-h-[40px]">{description}</p>
+                <p className="text-base text-muted-foreground leading-relaxed font-light min-h-[48px]">{description}</p>
             </div>
-            <ul className="flex-1 space-y-4 mb-8">
+            <ul className="flex-1 space-y-5 mb-10">
                 {features.map((feature: string, i: number) => (
-                    <li key={i} className="flex items-start gap-3 text-sm">
-                        <Check className={`h-4 w-4 mt-0.5 ${popular ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <span className="text-foreground/90">{feature}</span>
+                    <li key={i} className="flex items-start gap-4 text-sm font-light">
+                        <Check className={`h-5 w-5 mt-0.5 ${popular ? 'text-primary' : 'text-muted-foreground/50'}`} />
+                        <span className="text-foreground/90 tracking-tight">{feature}</span>
                     </li>
                 ))}
             </ul>
             <Button
-                className={`w-full h-12 text-base font-bold ${variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20' : ''}`}
+                className={`w-full h-14 text-lg font-bold rounded-2xl transition-all ${variant === 'primary' ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_30px_-10px_rgba(79,70,229,1)]' : 'border-white/10 hover:bg-white/5 glass'}`}
                 variant={variant === 'primary' ? 'default' : 'outline'}
                 asChild
             >
                 <Link href={href}>{cta}</Link>
             </Button>
-        </div>
+        </motion.div>
     )
 }

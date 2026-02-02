@@ -22,10 +22,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body
-        className={`${spaceGrotesk.variable} antialiased bg-background text-foreground font-sans flex flex-col min-h-screen`}
+        className={`${spaceGrotesk.variable} antialiased bg-background text-foreground font-sans flex flex-col min-h-screen relative overflow-x-hidden`}
       >
+        {/* Global Background Effects */}
+        <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px] animate-pulse-soft" />
+          <div className="absolute bottom-[10%] right-[-5%] w-[35%] h-[35%] bg-secondary/10 rounded-full blur-[100px] animate-pulse-soft" style={{ animationDelay: '2s' }} />
+          <div className="absolute top-[30%] right-[10%] w-[20%] h-[20%] bg-primary/5 rounded-full blur-[80px] animate-pulse-soft" style={{ animationDelay: '4s' }} />
+        </div>
+
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />
