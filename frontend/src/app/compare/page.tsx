@@ -234,6 +234,7 @@ function ComparisonDashboard({
   const { filters, filtersActive } = useGlobalFilters();
   const [sortBy, setSortBy] = useState<"difference" | "highest" | "lowest" | "reviews">("difference");
   const [showOnlySignificant, setShowOnlySignificant] = useState(false);
+  const [reviewsModal, setReviewsModal] = useState<{ subcategory: string; label: string } | null>(null);
 
   const gameData = useMemo(() => {
     return games.map((game) => {
@@ -628,7 +629,16 @@ function ComparisonDashboard({
                       key={row.key}
                       className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/5 p-3"
                     >
-                      <p className="text-sm text-slate-200">{row.label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-slate-200">{row.label}</p>
+                        <button
+                          onClick={() => setReviewsModal({ subcategory: row.key, label: row.label })}
+                          className="text-xs text-sky-400 hover:text-sky-300"
+                          title="View example reviews"
+                        >
+                          📝
+                        </button>
+                      </div>
                       <div className={`grid gap-4 text-right ${gridCols}`}>
                         {row.perGameMetrics.map((metric, idx) => {
                           const isSubWinner = row.winnerIndices.includes(idx) && row.winnerIndices.length < games.length;
@@ -660,6 +670,74 @@ function ComparisonDashboard({
           )})}
         </div>
       </Card>
+
+      {/* Sample Reviews Modal */}
+      {reviewsModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setReviewsModal(null)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Sample Reviews: {reviewsModal.label}</h3>
+                <p className="text-sm text-slate-400 mt-1">Example reviews from each game for this subcategory</p>
+              </div>
+              <button
+                onClick={() => setReviewsModal(null)}
+                className="text-slate-400 hover:text-white text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {gameData.map((game) => {
+                const filteredSample = applyGlobalReviewFilters(game.sample ?? [], filters);
+                const exampleReviews = filteredSample
+                  .filter((review: any) => {
+                    const subcats = review.llm_subcategories || [];
+                    return subcats.some((s: string) => normalizeSubcategoryKey({ subcategory: s } as any) === reviewsModal.subcategory);
+                  })
+                  .slice(0, 3); // Show up to 3 examples per game
+
+                if (exampleReviews.length === 0) return null;
+
+                return (
+                  <div key={game.appId} className="rounded-xl border border-white/10 bg-slate-900/50 p-4">
+                    <h4 className="text-sm font-semibold text-sky-300 mb-3">{game.name}</h4>
+                    <div className="space-y-3">
+                      {exampleReviews.map((review: any, idx: number) => (
+                        <div key={idx} className="rounded-lg bg-white/5 p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`text-xs font-semibold ${review.voted_up ? 'text-green-400' : 'text-red-400'}`}>
+                              {review.voted_up ? '👍 Positive' : '👎 Negative'}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              • {review.author?.playtime_forever ? `${Math.floor((review.author.playtime_forever || 0) / 60)}h played` : 'No playtime data'}
+                            </span>
+                            {review.votes_up > 0 && (
+                              <span className="text-xs text-slate-500">
+                                • {review.votes_up} helpful
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-200 line-clamp-4">
+                            {review.review || 'No review text'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
