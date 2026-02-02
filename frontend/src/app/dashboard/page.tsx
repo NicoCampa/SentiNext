@@ -24,6 +24,7 @@ import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
 import {
@@ -79,14 +80,16 @@ const CATEGORY_ACCENTS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const { t } = useLanguage();
   return (
-    <Suspense fallback={<div className="p-6 text-white">Loading dashboard...</div>}>
+    <Suspense fallback={<div className="p-6 text-white">{t('common.loading')}</div>}>
       <DashboardContent />
     </Suspense>
   );
 }
 
 function DashboardContent() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const router = useRouter();
   const gameParam = searchParams.get("game");
@@ -186,7 +189,7 @@ function DashboardContent() {
       const results = await searchGames(searchQuery);
       setSearchResults(results);
       if (!results.length) {
-        setError("No games found. Try a different search term.");
+        setError(t('dashboard.noGamesFound'));
       }
     } catch (err) {
       setError((err as Error).message || "Search failed");
@@ -286,7 +289,7 @@ function DashboardContent() {
           <Card variant="glass" className="p-5">
             <div className="flex items-center justify-center gap-4">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
-              <p className="text-lg text-slate-300">Loading analysis...</p>
+              <p className="text-lg text-slate-300">{t('common.loading')}</p>
             </div>
           </Card>
         </div>
@@ -300,7 +303,7 @@ function DashboardContent() {
         {selectedGame ? (
           <div className="flex items-center justify-end">
             <Button onClick={handleReset} variant="secondary">
-              New Search
+              {t('dashboard.newSearch')}
             </Button>
           </div>
         ) : null}
@@ -309,15 +312,15 @@ function DashboardContent() {
           <>
             <Card variant="glass" className="p-6">
               <div className="space-y-3">
-                <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">Welcome</p>
+                <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">{t('dashboard.welcome')}</p>
                 <div>
                   <h1 className="text-2xl font-semibold">
                     <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                      Welcome to SentiNext
+                      {t('dashboard.welcomeTo')}
                     </span>
                   </h1>
                   <p className="mt-2 text-sm text-slate-400">
-                    Understand what players really think. Start with a new Steam analysis or jump back into a recent report.
+                    {t('dashboard.subtitle')}
                   </p>
                 </div>
               </div>
@@ -327,8 +330,8 @@ function DashboardContent() {
               <Card variant="glass" className="p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-white">New game analysis</h2>
-                    <p className="text-xs text-slate-400">Search Steam to begin a fresh review classification run.</p>
+                    <h2 className="text-lg font-semibold text-white">{t('dashboard.newAnalysis')}</h2>
+                    <p className="text-xs text-slate-400">{t('dashboard.newAnalysisDesc')}</p>
                   </div>
                 </div>
 
@@ -339,7 +342,7 @@ function DashboardContent() {
                       value={searchQuery}
                       onChange={(event) => setSearchQuery(event.target.value)}
                       onKeyDown={(event) => event.key === "Enter" && handleSearch()}
-                      placeholder="Search for a game (e.g., Baldur's Gate 3)"
+                      placeholder={t('dashboard.searchPlaceholder')}
                       className="flex-1 rounded-xl border border-white/20 bg-slate-900/50 px-4 py-3 text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
                     />
                     <Button
@@ -349,7 +352,7 @@ function DashboardContent() {
                       size="lg"
                       className="w-full sm:w-auto"
                     >
-                      {searching ? "Searching..." : "Search"}
+                      {searching ? t('dashboard.searching') : t('common.search')}
                     </Button>
                   </div>
 
@@ -388,12 +391,12 @@ function DashboardContent() {
             <Card variant="glass" className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">Recent analyses</h2>
-                  <p className="text-xs text-slate-400">Open a saved dashboard from your latest runs.</p>
+                  <h2 className="text-lg font-semibold text-white">{t('dashboard.recentAnalyses')}</h2>
+                  <p className="text-xs text-slate-400">{t('dashboard.recentDesc')}</p>
                 </div>
                 {recentAnalyses.length > 0 ? (
                   <a href="/compare" className="text-xs text-sky-400 hover:text-sky-300">
-                    View all
+                    {t('dashboard.viewAll')}
                   </a>
                 ) : null}
               </div>
@@ -407,8 +410,8 @@ function DashboardContent() {
                   </div>
                 ) : recentAnalyses.length === 0 ? (
                   <EmptyState
-                    title="No analyses yet"
-                    description="Search for a game to start your first analysis."
+                    title={t('dashboard.noAnalyses')}
+                    description={t('dashboard.noAnalysesDesc')}
                     variant="info"
                   />
                 ) : (
@@ -558,7 +561,7 @@ function DashboardContent() {
                 </div>
                 {estimateError ? <p className="text-sm text-rose-400">{estimateError}</p> : null}
                 <Button onClick={handleAnalyze} disabled={isAnalyzing} variant="primary" size="lg" className="w-full md:w-auto">
-                  {isAnalyzing ? "Analyzing..." : `Analyze ${reviewCount.toLocaleString()} Reviews`}
+                  {isAnalyzing ? t('dashboard.analyzing') : `${t('dashboard.analyze')} ${reviewCount.toLocaleString()} ${t('common.reviews')}`}
                 </Button>
                 {isAnalyzing && progress ? <ProgressPill progress={progress} /> : null}
               </div>
@@ -608,6 +611,7 @@ function AnalysisResults({
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
 }) {
+  const { t } = useLanguage();
   const router = useRouter();
   const { filters: globalFilters, filtersActive: globalFiltersActive, resetFilters: resetGlobalFilters } = useGlobalFilters();
   const insights = analysis.insights ?? null;
@@ -881,7 +885,7 @@ function AnalysisResults({
             }}
             variant="secondary"
           >
-            Open reviews
+            {t('dashboard.openReviews')}
           </Button>
         </div>
       </div>
@@ -889,7 +893,7 @@ function AnalysisResults({
         <Card variant="glass" className="mt-4 p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h3 className="text-lg font-semibold text-white">Filters</h3>
+              <h3 className="text-lg font-semibold text-white">{t('common.filters')}</h3>
               <p className="mt-1 text-sm text-slate-400">
                 Global filters and text search apply to every insight below.
               </p>
@@ -897,16 +901,16 @@ function AnalysisResults({
             <div className="flex flex-wrap items-center gap-2">
               {filtersActive ? (
                 <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-emerald-300">
-                  Active
+                  {t('dashboard.filtersActive')}
                 </span>
               ) : null}
               {filtersActive ? (
                 <Button variant="secondary" size="sm" onClick={resetFilters}>
-                  Reset filters
+                  {t('common.reset')} {t('common.filters').toLowerCase()}
                 </Button>
               ) : null}
               <Button variant="secondary" size="sm" onClick={() => setFiltersOpen((prev) => !prev)}>
-                {filtersOpen ? "Hide filters" : "Show filters"}
+                {filtersOpen ? t('dashboard.hideFilters') : t('dashboard.showFilters')}
               </Button>
             </div>
           </div>
@@ -938,15 +942,15 @@ function AnalysisResults({
 
         <div className="mt-5 grid gap-4 sm:gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Recommendation</p>
+            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('dashboard.recommendation')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRecommendationRate)}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Issue rate</p>
+            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('dashboard.issueRate')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Request rate</p>
+            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('dashboard.requestRate')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
           </div>
         </div>
@@ -957,7 +961,7 @@ function AnalysisResults({
         <Card variant="glass" className="p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h4 className="text-lg font-semibold text-white">Categories overview</h4>
+              <h4 className="text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
               <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
             </div>
             <Button
@@ -1064,7 +1068,7 @@ function AnalysisResults({
           <Card variant="glass" className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-lg font-semibold text-white">Top issues</h4>
+                <h4 className="text-lg font-semibold text-white">{t('dashboard.topIssues')}</h4>
                 <p className="mt-1 text-sm text-slate-400">Subcategories with the most reported issues</p>
               </div>
               <span className="text-xs text-slate-500">{issueItems.length} items</span>
@@ -1116,7 +1120,7 @@ function AnalysisResults({
           <Card variant="glass" className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-lg font-semibold text-white">Top feature requests</h4>
+                <h4 className="text-lg font-semibold text-white">{t('dashboard.topRequests')}</h4>
                 <p className="mt-1 text-sm text-slate-400">Most requested improvements and additions</p>
               </div>
               <span className="text-xs text-slate-500">{requestItems.length} items</span>
