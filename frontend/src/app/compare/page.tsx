@@ -13,6 +13,7 @@ import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
 import { formatPercentage } from "@/utils/format";
 import { getRecommendationColor } from "@/utils/colors";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Chart as ChartJS,
   RadialLinearScale,
@@ -58,6 +59,7 @@ const CATEGORY_KEYS = Object.keys(MAIN_CATEGORY_LABELS).filter((key) => key !== 
 
 export default function ComparePage() {
   const { filters, filtersActive } = useGlobalFilters();
+  const { t } = useLanguage();
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,7 +214,7 @@ export default function ComparePage() {
 
         {selectedGames.length < 2 ? (
           <EmptyState
-            title="Select at least 2 games"
+            title={t('compare.selectGames')}
             description="Pick 2-4 starred games to compare their category performance."
             variant="default"
           />
@@ -507,7 +509,7 @@ function ComparisonDashboard({
 
       {/* Radar Chart Overview */}
       <Card variant="glass" className="p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Category Overview</h3>
+        <h3 className="text-lg font-semibold text-white mb-2">{t('compare.categoryOverview')}</h3>
         <p className="text-sm text-slate-400 mb-4">Visual comparison across all categories</p>
         <div className="h-96">
           <Radar data={radarChartData} options={radarOptions} />
@@ -526,16 +528,16 @@ function ComparisonDashboard({
           {/* Sort and Filter Controls */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400">Sort by:</label>
+              <label className="text-xs text-slate-400">{t('compare.sortBy')}</label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
                 className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-sm text-white focus:border-sky-500 focus:outline-none"
               >
-                <option value="difference">Biggest Difference</option>
-                <option value="highest">Highest Rating</option>
-                <option value="lowest">Lowest Rating</option>
-                <option value="reviews">Most Reviews</option>
+                <option value="difference">{t('compare.biggestDiff')}</option>
+                <option value="highest">{t('compare.highestRating')}</option>
+                <option value="lowest">{t('compare.lowestRating')}</option>
+                <option value="reviews">{t('compare.mostReviews')}</option>
               </select>
             </div>
 
@@ -546,7 +548,7 @@ function ComparisonDashboard({
                 onChange={(e) => setShowOnlySignificant(e.target.checked)}
                 className="h-4 w-4 rounded border-white/10 bg-slate-950/40 text-sky-500 focus:ring-sky-500"
               />
-              <span className="text-xs text-slate-400">Only show significant differences (&gt;10%)</span>
+              <span className="text-xs text-slate-400">{t('compare.onlySignificant')}</span>
             </label>
 
             {(showOnlySignificant || sortBy !== "difference") && (
@@ -557,7 +559,7 @@ function ComparisonDashboard({
                 }}
                 className="text-xs text-sky-400 hover:text-sky-300"
               >
-                Reset filters
+                {t('compare.resetFilters')}
               </button>
             )}
           </div>
@@ -684,7 +686,7 @@ function ComparisonDashboard({
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-white">Sample Reviews: {reviewsModal.label}</h3>
+                <h3 className="text-lg font-semibold text-white">{t('compare.sampleReviews')}: {reviewsModal.label}</h3>
                 <p className="text-sm text-slate-400 mt-1">Example reviews from each game for this subcategory</p>
               </div>
               <button

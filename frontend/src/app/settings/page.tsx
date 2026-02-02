@@ -147,9 +147,6 @@ export default function SettingsPage() {
                     : 'border-white/10 bg-slate-900/30 hover:border-slate-600'
                 }`}
               >
-                <div className="text-2xl mb-2">
-                  {lang === 'en' ? '🇬🇧' : lang === 'it' ? '🇮🇹' : lang === 'fr' ? '🇫🇷' : '🇩🇪'}
-                </div>
                 <p className="text-sm font-semibold text-white">{t(`lang.${lang}`)}</p>
               </button>
             ))}

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { SignedIn, UserButton } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -16,14 +17,15 @@ interface AppLayoutProps {
 export function AppLayout({ children, showSidebar = true, sidebarContent }: AppLayoutProps) {
   const pathname = usePathname();
   const { density } = useUiPreferences();
+  const { t } = useLanguage();
   const compact = density === "compact";
 
   const navItems = [
-    { href: "/dashboard?view=home", label: "Home", code: "01" },
-    { href: "/chat", label: "Chat", code: "02" },
-    { href: "/compare", label: "Compare", code: "03" },
-    { href: "/database", label: "Database", code: "04" },
-    { href: "/settings", label: "Settings", code: "05" },
+    { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
+    { href: "/chat", label: t('nav.chat'), code: "02" },
+    { href: "/compare", label: t('nav.compare'), code: "03" },
+    { href: "/database", label: t('nav.database'), code: "04" },
+    { href: "/settings", label: t('nav.settings'), code: "05" },
   ];
   const sidebarNavItems = navItems.filter((item) => item.href !== "/settings");
 
