@@ -154,15 +154,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                   <span className="ml-auto w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
                 )}
               </Link>
-
-              {/* System Info */}
-              <div className="flex items-center justify-between text-[9px] text-[rgb(0,255,255)]/30 uppercase tracking-wider px-1">
-                <span>v0.1.0</span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full animate-pulse" />
-                  Online
-                </span>
-              </div>
             </div>
           </div>
         </aside>
