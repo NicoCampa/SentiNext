@@ -6,13 +6,13 @@ import Link from "next/link";
 import { Search, Sliders, BarChart2, Layers } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 
-export default function ProductPage() {
+export default function ProductClient({ dict, lang }: { dict: any, lang: string }) {
     return (
         <div className="flex flex-col min-h-screen">
             {/* Hero */}
-            <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10">
+            <section className="relative w-full py-20 md:py-32 lg:py-48 flex flex-col items-center justify-center border-b border-[#00F0FF]/10 overflow-hidden">
                 <div className="scanline" />
-                <div className="container px-4 md:px-6 text-center relative z-10 mx-auto max-w-6xl">
+                <div className="container px-4 md:px-6 relative z-10 flex flex-col items-center text-center max-w-6xl mx-auto">
                     <motion.h1
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -27,7 +27,9 @@ export default function ProductPage() {
                         transition={{ delay: 0.5 }}
                         className="text-xl md:text-2xl text-muted-foreground max-w-4xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60"
                     >
-                        Autonomous data ingestion and neural classification.
+                        {lang === 'it'
+                            ? 'Ingestione dati autonoma e classificazione neurale.'
+                            : 'Autonomous data ingestion and neural classification.'}
                     </motion.p>
                 </div>
             </section>
@@ -36,9 +38,15 @@ export default function ProductPage() {
             <FeatureSection
                 id="ingest"
                 icon={<Search className="h-7 w-7 text-[#00F0FF]" />}
-                title="1. Search & Ingest"
-                description="Connect to any Steam App ID. SentiNext fetches thousands of reviews in seconds, respecting Steam's API rate limits and handling pagination automatically."
-                details={[
+                title={lang === 'it' ? "1. Ricerca e Ingestione" : "1. Search & Ingest"}
+                description={lang === 'it'
+                    ? "Collegati a qualsiasi Steam App ID. SentiNext recupera migliaia di recensioni in pochi secondi, rispettando i limiti delle API di Steam."
+                    : "Connect to any Steam App ID. SentiNext fetches thousands of reviews in seconds, respecting Steam's API rate limits and handling pagination automatically."}
+                details={lang === 'it' ? [
+                    "Filtra per intervallo di date, lingua e tempo di gioco.",
+                    "La cache intelligente consente la ri-analisi offline.",
+                    "Persistenza dati su PostgreSQL per il monitoraggio a lungo termine."
+                ] : [
                     "Filter by date range, language, and playtime.",
                     "Smart caching allows offline re-analysis.",
                     "Persist data to PostgreSQL for long-term tracking."
@@ -71,9 +79,15 @@ export default function ProductPage() {
             <FeatureSection
                 id="classify"
                 icon={<Layers className="h-7 w-7 text-[#00F0FF]" />}
-                title="2. Classification"
-                description="Our fine-tuned LLM pipeline reads every review to identify specific issues and feature requests, not just generic sentiment."
-                details={[
+                title={lang === 'it' ? "2. Classificazione" : "2. Classification"}
+                description={lang === 'it'
+                    ? "La nostra pipeline LLM fine-tuned legge ogni recensione per identificare problemi specifici e richieste di caratteristiche."
+                    : "Our fine-tuned LLM pipeline reads every review to identify specific issues and feature requests, not just generic sentiment."}
+                details={lang === 'it' ? [
+                    "Distingue tra bug, richieste ed elogi.",
+                    "Normalizza termini vari (es. 'lag' -> 'Performance').",
+                    "Usa l'estrazione di evidenze per citare il reclamo esatto dell'utente."
+                ] : [
                     "Distinguishes between bugs, requests, and praise.",
                     "Normalizes varying terms (e.g., 'lag' -> 'Performance').",
                     "Uses evidence extraction to quote the exact user complaint."
@@ -83,7 +97,7 @@ export default function ProductPage() {
                     <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-8 flex flex-col gap-6 font-mono text-sm leading-relaxed relative overflow-hidden backdrop-blur-md">
                         <CornerMarkers />
                         <div className="p-4 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 italic text-[#00F0FF]/70">
-                            "Game keeps crashing on launch since the update."
+                            {lang === 'it' ? '"Il gioco continua a crashare all\'avvio dopo l\'aggiornamento."' : '"Game keeps crashing on launch since the update."'}
                         </div>
                         <div className="flex gap-3">
                             <div className="px-3 py-1.5 rounded-sm bg-red-500/20 text-red-300 border border-red-500/30 text-[10px] font-bold uppercase tracking-wider">ISSUE: CRASH</div>
@@ -97,9 +111,15 @@ export default function ProductPage() {
             <FeatureSection
                 id="insights"
                 icon={<BarChart2 className="h-7 w-7 text-[#00F0FF]" />}
-                title="3. Quantified Insights"
-                description="View a high-level dashboard of what matters most. SentiNext ranks issues by frequency and impact, helping you decide what to fix next."
-                details={[
+                title={lang === 'it' ? "3. Insight Quantificati" : "3. Quantified Insights"}
+                description={lang === 'it'
+                    ? "Visualizza un dashboard di alto livello di ciò che conta di più. SentiNext classifica i problemi per frequenza e impatto."
+                    : "View a high-level dashboard of what matters most. SentiNext ranks issues by frequency and impact, helping you decide what to fix next."}
+                details={lang === 'it' ? [
+                    "Grafici interattivi e mappe di calore.",
+                    "Approfondisci dalla categoria alle singole recensioni.",
+                    "Esporta i dati per la tua analisi."
+                ] : [
                     "Interactive charts and heatmaps.",
                     "Drill down from category to individual reviews.",
                     "Export data for your own analysis."
@@ -111,13 +131,13 @@ export default function ProductPage() {
                         <div className="col-span-1 h-36 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 flex items-center justify-center">
                             <div className="text-center">
                                 <div className="text-4xl font-bold text-[#00F0FF] tracking-tighter uppercase">142</div>
-                                <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest mt-2">Performance</div>
+                                <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest mt-2">{lang === 'it' ? 'Performance' : 'Performance'}</div>
                             </div>
                         </div>
                         <div className="col-span-1 h-36 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 flex items-center justify-center">
                             <div className="text-center">
                                 <div className="text-4xl font-bold text-[#00F0FF] tracking-tighter uppercase">86</div>
-                                <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest mt-2">Localization</div>
+                                <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest mt-2">{lang === 'it' ? 'Localizzazione' : 'Localization'}</div>
                             </div>
                         </div>
                         <div className="col-span-2 h-28 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 relative overflow-hidden">
@@ -137,10 +157,10 @@ export default function ProductPage() {
             />
 
             <section className="py-32 text-center">
-                <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase">System Ready.</h2>
+                <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase">{lang === 'it' ? 'Sistema Pronto.' : 'System Ready.'}</h2>
                 <Button size="lg" className="h-16 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>
                     <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                        Initialize Session
+                        {dict.common.initialize}
                     </Link>
                 </Button>
             </section>

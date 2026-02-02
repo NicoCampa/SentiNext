@@ -1,0 +1,55 @@
+{
+    "common": {
+        "login": "Connexion Dashboard",
+        "initialize": "Déployer l'Agent",
+        "product": "Produit",
+        "howItWorks": "Processus",
+        "pricing": "Tarifs",
+        "docs": "Documentation",
+        "faq": "FAQ",
+        "privacy": "Confidentialité",
+        "terms": "Termes",
+        "impressum": "Mentions Légales",
+        "back": "Retour",
+        "footerDesc": "Système autonome de classification des feedbacks de nouvelle génération.",
+        "valveDisclaimer": "SentiNext est un protocole d'intelligence autonome indépendant. Nous consommons la télémétrie publique de la communauté Steam via API. Nous ne sommes pas approuvés, affiliés ou soutenus par Valve Corporation. Steam et le logo Steam sont des marques de Valve Corporation."
+    },
+    "hero": {
+        "badge": "Bêta Publique Ouverte",
+        "title1": "Review",
+        "title2": "Intelligence",
+        "subtitle": "Transformez 2 000 avis Steam en un backlog de bugs prioritaires en quelques minutes. Quantifiez le sentiment des joueurs et identifiez les pics avec précision.",
+        "bullet1": "Problèmes classés par fréquence + impact",
+        "bullet2": "Citations de preuves par cluster",
+        "bullet3": "Filtres : Temps de jeu, Langue, Date"
+    },
+    "docs": {
+        "title": "Documentation",
+        "subtitle": "Protocoles d'intelligence autonome pour les développeurs de jeux. Allez au-delà des mesures simples vers une télémétrie structurée.",
+        "quickStart": {
+            "title": "Démarrage Rapide",
+            "description": "Initialisez votre cluster et analysez votre premier jeu."
+        },
+        "dataIngestion": {
+            "title": "Ingestion de Données",
+            "description": "Protocoles de récupération et de nettoyage des données de la communauté Steam."
+        },
+        "aiTaxonomy": {
+            "title": "Taxonomie IA",
+            "description": "Modèle de classification pour les problèmes, les demandes et le sentiment."
+        },
+        "sidebar": {
+            "overview": "Aperçu",
+            "introduction": "Introduction",
+            "gettingStarted": "Démarrage Rapide",
+            "coreFeatures": "Fonctionnalités",
+            "ingestingReviews": "Ingestion d'Avis",
+            "insightsTaxonomy": "Insights et Taxonomie",
+            "configuration": "Configuration",
+            "authentication": "Authentification",
+            "adminData": "Admin et Données",
+            "support": "Support",
+            "faq": "FAQ"
+        }
+    }
+}

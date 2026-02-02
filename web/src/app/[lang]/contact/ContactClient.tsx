@@ -3,10 +3,10 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Mail, Github, MessageSquare } from "lucide-react";
+import { Mail, Github } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 
-export default function ContactPage() {
+export function ContactClient({ dict, lang }: { dict: any, lang: string }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10 w-full">
@@ -18,10 +18,10 @@ export default function ContactPage() {
                         transition={{ duration: 0.8 }}
                         className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase"
                     >
-                        Connect <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">System.</span>
+                        {lang === 'it' ? 'Connessione' : 'Connect'} <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{lang === 'it' ? 'Sistema.' : 'System.'}</span>
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        Human-to-agent interface protocols.
+                        {lang === 'it' ? 'Protocolli di interfaccia umano-agente.' : 'Human-to-agent interface protocols.'}
                     </p>
                 </div>
             </section>
@@ -31,17 +31,17 @@ export default function ContactPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
                         <ContactCard
                             icon={<Mail className="h-8 w-8 text-[#00F0FF]" />}
-                            title="Direct Mail"
-                            description="For enterprise inquiries and partnership protocols."
+                            title={lang === 'it' ? "Mail Diretta" : "Direct Mail"}
+                            description={lang === 'it' ? "Per richieste enterprise e protocolli di partnership." : "For enterprise inquiries and partnership protocols."}
                             link="mailto:hello@sentinext.com"
                             label="hello@sentinext.com"
                         />
                         <ContactCard
                             icon={<Github className="h-8 w-8 text-[#00F0FF]" />}
-                            title="Source Code"
-                            description="Report bugs or suggest classification Improvements."
+                            title={lang === 'it' ? "Codice Sorgente" : "Source Code"}
+                            description={lang === 'it' ? "Segnala bug o suggerisci miglioramenti della classificazione." : "Report bugs or suggest classification Improvements."}
                             link="https://github.com"
-                            label="Open Repository"
+                            label={lang === 'it' ? "Apri Repository" : "Open Repository"}
                         />
                     </div>
                 </div>

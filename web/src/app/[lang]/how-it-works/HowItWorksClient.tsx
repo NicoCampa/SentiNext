@@ -6,23 +6,23 @@ import Link from "next/link";
 import { Search, Zap, BarChart2, ShieldCheck, Cpu } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 
-export default function HowItWorksPage() {
+export default function HowItWorksClient({ dict, lang }: { dict: any, lang: string }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             {/* Hero */}
-            <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10 w-full">
+            <section className="relative w-full py-20 md:py-32 lg:py-48 flex flex-col items-center justify-center border-b border-[#00F0FF]/10 overflow-hidden">
                 <div className="scanline" />
-                <div className="container px-4 md:px-6 text-center max-w-5xl mx-auto relative z-10">
+                <div className="container px-4 md:px-6 relative z-10 flex flex-col items-center text-center max-w-6xl mx-auto">
                     <motion.h1
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.8 }}
                         className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase"
                     >
-                        The <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">Process.</span>
+                        {lang === 'it' ? 'Il' : 'The'} <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{lang === 'it' ? 'Processo.' : 'Process.'}</span>
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        From raw feedback to quantified intelligence.
+                        {lang === 'it' ? 'Dai feedback grezzi all\'intelligence quantificata.' : 'From raw feedback to quantified intelligence.'}
                     </p>
                 </div>
             </section>
@@ -34,22 +34,28 @@ export default function HowItWorksPage() {
                         <PipelineStep
                             number="01"
                             icon={<Search className="h-10 w-10 text-[#00F0FF]" />}
-                            title="INGESTION"
-                            description="Deep crawl of Steam reviews for any App ID. Automatic rate-limit handling and data persistence."
+                            title={lang === 'it' ? "INGESTIONE" : "INGESTION"}
+                            description={lang === 'it'
+                                ? "Scansione profonda delle recensioni Steam per qualsiasi App ID. Gestione automatica dei limiti e persistenza dei dati."
+                                : "Deep crawl of Steam reviews for any App ID. Automatic rate-limit handling and data persistence."}
                             delay={0.1}
                         />
                         <PipelineStep
                             number="02"
                             icon={<Zap className="h-10 w-10 text-[#00F0FF]" />}
-                            title="CLASSIFICATION"
-                            description="Neural categorization of every word. Removing noise and identifying distinct technical clusters."
+                            title={lang === 'it' ? "CLASSIFICAZIONE" : "CLASSIFICATION"}
+                            description={lang === 'it'
+                                ? "Categorizzazione neurale di ogni parola. Rimozione del rumore e identificazione di cluster tecnici distinti."
+                                : "Neural categorization of every word. Removing noise and identifying distinct technical clusters."}
                             delay={0.3}
                         />
                         <PipelineStep
                             number="03"
                             icon={<BarChart2 className="h-10 w-10 text-[#00F0FF]" />}
-                            title="QUANTIFICATION"
-                            description="Aggregating sentiment into actionable impact scores. See exactly what is hurting your review score."
+                            title={lang === 'it' ? "QUANTIFICAZIONE" : "QUANTIFICATION"}
+                            description={lang === 'it'
+                                ? "Aggregazione del sentiment in punteggi di impatto azionabili. Scopri esattamente cosa sta danneggiando il tuo punteggio."
+                                : "Aggregating sentiment into actionable impact scores. See exactly what is hurting your review score."}
                             delay={0.5}
                         />
                     </div>
@@ -59,10 +65,10 @@ export default function HowItWorksPage() {
             {/* Final CTA */}
             <section className="py-32 text-center relative border-t border-[#00F0FF]/10 w-full">
                 <div className="container px-4 mx-auto">
-                    <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase leading-none">Pipeline <span className="text-[#00F0FF]">Ready</span></h2>
+                    <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase leading-none">Pipeline <span className="text-[#00F0FF]">{lang === 'it' ? 'Pronta' : 'Ready'}</span></h2>
                     <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>
                         <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://sentinext-frontend.onrender.com"} target="_blank">
-                            Initialize Session
+                            {dict.common.initialize}
                         </Link>
                     </Button>
                 </div>

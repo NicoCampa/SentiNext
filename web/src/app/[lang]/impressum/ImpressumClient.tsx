@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 
-export default function ImpressumPage() {
+export function ImpressumClient({ dict, lang }: { dict: any, lang: string }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10 w-full">
@@ -15,10 +15,10 @@ export default function ImpressumPage() {
                         transition={{ duration: 0.8 }}
                         className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase"
                     >
-                        Legal <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">Imprint.</span>
+                        {lang === 'it' ? 'Impressum.' : 'Impressum.'}
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        Impressum gemäß § 5 TMG.
+                        {lang === 'it' ? 'Identità legale e contatti del provider.' : 'Legal identity and provider contact information.'}
                     </p>
                 </div>
             </section>
@@ -29,30 +29,33 @@ export default function ImpressumPage() {
                         <CornerMarkers />
 
                         <div>
-                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">Operator Information</h2>
+                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">{lang === 'it' ? 'Informazioni secondo § 5 TMG' : 'Information according to § 5 TMG'}</h2>
                             <p>
-                                SentiNext Intelligence<br />
-                                c/o Nicolo Campagnoli<br />
+                                Nicolo Campagnoli<br />
                                 Berlin, Germany
                             </p>
                         </div>
 
                         <div>
-                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">Contact Protocol</h2>
+                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">{lang === 'it' ? 'Contatti' : 'Contact'}</h2>
                             <p>
-                                Email: hello@sentinext.com<br />
-                                Web: sentinext.com
+                                {lang === 'it' ? 'E-mail:' : 'E-mail:'} hello@sentinext.com
                             </p>
                         </div>
 
                         <div>
-                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">Liability for Links</h2>
-                            <p>Our site contains links to external third-party websites (e.g., Steam). We have no influence on the content of these sites and therefore cannot assume any liability for this external content.</p>
+                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">{lang === 'it' ? 'Responsabile Editoriale' : 'Editorial Responsibility'}</h2>
+                            <p>
+                                Nicolo Campagnoli<br />
+                                Berlin, Germany
+                            </p>
                         </div>
 
                         <div>
-                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">Copyright</h2>
-                            <p>The content and works created on these pages are subject to German copyright law. Duplication, processing, distribution and any kind of use outside the limits of copyright law require written consent.</p>
+                            <h2 className="text-[#00F0FF] text-xl font-bold mb-4">{lang === 'it' ? 'Risoluzione delle Controversie UE' : 'EU Dispute Resolution'}</h2>
+                            <p>{lang === 'it'
+                                ? 'La Commissione Europea fornisce una piattaforma per la risoluzione delle controversie online (ODR): https://ec.europa.eu/consumers/odr/. Non siamo disposti né obbligati a partecipare a procedimenti di risoluzione delle controversie dinanzi a un collegio arbitrale dei consumatori.'
+                                : 'The European Commission provides a platform for online dispute resolution (ODR): https://ec.europa.eu/consumers/odr/. We are neither willing nor obliged to participate in dispute resolution proceedings before a consumer arbitration board.'}</p>
                         </div>
                     </div>
                 </div>

@@ -1,0 +1,55 @@
+{
+    "common": {
+        "login": "Dashboard Login",
+        "initialize": "Agent Bereitstellen",
+        "product": "Produkt",
+        "howItWorks": "Prozess",
+        "pricing": "Preise",
+        "docs": "Doku",
+        "faq": "FAQ",
+        "privacy": "Datenschutz",
+        "terms": "Bedingungen",
+        "impressum": "Impressum",
+        "back": "Zurück",
+        "footerDesc": "Autonomes Feedback-Klassifizierungssystem der nächsten Generation.",
+        "valveDisclaimer": "SentiNext ist ein unabhängiges autonomes Intelligenzprotokoll. Wir nutzen öffentliche Steam Community-Telemetrie über API. Wir werden nicht von der Valve Corporation unterstützt, sind nicht mit ihr verbunden und werden nicht von ihr unterstützt. Steam und das Steam-Logo sind Marken der Valve Corporation."
+    },
+    "hero": {
+        "badge": "Öffentliche Beta Live",
+        "title1": "Review",
+        "title2": "Intelligence",
+        "subtitle": "Verwandeln Sie 2.000 Steam-Bewertungen in wenigen Minuten in ein prioritisiertes Bug-Backlog. Quantifizieren Sie die Spieler-Stimmung und identifizieren Sie Ausschläge mit Präzision.",
+        "bullet1": "Top-Probleme nach Häufigkeit + Auswirkung",
+        "bullet2": "Beweiszitate pro Cluster",
+        "bullet3": "Filter: Spielzeit, Sprache, Datum"
+    },
+    "docs": {
+        "title": "Dokumentation",
+        "subtitle": "Autonome Intelligenzprotokolle für Spieleentwickler. Gehen Sie über einfache Metriken hinaus zu strukturierter Spieler-Telemetrie.",
+        "quickStart": {
+            "title": "Schnellstart",
+            "description": "Initialisieren Sie Ihren Cluster und analysieren Sie Ihr erstes Spiel."
+        },
+        "dataIngestion": {
+            "title": "Daten-Ingestion",
+            "description": "Protokolle zum Abrufen und Bereinigen von Steam Community-Daten."
+        },
+        "aiTaxonomy": {
+            "title": "KI-Taxonomie",
+            "description": "Klassifizierungsmodell für Probleme, Anfragen und Stimmung."
+        },
+        "sidebar": {
+            "overview": "Übersicht",
+            "introduction": "Einführung",
+            "gettingStarted": "Schnellstart",
+            "coreFeatures": "Kernfunktionen",
+            "ingestingReviews": "Bewertungen Abrufen",
+            "insightsTaxonomy": "Insights & Taxonomie",
+            "configuration": "Konfiguration",
+            "authentication": "Authentifizierung",
+            "adminData": "Admin & Daten",
+            "support": "Support",
+            "faq": "FAQ"
+        }
+    }
+}

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk } from "next/font/google";
-import "./globals.css";
+import "../globals.css";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -29,13 +29,21 @@ export const metadata: Metadata = {
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 
-export default function RootLayout({
+export async function generateStaticParams() {
+  return [{ lang: 'en' }, { lang: 'it' }, { lang: 'fr' }, { lang: 'de' }];
+}
+
+export default async function RootLayout({
   children,
+  params,
 }: Readonly<{
   children: React.ReactNode;
+  params: Promise<{ lang: string }>;
 }>) {
+  const { lang } = await params;
+
   return (
-    <html lang="en" className="dark">
+    <html lang={lang} className="dark">
       <body
         className={`${spaceGrotesk.variable} antialiased bg-background text-foreground font-sans flex flex-col min-h-screen relative overflow-x-hidden`}
       >
@@ -46,9 +54,9 @@ export default function RootLayout({
           <div className="absolute top-[30%] right-[10%] w-[20%] h-[20%] bg-primary/5 rounded-full blur-[80px] animate-pulse-soft" style={{ animationDelay: '4s' }} />
         </div>
 
-        <Header />
+        <Header lang={lang} />
         <main className="flex-1">{children}</main>
-        <Footer />
+        <Footer lang={lang} />
       </body>
     </html>
   );

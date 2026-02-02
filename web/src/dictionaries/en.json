@@ -1,0 +1,55 @@
+{
+    "common": {
+        "login": "Log in to Dashboard",
+        "initialize": "Deploy Agent Now",
+        "product": "Product",
+        "howItWorks": "Process",
+        "pricing": "Pricing",
+        "docs": "Docs",
+        "faq": "FAQ",
+        "privacy": "Privacy",
+        "terms": "Terms",
+        "impressum": "Impressum",
+        "back": "Back",
+        "footerDesc": "Next-generation autonomous feedback classification system.",
+        "valveDisclaimer": "SentiNext is an independent autonomous intelligence protocol. We consume public Steam Community telemetry via API. We are not endorsed by, affiliated with, or supported by Valve Corporation. Steam and the Steam logo are trademarks of Valve Corporation."
+    },
+    "hero": {
+        "badge": "Public Beta Live",
+        "title1": "Review",
+        "title2": "Intelligence",
+        "subtitle": "Turn 2,000 Steam reviews into a prioritized bug backlog in minutes. Quantify player sentiment and identify spikes with precision.",
+        "bullet1": "Top issues ranked by frequency + impact",
+        "bullet2": "Evidence quotes per cluster",
+        "bullet3": "Filters: Playtime, Language, Date"
+    },
+    "docs": {
+        "title": "Documentation",
+        "subtitle": "Autonomous intelligence protocols for game developers. Move beyond simple metrics to structured player telemetry.",
+        "quickStart": {
+            "title": "Quick Start",
+            "description": "Initialize your cluster and analyze your first game."
+        },
+        "dataIngestion": {
+            "title": "Data Ingestion",
+            "description": "Protocols for fetching and cleaning Steam Community data."
+        },
+        "aiTaxonomy": {
+            "title": "AI Taxonomy",
+            "description": "Classification model for issues, requests, and sentiment."
+        },
+        "sidebar": {
+            "overview": "Overview",
+            "introduction": "Introduction",
+            "gettingStarted": "Getting Started",
+            "coreFeatures": "Core Features",
+            "ingestingReviews": "Ingesting Reviews",
+            "insightsTaxonomy": "Insights & Taxonomy",
+            "configuration": "Configuration",
+            "authentication": "Authentication",
+            "adminData": "Admin & Data",
+            "support": "Support",
+            "faq": "FAQ"
+        }
+    }
+}
