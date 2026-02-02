@@ -433,6 +433,194 @@ def delete_starred_game(user_id: str, app_id: int) -> None:
         conn.commit()
 
 
+def update_favorite_status(user_id: str, app_id: int, is_favorite: bool) -> bool:
+    """Update the favorite status of a starred game. Returns True if updated, False if not found."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                UPDATE starred_games
+                SET is_favorite = :is_favorite
+                WHERE user_id = :user_id AND app_id = :app_id
+            """),
+            {"user_id": user_id, "app_id": app_id, "is_favorite": is_favorite},
+        )
+        conn.commit()
+        return result.rowcount > 0
+
+
+def load_favorite_games(user_id: str) -> list[Dict[str, Any]]:
+    """Load all favorite games for a user."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at, is_favorite
+                FROM starred_games
+                WHERE user_id = :user_id AND is_favorite = TRUE
+                ORDER BY updated_at DESC
+            """),
+            {"user_id": user_id},
+        )
+        rows = result.fetchall()
+
+    results: list[Dict[str, Any]] = []
+    for row in rows:
+        results.append(
+            {
+                "app_id": int(row[0]),
+                "name": row[1],
+                "metadata": _parse_json_field(row[2], {}),
+                "insights": _parse_json_field(row[3], None),
+                "sample": _parse_json_field(row[4], []),
+                "genres": _parse_json_field(row[5], []),
+                "categories": _parse_json_field(row[6], []),
+                "updated_at": _timestamp_to_int(row[7]) or 0,
+                "is_favorite": True,
+            }
+        )
+
+    return results
+
+
+def load_all_favorite_games() -> list[Dict[str, Any]]:
+    """Load all favorite games across ALL users (for scheduled refresh job)."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT user_id, app_id, name, metadata
+                FROM starred_games
+                WHERE is_favorite = TRUE
+                ORDER BY user_id, app_id
+            """),
+        )
+        rows = result.fetchall()
+
+    results: list[Dict[str, Any]] = []
+    for row in rows:
+        results.append(
+            {
+                "user_id": row[0],
+                "app_id": int(row[1]),
+                "name": row[2],
+                "metadata": _parse_json_field(row[3], {}),
+            }
+        )
+
+    return results
+
+
+def log_auto_refresh(
+    user_id: str,
+    app_id: int,
+    status: str,
+    reviews_fetched: int = 0,
+    credits_used: int = 0,
+    error: Optional[str] = None,
+    completed: bool = False,
+) -> int:
+    """Log an auto-refresh activity. Returns the log entry ID."""
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                INSERT INTO auto_refresh_log (user_id, app_id, status, reviews_fetched, credits_used, error, created_at, completed_at)
+                VALUES (:user_id, :app_id, :status, :reviews_fetched, :credits_used, :error, :created_at, :completed_at)
+                RETURNING id
+            """),
+            {
+                "user_id": user_id,
+                "app_id": app_id,
+                "status": status,
+                "reviews_fetched": reviews_fetched,
+                "credits_used": credits_used,
+                "error": error,
+                "created_at": timestamp,
+                "completed_at": timestamp if completed else None,
+            },
+        )
+        row = result.fetchone()
+        conn.commit()
+        return int(row[0]) if row else 0
+
+
+def update_auto_refresh_log(
+    log_id: int,
+    status: str,
+    reviews_fetched: Optional[int] = None,
+    credits_used: Optional[int] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Update an existing auto-refresh log entry."""
+    from . import db as db_module
+
+    completed_at = datetime.now(timezone.utc) if status in ("completed", "failed", "skipped") else None
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                UPDATE auto_refresh_log
+                SET status = :status,
+                    reviews_fetched = COALESCE(:reviews_fetched, reviews_fetched),
+                    credits_used = COALESCE(:credits_used, credits_used),
+                    error = COALESCE(:error, error),
+                    completed_at = COALESCE(:completed_at, completed_at)
+                WHERE id = :log_id
+            """),
+            {
+                "log_id": log_id,
+                "status": status,
+                "reviews_fetched": reviews_fetched,
+                "credits_used": credits_used,
+                "error": error,
+                "completed_at": completed_at,
+            },
+        )
+        conn.commit()
+
+
+def load_auto_refresh_history(user_id: str, limit: int = 50) -> list[Dict[str, Any]]:
+    """Load auto-refresh history for a user."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT id, app_id, status, reviews_fetched, credits_used, error, created_at, completed_at
+                FROM auto_refresh_log
+                WHERE user_id = :user_id
+                ORDER BY created_at DESC
+                LIMIT :limit
+            """),
+            {"user_id": user_id, "limit": limit},
+        )
+        rows = result.fetchall()
+
+    results: list[Dict[str, Any]] = []
+    for row in rows:
+        results.append(
+            {
+                "id": int(row[0]),
+                "app_id": int(row[1]),
+                "status": row[2],
+                "reviews_fetched": int(row[3]) if row[3] is not None else 0,
+                "credits_used": int(row[4]) if row[4] is not None else 0,
+                "error": row[5],
+                "created_at": _timestamp_to_int(row[6]) or 0,
+                "completed_at": _timestamp_to_int(row[7]),
+            }
+        )
+
+    return results
+
+
 def delete_all_game_data(app_id: int) -> None:
     """Delete all data associated with a game: reviews, labels, progress, and starred entry."""
     from . import db as db_module
@@ -602,7 +790,7 @@ def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
     with db_module.get_connection() as conn:
         result = conn.execute(
             text("""
-                SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at
+                SELECT app_id, name, metadata, insights, sample, genres, categories, updated_at, is_favorite
                 FROM starred_games
                 WHERE user_id = :user_id
                 ORDER BY updated_at DESC
@@ -623,6 +811,7 @@ def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
                 "genres": _parse_json_field(row[5], []),
                 "categories": _parse_json_field(row[6], []),
                 "updated_at": _timestamp_to_int(row[7]) or 0,
+                "is_favorite": bool(row[8]) if row[8] is not None else False,
             }
         )
 
@@ -1958,6 +2147,79 @@ def delete_chat_context(session_id: str) -> None:
             {"session_id": session_id},
         )
         conn.commit()
+
+
+def save_session_context(
+    session_id: str,
+    last_topic: Optional[str] = None,
+    last_search_results: Optional[List[Dict[str, Any]]] = None,
+    last_tool_calls: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """Save extended session context for follow-up queries.
+
+    This supplements chat_context with data needed for "same question but X" scenarios.
+
+    Args:
+        session_id: Session identifier
+        last_topic: Last discussed subcategory (e.g., "technical/performance")
+        last_search_results: Cached search results for "show more"
+        last_tool_calls: Tool calls from last turn for reuse
+    """
+    from . import db as db_module
+
+    # Store in accumulated_facts as JSON
+    extended_context = {}
+    if last_topic:
+        extended_context["last_topic"] = last_topic
+    if last_search_results:
+        # Store only first 10 to limit size
+        extended_context["last_search_results"] = last_search_results[:10]
+    if last_tool_calls:
+        extended_context["last_tool_calls"] = last_tool_calls[:5]
+
+    if not extended_context:
+        return
+
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        # Merge into existing accumulated_facts
+        conn.execute(
+            text("""
+                UPDATE chat_context
+                SET accumulated_facts = accumulated_facts || :new_facts,
+                    updated_at = :updated_at
+                WHERE session_id = :session_id
+            """),
+            {
+                "session_id": session_id,
+                "new_facts": json.dumps(extended_context),
+                "updated_at": timestamp,
+            },
+        )
+        conn.commit()
+
+
+def load_session_context(session_id: str) -> Dict[str, Any]:
+    """Load extended session context for follow-up queries.
+
+    Returns:
+        Dict with last_topic, last_search_results, last_tool_calls
+    """
+    context = load_chat_context(session_id)
+    if not context:
+        return {
+            "last_topic": None,
+            "last_search_results": [],
+            "last_tool_calls": [],
+        }
+
+    facts = context.get("accumulated_facts", {})
+    return {
+        "last_topic": facts.get("last_topic"),
+        "last_search_results": facts.get("last_search_results", []),
+        "last_tool_calls": facts.get("last_tool_calls", []),
+    }
 
 
 # Citation Feedback Functions

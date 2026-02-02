@@ -345,6 +345,7 @@ export interface StarredGameDTO {
   genres?: string[];
   categories?: string[];
   updated_at: string;
+  is_favorite?: boolean;
 }
 
 export interface DatabaseReviewItem extends ReviewRow {

@@ -390,6 +390,40 @@ export async function removeStarredGame(appId: number): Promise<void> {
   }
 }
 
+export async function toggleFavorite(appId: number, isFavorite: boolean): Promise<{ app_id: number; is_favorite: boolean }> {
+  const response = await authFetch(apiUrl(`/starred/${appId}/favorite`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ is_favorite: isFavorite }),
+  });
+  return handleResponse<{ app_id: number; is_favorite: boolean }>(response);
+}
+
+export async function fetchFavoriteGames(): Promise<StarredGameDTO[]> {
+  const response = await authFetch(apiUrl("/starred/favorites"), {
+    cache: "no-store",
+  });
+  return handleResponse<StarredGameDTO[]>(response);
+}
+
+export interface AutoRefreshLogEntry {
+  id: number;
+  app_id: number;
+  status: string;
+  reviews_fetched: number;
+  credits_used: number;
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export async function fetchAutoRefreshHistory(limit: number = 50): Promise<AutoRefreshLogEntry[]> {
+  const url = new URL(apiUrl("/auto-refresh/history"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  url.searchParams.set("limit", String(limit));
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<AutoRefreshLogEntry[]>(response);
+}
+
 function optionalAdminHeaders(): HeadersInit {
   const token = getAdminToken();
   return token ? { "x-admin-token": token } : {};

@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { fetchStarredGames } from "@/lib/api";
+import { fetchStarredGames, toggleFavorite as apiToggleFavorite } from "@/lib/api";
 import type { SearchResult, StarredGameDTO } from "@/types";
 
 export type GameContextGame = {
@@ -21,6 +21,7 @@ interface GameContextValue {
   refreshGames: () => Promise<void>;
   selectGameById: (appId: number | null) => void;
   setTemporaryGame: (game: SearchResult | null) => void;
+  toggleFavorite: (appId: number, isFavorite: boolean) => Promise<void>;
 }
 
 const STORAGE_KEY = "sentinext_selected_game_v1";
@@ -116,6 +117,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setSelectedGameId(game ? game.appid : null);
   }, []);
 
+  const toggleFavorite = useCallback(async (appId: number, isFavorite: boolean) => {
+    try {
+      await apiToggleFavorite(appId, isFavorite);
+      // Update local state immediately for optimistic UI
+      setGames(prevGames =>
+        prevGames.map(game =>
+          game.app_id === appId ? { ...game, is_favorite: isFavorite } : game
+        )
+      );
+    } catch (err) {
+      console.error("Failed to toggle favorite status", err);
+      throw err;
+    }
+  }, []);
+
   const value = useMemo<GameContextValue>(
     () => ({
       games,
@@ -127,6 +143,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       refreshGames,
       selectGameById,
       setTemporaryGame: setTemporary,
+      toggleFavorite,
     }),
     [
       games,
@@ -138,6 +155,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       refreshGames,
       selectGameById,
       setTemporary,
+      toggleFavorite,
     ],
   );
 

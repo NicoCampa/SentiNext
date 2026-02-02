@@ -53,8 +53,9 @@ from .senti_next import stripe_billing
 
 logger = logging.getLogger(__name__)
 
-SAMPLE_LIMIT = 1000
-FETCH_LIMIT = 2000
+# Review limits - configurable via environment
+SAMPLE_LIMIT = int(os.getenv("SENTINEXT_SAMPLE_LIMIT", "1000"))  # Reviews to sample for analysis
+FETCH_LIMIT = int(os.getenv("SENTINEXT_FETCH_LIMIT", "5000"))    # Max reviews to fetch from Steam
 
 APP_ORIGINS = [
     "http://localhost:3000",
@@ -364,6 +365,7 @@ class StarredGameResponse(BaseModel):
     insights: Optional[dict]
     sample: List[dict]
     updated_at: str
+    is_favorite: bool = False
 
 
 class AnalysisStatusResponse(BaseModel):
@@ -2048,6 +2050,7 @@ def list_starred_games(
                 insights=item.get("insights"),
                 sample=item.get("sample", []),
                 updated_at=updated_at,
+                is_favorite=item.get("is_favorite", False),
             )
         )
     return response
@@ -2085,6 +2088,89 @@ def save_starred_game(
 def remove_starred_game(app_id: int, user_id: str = Depends(require_user_id)) -> Response:
     storage.delete_starred_game(user_id, app_id)
     return Response(status_code=204)
+
+
+class FavoriteStatusPayload(BaseModel):
+    is_favorite: bool
+
+
+@app.patch("/starred/{app_id}/favorite", status_code=200, dependencies=[Depends(require_license)])
+def toggle_favorite_status(
+    app_id: int,
+    payload: FavoriteStatusPayload,
+    user_id: str = Depends(require_user_id),
+) -> dict:
+    """Toggle the favorite status of a starred game."""
+    updated = storage.update_favorite_status(user_id, app_id, payload.is_favorite)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Starred game not found")
+    return {"app_id": app_id, "is_favorite": payload.is_favorite}
+
+
+@app.get("/starred/favorites", response_model=List[StarredGameResponse], dependencies=[Depends(require_license)])
+def list_favorite_games(
+    user_id: str = Depends(require_user_id),
+) -> List[StarredGameResponse]:
+    """List all favorite games for the current user."""
+    entries = storage.load_favorite_games(user_id)
+    response: List[StarredGameResponse] = []
+    for item in entries:
+        metadata_payload = item.get("metadata") or {}
+        if metadata_payload and not metadata_payload.get("header_image"):
+            details = fetch_app_details(item["app_id"])
+            if details and details.get("header_image"):
+                metadata_payload["header_image"] = details["header_image"]
+        metadata = AnalyzeMetadata(**metadata_payload)
+        updated_at = datetime.utcfromtimestamp(item["updated_at"]).isoformat() + "Z"
+        response.append(
+            StarredGameResponse(
+                app_id=item["app_id"],
+                name=item["name"],
+                metadata=metadata,
+                insights=item.get("insights"),
+                sample=item.get("sample", []),
+                updated_at=updated_at,
+                is_favorite=True,
+            )
+        )
+    return response
+
+
+class AutoRefreshLogEntry(BaseModel):
+    id: int
+    app_id: int
+    status: str
+    reviews_fetched: int
+    credits_used: int
+    error: Optional[str]
+    created_at: str
+    completed_at: Optional[str]
+
+
+@app.get("/auto-refresh/history", response_model=List[AutoRefreshLogEntry], dependencies=[Depends(require_license)])
+def get_auto_refresh_history(
+    limit: int = 50,
+    user_id: str = Depends(require_user_id),
+) -> List[AutoRefreshLogEntry]:
+    """Get auto-refresh history for the current user."""
+    entries = storage.load_auto_refresh_history(user_id, limit=limit)
+    response: List[AutoRefreshLogEntry] = []
+    for item in entries:
+        created_at = datetime.utcfromtimestamp(item["created_at"]).isoformat() + "Z" if item.get("created_at") else ""
+        completed_at = datetime.utcfromtimestamp(item["completed_at"]).isoformat() + "Z" if item.get("completed_at") else None
+        response.append(
+            AutoRefreshLogEntry(
+                id=item["id"],
+                app_id=item["app_id"],
+                status=item["status"],
+                reviews_fetched=item.get("reviews_fetched", 0),
+                credits_used=item.get("credits_used", 0),
+                error=item.get("error"),
+                created_at=created_at,
+                completed_at=completed_at,
+            )
+        )
+    return response
 
 
 @app.delete("/games/{app_id}", status_code=204)

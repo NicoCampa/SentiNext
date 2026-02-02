@@ -31,9 +31,11 @@ import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
 import {
   ANALYSIS_REVIEW_COUNT_OPTIONS,
+  ALL_REVIEWS_VALUE,
   loadDefaultAnalysisReviewCount,
   parseAnalysisReviewCount,
   saveDefaultAnalysisReviewCount,
+  formatReviewCount,
 } from "@/lib/analysisDefaults";
 import { getRecommendationColor } from "@/utils/colors";
 import { formatSavedLabel } from "@/utils/format";
@@ -98,7 +100,7 @@ function DashboardContent() {
   const viewParam = searchParams.get("view");
   const reviewsParam = searchParams.get("reviews") || searchParams.get("review_count");
   const { startAnalysis, getTask } = useAnalysis();
-  const { games, loading: gamesLoading, refreshGames, selectGameById, setTemporaryGame, selectedStarredGame } = useGameContext();
+  const { games, loading: gamesLoading, refreshGames, selectGameById, setTemporaryGame, selectedStarredGame, toggleFavorite } = useGameContext();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -303,6 +305,15 @@ function DashboardContent() {
 
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
   const recentAnalyses = games.slice(0, 6);
+  const favoriteGames = useMemo(() => games.filter(game => game.is_favorite), [games]);
+
+  const handleToggleFavorite = async (appId: number, currentStatus: boolean) => {
+    try {
+      await toggleFavorite(appId, !currentStatus);
+    } catch (err) {
+      setError("Failed to update favorite status");
+    }
+  };
 
   if (loadingStarred) {
     return (
@@ -410,6 +421,69 @@ function DashboardContent() {
               </Card>
             </div>
 
+            {/* Favorites Section */}
+            {favoriteGames.length > 0 && (
+              <Card variant="glass" className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <span className="text-amber-400">★</span>
+                      Favorite Games
+                    </h2>
+                    <p className="text-xs text-slate-400">Auto-refreshed daily with new reviews</p>
+                  </div>
+                  <span className="text-xs text-slate-500">{favoriteGames.length} game{favoriteGames.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {favoriteGames.map((game) => {
+                    const sample = game.sample ?? [];
+                    const rate = sample.length
+                      ? sample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / sample.length
+                      : null;
+                    return (
+                      <div
+                        key={game.app_id}
+                        className="group relative rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden transition hover:border-amber-500/50 hover:bg-amber-500/10"
+                      >
+                        <button
+                          onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
+                          className="w-full text-left"
+                        >
+                          <SteamImage
+                            appId={game.app_id}
+                            variant="header"
+                            alt={game.name}
+                            className="w-full h-16 object-cover"
+                            imageUrl={game.metadata.header_image}
+                          />
+                          <div className="p-2.5">
+                            <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
+                            <div className="flex items-center justify-between mt-1">
+                              <p className="text-[10px] text-slate-500">{sample.length.toLocaleString()} reviews</p>
+                              <p className="text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
+                                {formatPercentOrDash(rate)}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFavorite(game.app_id, true);
+                          }}
+                          className="absolute top-1 right-1 p-1 rounded-md bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                          title="Remove from favorites"
+                        >
+                          <span className="text-amber-400 text-sm">★</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+
             <Card variant="glass" className="p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -423,11 +497,11 @@ function DashboardContent() {
                 ) : null}
               </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-4">
                 {gamesLoading ? (
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_, idx) => (
-                      <div key={idx} className="h-20 animate-pulse rounded-2xl border border-white/10 bg-slate-900/40" />
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {[...Array(4)].map((_, idx) => (
+                      <div key={idx} className="h-32 animate-pulse rounded-xl border border-white/10 bg-slate-900/40" />
                     ))}
                   </div>
                 ) : recentAnalyses.length === 0 ? (
@@ -437,39 +511,55 @@ function DashboardContent() {
                     variant="info"
                   />
                 ) : (
-                  recentAnalyses.map((game) => {
-                    const sample = game.sample ?? [];
-                    const rate = sample.length
-                      ? sample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / sample.length
-                      : null;
-                    return (
-                      <button
-                        key={game.app_id}
-                        onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
-                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/30 p-3 text-left transition hover:border-sky-500/40 hover:bg-slate-900/50"
-                      >
-                        <SteamImage
-                          appId={game.app_id}
-                          variant="header"
-                          alt={game.name}
-                          className="h-14 w-24 rounded-xl object-cover"
-                          imageUrl={game.metadata.header_image}
-                        />
-                        <div className="flex-1 space-y-1">
-                          <p className="text-sm font-semibold text-white line-clamp-1">{game.name}</p>
-                          <p className="text-xs text-slate-400">
-                            {sample.length.toLocaleString()} reviews -{formatSavedLabel(game.updated_at)}
-                          </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {recentAnalyses.map((game) => {
+                      const sample = game.sample ?? [];
+                      const rate = sample.length
+                        ? sample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / sample.length
+                        : null;
+                      const isFavorite = game.is_favorite ?? false;
+                      return (
+                        <div
+                          key={game.app_id}
+                          className="group relative rounded-xl border border-white/10 bg-slate-900/30 overflow-hidden transition hover:border-sky-500/40 hover:bg-slate-900/50"
+                        >
+                          <button
+                            onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
+                            className="w-full text-left"
+                          >
+                            <SteamImage
+                              appId={game.app_id}
+                              variant="header"
+                              alt={game.name}
+                              className="w-full h-16 object-cover"
+                              imageUrl={game.metadata.header_image}
+                            />
+                            <div className="p-2.5">
+                              <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
+                              <div className="flex items-center justify-between mt-1">
+                                <p className="text-[10px] text-slate-500">{sample.length.toLocaleString()} reviews</p>
+                                <p className="text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
+                                  {formatPercentOrDash(rate)}
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleFavorite(game.app_id, isFavorite);
+                            }}
+                            className="absolute top-1 right-1 p-1 rounded-md bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                            title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                          >
+                            <span className={`text-sm ${isFavorite ? 'text-amber-400' : 'text-white/70 hover:text-amber-400'}`}>
+                              {isFavorite ? '★' : '☆'}
+                            </span>
+                          </button>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
-                            {formatPercentOrDash(rate)}
-                          </p>
-                          <p className="text-[11px] text-slate-500">recommend</p>
-                        </div>
-                      </button>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </Card>
@@ -509,7 +599,7 @@ function DashboardContent() {
                     className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
                   >
                     {ANALYSIS_REVIEW_COUNT_OPTIONS.map((value) => (
-                      <option key={value} value={value}>{value.toLocaleString()}</option>
+                      <option key={value} value={value}>{formatReviewCount(value)}</option>
                     ))}
                   </select>
                 </label>
@@ -627,7 +717,7 @@ function DashboardContent() {
                 size="lg"
                 className="w-full"
               >
-                {isAnalyzing ? t('dashboard.analyzing') : `${t('dashboard.analyze')} ${reviewCount.toLocaleString()} ${t('common.reviews')}`}
+                {isAnalyzing ? t('dashboard.analyzing') : `${t('dashboard.analyze')} ${formatReviewCount(reviewCount)} ${t('common.reviews')}`}
               </Button>
 
               {isAnalyzing && progress && <ProgressPill progress={progress} />}
@@ -649,11 +739,22 @@ function DashboardContent() {
           <AnalysisResults
             analysis={analysis}
             selectedGame={selectedGame}
+            onRefreshRecent={() => {
+              // Fetch recent reviews (last 30 days) and re-analyze
+              setForceRefresh(true);
+              setRefreshDays(30);
+              // Clear starred game link to prevent effect from re-setting analysis
+              selectGameById(null);
+              setAnalysis(null); // Show the setup card
+              setEstimate(null);
+              setCreditEstimate(null);
+            }}
             onAnalyzeMore={() => {
-              // Find next higher review count option
+              // Find next higher review count option (0 means "all", treated as infinity)
               const currentRetrieved = analysis.metadata.retrieved;
-              const nextOption = ANALYSIS_REVIEW_COUNT_OPTIONS.find(opt => opt > currentRetrieved)
-                ?? ANALYSIS_REVIEW_COUNT_OPTIONS[ANALYSIS_REVIEW_COUNT_OPTIONS.length - 1];
+              const nextOption = ANALYSIS_REVIEW_COUNT_OPTIONS.find(opt =>
+                opt === ALL_REVIEWS_VALUE || opt > currentRetrieved
+              ) ?? ALL_REVIEWS_VALUE;
               setReviewCount(nextOption);
               // Clear starred game link to prevent effect from re-setting analysis
               selectGameById(null);
@@ -689,10 +790,12 @@ function AnalysisResults({
   analysis,
   selectedGame,
   onAnalyzeMore,
+  onRefreshRecent,
 }: {
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
   onAnalyzeMore?: () => void;
+  onRefreshRecent?: () => void;
 }) {
   const { t } = useLanguage();
   const router = useRouter();
@@ -985,6 +1088,11 @@ function AnalysisResults({
           </div>
 
         <div className="flex flex-wrap items-center justify-end gap-3">
+          {onRefreshRecent && (
+            <Button onClick={onRefreshRecent} variant="ghost" size="sm">
+              + Get Recent Reviews
+            </Button>
+          )}
           {onAnalyzeMore && (
             <Button onClick={onAnalyzeMore} variant="ghost" size="sm">
               + Analyze More Reviews
