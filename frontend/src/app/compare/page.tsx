@@ -13,6 +13,31 @@ import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
 import { formatPercentage } from "@/utils/format";
 import { getRecommendationColor } from "@/utils/colors";
+import {
+  Chart as ChartJS,
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend,
+  BarElement,
+  CategoryScale,
+  LinearScale,
+} from "chart.js";
+import { Radar, Bar } from "react-chartjs-2";
+
+ChartJS.register(
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend,
+  BarElement,
+  CategoryScale,
+  LinearScale
+);
 
 const MAX_SELECTION = 4;
 
@@ -207,6 +232,8 @@ function ComparisonDashboard({
   onRemove: (appId: number) => void;
 }) {
   const { filters, filtersActive } = useGlobalFilters();
+  const [sortBy, setSortBy] = useState<"difference" | "highest" | "lowest" | "reviews">("difference");
+  const [showOnlySignificant, setShowOnlySignificant] = useState(false);
 
   const gameData = useMemo(() => {
     return games.map((game) => {
@@ -243,7 +270,7 @@ function ComparisonDashboard({
   }, [games, filters]);
 
   const categories = useMemo(() => {
-    return CATEGORY_KEYS.map((key) => {
+    let cats = CATEGORY_KEYS.map((key) => {
       const perGame = gameData.map((game) => {
         const categoryRate = game.categoryRates?.[key];
         const subcats = game.subcategoriesByMain.get(key) ?? [];
@@ -322,12 +349,115 @@ function ComparisonDashboard({
         rateDiff,
       };
     });
-  }, [gameData]);
+
+    // Apply filtering
+    if (showOnlySignificant) {
+      cats = cats.filter(cat => cat.rateDiff > 0.10); // >10% difference
+    }
+
+    // Apply sorting
+    cats.sort((a, b) => {
+      if (sortBy === "difference") {
+        return b.rateDiff - a.rateDiff; // Highest difference first
+      } else if (sortBy === "highest") {
+        const maxA = Math.max(...a.perGame.map(g => g.rate ?? 0));
+        const maxB = Math.max(...b.perGame.map(g => g.rate ?? 0));
+        return maxB - maxA;
+      } else if (sortBy === "lowest") {
+        const minA = Math.min(...a.perGame.map(g => g.rate ?? 1).filter(r => r > 0));
+        const minB = Math.min(...b.perGame.map(g => g.rate ?? 1).filter(r => r > 0));
+        return minA - minB;
+      } else if (sortBy === "reviews") {
+        return b.totalTagged - a.totalTagged;
+      }
+      return 0;
+    });
+
+    return cats;
+  }, [gameData, sortBy, showOnlySignificant]);
 
   const gridCols =
     games.length === 4 ? "grid-cols-4" :
     games.length === 3 ? "grid-cols-3" :
     games.length === 2 ? "grid-cols-2" : "grid-cols-1";
+
+  // Radar chart data
+  const radarChartData = useMemo(() => {
+    const labels = CATEGORY_KEYS.map(key => MAIN_CATEGORY_LABELS[key] ?? key);
+    const datasets = gameData.map((game, idx) => {
+      const data = CATEGORY_KEYS.map(key => {
+        const rate = game.categoryRates?.[key]?.rate ?? 0;
+        return rate * 100; // Convert to percentage
+      });
+
+      const colors = [
+        'rgba(96, 165, 250, 0.6)',   // blue
+        'rgba(134, 239, 172, 0.6)',  // green
+        'rgba(251, 146, 60, 0.6)',   // orange
+        'rgba(244, 114, 182, 0.6)',  // pink
+      ];
+
+      return {
+        label: game.name,
+        data,
+        backgroundColor: colors[idx % colors.length],
+        borderColor: colors[idx % colors.length].replace('0.6', '1'),
+        borderWidth: 2,
+      };
+    });
+
+    return {
+      labels,
+      datasets,
+    };
+  }, [gameData]);
+
+  const radarOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      r: {
+        beginAtZero: true,
+        max: 100,
+        ticks: {
+          stepSize: 20,
+          color: '#cbd5f5',
+          backdropColor: 'transparent',
+        },
+        grid: {
+          color: 'rgba(148, 163, 184, 0.1)',
+        },
+        pointLabels: {
+          color: '#cbd5f5',
+          font: {
+            size: 11,
+          },
+        },
+      },
+    },
+    plugins: {
+      legend: {
+        position: 'top' as const,
+        labels: {
+          color: '#cbd5f5',
+          padding: 15,
+        },
+      },
+      tooltip: {
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        titleColor: '#e2e8f0',
+        bodyColor: '#e2e8f0',
+        borderColor: 'rgba(148, 163, 184, 0.3)',
+        borderWidth: 1,
+        padding: 12,
+        callbacks: {
+          label: function(context: any) {
+            return `${context.dataset.label}: ${context.parsed.r.toFixed(1)}%`;
+          }
+        },
+      },
+    },
+  };
 
   return (
     <div className="space-y-6">
@@ -373,11 +503,61 @@ function ComparisonDashboard({
         </div>
       </Card>
 
+      {/* Radar Chart Overview */}
       <Card variant="glass" className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Category recommendation</h3>
-            <p className="mt-1 text-sm text-slate-400">Side-by-side rates and coverage per category</p>
+        <h3 className="text-lg font-semibold text-white mb-2">Category Overview</h3>
+        <p className="text-sm text-slate-400 mb-4">Visual comparison across all categories</p>
+        <div className="h-96">
+          <Radar data={radarChartData} options={radarOptions} />
+        </div>
+      </Card>
+
+      <Card variant="glass" className="p-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Category recommendation</h3>
+              <p className="mt-1 text-sm text-slate-400">Side-by-side rates and coverage per category</p>
+            </div>
+          </div>
+
+          {/* Sort and Filter Controls */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-400">Sort by:</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-sm text-white focus:border-sky-500 focus:outline-none"
+              >
+                <option value="difference">Biggest Difference</option>
+                <option value="highest">Highest Rating</option>
+                <option value="lowest">Lowest Rating</option>
+                <option value="reviews">Most Reviews</option>
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showOnlySignificant}
+                onChange={(e) => setShowOnlySignificant(e.target.checked)}
+                className="h-4 w-4 rounded border-white/10 bg-slate-950/40 text-sky-500 focus:ring-sky-500"
+              />
+              <span className="text-xs text-slate-400">Only show significant differences (&gt;10%)</span>
+            </label>
+
+            {(showOnlySignificant || sortBy !== "difference") && (
+              <button
+                onClick={() => {
+                  setSortBy("difference");
+                  setShowOnlySignificant(false);
+                }}
+                className="text-xs text-sky-400 hover:text-sky-300"
+              >
+                Reset filters
+              </button>
+            )}
           </div>
         </div>
 
