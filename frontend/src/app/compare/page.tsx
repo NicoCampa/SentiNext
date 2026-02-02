@@ -14,7 +14,7 @@ import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsig
 import { formatPercentage } from "@/utils/format";
 import { getRecommendationColor } from "@/utils/colors";
 
-const MAX_SELECTION = 2;
+const MAX_SELECTION = 4;
 
 const MAIN_CATEGORY_LABELS: Record<string, string> = {
   gameplay: "Gameplay",
@@ -42,11 +42,9 @@ export default function ComparePage() {
       try {
         const games = await fetchStarredGames();
         setStarredGames(games);
-        if (games.length >= 2) {
-          setSelectedIds([games[0].app_id, games[1].app_id]);
-        } else if (games.length === 1) {
-          setSelectedIds([games[0].app_id]);
-        }
+        // Select up to 4 games by default
+        const initialSelection = games.slice(0, Math.min(4, games.length)).map(g => g.app_id);
+        setSelectedIds(initialSelection);
       } catch (err) {
         console.error("Failed to load starred games:", err);
       } finally {
@@ -128,7 +126,7 @@ export default function ComparePage() {
             </span>
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Compare two games side-by-side - {selectedIds.length} selected
+            Compare up to 4 games side-by-side - {selectedIds.length} selected
             {filtersActive ? " - global filters applied" : ""}
           </p>
         </div>
@@ -187,10 +185,10 @@ export default function ComparePage() {
           </div>
         </Card>
 
-        {selectedGames.length < MAX_SELECTION ? (
+        {selectedGames.length < 2 ? (
           <EmptyState
-            title="Select two games"
-            description="Pick two starred games to compare their category performance."
+            title="Select at least 2 games"
+            description="Pick 2-4 starred games to compare their category performance."
             variant="default"
           />
         ) : (
@@ -268,6 +266,15 @@ function ComparisonDashboard({
         };
       });
 
+      // Calculate winner for this category (highest rate)
+      const validRates = perGame.map((g, idx) => ({ idx, rate: g.rate ?? 0 })).filter(x => x.rate > 0);
+      const maxRate = validRates.length > 0 ? Math.max(...validRates.map(x => x.rate)) : 0;
+      const winnerIndices = validRates.filter(x => x.rate === maxRate).map(x => x.idx);
+
+      // Calculate rate differences (max - min)
+      const rates = perGame.map(g => g.rate ?? 0).filter(r => r > 0);
+      const rateDiff = rates.length >= 2 ? Math.max(...rates) - Math.min(...rates) : 0;
+
       const subcategoryTotals = new Map<string, number>();
       perGame.forEach((game) => {
         game.subcats.forEach((entry) => {
@@ -289,10 +296,17 @@ function ComparisonDashboard({
               count: Number(entry?.count ?? 0),
             };
           });
+
+          // Calculate winner for this subcategory
+          const validSubRates = perGameMetrics.map((m, idx) => ({ idx, rate: m.rate ?? 0 })).filter(x => x.rate > 0);
+          const maxSubRate = validSubRates.length > 0 ? Math.max(...validSubRates.map(x => x.rate)) : 0;
+          const subWinnerIndices = validSubRates.filter(x => x.rate === maxSubRate).map(x => x.idx);
+
           return {
             key: subcategoryKey,
             label,
             perGameMetrics,
+            winnerIndices: subWinnerIndices,
           };
         });
 
@@ -304,16 +318,21 @@ function ComparisonDashboard({
         totalTagged,
         perGame,
         subcategoryRows,
+        winnerIndices,
+        rateDiff,
       };
     });
   }, [gameData]);
 
-  const gridCols = games.length === 2 ? "grid-cols-2" : "grid-cols-1";
+  const gridCols =
+    games.length === 4 ? "grid-cols-4" :
+    games.length === 3 ? "grid-cols-3" :
+    games.length === 2 ? "grid-cols-2" : "grid-cols-1";
 
   return (
     <div className="space-y-6">
       <Card variant="glass" className="p-6">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {gameData.map((game) => (
             <div
               key={game.appId}
@@ -363,25 +382,48 @@ function ComparisonDashboard({
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {categories.map((category) => (
+          {categories.map((category) => {
+            // Highlight if difference is >15%
+            const isBigDifference = category.rateDiff > 0.15;
+
+            return (
             <div
               key={category.key}
-              className="rounded-2xl border border-white/10 bg-slate-900/30 p-5"
+              className={`rounded-2xl border p-5 ${
+                isBigDifference
+                  ? "border-amber-500/50 bg-amber-900/10"
+                  : "border-white/10 bg-slate-900/30"
+              }`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.25em] text-slate-400">
-                    {category.label}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-400">
+                      {category.label}
+                    </p>
+                    {isBigDifference && (
+                      <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                        {(category.rateDiff * 100).toFixed(0)}% diff
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-1 text-xs text-slate-500">
                     {formatCount(category.totalTagged)} tagged reviews
                   </p>
                 </div>
                 <div className={`grid gap-4 text-right ${gridCols}`}>
-                  {category.perGame.map((game) => (
-                    <div key={game.name} className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                        {game.name}
+                  {category.perGame.map((game, idx) => {
+                    const isWinner = category.winnerIndices.includes(idx) && category.winnerIndices.length < games.length;
+
+                    return (
+                    <div key={game.name} className="space-y-1 relative">
+                      {isWinner && (
+                        <div className="absolute -top-2 -right-2 text-xs">
+                          🏆
+                        </div>
+                      )}
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 truncate">
+                        {game.name.length > 12 ? game.name.substring(0, 12) + '...' : game.name}
                       </p>
                       <p
                         className="text-xl font-semibold"
@@ -393,7 +435,7 @@ function ComparisonDashboard({
                         {formatCount(game.count)} reviews
                       </p>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
 
@@ -408,8 +450,16 @@ function ComparisonDashboard({
                     >
                       <p className="text-sm text-slate-200">{row.label}</p>
                       <div className={`grid gap-4 text-right ${gridCols}`}>
-                        {row.perGameMetrics.map((metric, idx) => (
-                          <div key={`${row.key}-${idx}`}>
+                        {row.perGameMetrics.map((metric, idx) => {
+                          const isSubWinner = row.winnerIndices.includes(idx) && row.winnerIndices.length < games.length;
+
+                          return (
+                          <div key={`${row.key}-${idx}`} className="relative">
+                            {isSubWinner && (
+                              <div className="absolute -top-1 -right-1 text-[10px]">
+                                ⭐
+                              </div>
+                            )}
                             <p
                               className="text-sm font-semibold"
                               style={{ color: getRecommendationColor(metric.rate) }}
@@ -420,14 +470,14 @@ function ComparisonDashboard({
                               {formatCount(metric.count)} tags
                             </p>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
-          ))}
+          )})}
         </div>
       </Card>
     </div>
