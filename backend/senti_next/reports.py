@@ -38,12 +38,12 @@ def get_available_months(app_id: int, user_id: str) -> List[Dict[str, Any]]:
         result = conn.execute(
             text("""
                 SELECT
-                    EXTRACT(YEAR FROM created_at)::int as year,
-                    EXTRACT(MONTH FROM created_at)::int as month,
+                    EXTRACT(YEAR FROM to_timestamp(timestamp_created))::int as year,
+                    EXTRACT(MONTH FROM to_timestamp(timestamp_created))::int as month,
                     COUNT(*) as review_count
                 FROM reviews
                 WHERE app_id = :app_id
-                    AND created_at IS NOT NULL
+                    AND timestamp_created IS NOT NULL
                 GROUP BY year, month
                 ORDER BY year DESC, month DESC
                 LIMIT 24
