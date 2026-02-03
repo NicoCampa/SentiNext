@@ -450,13 +450,15 @@ function DashboardContent() {
                           onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
                           className="w-full text-left"
                         >
-                          <SteamImage
-                            appId={game.app_id}
-                            variant="header"
-                            alt={game.name}
-                            className="w-full h-16 object-cover"
-                            imageUrl={game.metadata.header_image}
-                          />
+                          <div className="aspect-[460/215] relative">
+                            <SteamImage
+                              appId={game.app_id}
+                              variant="header"
+                              alt={game.name}
+                              className="h-full w-full object-cover"
+                              imageUrl={game.metadata.header_image}
+                            />
+                          </div>
                           <div className="p-2.5">
                             <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
                             <div className="flex items-center justify-between mt-1">
@@ -527,13 +529,15 @@ function DashboardContent() {
                             onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
                             className="w-full text-left"
                           >
-                            <SteamImage
-                              appId={game.app_id}
-                              variant="header"
-                              alt={game.name}
-                              className="w-full h-16 object-cover"
-                              imageUrl={game.metadata.header_image}
-                            />
+                            <div className="aspect-[460/215] relative">
+                              <SteamImage
+                                appId={game.app_id}
+                                variant="header"
+                                alt={game.name}
+                                className="h-full w-full object-cover"
+                                imageUrl={game.metadata.header_image}
+                              />
+                            </div>
                             <div className="p-2.5">
                               <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
                               <div className="flex items-center justify-between mt-1">
