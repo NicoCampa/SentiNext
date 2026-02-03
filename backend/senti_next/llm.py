@@ -7,6 +7,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 import random
 import re
@@ -26,6 +27,75 @@ logger = logging.getLogger(__name__)
 
 # LLM Provider configuration
 GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
+
+# Timeout and retry configuration
+LLM_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_LLM_TIMEOUT", "30"))
+LLM_MAX_RETRIES = int(os.getenv("SENTINEXT_LLM_MAX_RETRIES", "3"))
+LLM_BASE_RETRY_DELAY = float(os.getenv("SENTINEXT_LLM_RETRY_DELAY", "2.0"))
+
+
+class LLMErrorType(Enum):
+    """Classification of LLM errors for retry decisions."""
+    BAD_REQUEST = "bad_request"  # 400 - don't retry
+    RATE_LIMITED = "rate_limited"  # 429 - retry with longer delay
+    SERVER_ERROR = "server_error"  # 500-504 - retry with backoff
+    TIMEOUT = "timeout"  # Request timeout - retry
+    UNKNOWN = "unknown"  # Unknown error - limited retry
+
+
+class LLMError(Exception):
+    """Exception for LLM API errors with classification."""
+
+    def __init__(self, message: str, error_type: LLMErrorType, status_code: Optional[int] = None, retryable: bool = True):
+        super().__init__(message)
+        self.error_type = error_type
+        self.status_code = status_code
+        self.retryable = retryable
+
+
+def _classify_error(status_code: Optional[int], error_message: str = "") -> Tuple[LLMErrorType, bool]:
+    """Classify an error and determine if it's retryable.
+
+    Returns:
+        Tuple of (error_type, is_retryable)
+    """
+    if status_code == 400:
+        return LLMErrorType.BAD_REQUEST, False
+    elif status_code == 429:
+        return LLMErrorType.RATE_LIMITED, True
+    elif status_code is not None and 500 <= status_code <= 504:
+        return LLMErrorType.SERVER_ERROR, True
+    elif "timeout" in error_message.lower() or "timed out" in error_message.lower():
+        return LLMErrorType.TIMEOUT, True
+    return LLMErrorType.UNKNOWN, True
+
+
+def _calculate_retry_delay(attempt: int, error_type: LLMErrorType, extracted_delay: Optional[float] = None) -> float:
+    """Calculate retry delay with exponential backoff.
+
+    Args:
+        attempt: Current attempt number (1-indexed)
+        error_type: Type of error encountered
+        extracted_delay: Delay extracted from error message (e.g., rate limit retry-after)
+
+    Returns:
+        Delay in seconds before next retry
+    """
+    if extracted_delay is not None:
+        return extracted_delay + 1  # Add buffer
+
+    base_delay = LLM_BASE_RETRY_DELAY
+
+    if error_type == LLMErrorType.RATE_LIMITED:
+        # Longer base delay for rate limits
+        base_delay = 20.0
+    elif error_type == LLMErrorType.SERVER_ERROR:
+        base_delay = 5.0
+
+    # Exponential backoff with jitter
+    delay = base_delay * (2 ** (attempt - 1))
+    jitter = random.uniform(0, delay * 0.1)
+    return min(delay + jitter, 60.0)  # Cap at 60 seconds
 PROMPT_VERSION = "steam_review_insights_v13_subcategories_primary_json"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
 
@@ -841,11 +911,22 @@ def _build_prompt(
 
 
 def _run_gemini(prompt: str, model: str) -> str:
-    """Run Gemini API call with rate limit handling."""
+    """Run Gemini API call with timeout and retry handling.
+
+    Features:
+    - Configurable timeout (default 30s)
+    - Exponential backoff for transient errors (500-504)
+    - Longer delays for rate limits (429)
+    - No retry for bad requests (400)
+    """
     _maybe_load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not set.")
+        raise LLMError(
+            "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
+            LLMErrorType.BAD_REQUEST,
+            retryable=False
+        )
 
     try:
         from google import genai
@@ -856,76 +937,99 @@ def _run_gemini(prompt: str, model: str) -> str:
 
         client = genai.Client(api_key=api_key)
 
-        max_retries = 3
         attempt = 0
+        last_error: Optional[Exception] = None
 
-        while attempt < max_retries:
+        while attempt < LLM_MAX_RETRIES:
             attempt += 1
             try:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=prompt
-                )
+                # Use ThreadPoolExecutor for timeout on synchronous call
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+                def _call_api():
+                    return client.models.generate_content(
+                        model=model,
+                        contents=prompt
+                    )
+
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_call_api)
+                    try:
+                        response = future.result(timeout=LLM_TIMEOUT_SECONDS)
+                    except FuturesTimeoutError:
+                        logger.warning(f"Gemini API call timed out after {LLM_TIMEOUT_SECONDS}s (attempt {attempt}/{LLM_MAX_RETRIES})")
+                        error_type, retryable = _classify_error(None, "timeout")
+                        if attempt < LLM_MAX_RETRIES and retryable:
+                            retry_delay = _calculate_retry_delay(attempt, error_type)
+                            logger.info(f"Retrying in {retry_delay:.1f}s...")
+                            time.sleep(retry_delay)
+                            continue
+                        raise LLMError(
+                            f"Gemini API call timed out after {LLM_TIMEOUT_SECONDS}s",
+                            LLMErrorType.TIMEOUT,
+                            retryable=False
+                        )
 
                 content = response.text
                 elapsed = time.time() - start_time
                 logger.info(f"Gemini API call completed in {elapsed:.2f}s (attempt {attempt})")
 
                 if not content:
-                    raise ValueError("Empty response from Gemini.")
+                    raise LLMError("Empty response from Gemini.", LLMErrorType.UNKNOWN, retryable=False)
                 return content
 
             except ClientError as e:
-                status_code = getattr(e, "status_code", None)
-                if status_code is None:
-                    status_code = getattr(e, "status", None)
-                if status_code is None:
-                    status_code = getattr(e, "code", None)
+                last_error = e
+                status_code = _extract_status_code(e)
+                error_type, retryable = _classify_error(status_code, str(e))
 
-                if status_code is None:
-                    import re
-                    match = re.search(r"code[\"']?\s*:\s*(\d{3})", str(e))
-                    if match:
-                        try:
-                            status_code = int(match.group(1))
-                        except ValueError:
-                            status_code = None
+                logger.warning(
+                    f"Gemini API error (status={status_code}, type={error_type.value}): {e} "
+                    f"(attempt {attempt}/{LLM_MAX_RETRIES})"
+                )
 
-                # Handle rate limiting (429)
+                if not retryable:
+                    raise LLMError(
+                        f"Gemini API error (non-retryable): {str(e)}",
+                        error_type,
+                        status_code=status_code,
+                        retryable=False
+                    )
+
+                if attempt < LLM_MAX_RETRIES:
+                    extracted_delay = _extract_retry_delay(e) if status_code == 429 else None
+                    retry_delay = _calculate_retry_delay(attempt, error_type, extracted_delay)
+                    logger.info(f"Retrying in {retry_delay:.1f}s...")
+                    time.sleep(retry_delay)
+                    continue
+
+                # Max retries exceeded
+                error_msg = f"Gemini API error after {LLM_MAX_RETRIES} attempts: {str(e)}"
                 if status_code == 429:
-                    retry_delay = 20  # Default to 20 seconds
+                    error_msg = (
+                        "Gemini rate limit exceeded. Free tier allows 10 requests/minute. "
+                        "Consider: 1) Reducing SENTINEXT_MAX_PARALLEL_BATCHES to 1-2, "
+                        "or 2) Upgrading Gemini API plan."
+                    )
+                raise LLMError(error_msg, error_type, status_code=status_code, retryable=False)
 
-                    # Try to extract retry delay from error payload or string.
-                    try:
-                        import re
-                        raw_message = getattr(e, "message", None)
-                        if raw_message is not None:
-                            raw_text = str(raw_message)
-                        else:
-                            raw_text = str(e)
-                        match = re.search(r"retry in ([\d.]+)s", raw_text, flags=re.IGNORECASE)
-                        if match:
-                            retry_delay = float(match.group(1)) + 1
-                    except Exception:
-                        pass
-
-                    if attempt < max_retries:
-                        logger.warning(f"Gemini rate limit hit (429), retrying in {retry_delay:.1f}s (attempt {attempt}/{max_retries})")
-                        time.sleep(retry_delay)
-                        continue
-                    else:
-                        logger.error(f"Gemini rate limit exceeded after {max_retries} attempts")
-                        raise ValueError(f"Gemini rate limit exceeded. Free tier allows 10 requests/minute. Consider: 1) Reducing SENTINEXT_MAX_PARALLEL_BATCHES to 1-2, or 2) Upgrading Gemini API plan.")
-                else:
-                    raise
-
-        raise ValueError(f"Gemini API call failed after {max_retries} attempts")
+        raise LLMError(
+            f"Gemini API call failed after {LLM_MAX_RETRIES} attempts",
+            LLMErrorType.UNKNOWN,
+            retryable=False
+        )
 
     except ImportError:
-        raise ValueError("google-genai package not installed. Run: pip install google-genai")
+        raise LLMError(
+            "google-genai package not installed. Run: pip install google-genai",
+            LLMErrorType.BAD_REQUEST,
+            retryable=False
+        )
+    except LLMError:
+        raise  # Re-raise our custom errors
     except Exception as e:
-        logger.error(f"Gemini API error: {e}")
-        raise ValueError(f"Gemini API error: {str(e)}")
+        logger.error(f"Unexpected Gemini API error: {e}")
+        raise LLMError(f"Gemini API error: {str(e)}", LLMErrorType.UNKNOWN, retryable=False)
 
 
 def _model_id(provider: str, model: str) -> str:
@@ -945,24 +1049,40 @@ async def call_llm_with_tools(
     messages: List[Dict[str, Any]],
     tools: List[Dict[str, Any]],
     model: Optional[str] = None,
+    timeout: Optional[int] = None,
 ) -> LLMResponse:
     """Call Gemini with function calling enabled.
+
+    Features:
+    - Configurable timeout (default 30s)
+    - Exponential backoff for transient errors (500-504)
+    - Longer delays for rate limits (429)
+    - No retry for bad requests (400)
 
     Args:
         messages: List of message dicts with 'role' and 'content' keys.
                   Roles: 'system', 'user', 'assistant', 'tool'
         tools: List of tool definitions in Gemini function declaration format.
         model: Optional model override (defaults to GEMINI_MODEL).
+        timeout: Optional timeout in seconds (defaults to LLM_TIMEOUT_SECONDS).
 
     Returns:
         LLMResponse with either content or tool_calls populated.
+
+    Raises:
+        LLMError: On API errors with classification for retry decisions.
     """
     _maybe_load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not set.")
+        raise LLMError(
+            "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
+            LLMErrorType.BAD_REQUEST,
+            retryable=False
+        )
 
     model_name = model or GEMINI_MODEL
+    effective_timeout = timeout if timeout is not None else LLM_TIMEOUT_SECONDS
 
     try:
         from google import genai
@@ -1008,26 +1128,27 @@ async def call_llm_with_tools(
         # Create tool config
         gemini_tools = [types.Tool(function_declarations=function_declarations)]
 
-        max_retries = 3
         attempt = 0
 
-        while attempt < max_retries:
+        while attempt < LLM_MAX_RETRIES:
             attempt += 1
             try:
-                # Run the async-compatible call
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model_name,
-                    contents=gemini_contents,
-                    config=types.GenerateContentConfig(
-                        tools=gemini_tools,
-                        # Allow model to decide when to use tools
-                        tool_config=types.ToolConfig(
-                            function_calling_config=types.FunctionCallingConfig(
-                                mode="AUTO",
-                            )
+                # Run the async-compatible call with timeout
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        client.models.generate_content,
+                        model=model_name,
+                        contents=gemini_contents,
+                        config=types.GenerateContentConfig(
+                            tools=gemini_tools,
+                            tool_config=types.ToolConfig(
+                                function_calling_config=types.FunctionCallingConfig(
+                                    mode="AUTO",
+                                )
+                            ),
                         ),
                     ),
+                    timeout=effective_timeout
                 )
 
                 elapsed = time.time() - start_time
@@ -1056,34 +1177,70 @@ async def call_llm_with_tools(
                     model=_model_id("google", model_name),
                 )
 
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Gemini tool-calling API call timed out after {effective_timeout}s "
+                    f"(attempt {attempt}/{LLM_MAX_RETRIES})"
+                )
+                error_type = LLMErrorType.TIMEOUT
+                if attempt < LLM_MAX_RETRIES:
+                    retry_delay = _calculate_retry_delay(attempt, error_type)
+                    logger.info(f"Retrying in {retry_delay:.1f}s...")
+                    await asyncio.sleep(retry_delay)
+                    continue
+                raise LLMError(
+                    f"Gemini tool-calling API call timed out after {effective_timeout}s",
+                    LLMErrorType.TIMEOUT,
+                    retryable=False
+                )
+
             except ClientError as e:
                 status_code = _extract_status_code(e)
+                error_type, retryable = _classify_error(status_code, str(e))
 
-                # Handle rate limiting (429)
+                logger.warning(
+                    f"Gemini tool-calling API error (status={status_code}, type={error_type.value}): {e} "
+                    f"(attempt {attempt}/{LLM_MAX_RETRIES})"
+                )
+
+                if not retryable:
+                    raise LLMError(
+                        f"Gemini tool-calling API error (non-retryable): {str(e)}",
+                        error_type,
+                        status_code=status_code,
+                        retryable=False
+                    )
+
+                if attempt < LLM_MAX_RETRIES:
+                    extracted_delay = _extract_retry_delay(e) if status_code == 429 else None
+                    retry_delay = _calculate_retry_delay(attempt, error_type, extracted_delay)
+                    logger.info(f"Retrying in {retry_delay:.1f}s...")
+                    await asyncio.sleep(retry_delay)
+                    continue
+
+                # Max retries exceeded
+                error_msg = f"Gemini tool-calling API error after {LLM_MAX_RETRIES} attempts: {str(e)}"
                 if status_code == 429:
-                    retry_delay = _extract_retry_delay(e, default=20)
-                    if attempt < max_retries:
-                        logger.warning(
-                            f"Gemini rate limit hit (429), retrying in {retry_delay:.1f}s "
-                            f"(attempt {attempt}/{max_retries})"
-                        )
-                        await asyncio.sleep(retry_delay)
-                        continue
-                    else:
-                        logger.error(f"Gemini rate limit exceeded after {max_retries} attempts")
-                        raise ValueError(
-                            "Gemini rate limit exceeded. Free tier allows 10 requests/minute."
-                        )
-                else:
-                    raise
+                    error_msg = "Gemini rate limit exceeded. Free tier allows 10 requests/minute."
+                raise LLMError(error_msg, error_type, status_code=status_code, retryable=False)
 
-        raise ValueError(f"Gemini API call failed after {max_retries} attempts")
+        raise LLMError(
+            f"Gemini tool-calling API call failed after {LLM_MAX_RETRIES} attempts",
+            LLMErrorType.UNKNOWN,
+            retryable=False
+        )
 
     except ImportError:
-        raise ValueError("google-genai package not installed. Run: pip install google-genai")
+        raise LLMError(
+            "google-genai package not installed. Run: pip install google-genai",
+            LLMErrorType.BAD_REQUEST,
+            retryable=False
+        )
+    except LLMError:
+        raise  # Re-raise our custom errors
     except Exception as e:
-        logger.error(f"Gemini tool-calling API error: {e}")
-        raise ValueError(f"Gemini tool-calling API error: {str(e)}")
+        logger.error(f"Unexpected Gemini tool-calling API error: {e}")
+        raise LLMError(f"Gemini tool-calling API error: {str(e)}", LLMErrorType.UNKNOWN, retryable=False)
 
 
 def _convert_messages_to_gemini(messages: List[Dict[str, Any]]) -> List[Any]:
@@ -1855,6 +2012,8 @@ __all__ = [
     "call_llm_with_tools",
     "classify_review",
     "ensure_review_labels",
+    "LLMError",
+    "LLMErrorType",
     "LLMResponse",
     "run_chat_completion",
     "summarize_subcategory_reviews",

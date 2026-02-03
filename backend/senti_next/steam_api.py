@@ -325,9 +325,10 @@ def fetch_reviews_multi_language(
     filter_type: str = "recent",
     day_range: Optional[int] = None,
 ) -> List[dict]:
-    """Fetch reviews across multiple languages.
+    """Fetch reviews across multiple languages in parallel.
 
-    Distributes the count evenly across languages, then fetches from each.
+    Distributes the count evenly across languages, then fetches from each
+    concurrently for faster performance.
     Reviews are deduplicated by recommendationid and sorted by timestamp.
 
     Args:
@@ -341,6 +342,8 @@ def fetch_reviews_multi_language(
     Returns:
         List of review dicts, deduplicated and sorted by timestamp
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     if not languages:
         # Default to "all" which Steam API interprets as all languages
         return fetch_reviews(app_id, count, "all", filter_type, day_range)
@@ -353,21 +356,33 @@ def fetch_reviews_multi_language(
     # First language gets any remainder
     first_language_count = count - (per_language * (len(languages) - 1))
 
+    def fetch_single_language(lang: str, lang_count: int) -> Tuple[str, List[dict]]:
+        """Fetch reviews for a single language."""
+        try:
+            reviews = fetch_reviews(app_id, lang_count, lang, filter_type, day_range)
+            return (lang, reviews)
+        except SteamAPIError as e:
+            logger.warning(f"Failed to fetch {lang} reviews for app {app_id}: {e}")
+            return (lang, [])
+
     all_reviews: List[dict] = []
     seen_ids: set = set()
 
-    for i, lang in enumerate(languages):
-        lang_count = first_language_count if i == 0 else per_language
-        try:
-            reviews = fetch_reviews(app_id, lang_count, lang, filter_type, day_range)
+    # Fetch all languages in parallel (limit to 4 concurrent to avoid rate limiting)
+    max_workers = min(4, len(languages))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
+        for i, lang in enumerate(languages):
+            lang_count = first_language_count if i == 0 else per_language
+            futures.append(executor.submit(fetch_single_language, lang, lang_count))
+
+        for future in as_completed(futures):
+            lang, reviews = future.result()
             for review in reviews:
                 review_id = review.get("recommendationid")
                 if review_id and review_id not in seen_ids:
                     seen_ids.add(review_id)
                     all_reviews.append(review)
-        except SteamAPIError as e:
-            logger.warning(f"Failed to fetch {lang} reviews for app {app_id}: {e}")
-            continue
 
     # Sort by timestamp (most recent first) and limit to requested count
     all_reviews.sort(key=lambda r: r.get("timestamp_created", 0), reverse=True)
