@@ -92,18 +92,8 @@ def run_analysis_job(
                 game_context=game_context,
             )
 
-        # Deduct credits for the reviews that were processed
-        # New LLM reviews cost 1 credit each, cached reviews cost 0.5 credits each
-        total_processed = llm_review_count + cached_review_count
-        if total_processed > 0:
-            credit_cost = credits.estimate_analysis_cost(llm_review_count, cached_review_count)
-            credits.deduct_credits(
-                user_id=user_id,
-                amount=credit_cost,
-                operation="classify",
-                description=f"Analyzed {total_processed} reviews ({llm_review_count} new, {cached_review_count} cached) for app {app_id}",
-                app_id=app_id,
-            )
+        # Analysis is free - no credit deduction for review classification
+        # Credits are only used for chat, summarize, and compare features
 
         df = build_reviews_dataframe(all_reviews)
         df = llm.apply_review_labels(df, llm_labels)

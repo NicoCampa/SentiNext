@@ -11,7 +11,6 @@ import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useCredits } from "@/contexts/CreditsContext";
-import { GameContextBar } from "@/components/GameContextBar";
 
 export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -142,7 +141,6 @@ export default function SettingsPage() {
     <AppLayout>
       <PageTransition>
         <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-6">
-          <GameContextBar showFilters={false} />
           {/* Header */}
           <div className="mb-8 space-y-4">
             <div className="flex items-center gap-3">

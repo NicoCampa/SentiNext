@@ -10,11 +10,8 @@ import { FilterSidebar } from '@/components/database/FilterSidebar';
 import { FilterPills } from '@/components/database/FilterPills';
 import { ReviewModal } from '@/components/database/ReviewModal';
 import { ExportPreviewDialog, type ExportOptions } from '@/components/database/ExportPreviewDialog';
-import { useGlobalFilters } from '@/contexts/GlobalFiltersContext';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { GameContextBar } from '@/components/GameContextBar';
-import { applyGlobalReviewFilters } from '@/lib/reviewFilters';
 import { deleteGame, downloadDatabaseExport, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames, fetchDatabaseExportCount, type DatabaseExportCount } from '@/lib/api';
 import { formatTaxonomyLabel, MAIN_CATEGORY_LABELS, titleize } from '@/lib/taxonomyLabels';
 import { languageLabelFor } from '@/lib/languageOptions';
@@ -44,7 +41,6 @@ function formatReviewDate(value?: string | null): string {
 }
 
 export default function DatabasePage() {
-  const { filters } = useGlobalFilters();
   const { density } = useUiPreferences();
   const { t } = useLanguage();
   const [stats, setStats] = useState<DatabaseStats | null>(null);
@@ -212,8 +208,7 @@ export default function DatabasePage() {
   }, [pageItems]);
 
   const filteredReviews = useMemo(() => {
-    const scoped = applyGlobalReviewFilters(pageItems, filters);
-    return scoped.filter((review) => {
+    return pageItems.filter((review) => {
       if (quickSentiment === 'positive' && !review.voted_up) return false;
       if (quickSentiment === 'negative' && review.voted_up) return false;
       if (quickType === 'issue' && !hasIssue(review)) return false;
@@ -240,7 +235,7 @@ export default function DatabasePage() {
       }
       return true;
     });
-  }, [filters, pageItems, quickSentiment, quickType, selectedCategory, selectedSubcategory]);
+  }, [pageItems, quickSentiment, quickType, selectedCategory, selectedSubcategory]);
 
   useEffect(() => {
     if (filteredReviews.length === 0) {
@@ -552,7 +547,6 @@ export default function DatabasePage() {
         />
         <div className="flex-1 overflow-auto">
           <div className="mx-auto max-w-7xl space-y-10 sm:space-y-8 px-4 py-6 sm:px-6 sm:py-8">
-            <GameContextBar />
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-3">

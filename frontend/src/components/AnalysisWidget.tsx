@@ -78,38 +78,53 @@ export function AnalysisWidget() {
                     <p className="text-sm font-medium text-white line-clamp-1">
                       {task.game.name}
                     </p>
-                    {task.status === 'completed' && (
+                    {(task.status === 'completed' || task.status === 'analyzing') && (
                       <button
                         onClick={() => clearTask(appId)}
-                        className="flex-shrink-0 text-xs text-slate-400 hover:text-white"
+                        className="flex-shrink-0 rounded p-0.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400"
+                        title={task.status === 'analyzing' ? 'Cancel analysis' : 'Dismiss'}
                       >
-                        ×
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                       </button>
                     )}
                   </div>
 
                   {/* Status */}
-                  {task.status === 'analyzing' && task.progress && (
+                  {task.status === 'analyzing' && (
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span>Processing reviews...</span>
                         <span>
-                          {task.progress.processed} / {task.progress.total}
+                          {!task.progress || task.progress.total === 0
+                            ? 'Fetching reviews from Steam...'
+                            : task.progress.processed < task.progress.total
+                            ? 'Classifying reviews with AI...'
+                            : 'Building insights...'}
                         </span>
+                        {task.progress && task.progress.total > 0 && (
+                          <span>
+                            {task.progress.processed} / {task.progress.total}
+                          </span>
+                        )}
                       </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-700">
-                        <div
-                          className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all duration-300"
-                          style={{
-                            width: `${(task.progress.processed / task.progress.total) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      {task.progress.total > 0 && remainingLabel && (
-                        <p className="text-[11px] tracking-wide text-slate-400">
-                          Est. time remaining:{' '}
-                          <span className="font-mono text-slate-200">{remainingLabel}</span>
-                        </p>
+                      {task.progress && task.progress.total > 0 && (
+                        <>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-slate-700">
+                            <div
+                              className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all duration-300"
+                              style={{
+                                width: `${(task.progress.processed / task.progress.total) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          {remainingLabel && (
+                            <p className="text-[11px] tracking-wide text-slate-400">
+                              Est. time remaining:{' '}
+                              <span className="font-mono text-slate-200">{remainingLabel}</span>
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   )}

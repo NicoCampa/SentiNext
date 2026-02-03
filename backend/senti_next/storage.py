@@ -1111,6 +1111,19 @@ def load_user_app_ids(user_id: str) -> List[int]:
     return [int(row[0]) for row in rows if row[0] is not None]
 
 
+def count_starred_games(user_id: str) -> int:
+    """Count how many games a user has analyzed/starred."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT COUNT(*) FROM starred_games WHERE user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        row = result.fetchone()
+    return int(row[0]) if row else 0
+
+
 def user_has_game(user_id: str, app_id: int) -> bool:
     """Check if a user has starred a game."""
     from . import db as db_module

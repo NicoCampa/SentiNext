@@ -1677,18 +1677,15 @@ def ensure_review_labels(
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
     processed_count = 0
-    pending: list[Dict[str, Any]] = []
+
+    # Group reviews by language before batching
+    from collections import defaultdict
+    pending_by_language: Dict[str, list[Dict[str, Any]]] = defaultdict(list)
 
     if progress_callback is not None:
         progress_callback(0, total_reviews)
 
     all_batches: list[list[Dict[str, Any]]] = []
-
-    def _flush_pending() -> None:
-        if not pending:
-            return
-        all_batches.append(list(pending))
-        pending.clear()
 
     for review in reviews:
         review_id_value = review.get("recommendationid") or review.get("review_id")
@@ -1768,7 +1765,8 @@ def ensure_review_labels(
         reviewer_voted_up = review.get("voted_up", True)
         review_language = review.get("language", "english")
 
-        pending.append(
+        # Group by language for better batching
+        pending_by_language[review_language].append(
             {
                 "review_id": review_id,
                 "review_text": review_text,
@@ -1778,10 +1776,17 @@ def ensure_review_labels(
                 "review_language": review_language,
             }
         )
-        if len(pending) >= BATCH_SIZE:
-            _flush_pending()
 
-    _flush_pending()
+    # Create batches within each language group
+    for language, lang_reviews in pending_by_language.items():
+        for i in range(0, len(lang_reviews), BATCH_SIZE):
+            batch = lang_reviews[i:i + BATCH_SIZE]
+            all_batches.append(batch)
+
+    logger.info(
+        f"Created {len(all_batches)} batches from {len(pending_by_language)} languages "
+        f"({sum(len(v) for v in pending_by_language.values())} reviews to classify)"
+    )
 
     # Process all batches in parallel
     if all_batches:
@@ -1969,6 +1974,87 @@ def apply_review_labels(df: pd.DataFrame, labels: Mapping[str, Mapping[str, Any]
     return df_labeled
 
 
+_SUMMARIZE_ISSUES_PROMPT = Template(
+    dedent(
+        """You are analyzing Steam game reviews to identify and categorize TOP ISSUES reported by players.
+
+        GAME CONTEXT:
+        Name: $game_name
+        Type: $game_type
+        Genres: $game_genres
+        Description: $game_description
+
+        ISSUE CATEGORY: $subcategory
+        TOTAL REVIEWS WITH THIS ISSUE: $review_count
+
+        OUTPUT JSON SCHEMA (use these exact keys; no extras):
+        {
+          "summary": "<2-3 sentence overview of the core issue and its impact on players>",
+          "pros": [],
+          "cons": ["<specific issue #1>", "<specific issue #2>", "..."]
+        }
+
+        RULES FOR ISSUE ANALYSIS:
+        - summary: Describe the PROBLEM clearly - what's broken, what's frustrating players, how widespread it is
+        - pros: ALWAYS empty list for issues (we're focusing on problems, not positives)
+        - cons: List 3-7 SPECIFIC, ACTIONABLE issues as a prioritized list:
+          * Start each with a clear problem statement (e.g., "Game crashes on startup", "Matchmaking takes 10+ minutes")
+          * Include frequency/severity if mentioned ("affects 30% of players", "game-breaking", "minor annoyance")
+          * Be concrete and developer-actionable, not vague
+          * Order by severity/frequency (most critical first)
+        - Extract direct player quotes where impactful
+        - Focus on technical specifics: error messages, reproduction steps, affected hardware/platforms
+        - Distinguish between bug reports vs. design complaints
+
+        REVIEWS (players reporting this issue):
+        <<<BEGIN REVIEWS>>>
+        $reviews_text
+        <<<END REVIEWS>>>
+        """
+    )
+)
+
+_SUMMARIZE_REQUESTS_PROMPT = Template(
+    dedent(
+        """You are analyzing Steam game reviews to identify and prioritize TOP FEATURE REQUESTS from players.
+
+        GAME CONTEXT:
+        Name: $game_name
+        Type: $game_type
+        Genres: $game_genres
+        Description: $game_description
+
+        REQUEST CATEGORY: $subcategory
+        TOTAL REVIEWS REQUESTING THIS: $review_count
+
+        OUTPUT JSON SCHEMA (use these exact keys; no extras):
+        {
+          "summary": "<2-3 sentence overview of what players want and why it matters>",
+          "pros": ["<request #1>", "<request #2>", "..."],
+          "cons": []
+        }
+
+        RULES FOR FEATURE REQUEST ANALYSIS:
+        - summary: Describe WHAT players want, WHY they want it, and the expected benefit/impact
+        - pros: List 3-7 SPECIFIC, ACTIONABLE feature requests as a prioritized list:
+          * Start each with a clear request (e.g., "Add FOV slider", "Implement cross-platform play")
+          * Include player motivation/use case (e.g., "for motion sickness", "to play with console friends")
+          * Mention demand level if clear ("highly requested", "mentioned by veterans", "quality of life improvement")
+          * Order by demand/impact (most requested/impactful first)
+        - cons: ALWAYS empty list for requests (we're focusing on wants, not problems)
+        - Be specific about the requested feature - HOW players want it implemented when mentioned
+        - Distinguish between "nice to have" vs. "deal-breaker" requests
+        - Note any common alternatives or workarounds players suggest
+        - Group similar requests (e.g., multiple UI customization requests)
+
+        REVIEWS (players requesting this feature):
+        <<<BEGIN REVIEWS>>>
+        $reviews_text
+        <<<END REVIEWS>>>
+        """
+    )
+)
+
 _SUMMARIZE_PROMPT_TEMPLATE = Template(
     dedent(
         """You are analyzing Steam game reviews for a specific subcategory. Generate a concise, actionable summary.
@@ -2011,6 +2097,7 @@ def summarize_subcategory_reviews(
     reviews: Sequence[Mapping[str, Any]],
     subcategory: str,
     game_context: Optional[Dict[str, Any]] = None,
+    summary_type: str = "general",
 ) -> Dict[str, Any]:
     """Generate a summary with pros/cons for reviews in a subcategory.
 
@@ -2018,6 +2105,7 @@ def summarize_subcategory_reviews(
         reviews: List of review dicts with 'review' text field
         subcategory: The subcategory being summarized (e.g., "technical/performance")
         game_context: Optional game details (name, genres, etc.)
+        summary_type: Type of summary - "issue", "request", or "general"
 
     Returns:
         Dict with 'summary', 'pros', 'cons' keys
@@ -2069,7 +2157,15 @@ def summarize_subcategory_reviews(
 
     reviews_text = "\n\n".join(review_blocks)
 
-    prompt = _SUMMARIZE_PROMPT_TEMPLATE.substitute(
+    # Select prompt template based on summary type
+    if summary_type == "issue":
+        prompt_template = _SUMMARIZE_ISSUES_PROMPT
+    elif summary_type == "request":
+        prompt_template = _SUMMARIZE_REQUESTS_PROMPT
+    else:
+        prompt_template = _SUMMARIZE_PROMPT_TEMPLATE
+
+    prompt = prompt_template.substitute(
         game_name=game_name,
         game_type=game_type,
         game_genres=game_genres,

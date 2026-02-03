@@ -6,11 +6,8 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageTransition } from "@/components/PageTransition";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
-import { GameContextBar } from "@/components/GameContextBar";
-import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 
 const MAIN_CATEGORY_LABELS: Record<string, string> = {
   gameplay: "Gameplay",
@@ -91,7 +88,6 @@ export default function ReviewsPage() {
 function ReviewsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { filters, filtersActive, resetFilters } = useGlobalFilters();
   const { games, loading: gamesLoading, selectGameById } = useGameContext();
   const { density } = useUiPreferences();
 
@@ -103,14 +99,11 @@ function ReviewsContent() {
   const filterType = searchParams.get("filterType") || "";
   const filterValue = searchParams.get("filterValue") || "";
   const hasActiveFilters =
-    filtersActive || quickSentiment !== "all" || quickType !== "all" || !!filterType || !!filterValue;
+    quickSentiment !== "all" || quickType !== "all" || !!filterType || !!filterValue;
 
   const clearAllFilters = () => {
     setQuickSentiment("all");
     setQuickType("all");
-    if (filtersActive) {
-      resetFilters();
-    }
     if (filterType || filterValue) {
       const next = appId ? `/reviews?appId=${appId}` : "/reviews";
       router.replace(next);
@@ -141,7 +134,7 @@ function ReviewsContent() {
   const compact = density === "compact";
 
   const sample = game?.sample ?? [];
-  const baseReviews = useMemo(() => applyGlobalReviewFilters(sample, filters), [sample, filters]);
+  const baseReviews = useMemo(() => sample, [sample]);
   const scopedReviews = useMemo(() => {
     return baseReviews.filter((review: any) => {
       if (filterType === "subcategory") {
@@ -262,7 +255,6 @@ function ReviewsContent() {
     <AppLayout>
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-10">
-          <GameContextBar />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-3xl font-bold">
@@ -271,8 +263,8 @@ function ReviewsContent() {
                 </span>
               </h1>
               <p className="mt-1 text-sm text-slate-400">
-                {filtersActive
-                  ? `Filtered reviews: ${baseReviews.length} / ${(game.sample || []).length}`
+                {hasActiveFilters
+                  ? `Filtered reviews: ${scopedReviews.length} / ${(game.sample || []).length}`
                   : `${(game.sample || []).length} reviews`}{" "}
                 - Showing: {quickFilteredReviews.length}
               </p>

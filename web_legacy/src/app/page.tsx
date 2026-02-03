@@ -2,8 +2,8 @@ import Link from "next/link";
 
 const FEATURE_CARDS: Array<{ title: string; text: string }> = [
   {
-    title: "Global filters",
-    text: "Slice everything by sentiment, recency, helpful votes, playtime bucket, and language — including chat.",
+    title: "Reports & exports",
+    text: "Generate PDF summaries and export review subsets to CSV for team sharing.",
   },
   {
     title: "Actionable dashboard",
@@ -75,7 +75,7 @@ export default function HomePage() {
 
           <div className="chips" aria-label="Product highlights">
             <span className="chip">Chat with sources</span>
-            <span className="chip">Global filters</span>
+            <span className="chip">Reports</span>
             <span className="chip">Issues + requests</span>
             <span className="chip">Segmentation</span>
             <span className="chip">Compare games</span>
@@ -85,7 +85,7 @@ export default function HomePage() {
         <div className="heroMock" aria-label="SentiNext dashboard preview">
           <div className="mockHeader">
             <div className="mockTitle">Dashboard · Cyberpunk 2077</div>
-            <div className="mockPills" aria-label="Global filters preview">
+            <div className="mockPills" aria-label="Filters preview">
               <span className="mockPill">Not recommended</span>
               <span className="mockPill">30d</span>
               <span className="mockPill">25+ helpful</span>

@@ -80,6 +80,8 @@ const translations: Record<Language, Record<string, string>> = {
     'gameContext.filteredReviews': 'Filtered reviews: {filtered} / {total}',
     'gameContext.sampledReviews': 'Sampled reviews: {total}',
     'gameContext.filtersApply': 'Filters apply to your current game reviews.',
+    'gameContext.selectGameHint': 'Select a game to see review totals.',
+    'gameContext.analyzeToSeeReviews': 'Analyze this game to see review totals.',
     'gameContext.activeFilters': 'Active filters:',
     'gameContext.noFiltersActive': 'No filters active',
 
@@ -324,6 +326,8 @@ const translations: Record<Language, Record<string, string>> = {
     'gameContext.filteredReviews': 'Recensioni filtrate: {filtered} / {total}',
     'gameContext.sampledReviews': 'Recensioni campionate: {total}',
     'gameContext.filtersApply': 'I filtri si applicano alle recensioni del gioco selezionato.',
+    'gameContext.selectGameHint': 'Seleziona un gioco per vedere il totale recensioni.',
+    'gameContext.analyzeToSeeReviews': 'Analizza questo gioco per vedere il totale recensioni.',
     'gameContext.activeFilters': 'Filtri attivi:',
     'gameContext.noFiltersActive': 'Nessun filtro attivo',
 
@@ -568,6 +572,8 @@ const translations: Record<Language, Record<string, string>> = {
     'gameContext.filteredReviews': 'Avis filtrés : {filtered} / {total}',
     'gameContext.sampledReviews': 'Avis échantillonnés : {total}',
     'gameContext.filtersApply': 'Les filtres s\'appliquent aux avis du jeu sélectionné.',
+    'gameContext.selectGameHint': 'Sélectionnez un jeu pour voir le total des avis.',
+    'gameContext.analyzeToSeeReviews': 'Analysez ce jeu pour voir le total des avis.',
     'gameContext.activeFilters': 'Filtres actifs :',
     'gameContext.noFiltersActive': 'Aucun filtre actif',
 
@@ -812,6 +818,8 @@ const translations: Record<Language, Record<string, string>> = {
     'gameContext.filteredReviews': 'Gefilterte Reviews: {filtered} / {total}',
     'gameContext.sampledReviews': 'Stichproben-Reviews: {total}',
     'gameContext.filtersApply': 'Filter gelten für die Reviews des aktuellen Spiels.',
+    'gameContext.selectGameHint': 'Wähle ein Spiel, um die Review-Anzahl zu sehen.',
+    'gameContext.analyzeToSeeReviews': 'Analysiere dieses Spiel, um die Review-Anzahl zu sehen.',
     'gameContext.activeFilters': 'Aktive Filter:',
     'gameContext.noFiltersActive': 'Keine aktiven Filter',
 

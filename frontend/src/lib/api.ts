@@ -1007,6 +1007,56 @@ export async function grantCredits(
   return handleResponse<GrantCreditsResponse>(response);
 }
 
+export interface UserSubscriptionInfo {
+  user_id: string;
+  tier: string;
+  credits_balance: number;
+  credits_monthly_limit: number;
+  credits_used_this_period: number;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function fetchUserSubscriptions(
+  limit: number = 100
+): Promise<UserSubscriptionInfo[]> {
+  const response = await authFetch(apiUrl(`/admin/users/subscriptions?limit=${limit}`), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<UserSubscriptionInfo[]>(response);
+}
+
+export interface UpdateTierPayload {
+  user_id: string;
+  tier: "free" | "pro" | "max";
+}
+
+export interface UpdateTierResponse {
+  user_id: string;
+  tier: string;
+  credits_monthly_limit: number;
+  credits_balance: number;
+}
+
+export async function updateUserTier(
+  payload: UpdateTierPayload
+): Promise<UpdateTierResponse> {
+  const response = await authFetch(apiUrl("/admin/update-tier"), {
+    method: "POST",
+    headers: {
+      ...optionalAdminHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<UpdateTierResponse>(response);
+}
+
 // ============================================================================
 // Credit System API
 // ============================================================================
@@ -1117,6 +1167,7 @@ export async function syncCreditStatus(): Promise<{ synced: boolean; tier?: stri
 export interface SubcategorySummaryPayload {
   app_id: number;
   subcategory: string;
+  summary_type?: 'issue' | 'request' | 'general';
   reviews: Array<{
     review_id?: string;
     review?: string;

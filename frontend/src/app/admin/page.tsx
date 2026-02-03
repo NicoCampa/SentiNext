@@ -28,7 +28,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageTransition } from "@/components/PageTransition";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { GameContextBar } from "@/components/GameContextBar";
 import {
   fetchAdminChatSessions,
   fetchAdminChatHistory,
@@ -37,6 +36,9 @@ import {
   AdminChatMessage,
   fetchAdminDashboardSummary,
   AdminDashboardSummary,
+  fetchUserSubscriptions,
+  updateUserTier,
+  UserSubscriptionInfo,
 } from "@/lib/api";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import ReactMarkdown from "react-markdown";
@@ -300,6 +302,14 @@ export default function AdminPage() {
   const [grantSuccess, setGrantSuccess] = useState<string | null>(null);
   const [grantError, setGrantError] = useState<string | null>(null);
 
+  // User subscriptions management state
+  const [users, setUsers] = useState<UserSubscriptionInfo[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [updatingTier, setUpdatingTier] = useState<string | null>(null);
+  const [tierUpdateSuccess, setTierUpdateSuccess] = useState<string | null>(null);
+  const [tierUpdateError, setTierUpdateError] = useState<string | null>(null);
+
   useEffect(() => {
     async function loadSessions() {
       if (!isAdmin) return;
@@ -340,6 +350,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isAdminLoading && isAdmin) {
       loadAdminDashboard(adminDashboardDays);
+      loadUserSubscriptions();
     }
   }, [isAdmin, isAdminLoading, adminDashboardDays]);
 
@@ -354,6 +365,42 @@ export default function AdminPage() {
       setChatHistory([]);
     } finally {
       setLoadingHistory(false);
+    }
+  }
+
+  async function loadUserSubscriptions() {
+    if (!isAdmin) return;
+    setLoadingUsers(true);
+    setUsersError(null);
+    try {
+      const data = await fetchUserSubscriptions(100);
+      setUsers(data);
+    } catch (err) {
+      console.error("Failed to load user subscriptions:", err);
+      setUsersError((err as Error).message || "Failed to load users");
+    } finally {
+      setLoadingUsers(false);
+    }
+  }
+
+  async function handleUpdateTier(userId: string, newTier: "free" | "pro" | "max") {
+    setUpdatingTier(userId);
+    setTierUpdateSuccess(null);
+    setTierUpdateError(null);
+
+    try {
+      const result = await updateUserTier({ user_id: userId, tier: newTier });
+      setTierUpdateSuccess(
+        `Updated ${userId.slice(0, 12)}... to ${result.tier}. New limit: ${result.credits_monthly_limit}`
+      );
+
+      // Reload users
+      await loadUserSubscriptions();
+    } catch (err) {
+      console.error("Failed to update tier:", err);
+      setTierUpdateError((err as Error).message || "Failed to update tier");
+    } finally {
+      setUpdatingTier(null);
     }
   }
 
@@ -472,7 +519,6 @@ export default function AdminPage() {
     <AppLayout>
       <PageTransition>
         <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-4 px-4 py-6 sm:px-6 lg:px-6">
-          <GameContextBar showFilters={false} />
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-xl font-bold">
@@ -725,6 +771,93 @@ export default function AdminPage() {
               </Button>
             </div>
           </form>
+        </Card>
+
+        {/* User Subscriptions Management Section */}
+        <Card variant="glass" className="mb-4 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-white">User Subscriptions</h2>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={loadUserSubscriptions}
+              disabled={loadingUsers}
+            >
+              {loadingUsers ? "Loading..." : "Refresh"}
+            </Button>
+          </div>
+
+          {tierUpdateSuccess && (
+            <div className="mb-3 p-2 bg-green-500/20 border border-green-500/30 rounded text-xs text-green-400">
+              {tierUpdateSuccess}
+            </div>
+          )}
+
+          {tierUpdateError && (
+            <div className="mb-3 p-2 bg-red-500/20 border border-red-500/30 rounded text-xs text-red-400">
+              {tierUpdateError}
+            </div>
+          )}
+
+          {loadingUsers ? (
+            <div className="space-y-2 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-16 bg-white/5 rounded" />
+              ))}
+            </div>
+          ) : usersError ? (
+            <p className="text-xs text-red-400">{usersError}</p>
+          ) : users.length === 0 ? (
+            <p className="text-xs text-slate-500">No users found</p>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {users.map((user) => (
+                <div
+                  key={user.user_id}
+                  className="p-3 bg-slate-950/40 border border-white/10 rounded-lg"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-center">
+                    <div className="sm:col-span-2">
+                      <p className="text-xs font-medium text-slate-300 truncate">
+                        {user.user_id}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Balance: {user.credits_balance.toLocaleString()} | Used: {user.credits_used_this_period.toLocaleString()}/{user.credits_monthly_limit.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex gap-1">
+                      {(["free", "pro", "max"] as const).map((tier) => (
+                        <button
+                          key={tier}
+                          onClick={() => handleUpdateTier(user.user_id, tier)}
+                          disabled={updatingTier === user.user_id || user.tier === tier}
+                          className={`flex-1 px-2 py-1 text-xs font-medium rounded transition ${
+                            user.tier === tier
+                              ? tier === "free"
+                                ? "bg-slate-600 text-white border border-slate-500"
+                                : tier === "pro"
+                                ? "bg-sky-600 text-white border border-sky-500"
+                                : "bg-amber-600 text-white border border-amber-500"
+                              : "bg-slate-900/50 text-slate-400 border border-white/10 hover:border-white/20 hover:text-white"
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          {tier}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {user.updated_at
+                        ? new Date(user.updated_at).toLocaleDateString()
+                        : "Never"}
+                    </div>
+                    {updatingTier === user.user_id && (
+                      <div className="text-xs text-amber-400">Updating...</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         {/* Main Content */}

@@ -60,7 +60,7 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
       {/* Compact Button */}
       <button
         onClick={handleGenerate}
-        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all shadow-lg hover:shadow-xl"
+        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 text-white rounded-xl transition-all"
       >
         <span className="text-lg">✨</span>
         <span>AI Comparison</span>

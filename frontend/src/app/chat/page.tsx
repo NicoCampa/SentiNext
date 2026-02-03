@@ -29,7 +29,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { GameContextBar } from "@/components/GameContextBar";
 import {
   authFetch,
   sendEnhancedChat,
@@ -802,7 +801,6 @@ export default function ChatPage() {
       `}</style>
       <PageTransition>
         <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-4 px-4 py-6 sm:px-6 lg:px-6">
-          <GameContextBar showFilters={false} />
           {/* Header */}
           <div className="mb-6 flex items-center justify-between">
             <div>

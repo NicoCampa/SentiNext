@@ -1162,12 +1162,22 @@ def analyze(
     if request.persist:
         stored_reviews = storage.load_reviews(request.app_id)
 
-    # Treat review_count=0 as "all available reviews" (unlimited), always fetch in that case
-    has_enough_cached = request.review_count > 0 and len(stored_reviews) >= request.review_count
-    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
-
     # Determine which languages to fetch
     languages_to_fetch = request.languages or ([request.language] if request.language and request.language != "all" else None)
+
+    # Filter cached reviews by requested language(s) to check if we have enough in the right language
+    language_filtered_reviews = stored_reviews
+    if languages_to_fetch:
+        # Specific language(s) requested - filter cached reviews
+        language_filtered_reviews = [
+            r for r in stored_reviews
+            if r.get("language") in languages_to_fetch
+        ]
+    # If language="all" or not specified, use all cached reviews
+
+    # Treat review_count=0 as "all available reviews" (unlimited), always fetch in that case
+    has_enough_cached = request.review_count > 0 and len(language_filtered_reviews) >= request.review_count
+    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
     fetched_reviews: List[dict] = []
     if should_fetch:
@@ -1208,25 +1218,23 @@ def analyze(
     if request.review_count and len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
-    # Get estimate of cached vs new reviews for credit calculation
-    review_estimate = llm.estimate_review_labeling(request.app_id, all_reviews)
-    llm_reviews = int(review_estimate.get("llm_reviews", 0) or 0)
-    cached_reviews = int(review_estimate.get("cached_reviews", 0) or 0)
-
-    # Check if user has enough credits for this analysis
-    # New reviews cost 1 credit, cached reviews cost 0.5 credits
-    estimated_cost = credits.estimate_analysis_cost(llm_reviews, cached_reviews)
-    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, estimated_cost)
-    if not can_proceed:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": credit_message,
-                "credits_needed": estimated_cost,
-                "credits_available": credit_status["balance"],
-                "tier": credit_status["tier"],
-            },
-        )
+    # Check game limit for free tier (max 2 games)
+    subscription = credits.get_user_subscription(user_id)
+    if subscription["tier"] == "free":
+        # Count how many games user has already analyzed
+        analyzed_games_count = storage.count_starred_games(user_id)
+        # Check if this is a new game (not already analyzed)
+        is_new_game = not storage.user_has_game(user_id, request.app_id)
+        if is_new_game and analyzed_games_count >= 2:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "message": "Free tier limit reached. You can analyze up to 2 games. Upgrade to Pro to analyze unlimited games.",
+                    "games_analyzed": analyzed_games_count,
+                    "games_limit": 2,
+                    "tier": "free",
+                },
+            )
 
     game_context = fetch_app_details(request.app_id)
     header_image = None
@@ -1300,12 +1308,22 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
     if request.persist:
         stored_reviews = storage.load_reviews(request.app_id)
 
-    # Treat review_count=0 as "all available reviews" (unlimited), always fetch in that case
-    has_enough_cached = request.review_count > 0 and len(stored_reviews) >= request.review_count
-    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
-
     # Determine which languages to fetch
     languages_to_fetch = request.languages or ([request.language] if request.language and request.language != "all" else None)
+
+    # Filter cached reviews by requested language(s) to check if we have enough in the right language
+    language_filtered_reviews = stored_reviews
+    if languages_to_fetch:
+        # Specific language(s) requested - filter cached reviews
+        language_filtered_reviews = [
+            r for r in stored_reviews
+            if r.get("language") in languages_to_fetch
+        ]
+    # If language="all" or not specified, use all cached reviews
+
+    # Treat review_count=0 as "all available reviews" (unlimited), always fetch in that case
+    has_enough_cached = request.review_count > 0 and len(language_filtered_reviews) >= request.review_count
+    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
     fetched_reviews: List[dict] = []
     if should_fetch:
@@ -1412,6 +1430,7 @@ class SummarizeSubcategoryRequest(BaseModel):
     app_id: int = Field(..., gt=0)
     subcategory: str = Field(..., min_length=3)
     reviews: List[dict] = Field(..., min_length=1, max_length=100)
+    summary_type: str = Field(default="general", pattern="^(issue|request|general)$")
 
 
 class SummarizeSubcategoryResponse(BaseModel):
@@ -1448,6 +1467,7 @@ def summarize_subcategory(
                 reviews=request.reviews,
                 subcategory=request.subcategory,
                 game_context=game_context,
+                summary_type=request.summary_type,
             )
 
         # Deduct credits
@@ -2135,6 +2155,96 @@ def grant_credits_to_user(
         )
     except Exception as exc:
         logger.exception("Failed to grant credits: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+class UpdateTierRequest(BaseModel):
+    user_id: str
+    tier: str = Field(..., pattern="^(free|pro|max)$")
+
+
+class UpdateTierResponse(BaseModel):
+    user_id: str
+    tier: str
+    credits_monthly_limit: int
+    credits_balance: int
+
+
+@app.post("/admin/update-tier", response_model=UpdateTierResponse)
+def admin_update_tier(
+    payload: UpdateTierRequest,
+    _: None = Depends(require_admin),
+) -> UpdateTierResponse:
+    """Update user subscription tier (admin only)."""
+    try:
+        credits.update_tier(user_id=payload.user_id, new_tier=payload.tier)
+        subscription = credits.get_user_subscription(payload.user_id)
+        logger.info(f"Admin updated user {payload.user_id} to tier {payload.tier}")
+        return UpdateTierResponse(
+            user_id=payload.user_id,
+            tier=subscription["tier"],
+            credits_monthly_limit=subscription["credits_monthly_limit"],
+            credits_balance=subscription["credits_balance"],
+        )
+    except Exception as exc:
+        logger.exception("Failed to update tier: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+class UserSubscriptionInfo(BaseModel):
+    user_id: str
+    tier: str
+    credits_balance: int
+    credits_monthly_limit: int
+    credits_used_this_period: int
+    current_period_start: Optional[str]
+    current_period_end: Optional[str]
+    stripe_customer_id: Optional[str]
+    stripe_subscription_id: Optional[str]
+    created_at: Optional[str]
+    updated_at: Optional[str]
+
+
+@app.get("/admin/users/subscriptions", response_model=List[UserSubscriptionInfo])
+def admin_list_user_subscriptions(
+    limit: int = 100,
+    _: None = Depends(require_admin),
+) -> List[UserSubscriptionInfo]:
+    """List all user subscriptions (admin only)."""
+    try:
+        from . import db as db_module
+        with db_module.get_connection() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT user_id, tier, credits_balance, credits_monthly_limit,
+                           credits_used_this_period, current_period_start, current_period_end,
+                           stripe_customer_id, stripe_subscription_id, created_at, updated_at
+                    FROM user_subscriptions
+                    ORDER BY updated_at DESC
+                    LIMIT :limit
+                """),
+                {"limit": limit},
+            )
+            rows = result.fetchall()
+
+        return [
+            UserSubscriptionInfo(
+                user_id=row[0],
+                tier=row[1],
+                credits_balance=row[2],
+                credits_monthly_limit=row[3],
+                credits_used_this_period=row[4],
+                current_period_start=row[5].isoformat() if row[5] else None,
+                current_period_end=row[6].isoformat() if row[6] else None,
+                stripe_customer_id=row[7],
+                stripe_subscription_id=row[8],
+                created_at=row[9].isoformat() if row[9] else None,
+                updated_at=row[10].isoformat() if row[10] else None,
+            )
+            for row in rows
+        ]
+    except Exception as exc:
+        logger.exception("Failed to list user subscriptions: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

@@ -11,7 +11,6 @@ import { SteamImage } from '@/components/SteamImage';
 import { MonthSelector } from '@/components/reports/MonthSelector';
 import { BackButton } from '@/components/BackButton';
 import { PageTransition } from '@/components/PageTransition';
-import { GameContextBar } from '@/components/GameContextBar';
 
 export default function ReportsPage() {
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
@@ -145,7 +144,6 @@ export default function ReportsPage() {
     <AppLayout>
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-8 px-4 py-6">
-          <GameContextBar showFilters={false} />
           {/* Back Button */}
           <BackButton />
 

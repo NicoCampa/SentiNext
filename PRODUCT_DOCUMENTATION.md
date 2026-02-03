@@ -106,8 +106,8 @@ Steam API → Review Ingestion → LLM Classification → Storage → Analytics 
 
 **Configuration:**
 - User selects review count: 100, 500, 1000, 2500, 5000, or "All"
-- Date filtering: Last 30/90/365 days or all-time
-- Language filtering available
+- Fetch order: recent / recently updated / most helpful / all
+- Language selection available
 
 #### Step 2: LLM Classification
 **Engine:** Google Gemini (configurable: Flash Lite, Flash, Pro)
@@ -156,11 +156,11 @@ Steam API → Review Ingestion → LLM Classification → Storage → Analytics 
 - Sentiment trend calculation (weekly buckets)
 
 **Filtering:**
-- Global filters apply across all views
-- Date range filtering
-- Sentiment (positive/negative only)
+- Per-view filters in Reviews/Database
+- Sentiment (positive/negative)
 - Language filtering
-- Player segment filtering
+- Category + subcategory filtering
+- Text search filtering
 
 #### Step 5: Insight Presentation
 **Dashboards:**
@@ -201,11 +201,9 @@ Steam API → Review Ingestion → LLM Classification → Storage → Analytics 
   - LLM coverage percentage
   - Risk indicators (refund risk, core fan disappointment)
 
-**Advanced Filtering:**
-- Date range: Last 30/90/365 days or all-time
-- Sentiment: Positive/negative/all
-- Language: Filter to specific languages
-- Player segments: Newcomers (0-5h), Casual (5-20h), Experienced (20-100h), Veterans (100h+)
+**Analysis Settings:**
+- Review count and language selection
+- Fetch order: recent / recently updated / most helpful / all
 
 **Visualizations:**
 - Category recommendation rate breakdown
@@ -664,13 +662,11 @@ src/
 ├── contexts/             # React Context providers
 │   ├── AnalysisContext   # Analysis state management
 │   ├── GameContext       # Selected game state
-│   ├── GlobalFiltersContext  # Cross-page filters
 │   ├── CreditsContext    # Credit balance
 │   ├── LanguageContext   # i18n
 │   └── UiPreferencesContext  # Theme, settings
 ├── lib/                  # Utilities
 │   ├── api.ts           # Backend API client
-│   ├── reviewFilters.ts # Filter logic
 │   ├── derivedInsights.ts  # Client-side calculations
 │   └── taxonomyLabels.ts   # Category display names
 └── types.ts             # TypeScript interfaces
@@ -682,7 +678,6 @@ src/
 - Context providers:
   - Analysis: Tracks current analysis progress
   - Game: Selected game across pages
-  - Filters: Global date/sentiment/language filters
   - Credits: User credit balance
   - Language: i18n locale
   - UI Preferences: Theme, compact mode
@@ -1128,17 +1123,16 @@ Main Categories (10):
 **Steps:**
 1. **Navigate to Analyzed Game**
    - Click game from starred library
-   - Filters auto-apply from last session
 
-2. **Set Date Range Filter**
-   - Open global filters
-   - Select "Last 30 days" (post-patch period)
-   - Apply filter
+2. **Generate Reports**
+   - Open the Reports page
+   - Select the month after the patch
+   - Download the PDF summary
+   - Repeat for the month before the patch
 
 3. **Compare Metrics**
    - Note current recommendation rate (e.g., 85%)
-   - Change filter to "90-120 days ago" (pre-patch)
-   - Compare recommendation rate (e.g., was 78%)
+   - Compare against the pre-patch report (e.g., was 78%)
    - **Insight:** Patch improved sentiment by 7%
 
 4. **Drill into Specific Issue**

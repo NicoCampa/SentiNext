@@ -169,6 +169,9 @@ REVIEW_METADATA_FIELDS: Dict[str, str] = {
     "steam_purchase": "If the copy was purchased via Steam",
     "received_for_free": "If the reviewer received the game for free",
     "written_during_early_access": "Whether the review was written during early access",
+    "developer_response": "Text of developer response, if any",
+    "timestamp_dev_responded": "Unix timestamp of developer response, if any",
+    "primarily_steam_deck": "Whether reviewer primarily played on Steam Deck",
 }
 
 AUTHOR_METADATA_FIELDS: Dict[str, str] = {
@@ -178,6 +181,7 @@ AUTHOR_METADATA_FIELDS: Dict[str, str] = {
     "playtime_forever": "Lifetime playtime in minutes",
     "playtime_last_two_weeks": "Last 2 weeks playtime in minutes",
     "playtime_at_review": "Playtime in minutes when the review was written",
+    "deck_playtime_at_review": "Steam Deck playtime when review was written",
     "last_played": "Unix timestamp of last play session",
 }
 
@@ -188,12 +192,22 @@ def fetch_reviews(
     language: str = "english",
     filter_type: str = "recent",
     day_range: Optional[int] = None,
+    include_review_bombs: bool = False,
 ) -> List[dict]:
     """Fetch up to ``count`` reviews for the given Steam application.
 
     Steam's review API returns results in pages using a cursor. This helper keeps
     requesting pages until enough reviews are gathered or the API stops
     providing additional data.
+
+    Args:
+        app_id: Steam application ID
+        count: Number of reviews to fetch
+        language: Language code or "all" for all languages
+        filter_type: "recent", "updated", or "all" (by helpfulness)
+        day_range: For filter="all", range from now to n days ago (max 365)
+        include_review_bombs: If True, includes reviews flagged as off-topic activity (review bombs).
+                              Default False filters them out.
     """
     reviews: List[dict] = []
     cursor = "*"
@@ -211,6 +225,8 @@ def fetch_reviews(
         }
         if day_range is not None:
             params["day_range"] = max(1, min(day_range, 365))
+        if include_review_bombs:
+            params["filter_offtopic_activity"] = 0
         resp = _protected_get(
             APP_REVIEWS_URL.format(app_id=app_id),
             params=params,
@@ -324,6 +340,7 @@ def fetch_reviews_multi_language(
     languages: Optional[List[str]] = None,
     filter_type: str = "recent",
     day_range: Optional[int] = None,
+    include_review_bombs: bool = False,
 ) -> List[dict]:
     """Fetch reviews across multiple languages in parallel.
 
@@ -338,6 +355,7 @@ def fetch_reviews_multi_language(
                    If None or empty, defaults to ["all"] which fetches all languages
         filter_type: "recent" or "all"
         day_range: Optional day range filter
+        include_review_bombs: If True, includes reviews flagged as off-topic activity
 
     Returns:
         List of review dicts, deduplicated and sorted by timestamp
@@ -346,10 +364,10 @@ def fetch_reviews_multi_language(
 
     if not languages:
         # Default to "all" which Steam API interprets as all languages
-        return fetch_reviews(app_id, count, "all", filter_type, day_range)
+        return fetch_reviews(app_id, count, "all", filter_type, day_range, include_review_bombs)
 
     if len(languages) == 1:
-        return fetch_reviews(app_id, count, languages[0], filter_type, day_range)
+        return fetch_reviews(app_id, count, languages[0], filter_type, day_range, include_review_bombs)
 
     # Distribute count across languages
     per_language = max(1, count // len(languages))
@@ -359,7 +377,7 @@ def fetch_reviews_multi_language(
     def fetch_single_language(lang: str, lang_count: int) -> Tuple[str, List[dict]]:
         """Fetch reviews for a single language."""
         try:
-            reviews = fetch_reviews(app_id, lang_count, lang, filter_type, day_range)
+            reviews = fetch_reviews(app_id, lang_count, lang, filter_type, day_range, include_review_bombs)
             return (lang, reviews)
         except SteamAPIError as e:
             logger.warning(f"Failed to fetch {lang} reviews for app {app_id}: {e}")

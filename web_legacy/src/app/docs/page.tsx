@@ -95,28 +95,6 @@ export default function DocsPage() {
       <section className="section">
         <div className="sectionHeader">
           <div>
-            <h2 className="sectionTitle">Global filters</h2>
-            <p className="sectionLead">One set of filters applied across dashboard, reviews, compare, and chat.</p>
-          </div>
-        </div>
-
-        <div className="grid3">
-          {[
-            ["Sentiment", "All / Recommended / Not recommended"],
-            ["Recency", "All time / last 30d / 90d / 365d"],
-            ["Quality", "Minimum helpful votes + playtime buckets"],
-          ].map(([title, desc]) => (
-            <div key={title} className="card">
-              <p className="cardTitle">{title}</p>
-              <p className="cardText">{desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="sectionHeader">
-          <div>
             <h2 className="sectionTitle">Cost + speed control</h2>
             <p className="sectionLead">Keep runs predictable.</p>
           </div>
@@ -157,8 +135,8 @@ export default function DocsPage() {
           <div className="faqItem">
             <p className="faqQ">Chat answers are too generic</p>
             <p className="faqA">
-              Run an analysis first so reviews are labeled with evidence. Also try narrowing with global filters (e.g.
-              Not recommended + last 30 days).
+              Run an analysis first so reviews are labeled with evidence. Then narrow down the review set with sentiment
+              or category filters before asking again.
             </p>
           </div>
           <div className="faqItem">

@@ -8,7 +8,7 @@ import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
-import { CreditBar } from "@/components/CreditBar";
+import { GameLimitBar } from "@/components/GameLimitBar";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 
 interface AppLayoutProps {
@@ -31,10 +31,10 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
       { href: "/chat", label: t('nav.chat'), code: "02" },
       { href: "/compare", label: t('nav.compare'), code: "03" },
-      { href: "/database", label: t('nav.database'), code: "04" },
-      { href: "/reports", label: t('nav.reports'), code: "05" },
+      { href: "/reports", label: t('nav.reports'), code: "04" },
+      { href: "/database", label: t('nav.database'), code: "05" },
     ];
-    // Add admin item after database if user is admin
+    // Add admin item after reports if user is admin
     if (isAdmin) {
       items.push({ href: "/admin", label: "Admin", code: "0A" });
     }
@@ -112,8 +112,8 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Bottom section */}
             <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
-              {/* Credit Bar */}
-              <CreditBar />
+              {/* Game Limit Bar */}
+              <GameLimitBar />
 
               {/* User Profile - Fully Clickable */}
               <SignedIn>
