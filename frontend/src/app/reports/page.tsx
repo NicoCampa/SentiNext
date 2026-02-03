@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchStarredGames, fetchReportMonths, downloadExecutiveSummary } from '@/lib/api';
-import type { StarredGameDTO, ReportMonth } from '@/lib/api';
+import { fetchStarredGames, fetchReportMonths, downloadExecutiveSummary, type ReportMonth } from '@/lib/api';
+import type { StarredGameDTO } from '@/types';
 import { AppLayout } from '@/components/AppLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
