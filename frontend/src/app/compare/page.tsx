@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchStarredGames, removeStarredGame } from "@/lib/api";
-import { StarredGameDTO, SubcategoryInsight } from "@/types";
+import { fetchStarredGames, removeStarredGame, generateComparisonSummary } from "@/lib/api";
+import { StarredGameDTO, SubcategoryInsight, GameComparisonData } from "@/types";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,31 +15,7 @@ import { formatPercentage } from "@/utils/format";
 import { getRecommendationColor } from "@/utils/colors";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { OverviewComparisonCard } from "@/components/compare/OverviewComparisonCard";
-import {
-  Chart as ChartJS,
-  RadialLinearScale,
-  PointElement,
-  LineElement,
-  Filler,
-  Tooltip,
-  Legend,
-  BarElement,
-  CategoryScale,
-  LinearScale,
-} from "chart.js";
-import { Radar, Bar } from "react-chartjs-2";
-
-ChartJS.register(
-  RadialLinearScale,
-  PointElement,
-  LineElement,
-  Filler,
-  Tooltip,
-  Legend,
-  BarElement,
-  CategoryScale,
-  LinearScale
-);
+import { ComparisonSummaryDisplay } from "@/components/compare/ComparisonSummaryDisplay";
 
 const MAX_SELECTION = 4;
 
@@ -236,9 +212,10 @@ function ComparisonDashboard({
 }) {
   const { filters, filtersActive } = useGlobalFilters();
   const { t } = useLanguage();
-  const [sortBy, setSortBy] = useState<"difference" | "highest" | "lowest" | "reviews">("difference");
-  const [showOnlySignificant, setShowOnlySignificant] = useState(false);
   const [reviewsModal, setReviewsModal] = useState<{ subcategory: string; label: string } | null>(null);
+  const [subcategorySummary, setSubcategorySummary] = useState<any | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const gameData = useMemo(() => {
     return games.map((game) => {
@@ -356,31 +333,11 @@ function ComparisonDashboard({
       };
     });
 
-    // Apply filtering
-    if (showOnlySignificant) {
-      cats = cats.filter(cat => cat.rateDiff > 0.10); // >10% difference
-    }
-
-    // Apply sorting
-    cats.sort((a, b) => {
-      if (sortBy === "difference") {
-        return b.rateDiff - a.rateDiff; // Highest difference first
-      } else if (sortBy === "highest") {
-        const maxA = Math.max(...a.perGame.map(g => g.rate ?? 0));
-        const maxB = Math.max(...b.perGame.map(g => g.rate ?? 0));
-        return maxB - maxA;
-      } else if (sortBy === "lowest") {
-        const minA = Math.min(...a.perGame.map(g => g.rate ?? 1).filter(r => r > 0));
-        const minB = Math.min(...b.perGame.map(g => g.rate ?? 1).filter(r => r > 0));
-        return minA - minB;
-      } else if (sortBy === "reviews") {
-        return b.totalTagged - a.totalTagged;
-      }
-      return 0;
-    });
+    // Filter out categories with no data
+    cats = cats.filter(cat => cat.totalTagged > 0);
 
     return cats;
-  }, [gameData, sortBy, showOnlySignificant]);
+  }, [gameData]);
 
   const gridCols =
     games.length === 4 ? "grid-cols-4" :
@@ -388,280 +345,117 @@ function ComparisonDashboard({
     games.length === 2 ? "grid-cols-2" : "grid-cols-1";
 
   // Radar chart data
-  const radarChartData = useMemo(() => {
-    const labels = CATEGORY_KEYS.map(key => MAIN_CATEGORY_LABELS[key] ?? key);
-    const datasets = gameData.map((game, idx) => {
-      const data = CATEGORY_KEYS.map(key => {
-        const rate = game.categoryRates?.[key]?.rate ?? 0;
-        return rate * 100; // Convert to percentage
-      });
-
-      const colors = [
-        'rgba(96, 165, 250, 0.6)',   // blue
-        'rgba(134, 239, 172, 0.6)',  // green
-        'rgba(251, 146, 60, 0.6)',   // orange
-        'rgba(244, 114, 182, 0.6)',  // pink
-      ];
-
-      return {
-        label: game.name,
-        data,
-        backgroundColor: colors[idx % colors.length],
-        borderColor: colors[idx % colors.length].replace('0.6', '1'),
-        borderWidth: 2,
-      };
-    });
-
-    return {
-      labels,
-      datasets,
-    };
-  }, [gameData]);
-
-  const radarOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      r: {
-        beginAtZero: true,
-        max: 100,
-        ticks: {
-          stepSize: 20,
-          color: '#cbd5f5',
-          backdropColor: 'transparent',
-        },
-        grid: {
-          color: 'rgba(148, 163, 184, 0.1)',
-        },
-        pointLabels: {
-          color: '#cbd5f5',
-          font: {
-            size: 11,
-          },
-        },
-      },
-    },
-    plugins: {
-      legend: {
-        position: 'top' as const,
-        labels: {
-          color: '#cbd5f5',
-          padding: 15,
-        },
-      },
-      tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-        titleColor: '#e2e8f0',
-        bodyColor: '#e2e8f0',
-        borderColor: 'rgba(148, 163, 184, 0.3)',
-        borderWidth: 1,
-        padding: 12,
-        callbacks: {
-          label: function(context: any) {
-            return `${context.dataset.label}: ${context.parsed.r.toFixed(1)}%`;
-          }
-        },
-      },
-    },
-  };
-
   return (
-    <div className="space-y-6">
-      <Card variant="glass" className="p-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {gameData.map((game) => (
-            <div
-              key={game.appId}
-              className="flex gap-4 rounded-2xl border border-white/10 bg-slate-900/30 p-4"
-            >
+    <div className="space-y-8">
+      {/* Game Cards - Compact Design */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {gameData.map((game) => (
+          <Card key={game.appId} variant="glass" className="overflow-hidden">
+            <div className="relative">
               <SteamImage
                 appId={game.appId}
                 variant="header"
                 alt={game.name}
-                className="h-20 w-32 rounded-xl object-cover"
+                className="h-32 w-full object-cover"
                 imageUrl={game.metadata.header_image}
               />
-              <div className="flex-1 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="text-lg font-semibold text-white line-clamp-1">{game.name}</h2>
-                  <button
-                    onClick={() => onRemove(game.appId)}
-                    className="text-xs text-slate-400 hover:text-white"
-                    title="Remove from starred"
-                  >
-                    ×
-                  </button>
-                </div>
-                <p className="text-xs text-slate-400">
-                  {filtersActive
-                    ? `${game.filteredCount.toLocaleString()} / ${game.sampleCount.toLocaleString()} reviews match filters`
-                    : `${game.sampleCount.toLocaleString()} reviews`}
-                </p>
-                <p
-                  className="text-2xl font-semibold"
-                  style={{ color: getRecommendationColor(game.recommendation) }}
-                >
-                  {formatPercentOrDash(game.recommendation)} recommend
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* AI Comparison Button */}
-        <div className="mt-4 pt-4 border-t border-white/10 flex justify-center">
-          <OverviewComparisonCard selectedGames={games} />
-        </div>
-      </Card>
-
-      {/* Radar Chart Overview */}
-      <Card variant="glass" className="p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">{t('compare.categoryOverview')}</h3>
-        <p className="text-sm text-slate-400 mb-4">Visual comparison across all categories</p>
-        <div className="h-96">
-          <Radar data={radarChartData} options={radarOptions} />
-        </div>
-      </Card>
-
-      <Card variant="glass" className="p-6">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-white">Category recommendation</h3>
-              <p className="mt-1 text-sm text-slate-400">Side-by-side rates and coverage per category</p>
-            </div>
-          </div>
-
-          {/* Sort and Filter Controls */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400">{t('compare.sortBy')}</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-1.5 text-sm text-white focus:border-sky-500 focus:outline-none"
-              >
-                <option value="difference">{t('compare.biggestDiff')}</option>
-                <option value="highest">{t('compare.highestRating')}</option>
-                <option value="lowest">{t('compare.lowestRating')}</option>
-                <option value="reviews">{t('compare.mostReviews')}</option>
-              </select>
-            </div>
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showOnlySignificant}
-                onChange={(e) => setShowOnlySignificant(e.target.checked)}
-                className="h-4 w-4 rounded border-white/10 bg-slate-950/40 text-sky-500 focus:ring-sky-500"
-              />
-              <span className="text-xs text-slate-400">{t('compare.onlySignificant')}</span>
-            </label>
-
-            {(showOnlySignificant || sortBy !== "difference") && (
               <button
-                onClick={() => {
-                  setSortBy("difference");
-                  setShowOnlySignificant(false);
-                }}
-                className="text-xs text-sky-400 hover:text-sky-300"
+                onClick={() => onRemove(game.appId)}
+                className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 flex items-center justify-center text-xs"
+                title="Remove from starred"
               >
-                {t('compare.resetFilters')}
+                ×
               </button>
-            )}
-          </div>
+            </div>
+            <div className="p-3 space-y-2">
+              <h3 className="text-sm font-semibold text-white line-clamp-1">{game.name}</h3>
+              <p className="text-xs text-slate-400">
+                {game.sampleCount.toLocaleString()} reviews
+              </p>
+              <p
+                className="text-lg font-semibold"
+                style={{ color: getRecommendationColor(game.recommendation) }}
+              >
+                {formatPercentOrDash(game.recommendation)}
+              </p>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* AI Comparison Button */}
+      <div className="flex justify-center">
+        <OverviewComparisonCard selectedGames={games} />
+      </div>
+
+      <Card variant="glass" className="p-6">
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-white">Category Comparison</h3>
+          <p className="mt-1 text-sm text-slate-400">Compare recommendation rates across categories</p>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {categories.map((category) => {
-            // Highlight if difference is >15%
-            const isBigDifference = category.rateDiff > 0.15;
-
             return (
             <div
               key={category.key}
-              className={`rounded-2xl border p-5 ${
-                isBigDifference
-                  ? "border-amber-500/50 bg-amber-900/10"
-                  : "border-white/10 bg-slate-900/30"
-              }`}
+              className="rounded-xl border border-white/10 bg-slate-900/30 p-5"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-400">
-                      {category.label}
-                    </p>
-                    {isBigDifference && (
-                      <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                        {(category.rateDiff * 100).toFixed(0)}% diff
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {formatCount(category.totalTagged)} tagged reviews
-                  </p>
-                </div>
-                <div className={`grid gap-4 text-right ${gridCols}`}>
-                  {category.perGame.map((game, idx) => {
-                    const isWinner = category.winnerIndices.includes(idx) && category.winnerIndices.length < games.length;
-
-                    return (
-                    <div key={game.name} className="space-y-1 relative">
-                      {isWinner && (
-                        <div className="absolute -top-2 -right-2 text-xs">
-                          🏆
-                        </div>
-                      )}
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 truncate">
-                        {game.name.length > 12 ? game.name.substring(0, 12) + '...' : game.name}
-                      </p>
-                      <p
-                        className="text-xl font-semibold"
-                        style={{ color: getRecommendationColor(game.rate) }}
-                      >
-                        {formatPercentOrDash(game.rate)}
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {formatCount(game.count)} reviews
-                      </p>
-                    </div>
-                  )})}
-                </div>
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-white">
+                  {category.label}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {formatCount(category.totalTagged)} tagged reviews
+                </p>
               </div>
 
-              <div className="mt-4 space-y-2">
+              <div className={`grid gap-3 ${gridCols}`}>
+                {category.perGame.map((game, idx) => {
+                  const isWinner = category.winnerIndices.includes(idx) && category.winnerIndices.length < games.length;
+                  const rates = category.perGame.map(g => g.rate ?? 0).filter(r => r > 0);
+                  const maxRate = rates.length > 0 ? Math.max(...rates) : 0;
+                  const isHighest = (game.rate ?? 0) === maxRate && maxRate > 0;
+
+                  return (
+                  <div key={game.name} className={`space-y-1 p-2 rounded-lg ${isHighest ? 'ring-2 ring-blue-500/50 bg-blue-500/5' : ''}`}>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 truncate">
+                      {game.name.length > 12 ? game.name.substring(0, 12) + '...' : game.name}
+                    </p>
+                    <p
+                      className="text-xl font-bold"
+                      style={{ color: getRecommendationColor(game.rate) }}
+                    >
+                      {formatPercentOrDash(game.rate)}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {formatCount(game.count)} reviews
+                    </p>
+                  </div>
+                )})}
+              </div>
+
+              <div className="mt-4 space-y-1.5">
                 {category.subcategoryRows.length === 0 ? (
-                  <p className="text-sm text-slate-500">No tagged subcategories.</p>
+                  <p className="text-xs text-slate-500">No tagged subcategories</p>
                 ) : (
                   category.subcategoryRows.map((row) => (
-                    <div
+                    <button
                       key={row.key}
-                      className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/5 p-3"
+                      onClick={() => setReviewsModal({ subcategory: row.key, label: row.label })}
+                      className="w-full flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 p-2.5 transition-colors text-left"
                     >
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm text-slate-200">{row.label}</p>
-                        <button
-                          onClick={() => setReviewsModal({ subcategory: row.key, label: row.label })}
-                          className="text-xs text-sky-400 hover:text-sky-300"
-                          title="View example reviews"
-                        >
-                          📝
-                        </button>
-                      </div>
-                      <div className={`grid gap-4 text-right ${gridCols}`}>
+                      <p className="text-xs text-slate-300 truncate">{row.label}</p>
+                      <div className={`grid gap-2 ${gridCols} shrink-0`}>
                         {row.perGameMetrics.map((metric, idx) => {
-                          const isSubWinner = row.winnerIndices.includes(idx) && row.winnerIndices.length < games.length;
+                          const rates = row.perGameMetrics.map(m => m.rate ?? 0).filter(r => r > 0);
+                          const maxRate = rates.length > 0 ? Math.max(...rates) : 0;
+                          const isHighest = (metric.rate ?? 0) === maxRate && maxRate > 0;
 
                           return (
-                          <div key={`${row.key}-${idx}`} className="relative">
-                            {isSubWinner && (
-                              <div className="absolute -top-1 -right-1 text-[10px]">
-                                ⭐
-                              </div>
-                            )}
+                          <div key={`${row.key}-${idx}`} className={`px-1.5 py-0.5 rounded ${isHighest ? 'ring-1 ring-blue-400/50 bg-blue-500/10' : ''}`}>
                             <p
-                              className="text-sm font-semibold"
+                              className="text-xs font-semibold"
                               style={{ color: getRecommendationColor(metric.rate) }}
                             >
                               {formatPercentOrDash(metric.rate)}
@@ -685,26 +479,112 @@ function ComparisonDashboard({
       {reviewsModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setReviewsModal(null)}
+          onClick={() => {
+            setReviewsModal(null);
+            setSubcategorySummary(null);
+            setSummaryError(null);
+          }}
         >
           <div
-            className="max-h-[80vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"
+            className="max-h-[85vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-white">{t('compare.sampleReviews')}: {reviewsModal.label}</h3>
-                <p className="text-sm text-slate-400 mt-1">Example reviews from each game for this subcategory</p>
+                <h3 className="text-lg font-semibold text-white">{reviewsModal.label}</h3>
+                <p className="text-sm text-slate-400 mt-1">Compare how each game performs in this subcategory</p>
               </div>
               <button
-                onClick={() => setReviewsModal(null)}
+                onClick={() => {
+                  setReviewsModal(null);
+                  setSubcategorySummary(null);
+                  setSummaryError(null);
+                }}
                 className="text-slate-400 hover:text-white text-2xl leading-none"
               >
                 ×
               </button>
             </div>
 
-            <div className="space-y-6">
+            {/* AI Comparison Button */}
+            <div className="mb-6">
+              {!subcategorySummary && (
+                <button
+                  onClick={async () => {
+                    setSummaryLoading(true);
+                    setSummaryError(null);
+                    try {
+                      const gamesData: GameComparisonData[] = gameData.map(game => {
+                        const filteredSample = applyGlobalReviewFilters(game.sample ?? [], filters);
+                        const subcatReviews = filteredSample.filter((review: any) => {
+                          const subcats = review.llm_subcategories || [];
+                          return subcats.some((s: string) => normalizeSubcategoryKey({ subcategory: s } as any) === reviewsModal.subcategory);
+                        }).slice(0, 15);
+
+                        return {
+                          app_id: game.appId,
+                          name: game.name,
+                          reviews: subcatReviews,
+                          metrics: {
+                            recommendation_rate: game.recommendation,
+                            total_reviews: subcatReviews.length,
+                          },
+                        };
+                      });
+
+                      const category = reviewsModal.subcategory.includes('/')
+                        ? reviewsModal.subcategory.split('/')[0]
+                        : undefined;
+
+                      const result = await generateComparisonSummary({
+                        games: gamesData,
+                        comparison_type: 'subcategory',
+                        category,
+                        subcategory: reviewsModal.subcategory,
+                      });
+
+                      setSubcategorySummary(result);
+                    } catch (err: any) {
+                      setSummaryError(err.message || 'Failed to generate comparison');
+                    } finally {
+                      setSummaryLoading(false);
+                    }
+                  }}
+                  disabled={summaryLoading}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all"
+                >
+                  {summaryLoading ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-base">✨</span>
+                      <span>AI Comparison</span>
+                      <span className="text-xs opacity-80">(2 credits)</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {summaryError && (
+                <div className="p-3 bg-red-900/20 border border-red-700/50 rounded-lg text-sm text-red-400">
+                  ⚠️ {summaryError}
+                </div>
+              )}
+
+              {subcategorySummary && (
+                <div className="p-4 bg-slate-800/50 rounded-xl border border-white/10">
+                  <ComparisonSummaryDisplay
+                    summary={subcategorySummary}
+                    gameNames={Object.fromEntries(gameData.map(g => [g.appId, g.name]))}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
               {gameData.map((game) => {
                 const filteredSample = applyGlobalReviewFilters(game.sample ?? [], filters);
                 const exampleReviews = filteredSample

@@ -2193,16 +2193,51 @@ REVIEW SAMPLES (filtered for {subcategory}):
 
     # Call LLM
     try:
-        model = get_model_for_classification()
-        response = model.generate_content(
-            prompt,
-            generation_config={
+        logger.info(f"Comparing {len(games_data)} games (type: {comparison_type})")
+
+        # Get API key and model
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise LLMError(
+                "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
+                LLMErrorType.BAD_REQUEST,
+                retryable=False
+            )
+
+        model_name = GEMINI_MODEL
+
+        try:
+            from google import genai
+            from google.genai.errors import ClientError
+        except ImportError:
+            raise LLMError(
+                "google-genai package not installed. Run: pip install google-genai",
+                LLMErrorType.BAD_REQUEST,
+                retryable=False
+            )
+
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config={
                 "temperature": 0.3,
                 "response_mime_type": "application/json",
             },
         )
 
-        result = json.loads(response.text)
+        if not response or not response.text:
+            raise ValueError("Empty response from LLM")
+
+        logger.debug(f"LLM response length: {len(response.text)}")
+
+        try:
+            result = json.loads(response.text)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM JSON response: {e}")
+            logger.error(f"Response text: {response.text[:500]}")
+            raise ValueError(f"Invalid JSON response from LLM: {str(e)}")
 
         # Convert string keys to int for per-game dicts
         if "strengths_per_game" in result:
@@ -2226,12 +2261,31 @@ REVIEW SAMPLES (filtered for {subcategory}):
         result.setdefault("weaknesses_per_game", {})
         result.setdefault("recommendations", {})
 
+        logger.info(f"Successfully compared {len(games_data)} games")
         return result
 
+    except LLMError:
+        raise
+    except ImportError as exc:
+        logger.error(f"Import error: {exc}")
+        raise LLMError(
+            "google-genai package not installed",
+            error_type=LLMErrorType.BAD_REQUEST,
+        ) from exc
+    except json.JSONDecodeError as exc:
+        logger.error(f"JSON parsing error: {exc}")
+        raise LLMError(
+            f"Invalid JSON response from AI: {str(exc)}",
+            error_type=LLMErrorType.API_ERROR,
+        ) from exc
     except Exception as exc:
         logger.exception(f"Failed to compare games: {exc}")
+        # Check if it's a ClientError from genai
+        error_msg = str(exc)
+        if "ClientError" in type(exc).__name__:
+            error_msg = f"Gemini API error: {str(exc)}"
         raise LLMError(
-            f"Failed to generate comparison: {str(exc)}",
+            f"Failed to generate comparison: {error_msg}",
             error_type=LLMErrorType.API_ERROR,
         ) from exc
 

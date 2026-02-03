@@ -1427,6 +1427,7 @@ def compare_games_summarize(
 
     # 5. Call LLM
     try:
+        logger.info(f"Generating comparison for {len(app_ids)} games (type: {request.comparison_type})")
         result = llm.compare_games(
             games_data=[g.dict() for g in request.games],
             comparison_type=request.comparison_type,
@@ -1452,11 +1453,15 @@ def compare_games_summarize(
             description=f"Compared {len(app_ids)} games ({request.comparison_type})",
         )
 
+        logger.info(f"Successfully generated comparison for {len(app_ids)} games")
         return ComparisonSummaryResponse(**result, cached=False, credits_charged=credit_cost)
 
+    except llm.LLMError as exc:
+        logger.exception("LLM comparison failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"AI comparison failed: {str(exc)}") from exc
     except Exception as exc:
         logger.exception("Comparison failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to generate comparison.") from exc
+        raise HTTPException(status_code=500, detail=f"Failed to generate comparison: {str(exc)}") from exc
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_license)])

@@ -440,7 +440,22 @@ export async function generateComparisonSummary(
       const error = await response.json();
       throw new Error(error.detail?.message || 'Insufficient credits');
     }
-    throw new Error('Failed to generate comparison summary');
+
+    // Get detailed error message
+    let errorMessage = `Failed to generate comparison (${response.status})`;
+    try {
+      const errorData = await response.json();
+      if (errorData.detail) {
+        errorMessage = typeof errorData.detail === 'string'
+          ? errorData.detail
+          : errorData.detail.message || JSON.stringify(errorData.detail);
+      }
+    } catch {
+      const errorText = await response.text();
+      if (errorText) errorMessage = errorText;
+    }
+
+    throw new Error(errorMessage);
   }
 
   return response.json();
