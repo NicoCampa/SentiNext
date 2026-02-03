@@ -144,7 +144,7 @@ export default function ComparePage() {
           <h2 className="mb-4 text-lg font-semibold text-white">
             Select Games to Compare ({analyzedGames.length} analyzed)
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {analyzedGames.map((game) => {
               const isSelected = selectedIds.includes(game.app_id);
               const previewSample = applyGlobalReviewFilters(game.sample ?? [], filters);
@@ -155,13 +155,13 @@ export default function ComparePage() {
                 <button
                   key={game.app_id}
                   onClick={() => toggleGame(game.app_id)}
-                  className={`relative overflow-hidden rounded-xl border p-3 text-left transition ${
+                  className={`relative overflow-hidden rounded-lg border transition-all ${
                     isSelected
-                      ? "border-sky-500 bg-sky-500/10 shadow-lg shadow-sky-900/20"
-                      : "border-white/10 bg-slate-900/30 hover:border-slate-600"
+                      ? "border-sky-500 ring-2 ring-sky-500/50"
+                      : "border-white/10 hover:border-white/20"
                   }`}
                 >
-                  <div className="aspect-video overflow-hidden rounded-lg">
+                  <div className="aspect-[460/215] relative">
                     <SteamImage
                       appId={game.app_id}
                       variant="header"
@@ -169,14 +169,31 @@ export default function ComparePage() {
                       className="h-full w-full object-cover"
                       imageUrl={game.metadata.header_image}
                     />
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
+                        <div className="bg-sky-500 text-white rounded-full p-2">
+                          <svg
+                            className="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-3">
-                    <h3 className="line-clamp-1 text-sm font-semibold text-white">
-                      {game.name}
-                    </h3>
+                  <div className="p-3 bg-slate-900/90">
+                    <p className="text-sm font-medium text-white truncate">{game.name}</p>
                     {game.sample?.length ? (
                       <p
-                        className="mt-1 text-xs"
+                        className="text-xs mt-0.5"
                         style={{ color: getRecommendationColor(previewRecommendation) }}
                       >
                         {formatPercentage(previewRecommendation)} recommend{filtersActive ? " (filtered)" : ""}
@@ -184,7 +201,7 @@ export default function ComparePage() {
                     ) : null}
                   </div>
                   {isSelected && (
-                    <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white">
+                    <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white z-10">
                       Selected
                     </div>
                   )}
