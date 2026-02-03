@@ -793,6 +793,33 @@ export async function fetchAdminChatHistory(
   return handleResponse<AdminChatMessage[]>(response);
 }
 
+export interface GrantCreditsPayload {
+  user_id: string;
+  amount: number;
+  reason: string;
+}
+
+export interface GrantCreditsResponse {
+  user_id: string;
+  amount_granted: number;
+  new_balance: number;
+  reason: string;
+}
+
+export async function grantCredits(
+  payload: GrantCreditsPayload
+): Promise<GrantCreditsResponse> {
+  const response = await authFetch(apiUrl("/admin/credits/grant"), {
+    method: "POST",
+    headers: {
+      ...optionalAdminHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<GrantCreditsResponse>(response);
+}
+
 // ============================================================================
 // Credit System API
 // ============================================================================

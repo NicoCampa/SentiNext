@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import {
   fetchAdminChatSessions,
   fetchAdminChatHistory,
+  grantCredits,
   AdminChatSession,
   AdminChatMessage,
 } from "@/lib/api";
@@ -283,6 +284,14 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "positive" | "negative">("all");
 
+  // Credits management state
+  const [creditUserId, setCreditUserId] = useState("");
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditReason, setCreditReason] = useState("");
+  const [grantingCredits, setGrantingCredits] = useState(false);
+  const [grantSuccess, setGrantSuccess] = useState<string | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
+
   useEffect(() => {
     async function loadSessions() {
       if (!isAdmin) return;
@@ -316,6 +325,43 @@ export default function AdminPage() {
       setChatHistory([]);
     } finally {
       setLoadingHistory(false);
+    }
+  }
+
+  async function handleGrantCredits(e: React.FormEvent) {
+    e.preventDefault();
+    setGrantingCredits(true);
+    setGrantSuccess(null);
+    setGrantError(null);
+
+    try {
+      const amount = parseInt(creditAmount, 10);
+      if (!creditUserId || !amount || !creditReason) {
+        setGrantError("All fields are required");
+        return;
+      }
+      if (amount <= 0 || amount > 100000) {
+        setGrantError("Amount must be between 1 and 100,000");
+        return;
+      }
+
+      const result = await grantCredits({
+        user_id: creditUserId,
+        amount,
+        reason: creditReason,
+      });
+
+      setGrantSuccess(
+        `Successfully granted ${result.amount_granted} credits. New balance: ${result.new_balance}`
+      );
+      setCreditUserId("");
+      setCreditAmount("");
+      setCreditReason("");
+    } catch (err) {
+      console.error("Failed to grant credits:", err);
+      setGrantError((err as Error).message || "Failed to grant credits");
+    } finally {
+      setGrantingCredits(false);
     }
   }
 
@@ -400,9 +446,71 @@ export default function AdminPage() {
             </span>
           </h1>
           <p className="text-xs text-slate-400">
-            View all user chat sessions and feedback
+            Manage credits and view user chat sessions
           </p>
         </div>
+
+        {/* Credits Management Section */}
+        <Card variant="glass" className="mb-4 p-5">
+          <h2 className="text-sm font-semibold text-white mb-3">Grant Credits</h2>
+          <form onSubmit={handleGrantCredits} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">User ID</label>
+                <input
+                  type="text"
+                  value={creditUserId}
+                  onChange={(e) => setCreditUserId(e.target.value)}
+                  placeholder="user_xxx"
+                  className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                  disabled={grantingCredits}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Amount</label>
+                <input
+                  type="number"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  placeholder="1000"
+                  min="1"
+                  max="100000"
+                  className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                  disabled={grantingCredits}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Reason</label>
+                <input
+                  type="text"
+                  value={creditReason}
+                  onChange={(e) => setCreditReason(e.target.value)}
+                  placeholder="bonus"
+                  className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                  disabled={grantingCredits}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                {grantSuccess && (
+                  <p className="text-xs text-green-400">{grantSuccess}</p>
+                )}
+                {grantError && (
+                  <p className="text-xs text-red-400">{grantError}</p>
+                )}
+              </div>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={grantingCredits || !creditUserId || !creditAmount || !creditReason}
+              >
+                {grantingCredits ? "Granting..." : "Grant Credits"}
+              </Button>
+            </div>
+          </form>
+        </Card>
 
         {/* Main Content */}
         <div className="flex-1 flex gap-4 overflow-hidden">

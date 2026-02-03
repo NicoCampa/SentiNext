@@ -1715,6 +1715,44 @@ def get_admin_chat_history(
         raise HTTPException(status_code=500, detail="Failed to load chat history.") from exc
 
 
+class GrantCreditsRequest(BaseModel):
+    user_id: str
+    amount: int = Field(..., gt=0, le=100000)
+    reason: str = Field(..., min_length=1, max_length=200)
+
+
+class GrantCreditsResponse(BaseModel):
+    user_id: str
+    amount_granted: int
+    new_balance: int
+    reason: str
+
+
+@app.post("/admin/credits/grant", response_model=GrantCreditsResponse)
+def grant_credits_to_user(
+    payload: GrantCreditsRequest,
+    _: None = Depends(require_admin),
+) -> GrantCreditsResponse:
+    """Grant credits to a user (admin only)."""
+    try:
+        new_balance = credits.add_credits(
+            user_id=payload.user_id,
+            amount=payload.amount,
+            reason=payload.reason,
+            description=f"Admin grant: {payload.reason}",
+        )
+        logger.info(f"Admin granted {payload.amount} credits to user {payload.user_id}")
+        return GrantCreditsResponse(
+            user_id=payload.user_id,
+            amount_granted=payload.amount,
+            new_balance=new_balance,
+            reason=payload.reason,
+        )
+    except Exception as exc:
+        logger.exception("Failed to grant credits: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/chat/export/{session_id}")
 def export_chat_session(
     session_id: str,
