@@ -43,13 +43,12 @@ def get_available_months(app_id: int, user_id: str) -> List[Dict[str, Any]]:
                     COUNT(*) as review_count
                 FROM reviews
                 WHERE app_id = :app_id
-                    AND user_id = :user_id
                     AND created_at IS NOT NULL
                 GROUP BY year, month
                 ORDER BY year DESC, month DESC
                 LIMIT 24
             """),
-            {"app_id": app_id, "user_id": user_id},
+            {"app_id": app_id},
         )
 
         rows = result.fetchall()
