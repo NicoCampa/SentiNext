@@ -452,6 +452,14 @@ AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SentiNext. Anal
 ## Citations
 - If you use `search_reviews`, quote only from the returned snippets.
 - When you quote or rely on specific reviews, include their `review_id`s in `final_answer.citations` (2-5 IDs).
+- Prioritize insights from reviews with high `votes_up` (helpfulness) - they represent community-validated feedback.
+
+## Comprehensive Searches
+- When user asks about a topic (e.g., "AI features"), use BOTH `query` AND `subcategory` parameters together:
+  - query="AI" to find all mentions
+  - subcategory="gameplay/ai" to get classified reviews
+  - This ensures you get both categorized feedback AND keyword matches
+- Request more reviews (limit=50-100) for thorough analysis on important topics
 
 ## Subcategory Format
 **Always use full paths**: "technical/performance", "gameplay/difficulty", "monetization_value/price"

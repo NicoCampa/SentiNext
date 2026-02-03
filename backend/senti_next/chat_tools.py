@@ -317,13 +317,13 @@ CHAT_TOOLS = [
     ),
     Tool(
         name="search_reviews",
-        description="Get actual review text/quotes. Use this when: (1) user asks 'what do they say specifically?' or wants examples, (2) user asks about keywords/topics that aren't standard categories (e.g., 'AI', 'Steam Deck', 'co-op'), (3) you want to find what players mention about a specific term. Returns review snippets (up to 500 chars each). Pass keywords in 'query' parameter OR use 'subcategory' for classified topics.",
+        description="Get actual review text/quotes ordered by helpfulness (votes_up). Use this when: (1) user asks 'what do they say specifically?' or wants examples, (2) user asks about keywords/topics that aren't standard categories (e.g., 'AI', 'Steam Deck', 'co-op'), (3) you want to find what players mention about a specific term. Returns review snippets (up to 500 chars each). You can pass BOTH 'query' AND 'subcategory' to get comprehensive results combining classified reviews and keyword matches.",
         parameters={
             "app_id": "int - Game ID (required)",
-            "query": "str - Search keywords like 'AI', 'steam deck', 'multiplayer' - use this for user's custom terms (optional)",
-            "subcategory": "str - Filter by classified category like 'monetization_value/pay_to_win_grind' or 'gameplay/ai'. Only use for topics from analysis (optional)",
+            "query": "str - Search keywords like 'AI', 'steam deck', 'multiplayer'. Can be used together with subcategory for comprehensive search (optional)",
+            "subcategory": "str - Filter by classified category like 'monetization_value/pay_to_win_grind' or 'gameplay/ai'. Can be used together with query for comprehensive search (optional)",
             "sentiment": "str - 'positive' or 'negative' (optional)",
-            "limit": "int - Max results, default 10 (optional)",
+            "limit": "int - Max results, default 10, max 100 (optional)",
             "offset": "int - Number of results to skip for pagination (optional)",
             "date_filter": "str - One of '30d', '90d', '365d', or 'all' (optional)",
             "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
@@ -876,12 +876,12 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
     sentiment = params.get("sentiment")
     requested_limit = params.get("limit", 10)
     requested_offset = params.get("offset", 0)
-    default_limit = getattr(context, "max_reviews_per_game", 50) or 50
+    default_limit = getattr(context, "max_reviews_per_game", 100) or 100
     try:
         requested_limit_int = int(requested_limit) if requested_limit is not None else int(default_limit)
     except (TypeError, ValueError):
         requested_limit_int = int(default_limit)
-    limit = max(1, min(requested_limit_int, int(default_limit), 50))  # Hard cap at 50 for agent queries
+    limit = max(1, min(requested_limit_int, int(default_limit), 100))  # Hard cap at 100 for agent queries
 
     try:
         offset = int(requested_offset or 0)
@@ -928,10 +928,13 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
 
         fetch_limit = limit + 1
 
-        # Search reviews based on method
+        # Search reviews - combine subcategory and keyword results if both provided
+        reviews = []
+        seen_ids = set()
+
+        # First, get reviews by subcategory if specified
         if resolved_subcategory:
-            # Search by subcategory label
-            reviews = storage.get_reviews_by_subcategory(
+            subcategory_reviews = storage.get_reviews_by_subcategory(
                 app_id=int(app_id),
                 subcategory=resolved_subcategory,
                 date_filter=date_filter,
@@ -940,19 +943,35 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
                 sentiment=sentiment,
                 language=language,
             )
-        elif query:
-            # Full-text search
-            reviews = storage.search_reviews_with_date_filter(
+            for review in subcategory_reviews:
+                review_id = review.get("recommendationid") or review.get("review_id")
+                if review_id and review_id not in seen_ids:
+                    reviews.append(review)
+                    seen_ids.add(review_id)
+
+        # Then, add keyword search results if query is provided
+        if query:
+            # If we have subcategory results, fetch extra to compensate for duplicates
+            keyword_limit = fetch_limit if not resolved_subcategory else fetch_limit * 2
+            keyword_reviews = storage.search_reviews_with_date_filter(
                 app_id=int(app_id),
                 query=query,
                 date_filter=date_filter,
-                limit=int(fetch_limit),
+                limit=int(keyword_limit),
                 offset=offset,
                 sentiment=sentiment,
                 language=language,
             )
-        else:
-            # Just get top helpful reviews
+            for review in keyword_reviews:
+                review_id = review.get("recommendationid") or review.get("review_id")
+                if review_id and review_id not in seen_ids:
+                    reviews.append(review)
+                    seen_ids.add(review_id)
+                if len(reviews) >= fetch_limit:
+                    break
+
+        # If neither subcategory nor query, just get top helpful reviews
+        if not resolved_subcategory and not query:
             reviews = storage.search_reviews_with_date_filter(
                 app_id=int(app_id),
                 query="",
@@ -962,6 +981,11 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
                 sentiment=sentiment,
                 language=language,
             )
+
+        # Sort combined results by helpfulness (votes_up)
+        if resolved_subcategory and query:
+            # When combining subcategory + keyword results, sort by votes_up
+            reviews.sort(key=lambda r: r.get("votes_up", 0), reverse=True)
 
         has_more = len(reviews) > limit
         if has_more:
