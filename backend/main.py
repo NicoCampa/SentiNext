@@ -473,6 +473,102 @@ class AdminChatSession(BaseModel):
     negative_feedback: int = 0
 
 
+class LLMUsageBreakdownItem(BaseModel):
+    operation: Optional[str] = None
+    model: Optional[str] = None
+    calls: int = 0
+    prompt_tokens: int = 0
+    response_tokens: int = 0
+    total_tokens: int = 0
+    cached_tokens: int = 0
+    tool_use_prompt_tokens: int = 0
+    thoughts_tokens: int = 0
+
+
+class LLMUsageSummaryResponse(BaseModel):
+    since: str
+    days: int
+    total_calls: int = 0
+    prompt_tokens: int = 0
+    response_tokens: int = 0
+    total_tokens: int = 0
+    cached_tokens: int = 0
+    tool_use_prompt_tokens: int = 0
+    thoughts_tokens: int = 0
+    by_operation: List[LLMUsageBreakdownItem] = Field(default_factory=list)
+    by_model: List[LLMUsageBreakdownItem] = Field(default_factory=list)
+
+
+class TierCount(BaseModel):
+    tier: Optional[str] = None
+    count: int = 0
+
+
+class CreditsBreakdownItem(BaseModel):
+    operation: Optional[str] = None
+    transactions: int = 0
+    credits_used: int = 0
+
+
+class TopUserCredits(BaseModel):
+    user_id: str
+    credits_used: int = 0
+
+
+class TopAppCredits(BaseModel):
+    app_id: int
+    credits_used: int = 0
+
+
+class UsersSummary(BaseModel):
+    total: int = 0
+    new: int = 0
+    active: int = 0
+    paid: int = 0
+    mrr_estimate: float = 0.0
+    tier_counts: List[TierCount] = Field(default_factory=list)
+
+
+class CreditsSummary(BaseModel):
+    used: int = 0
+    by_operation: List[CreditsBreakdownItem] = Field(default_factory=list)
+    top_users: List[TopUserCredits] = Field(default_factory=list)
+    top_apps: List[TopAppCredits] = Field(default_factory=list)
+
+
+class LLMCostBreakdown(BaseModel):
+    key: str
+    calls: int = 0
+    prompt_tokens: int = 0
+    response_tokens: int = 0
+    total_tokens: int = 0
+    cost_input_usd: float = 0.0
+    cost_output_usd: float = 0.0
+    cost_total_usd: float = 0.0
+
+
+class LLMCostSummary(BaseModel):
+    calls: int = 0
+    prompt_tokens: int = 0
+    response_tokens: int = 0
+    total_tokens: int = 0
+    cost_input_usd: float = 0.0
+    cost_output_usd: float = 0.0
+    cost_total_usd: float = 0.0
+    pricing_input_per_1m: float = 0.0
+    pricing_output_per_1m: float = 0.0
+    by_operation: List[LLMCostBreakdown] = Field(default_factory=list)
+    by_model: List[LLMCostBreakdown] = Field(default_factory=list)
+
+
+class AdminDashboardResponse(BaseModel):
+    since: str
+    days: int
+    users: UsersSummary
+    credits: CreditsSummary
+    llm: LLMCostSummary
+
+
 class ChatCitation(BaseModel):
     review_id: str
     subcategory: str
@@ -1859,6 +1955,149 @@ def get_admin_chat_history(
     except Exception as exc:
         logger.exception("Failed to load chat history: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load chat history.") from exc
+
+
+@app.get("/admin/llm-usage/summary", response_model=LLMUsageSummaryResponse)
+def get_admin_llm_usage_summary(
+    days: int = 30,
+    user_id: Optional[str] = None,
+    app_id: Optional[int] = None,
+    session_id: Optional[str] = None,
+    _: None = Depends(require_admin),
+) -> LLMUsageSummaryResponse:
+    """Get aggregated LLM usage metrics (admin only)."""
+    try:
+        summary = storage.get_llm_usage_summary(
+            days=days,
+            user_id=user_id,
+            app_id=app_id,
+            session_id=session_id,
+        )
+        return LLMUsageSummaryResponse(**summary)
+    except Exception as exc:
+        logger.exception("Failed to load LLM usage summary: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load LLM usage summary.") from exc
+
+
+@app.get("/admin/dashboard", response_model=AdminDashboardResponse)
+def get_admin_dashboard(
+    days: int = 30,
+    _: None = Depends(require_admin),
+) -> AdminDashboardResponse:
+    """Get aggregated admin dashboard metrics."""
+    try:
+        safe_days = max(1, min(int(days or 30), 365))
+        user_summary = storage.get_user_summary(safe_days)
+        tier_counts = storage.get_subscription_tier_counts()
+        credit_summary = storage.get_credit_usage_summary(safe_days, limit=10)
+
+        llm_usage = storage.get_llm_usage_summary(days=safe_days)
+
+        input_rate = float(os.getenv("SENTINEXT_LLM_INPUT_PER_1M_USD", "0.30"))
+        output_rate = float(os.getenv("SENTINEXT_LLM_OUTPUT_PER_1M_USD", "2.50"))
+
+        def _compute_costs(prompt_tokens: int, response_tokens: int) -> Dict[str, float]:
+            input_cost = (prompt_tokens * input_rate) / 1_000_000
+            output_cost = (response_tokens * output_rate) / 1_000_000
+            total_cost = input_cost + output_cost
+            return {
+                "input": round(input_cost, 6),
+                "output": round(output_cost, 6),
+                "total": round(total_cost, 6),
+            }
+
+        total_costs = _compute_costs(
+            int(llm_usage.get("prompt_tokens", 0) or 0),
+            int(llm_usage.get("response_tokens", 0) or 0),
+        )
+
+        by_operation_costs = []
+        for item in llm_usage.get("by_operation", []) or []:
+            prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
+            response_tokens = int(item.get("response_tokens", 0) or 0)
+            costs = _compute_costs(prompt_tokens, response_tokens)
+            by_operation_costs.append(
+                LLMCostBreakdown(
+                    key=str(item.get("operation") or "unknown"),
+                    calls=int(item.get("calls", 0) or 0),
+                    prompt_tokens=prompt_tokens,
+                    response_tokens=response_tokens,
+                    total_tokens=int(item.get("total_tokens", 0) or 0),
+                    cost_input_usd=costs["input"],
+                    cost_output_usd=costs["output"],
+                    cost_total_usd=costs["total"],
+                )
+            )
+
+        by_model_costs = []
+        for item in llm_usage.get("by_model", []) or []:
+            prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
+            response_tokens = int(item.get("response_tokens", 0) or 0)
+            costs = _compute_costs(prompt_tokens, response_tokens)
+            by_model_costs.append(
+                LLMCostBreakdown(
+                    key=str(item.get("model") or "unknown"),
+                    calls=int(item.get("calls", 0) or 0),
+                    prompt_tokens=prompt_tokens,
+                    response_tokens=response_tokens,
+                    total_tokens=int(item.get("total_tokens", 0) or 0),
+                    cost_input_usd=costs["input"],
+                    cost_output_usd=costs["output"],
+                    cost_total_usd=costs["total"],
+                )
+            )
+
+        mrr = 0.0
+        for entry in tier_counts:
+            tier = (entry.get("tier") or "free").lower()
+            count = int(entry.get("count", 0) or 0)
+            price = float(credits.TIER_PRICES.get(tier, 0))
+            mrr += price * count
+
+        users_payload = UsersSummary(
+            total=user_summary.get("total", 0),
+            new=user_summary.get("new", 0),
+            active=user_summary.get("active", 0),
+            paid=user_summary.get("paid", 0),
+            mrr_estimate=round(mrr, 2),
+            tier_counts=[TierCount(**item) for item in tier_counts],
+        )
+
+        credits_payload = CreditsSummary(
+            used=credit_summary.get("used", 0),
+            by_operation=[CreditsBreakdownItem(**item) for item in credit_summary.get("by_operation", [])],
+            top_users=[TopUserCredits(**item) for item in credit_summary.get("top_users", [])],
+            top_apps=[
+                TopAppCredits(app_id=int(item.get("app_id")), credits_used=int(item.get("credits_used", 0) or 0))
+                for item in credit_summary.get("top_apps", [])
+                if item.get("app_id") is not None
+            ],
+        )
+
+        llm_payload = LLMCostSummary(
+            calls=int(llm_usage.get("total_calls", 0) or 0),
+            prompt_tokens=int(llm_usage.get("prompt_tokens", 0) or 0),
+            response_tokens=int(llm_usage.get("response_tokens", 0) or 0),
+            total_tokens=int(llm_usage.get("total_tokens", 0) or 0),
+            cost_input_usd=total_costs["input"],
+            cost_output_usd=total_costs["output"],
+            cost_total_usd=total_costs["total"],
+            pricing_input_per_1m=input_rate,
+            pricing_output_per_1m=output_rate,
+            by_operation=by_operation_costs,
+            by_model=by_model_costs,
+        )
+
+        return AdminDashboardResponse(
+            since=str(llm_usage.get("since") or ""),
+            days=int(llm_usage.get("days", safe_days) or safe_days),
+            users=users_payload,
+            credits=credits_payload,
+            llm=llm_payload,
+        )
+    except Exception as exc:
+        logger.exception("Failed to load admin dashboard: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load admin dashboard.") from exc
 
 
 class GrantCreditsRequest(BaseModel):

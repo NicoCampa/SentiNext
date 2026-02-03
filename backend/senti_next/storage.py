@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from sqlalchemy import text
@@ -107,6 +107,236 @@ def log_llm_usage(
             conn.commit()
     except Exception as exc:  # best-effort logging
         logger.debug("Failed to log LLM usage: %s", exc)
+
+
+def get_llm_usage_summary(
+    *,
+    days: int = 30,
+    user_id: Optional[str] = None,
+    app_id: Optional[int] = None,
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Aggregate LLM usage metrics over a time window (admin use)."""
+    from . import db as db_module
+
+    safe_days = max(1, min(int(days or 30), 365))
+    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
+
+    where_clause = """
+        WHERE created_at >= :since
+          AND (:user_id IS NULL OR user_id = :user_id)
+          AND (:app_id IS NULL OR app_id = :app_id)
+          AND (:session_id IS NULL OR session_id = :session_id)
+    """
+    params = {
+        "since": since,
+        "user_id": user_id,
+        "app_id": app_id,
+        "session_id": session_id,
+    }
+
+    with db_module.get_connection() as conn:
+        totals = conn.execute(
+            text(f"""
+                SELECT
+                    COUNT(*) as calls,
+                    COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+                    COALESCE(SUM(response_tokens), 0) as response_tokens,
+                    COALESCE(SUM(total_tokens), 0) as total_tokens,
+                    COALESCE(SUM(cached_tokens), 0) as cached_tokens,
+                    COALESCE(SUM(tool_use_prompt_tokens), 0) as tool_use_prompt_tokens,
+                    COALESCE(SUM(thoughts_tokens), 0) as thoughts_tokens
+                FROM llm_usage
+                {where_clause}
+            """),
+            params,
+        ).mappings().fetchone()
+
+        by_operation = conn.execute(
+            text(f"""
+                SELECT
+                    operation,
+                    COUNT(*) as calls,
+                    COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+                    COALESCE(SUM(response_tokens), 0) as response_tokens,
+                    COALESCE(SUM(total_tokens), 0) as total_tokens,
+                    COALESCE(SUM(cached_tokens), 0) as cached_tokens,
+                    COALESCE(SUM(tool_use_prompt_tokens), 0) as tool_use_prompt_tokens,
+                    COALESCE(SUM(thoughts_tokens), 0) as thoughts_tokens
+                FROM llm_usage
+                {where_clause}
+                GROUP BY operation
+                ORDER BY calls DESC
+            """),
+            params,
+        ).mappings().fetchall()
+
+        by_model = conn.execute(
+            text(f"""
+                SELECT
+                    model,
+                    COUNT(*) as calls,
+                    COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+                    COALESCE(SUM(response_tokens), 0) as response_tokens,
+                    COALESCE(SUM(total_tokens), 0) as total_tokens,
+                    COALESCE(SUM(cached_tokens), 0) as cached_tokens,
+                    COALESCE(SUM(tool_use_prompt_tokens), 0) as tool_use_prompt_tokens,
+                    COALESCE(SUM(thoughts_tokens), 0) as thoughts_tokens
+                FROM llm_usage
+                {where_clause}
+                GROUP BY model
+                ORDER BY calls DESC
+            """),
+            params,
+        ).mappings().fetchall()
+
+    return {
+        "since": since.isoformat(),
+        "days": safe_days,
+        "total_calls": int(totals["calls"] or 0) if totals else 0,
+        "prompt_tokens": int(totals["prompt_tokens"] or 0) if totals else 0,
+        "response_tokens": int(totals["response_tokens"] or 0) if totals else 0,
+        "total_tokens": int(totals["total_tokens"] or 0) if totals else 0,
+        "cached_tokens": int(totals["cached_tokens"] or 0) if totals else 0,
+        "tool_use_prompt_tokens": int(totals["tool_use_prompt_tokens"] or 0) if totals else 0,
+        "thoughts_tokens": int(totals["thoughts_tokens"] or 0) if totals else 0,
+        "by_operation": [dict(row) for row in by_operation],
+        "by_model": [dict(row) for row in by_model],
+    }
+
+
+def get_user_summary(days: int = 30) -> Dict[str, int]:
+    """Return user counts for admin dashboard."""
+    from . import db as db_module
+
+    safe_days = max(1, min(int(days or 30), 365))
+    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
+
+    with db_module.get_connection() as conn:
+        totals = conn.execute(
+            text("SELECT COUNT(*) as total FROM user_subscriptions")
+        ).mappings().fetchone()
+        new_users = conn.execute(
+            text("""
+                SELECT COUNT(*) as total
+                FROM user_subscriptions
+                WHERE created_at >= :since
+            """),
+            {"since": since},
+        ).mappings().fetchone()
+        paid_users = conn.execute(
+            text("""
+                SELECT COUNT(*) as total
+                FROM user_subscriptions
+                WHERE tier IS NOT NULL AND tier != 'free'
+            """)
+        ).mappings().fetchone()
+
+        active_users = conn.execute(
+            text("""
+                SELECT COUNT(DISTINCT user_id) as total
+                FROM (
+                    SELECT user_id FROM credit_transactions WHERE created_at >= :since
+                    UNION
+                    SELECT user_id FROM llm_usage WHERE created_at >= :since
+                    UNION
+                    SELECT user_id FROM chat_messages WHERE created_at >= :since
+                ) AS active
+            """),
+            {"since": since},
+        ).mappings().fetchone()
+
+    return {
+        "total": int(totals["total"] or 0) if totals else 0,
+        "new": int(new_users["total"] or 0) if new_users else 0,
+        "paid": int(paid_users["total"] or 0) if paid_users else 0,
+        "active": int(active_users["total"] or 0) if active_users else 0,
+    }
+
+
+def get_subscription_tier_counts() -> List[Dict[str, Any]]:
+    """Return counts per subscription tier."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT tier, COUNT(*) as count
+                FROM user_subscriptions
+                GROUP BY tier
+                ORDER BY count DESC
+            """)
+        ).mappings().fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def get_credit_usage_summary(days: int = 30, limit: int = 10) -> Dict[str, Any]:
+    """Return credit usage totals and breakdowns (admin use)."""
+    from . import db as db_module
+
+    safe_days = max(1, min(int(days or 30), 365))
+    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
+
+    with db_module.get_connection() as conn:
+        totals = conn.execute(
+            text("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as used
+                FROM credit_transactions
+                WHERE created_at >= :since
+            """),
+            {"since": since},
+        ).mappings().fetchone()
+
+        by_operation = conn.execute(
+            text("""
+                SELECT
+                    operation,
+                    COUNT(*) as transactions,
+                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as credits_used
+                FROM credit_transactions
+                WHERE created_at >= :since AND amount < 0
+                GROUP BY operation
+                ORDER BY credits_used DESC
+            """),
+            {"since": since},
+        ).mappings().fetchall()
+
+        top_users = conn.execute(
+            text("""
+                SELECT
+                    user_id,
+                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as credits_used
+                FROM credit_transactions
+                WHERE created_at >= :since AND amount < 0
+                GROUP BY user_id
+                ORDER BY credits_used DESC
+                LIMIT :limit
+            """),
+            {"since": since, "limit": int(limit)},
+        ).mappings().fetchall()
+
+        top_apps = conn.execute(
+            text("""
+                SELECT
+                    app_id,
+                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as credits_used
+                FROM credit_transactions
+                WHERE created_at >= :since AND amount < 0 AND app_id IS NOT NULL
+                GROUP BY app_id
+                ORDER BY credits_used DESC
+                LIMIT :limit
+            """),
+            {"since": since, "limit": int(limit)},
+        ).mappings().fetchall()
+
+    return {
+        "used": int(totals["used"] or 0) if totals else 0,
+        "by_operation": [dict(row) for row in by_operation],
+        "top_users": [dict(row) for row in top_users],
+        "top_apps": [dict(row) for row in top_apps],
+    }
 
 
 def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:

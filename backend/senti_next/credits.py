@@ -154,13 +154,14 @@ def check_credits_available(user_id: str, amount: int) -> Tuple[bool, str, Dict[
     balance = subscription["credits_balance"]
     limit = subscription["credits_monthly_limit"]
 
+    used_this_period = subscription["credits_used_this_period"]
+
     # Calculate the hard limit (monthly limit + buffer + any bonus credits)
     hard_limit = calculate_hard_limit(limit, used_this_period, balance)
-    used_this_period = subscription["credits_used_this_period"]
 
     status = get_credit_status(user_id)
 
-    # Check if at hard limit (110%)
+    # Check if at hard limit
     if used_this_period >= hard_limit:
         return (
             False,
@@ -184,7 +185,7 @@ def check_credits_available(user_id: str, amount: int) -> Tuple[bool, str, Dict[
         return (
             True,
             f"Warning: You've exceeded your monthly credit limit ({limit:,}). "
-            f"Operations are allowed up to 110% ({hard_limit:,}) but consider upgrading.",
+            f"Operations are allowed up to {hard_limit:,} credits this period but consider upgrading.",
             status,
         )
 
@@ -193,7 +194,7 @@ def check_credits_available(user_id: str, amount: int) -> Tuple[bool, str, Dict[
         return (
             True,
             f"Warning: This operation will exceed your monthly credit limit ({limit:,}). "
-            f"You have {limit - used_this_period:,} credits remaining in your allowance.",
+            f"You have {max(limit - used_this_period, 0):,} credits remaining in your allowance.",
             status,
         )
 
@@ -495,7 +496,7 @@ def get_credit_status(user_id: str) -> Dict[str, Any]:
         - period_end: When credits reset
         - percent_used: Percentage of limit used
         - warning: True if over 100% of limit
-        - blocked: True if at hard limit (110%)
+        - blocked: True if at hard limit (monthly limit + buffer + bonus credits)
     """
     subscription = get_user_subscription(user_id)
 

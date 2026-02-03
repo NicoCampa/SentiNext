@@ -853,6 +853,133 @@ export async function fetchAdminChatHistory(
   return handleResponse<AdminChatMessage[]>(response);
 }
 
+export interface AdminDashboardTierCount {
+  tier: string | null;
+  count: number;
+}
+
+export interface AdminDashboardUsers {
+  total: number;
+  new: number;
+  active: number;
+  paid: number;
+  mrr_estimate: number;
+  tier_counts: AdminDashboardTierCount[];
+}
+
+export interface AdminDashboardCreditsBreakdown {
+  operation?: string | null;
+  transactions: number;
+  credits_used: number;
+}
+
+export interface AdminDashboardTopUser {
+  user_id: string;
+  credits_used: number;
+}
+
+export interface AdminDashboardTopApp {
+  app_id: number;
+  credits_used: number;
+}
+
+export interface AdminDashboardCredits {
+  used: number;
+  by_operation: AdminDashboardCreditsBreakdown[];
+  top_users: AdminDashboardTopUser[];
+  top_apps: AdminDashboardTopApp[];
+}
+
+export interface AdminDashboardLlmBreakdown {
+  key: string;
+  calls: number;
+  prompt_tokens: number;
+  response_tokens: number;
+  total_tokens: number;
+  cost_input_usd: number;
+  cost_output_usd: number;
+  cost_total_usd: number;
+}
+
+export interface AdminDashboardLlm {
+  calls: number;
+  prompt_tokens: number;
+  response_tokens: number;
+  total_tokens: number;
+  cost_input_usd: number;
+  cost_output_usd: number;
+  cost_total_usd: number;
+  pricing_input_per_1m: number;
+  pricing_output_per_1m: number;
+  by_operation: AdminDashboardLlmBreakdown[];
+  by_model: AdminDashboardLlmBreakdown[];
+}
+
+export interface AdminDashboardSummary {
+  since: string;
+  days: number;
+  users: AdminDashboardUsers;
+  credits: AdminDashboardCredits;
+  llm: AdminDashboardLlm;
+}
+
+export async function fetchAdminDashboardSummary(params: {
+  days?: number;
+} = {}): Promise<AdminDashboardSummary> {
+  const url = new URL(apiUrl("/admin/dashboard"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (params.days) url.searchParams.set("days", String(params.days));
+  const response = await authFetch(url.toString(), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<AdminDashboardSummary>(response);
+}
+
+export interface LlmUsageBreakdownItem {
+  operation?: string | null;
+  model?: string | null;
+  calls: number;
+  prompt_tokens: number;
+  response_tokens: number;
+  total_tokens: number;
+  cached_tokens: number;
+  tool_use_prompt_tokens: number;
+  thoughts_tokens: number;
+}
+
+export interface AdminLlmUsageSummary {
+  since: string;
+  days: number;
+  total_calls: number;
+  prompt_tokens: number;
+  response_tokens: number;
+  total_tokens: number;
+  cached_tokens: number;
+  tool_use_prompt_tokens: number;
+  thoughts_tokens: number;
+  by_operation: LlmUsageBreakdownItem[];
+  by_model: LlmUsageBreakdownItem[];
+}
+
+export async function fetchAdminLlmUsageSummary(params: {
+  days?: number;
+  user_id?: string;
+  app_id?: number;
+  session_id?: string;
+} = {}): Promise<AdminLlmUsageSummary> {
+  const url = new URL(apiUrl("/admin/llm-usage/summary"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (params.days) url.searchParams.set("days", String(params.days));
+  if (params.user_id) url.searchParams.set("user_id", params.user_id);
+  if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
+  if (params.session_id) url.searchParams.set("session_id", params.session_id);
+
+  const response = await authFetch(url.toString(), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<AdminLlmUsageSummary>(response);
+}
+
 export interface GrantCreditsPayload {
   user_id: string;
   amount: number;
