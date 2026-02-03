@@ -507,10 +507,12 @@ function ComparisonDashboard({
             </div>
           ))}
         </div>
-      </Card>
 
-      {/* AI-Powered Overview Comparison */}
-      <OverviewComparisonCard selectedGames={games} />
+        {/* AI Comparison Button */}
+        <div className="mt-4 pt-4 border-t border-white/10 flex justify-center">
+          <OverviewComparisonCard selectedGames={games} />
+        </div>
+      </Card>
 
       {/* Radar Chart Overview */}
       <Card variant="glass" className="p-6">

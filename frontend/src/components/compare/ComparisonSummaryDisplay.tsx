@@ -97,16 +97,6 @@ export function ComparisonSummaryDisplay({
           <p className="text-xs text-gray-500">Credits used: {summary.credits_charged}</p>
         )}
       </div>
-
-      {/* Close button */}
-      {onClose && (
-        <button
-          onClick={onClose}
-          className="text-xs text-gray-400 hover:text-gray-300 underline"
-        >
-          Clear comparison
-        </button>
-      )}
     </div>
   );
 }

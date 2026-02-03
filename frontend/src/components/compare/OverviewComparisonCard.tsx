@@ -10,6 +10,7 @@ interface OverviewComparisonCardProps {
 }
 
 export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCardProps) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [summary, setSummary] = useState<ComparisonSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +18,7 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
+    setIsModalOpen(true);
 
     try {
       const gamesData: GameComparisonData[] = selectedGames.map(game => ({
@@ -42,53 +44,80 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
     }
   };
 
+  const handleClose = () => {
+    setIsModalOpen(false);
+    setSummary(null);
+    setError(null);
+  };
+
   const gameNames = useMemo(
     () => Object.fromEntries(selectedGames.map(g => [g.app_id, g.name])),
     [selectedGames]
   );
 
   return (
-    <div className="bg-gray-900/40 backdrop-blur-sm border border-gray-700/50 rounded-lg p-5 mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-100">Overall Comparison</h3>
-        {!summary && (
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-md transition-colors"
-          >
-            {loading ? 'Analyzing...' : '✨ Compare (5 credits)'}
-          </button>
-        )}
-        {summary && (
-          <button
-            onClick={() => setSummary(null)}
-            className="px-3 py-1.5 text-xs font-medium bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors"
-          >
-            Clear
-          </button>
-        )}
-      </div>
+    <>
+      {/* Compact Button */}
+      <button
+        onClick={handleGenerate}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all shadow-lg hover:shadow-xl"
+      >
+        <span className="text-lg">✨</span>
+        <span>AI Comparison</span>
+        <span className="text-xs opacity-80">(5 credits)</span>
+      </button>
 
-      {error && (
-        <div className="text-xs text-red-400 mb-2 p-2 bg-red-900/20 border border-red-700/50 rounded">
-          ⚠️ {error}
+      {/* Modal Dialog */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={handleClose}
+        >
+          <div
+            className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-700 rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">AI-Powered Game Comparison</h2>
+                <button
+                  onClick={handleClose}
+                  className="text-gray-400 hover:text-white transition-colors"
+                  aria-label="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-4">
+              {loading && (
+                <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-600 border-t-blue-500" />
+                  <p className="text-sm text-gray-400">Analyzing games with AI...</p>
+                </div>
+              )}
+
+              {error && (
+                <div className="p-4 bg-red-900/20 border border-red-700/50 rounded-lg">
+                  <p className="text-sm text-red-400">⚠️ {error}</p>
+                </div>
+              )}
+
+              {summary && !loading && (
+                <ComparisonSummaryDisplay
+                  summary={summary}
+                  gameNames={gameNames}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
-
-      {summary && (
-        <ComparisonSummaryDisplay
-          summary={summary}
-          gameNames={gameNames}
-          onClose={() => setSummary(null)}
-        />
-      )}
-
-      {!summary && !loading && !error && (
-        <p className="text-xs text-gray-500">
-          Generate an AI-powered comparison to see what makes each game unique and who they're best for.
-        </p>
-      )}
-    </div>
+    </>
   );
 }
