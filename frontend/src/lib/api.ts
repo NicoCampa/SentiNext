@@ -549,6 +549,28 @@ function parseContentDispositionFilename(value: string | null): string | null {
   return match?.[1] ?? null;
 }
 
+export interface DatabaseExportCount {
+  total: number;
+  games: number;
+  top_games: Array<{ app_id: number; name: string; count: number }>;
+}
+
+export async function fetchDatabaseExportCount(params: {
+  scope?: DatabaseScope;
+  app_id?: number | null;
+  language?: string | null;
+  query?: string | null;
+}): Promise<DatabaseExportCount> {
+  const url = new URL(apiUrl("/database/reviews/count"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (params.scope === "all") url.searchParams.set("scope", "all");
+  if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
+  if (params.language) url.searchParams.set("language", params.language);
+  if (params.query) url.searchParams.set("query", params.query);
+
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<DatabaseExportCount>(response);
+}
+
 export async function downloadDatabaseExport(params: DatabaseExportParams): Promise<void> {
   if (typeof window === "undefined") return;
   const url = new URL(apiUrl("/database/export"), window.location.origin);
@@ -1068,4 +1090,74 @@ export async function downloadChatSession(
   link.click();
   link.remove();
   window.URL.revokeObjectURL(objectUrl);
+}
+
+/**
+ * Report month data returned by the backend.
+ */
+export interface ReportMonth {
+  year: number;
+  month: number;
+  label: string;
+  review_count: number;
+}
+
+export interface ReportMonthsResponse {
+  months: ReportMonth[];
+}
+
+/**
+ * Fetch available months with review data for a game.
+ */
+export async function fetchReportMonths(appId: number): Promise<ReportMonthsResponse> {
+  const response = await authFetch(apiUrl(`/reports/available-months/${appId}`), {
+    cache: "no-store",
+  });
+  return handleResponse<ReportMonthsResponse>(response);
+}
+
+/**
+ * Download executive summary PDF for a game in a specific month.
+ */
+export async function downloadExecutiveSummary(
+  appId: number,
+  year: number,
+  month: number
+): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(apiUrl(`/reports/executive-summary/${appId}`), window.location.origin);
+  url.searchParams.set("year", String(year));
+  url.searchParams.set("month", String(month));
+  url.searchParams.set("format", "pdf");
+
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Failed to generate report (status ${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const fallback = `ExecutiveSummary.pdf`;
+  const filename = parseContentDispositionFilename(
+    response.headers.get("content-disposition")
+  ) || fallback;
+
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+/**
+ * Parse filename from Content-Disposition header.
+ */
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const match = header.match(/filename="?([^"]+)"?/);
+  return match ? match[1] : null;
 }

@@ -5,59 +5,18 @@ import { AppLayout } from '@/components/AppLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { FilterSidebar } from '@/components/database/FilterSidebar';
+import { FilterPills } from '@/components/database/FilterPills';
+import { ReviewModal } from '@/components/database/ReviewModal';
+import { ExportPreviewDialog, type ExportOptions } from '@/components/database/ExportPreviewDialog';
 import { useGlobalFilters } from '@/contexts/GlobalFiltersContext';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { applyGlobalReviewFilters } from '@/lib/reviewFilters';
-import { deleteGame, downloadDatabaseExport, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
+import { deleteGame, downloadDatabaseExport, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames, fetchDatabaseExportCount, type DatabaseExportCount } from '@/lib/api';
+import { formatTaxonomyLabel, MAIN_CATEGORY_LABELS, titleize } from '@/lib/taxonomyLabels';
 import type { DatabaseReviewsResponse, DatabaseReviewItem, DatabaseGameOption } from '@/types';
 import type { AuthStatus, DatabaseScope, DatabaseStats } from '@/lib/api';
-
-const MAIN_CATEGORY_LABELS: Record<string, string> = {
-  gameplay: 'Gameplay',
-  technical: 'Technical',
-  content_design: 'Content & Design',
-  ui_ux_accessibility: 'UI/UX & Accessibility',
-  onboarding: 'Onboarding',
-  presentation: 'Presentation',
-  online_community: 'Online & Community',
-  developer_updates: 'Developer & Updates',
-  monetization_value: 'Monetization & Value',
-  other: 'Other / Meta',
-};
-
-function titleize(value: string): string {
-  return value
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map((word) => {
-      const lower = word.toLowerCase();
-      if (lower === 'ui') return 'UI';
-      if (lower === 'ux') return 'UX';
-      if (lower === 'ugc') return 'UGC';
-      if (lower === 'ai') return 'AI';
-      if (lower === 'dlc') return 'DLC';
-      if (lower === 'p2w') return 'P2W';
-      if (lower === 'ctd') return 'CTD';
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(' ');
-}
-
-function formatTaxonomyLabel(value: string | undefined | null): string {
-  if (!value) return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  const normalized = trimmed.toLowerCase();
-  const direct = MAIN_CATEGORY_LABELS[normalized];
-  if (direct) return direct;
-  if (trimmed.includes('/')) {
-    const [mainRaw, subRaw] = trimmed.split('/', 2);
-    const main = MAIN_CATEGORY_LABELS[mainRaw.toLowerCase()] ?? titleize(mainRaw);
-    return `${main} / ${titleize(subRaw)}`;
-  }
-  return titleize(trimmed);
-}
 
 function hasIssue(review: DatabaseReviewItem): boolean {
   return (
@@ -109,6 +68,10 @@ export default function DatabasePage() {
   const [adminError, setAdminError] = useState<string | null>(null);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
+  const [exportPreviewData, setExportPreviewData] = useState<DatabaseExportCount | null>(null);
+  const [exportPreviewLoading, setExportPreviewLoading] = useState(false);
 
   const compact = density === 'compact';
   const isAdmin = authStatus?.is_admin ?? false;
@@ -300,15 +263,6 @@ export default function DatabasePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filteredReviews]);
 
-  useEffect(() => {
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setExpandedReview(null);
-      }
-    }
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, []);
 
   useEffect(() => {
     if (selectedIndex === null) return;
@@ -320,6 +274,112 @@ export default function DatabasePage() {
     setActiveQuery(queryInput.trim());
     setOffset(0);
   }
+
+  function handleClearAll() {
+    setQueryInput('');
+    setActiveQuery('');
+    setLanguageFilter('all');
+    setSelectedAppId(null);
+    setSelectedCategory('all');
+    setSelectedSubcategory('all');
+    setQuickSentiment('all');
+    setQuickType('all');
+    setOffset(0);
+  }
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (activeQuery) count++;
+    if (languageFilter !== 'all') count++;
+    if (selectedAppId !== null) count++;
+    if (selectedCategory !== 'all') count++;
+    if (selectedSubcategory !== 'all') count++;
+    if (quickSentiment !== 'all') count++;
+    if (quickType !== 'all') count++;
+    return count;
+  }, [activeQuery, languageFilter, selectedAppId, selectedCategory, selectedSubcategory, quickSentiment, quickType]);
+
+  const filterPills = useMemo(() => {
+    const pills = [];
+    if (activeQuery) {
+      pills.push({
+        key: 'query',
+        label: 'Search',
+        value: activeQuery,
+        onRemove: () => {
+          setQueryInput('');
+          setActiveQuery('');
+          setOffset(0);
+        },
+      });
+    }
+    if (languageFilter !== 'all') {
+      pills.push({
+        key: 'language',
+        label: 'Language',
+        value: languageFilter,
+        onRemove: () => {
+          setLanguageFilter('all');
+          setOffset(0);
+        },
+      });
+    }
+    if (selectedAppId !== null) {
+      const game = games.find((g) => g.app_id === selectedAppId);
+      pills.push({
+        key: 'game',
+        label: 'Game',
+        value: game?.name || `App ${selectedAppId}`,
+        onRemove: () => {
+          setSelectedAppId(null);
+          setOffset(0);
+        },
+      });
+    }
+    if (selectedCategory !== 'all') {
+      pills.push({
+        key: 'category',
+        label: 'Category',
+        value: formatTaxonomyLabel(selectedCategory),
+        onRemove: () => {
+          setSelectedCategory('all');
+          setOffset(0);
+        },
+      });
+    }
+    if (selectedSubcategory !== 'all') {
+      pills.push({
+        key: 'subcategory',
+        label: 'Subcategory',
+        value: formatTaxonomyLabel(selectedSubcategory),
+        onRemove: () => {
+          setSelectedSubcategory('all');
+          setOffset(0);
+        },
+      });
+    }
+    if (quickSentiment !== 'all') {
+      pills.push({
+        key: 'sentiment',
+        label: 'Sentiment',
+        value: quickSentiment === 'positive' ? 'Recommended' : 'Not Recommended',
+        onRemove: () => {
+          setQuickSentiment('all');
+        },
+      });
+    }
+    if (quickType !== 'all') {
+      pills.push({
+        key: 'type',
+        label: 'Type',
+        value: quickType === 'issue' ? 'Issues' : 'Requests',
+        onRemove: () => {
+          setQuickType('all');
+        },
+      });
+    }
+    return pills;
+  }, [activeQuery, languageFilter, selectedAppId, selectedCategory, selectedSubcategory, quickSentiment, quickType, games]);
 
   async function handleAdminDelete() {
     if (!selectedAppId) {
@@ -350,9 +410,30 @@ export default function DatabasePage() {
     }
   }
 
-  async function handleDownload(format: 'csv' | 'jsonl') {
+  async function handleExportPreview() {
+    setExportPreviewOpen(true);
+    setExportPreviewLoading(true);
+    setExportPreviewData(null);
+    try {
+      const data = await fetchDatabaseExportCount({
+        scope,
+        app_id: selectedAppId,
+        language: languageFilter === 'all' ? null : languageFilter,
+        query: activeQuery || null,
+      });
+      setExportPreviewData(data);
+    } catch (err) {
+      console.error('Failed to fetch export preview:', err);
+      setDownloadError((err as Error).message || 'Failed to load export preview.');
+    } finally {
+      setExportPreviewLoading(false);
+    }
+  }
+
+  async function handleDownload(format: 'csv' | 'jsonl', options: ExportOptions) {
     setDownloadBusy(true);
     setDownloadError(null);
+    setExportPreviewOpen(false);
     try {
       await downloadDatabaseExport({
         format,
@@ -360,6 +441,7 @@ export default function DatabasePage() {
         app_id: selectedAppId,
         language: languageFilter === 'all' ? null : languageFilter,
         query: activeQuery || null,
+        max_rows: options.maxRows,
       });
     } catch (err) {
       setDownloadError((err as Error).message || 'Download failed.');
@@ -373,48 +455,114 @@ export default function DatabasePage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl space-y-10 sm:space-y-8 px-4 py-6 sm:px-6 sm:py-8">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-              {t('database.title')}
-            </span>
-          </h1>
-          <p className="text-sm text-slate-400">
-            {t('database.subtitle')}
-          </p>
+      <div className="flex h-full">
+        <FilterSidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          queryInput={queryInput}
+          setQueryInput={setQueryInput}
+          onApplyQuery={handleApplyQuery}
+          languageFilter={languageFilter}
+          setLanguageFilter={(value) => {
+            setLanguageFilter(value);
+            setOffset(0);
+          }}
+          selectedAppId={selectedAppId}
+          setSelectedAppId={(value) => {
+            setSelectedAppId(value);
+            setOffset(0);
+          }}
+          games={games}
+          scope={scope}
+          setScope={setScope}
+          isAdmin={isAdmin}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={(value) => {
+            setSelectedCategory(value);
+            setSelectedSubcategory('all');
+            setOffset(0);
+          }}
+          selectedSubcategory={selectedSubcategory}
+          setSelectedSubcategory={(value) => {
+            setSelectedSubcategory(value);
+            setOffset(0);
+          }}
+          categoryOptions={categoryOptions}
+          subcategoryOptions={subcategoryOptions}
+          quickSentiment={quickSentiment}
+          setQuickSentiment={setQuickSentiment}
+          quickType={quickType}
+          setQuickType={setQuickType}
+          onClearAll={handleClearAll}
+          activeFilterCount={activeFilterCount}
+          onExportPreview={handleExportPreview}
+          downloadBusy={downloadBusy}
+          t={t}
+        />
+        <ExportPreviewDialog
+          isOpen={exportPreviewOpen}
+          onClose={() => setExportPreviewOpen(false)}
+          onExport={handleDownload}
+          previewData={exportPreviewData}
+          loading={exportPreviewLoading}
+          exporting={downloadBusy}
+        />
+        <div className="flex-1 overflow-auto">
+          <div className="mx-auto max-w-7xl space-y-10 sm:space-y-8 px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="rounded-lg border border-white/10 bg-slate-900/50 p-2 text-slate-400 transition hover:bg-slate-900/70 hover:text-white lg:hidden"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                  {t('database.title')}
+                </span>
+              </h1>
+            </div>
+            <p className="text-sm text-slate-400">
+              {t('database.subtitle')}
+            </p>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-[10px] uppercase tracking-[0.25em] text-slate-400">
+              <button
+                type="button"
+                onClick={() => setScope('me')}
+                className={`rounded-full px-3 py-1 transition ${
+                  scope === 'me'
+                    ? 'bg-sky-500/20 text-sky-200'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t('database.myData')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope('all')}
+                className={`rounded-full px-3 py-1 transition ${
+                  scope === 'all'
+                    ? 'bg-amber-500/20 text-amber-200'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t('database.allUsers')}
+              </button>
+            </div>
+          )}
         </div>
 
+        <FilterPills pills={filterPills} />
+
         <Card variant="glass" className="p-5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-white">{t('database.stats')}</h2>
-            {isAdmin && (
-              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-[10px] uppercase tracking-[0.25em] text-slate-400">
-                <button
-                  type="button"
-                  onClick={() => setScope('me')}
-                  className={`rounded-full px-3 py-1 transition ${
-                    scope === 'me'
-                      ? 'bg-sky-500/20 text-sky-200'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {t('database.myData')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScope('all')}
-                  className={`rounded-full px-3 py-1 transition ${
-                    scope === 'all'
-                      ? 'bg-amber-500/20 text-amber-200'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {t('database.allUsers')}
-                </button>
-              </div>
-            )}
-          </div>
+          <h2 className="mb-3 text-base font-semibold text-white">{t('database.stats')}</h2>
           {loadingStats ? (
             <p className="text-sm text-slate-400">{t('database.loadingStats')}</p>
           ) : stats ? (
@@ -447,164 +595,11 @@ export default function DatabasePage() {
           )}
         </Card>
 
-        <Card variant="glass" className="p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-white">{t('database.filters')}</h2>
-              <p className="text-xs text-slate-400">{t('database.filtersDesc')}</p>
-            </div>
-            <div className="flex flex-col items-start gap-2 text-xs text-slate-500 sm:items-end">
-              <div>
-                Page {currentPage} of {totalPages} - {pageTotal.toLocaleString()} total reviews
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={downloadBusy || loadingReviews}
-                  onClick={() => handleDownload('csv')}
-                >
-                  {downloadBusy ? 'Preparing…' : t('database.downloadCSV')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={downloadBusy || loadingReviews}
-                  onClick={() => handleDownload('jsonl')}
-                >
-                  {downloadBusy ? 'Preparing…' : t('database.downloadJSON')}
-                </Button>
-              </div>
-            </div>
+        {downloadError && (
+          <div className="rounded-xl border border-rose-500/50 bg-rose-500/10 p-4">
+            <p className="text-sm text-rose-300">{downloadError}</p>
           </div>
-          {downloadError ? <p className="mt-3 text-xs text-rose-300">{downloadError}</p> : null}
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.searchText')}</span>
-              <div className="flex gap-3">
-                <input
-                  value={queryInput}
-                  onChange={(event) => setQueryInput(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && handleApplyQuery()}
-                  placeholder={t('database.searchPlaceholder')}
-                  className="flex-1 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-                />
-                <Button variant="secondary" onClick={handleApplyQuery}>
-                  Apply
-                </Button>
-              </div>
-            </label>
-
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.game')}</span>
-              <select
-                value={selectedAppId ?? ''}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setSelectedAppId(value ? Number(value) : null);
-                  setOffset(0);
-                }}
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-              >
-                <option value="">{t('database.allGames')}</option>
-                {games.map((game) => (
-                  <option key={game.app_id} value={game.app_id}>
-                    {game.name ? `${game.name} (${game.app_id})` : `App ${game.app_id}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.language')}</span>
-              <input
-                value={languageFilter}
-                onChange={(event) => {
-                  setLanguageFilter(event.target.value || 'all');
-                  setOffset(0);
-                }}
-                placeholder="all"
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-              />
-            </label>
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.category')}</span>
-              <select
-                value={selectedCategory}
-                onChange={(event) => {
-                  setSelectedCategory(event.target.value);
-                  setSelectedSubcategory('all');
-                  setOffset(0);
-                }}
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-              >
-                <option value="all">{t('database.allCategories')}</option>
-                {categoryOptions.map((category) => (
-                  <option key={category.value} value={category.value}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('database.subcategory')}</span>
-              <select
-                value={selectedSubcategory}
-                onChange={(event) => {
-                  setSelectedSubcategory(event.target.value);
-                  setOffset(0);
-                }}
-                className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-              >
-                <option value="all">{t('database.allSubcategories')}</option>
-                {subcategoryOptions
-                  .filter((opt) => !selectedCategory || selectedCategory === 'all' || opt.main === selectedCategory)
-                  .map((subcategory) => (
-                    <option key={subcategory.value} value={subcategory.value}>
-                      {subcategory.label}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">{t('database.quickFilters')}</span>
-            {(['all', 'positive', 'negative'] as const).map((value) => (
-              <button
-                key={value}
-                onClick={() => setQuickSentiment(value)}
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  quickSentiment === value
-                    ? 'border-sky-400 bg-sky-500/20 text-white'
-                    : 'border-white/10 bg-white/5 text-slate-300 hover:border-sky-400/40 hover:text-white'
-                }`}
-                type="button"
-              >
-                {value === 'all' ? t('database.allSentiment') : value === 'positive' ? t('common.recommended') : t('common.notRecommended')}
-              </button>
-            ))}
-            {(['all', 'issue', 'request'] as const).map((value) => (
-              <button
-                key={value}
-                onClick={() => setQuickType(value)}
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  quickType === value
-                    ? 'border-purple-400 bg-purple-500/20 text-white'
-                    : 'border-white/10 bg-white/5 text-slate-300 hover:border-purple-400/40 hover:text-white'
-                }`}
-                type="button"
-              >
-                {value === 'all' ? t('database.allLabels') : value === 'issue' ? t('common.issues') : t('common.requests')}
-              </button>
-            ))}
-          </div>
-        </Card>
+        )}
 
         {isAdmin && (
           <Card variant="glass" className="p-6">
@@ -745,124 +740,32 @@ export default function DatabasePage() {
           </Card>
         </div>
       </div>
-
-      {expandedReview && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 py-8">
-          <div
-            className="absolute inset-0"
-            onClick={() => setExpandedReview(null)}
-            role="button"
-            tabIndex={-1}
-          />
-          <Card
-            variant="glass"
-            className="relative z-10 w-full max-w-3xl max-h-[85vh] overflow-auto p-6"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-white">{t('database.reviewDetails')}</h2>
-                <p className="text-xs text-slate-400">
-                  {formatReviewDate(expandedReview.created_at)} - {expandedReview.votes_up || 0} helpful
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs ${
-                    expandedReview.voted_up ? 'bg-emerald-500/15 text-emerald-200' : 'bg-rose-500/15 text-rose-200'
-                  }`}
-                >
-                  {expandedReview.voted_up ? t('common.recommended') : t('common.notRecommended')}
-                </span>
-                {expandedReview.llm_main_category ? (
-                  <span className="rounded-full bg-indigo-500/15 px-3 py-1 text-xs text-indigo-200">
-                    {formatTaxonomyLabel(expandedReview.llm_main_category)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
-              <p className="whitespace-pre-line">{expandedReview.review}</p>
-            </div>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t('common.labels')}</p>
-                {expandedReview.llm_subcategories?.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {expandedReview.llm_subcategories.map((value, idx) => (
-                      <span key={`${value}-${idx}`} className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">
-                        {formatTaxonomyLabel(value)}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">No subcategories tagged.</p>
-                )}
-              </div>
-
-              <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t('common.issues')} & {t('common.requests')}</p>
-                <div className="space-y-3 text-xs text-slate-300">
-                  {expandedReview.llm_issue_subcategories?.length ? (
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300">{t('common.issues')}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {expandedReview.llm_issue_subcategories.map((value, idx) => (
-                          <span key={`${value}-${idx}`} className="rounded-full bg-rose-500/15 px-2 py-1 text-xs text-rose-200">
-                            {formatTaxonomyLabel(value)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">No issues tagged.</p>
-                  )}
-                  {expandedReview.llm_request_subcategories?.length ? (
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300">{t('common.requests')}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {expandedReview.llm_request_subcategories.map((value, idx) => (
-                          <span key={`${value}-${idx}`} className="rounded-full bg-cyan-500/15 px-2 py-1 text-xs text-cyan-200">
-                            {formatTaxonomyLabel(value)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t('common.evidence')}</p>
-              {expandedReview.llm_subcategory_evidence && Object.keys(expandedReview.llm_subcategory_evidence).length ? (
-                <div className="mt-3 space-y-3 text-sm text-slate-200">
-                  {Object.entries(expandedReview.llm_subcategory_evidence).map(([subcategory, snippets]) => (
-                    <div key={subcategory} className="rounded-xl border border-white/5 bg-white/5 p-3">
-                      <p className="text-xs font-semibold text-slate-300">{formatTaxonomyLabel(subcategory)}</p>
-                      <div className="mt-2 space-y-2 text-xs text-slate-200">
-                        {snippets.map((snippet, idx) => (
-                          <p key={`${subcategory}-${idx}`} className="rounded-lg bg-slate-950/40 px-3 py-2">
-                            {snippet}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-slate-500">No evidence snippets saved for this review.</p>
-              )}
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <Button variant="secondary" onClick={() => setExpandedReview(null)}>
-                {t('common.close')}
-              </Button>
-            </div>
-          </Card>
         </div>
+      </div>
+
+      {expandedReview && selectedIndex !== null && (
+        <ReviewModal
+          review={expandedReview}
+          currentIndex={selectedIndex}
+          totalCount={filteredReviews.length}
+          onClose={() => setExpandedReview(null)}
+          onPrevious={() => {
+            if (selectedIndex > 0) {
+              const newIndex = selectedIndex - 1;
+              setSelectedIndex(newIndex);
+              setExpandedReview(filteredReviews[newIndex]);
+            }
+          }}
+          onNext={() => {
+            if (selectedIndex < filteredReviews.length - 1) {
+              const newIndex = selectedIndex + 1;
+              setSelectedIndex(newIndex);
+              setExpandedReview(filteredReviews[newIndex]);
+            }
+          }}
+          isAdmin={isAdmin}
+          t={t}
+        />
       )}
     </AppLayout>
   );

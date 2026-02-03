@@ -32,12 +32,13 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       { href: "/chat", label: t('nav.chat'), code: "02" },
       { href: "/compare", label: t('nav.compare'), code: "03" },
       { href: "/database", label: t('nav.database'), code: "04" },
+      { href: "/reports", label: t('nav.reports'), code: "06" },
     ];
     // Add admin item after database if user is admin
     if (isAdmin) {
       items.push({ href: "/admin", label: "Admin", code: "0A" });
     }
-    items.push({ href: "/settings", label: t('nav.settings'), code: "05" });
+    items.push({ href: "/settings", label: t('nav.settings'), code: "07" });
     return items;
   }, [t, isAdmin]);
 

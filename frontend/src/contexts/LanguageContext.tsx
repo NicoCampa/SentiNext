@@ -20,6 +20,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.chat': 'Chat',
     'nav.compare': 'Compare',
     'nav.database': 'Database',
+    'nav.reports': 'Reports',
     'nav.settings': 'Settings',
 
     // Common
@@ -181,6 +182,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.chat': 'Chat',
     'nav.compare': 'Confronta',
     'nav.database': 'Database',
+    'nav.reports': 'Rapporti',
     'nav.settings': 'Impostazioni',
 
     // Common
@@ -342,6 +344,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.chat': 'Chat',
     'nav.compare': 'Comparer',
     'nav.database': 'Base de données',
+    'nav.reports': 'Rapports',
     'nav.settings': 'Paramètres',
 
     // Common
@@ -503,6 +506,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.chat': 'Chat',
     'nav.compare': 'Vergleichen',
     'nav.database': 'Datenbank',
+    'nav.reports': 'Berichte',
     'nav.settings': 'Einstellungen',
 
     // Common

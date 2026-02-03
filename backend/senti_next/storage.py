@@ -884,6 +884,28 @@ def list_database_games(user_id: str) -> List[Dict[str, Any]]:
     ]
 
 
+def get_review_by_id(review_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get a single review by its review_id.
+    Returns the review row with labels or None if not found.
+    """
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        query_sql = """
+            SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
+                   review_labels.payload AS label_payload
+            FROM reviews
+            LEFT JOIN review_labels
+              ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
+            WHERE reviews.review_id = :review_id
+            LIMIT 1
+        """
+        result = conn.execute(text(query_sql), {"review_id": review_id}).mappings().fetchone()
+        if result:
+            return dict(result)
+        return None
+
+
 def load_database_reviews(
     limit: int,
     offset: int,
@@ -1372,6 +1394,9 @@ def search_reviews_with_date_filter(
     date_filter: str = "all",
     limit: int = 50,
     order_by: str = "votes_up",
+    offset: int = 0,
+    sentiment: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> List[dict]:
     """Search reviews using PostgreSQL FTS with date filtering.
 
@@ -1381,6 +1406,9 @@ def search_reviews_with_date_filter(
         date_filter: One of "30d", "90d", "365d", "all"
         limit: Maximum number of results (default 50)
         order_by: Order by column - "votes_up" (default) or "timestamp_created"
+        offset: Number of results to skip (for pagination)
+        sentiment: Optional sentiment filter ("positive" or "negative")
+        language: Optional language filter (e.g., "english", "german")
 
     Returns:
         List of review dicts ordered by votes_up DESC
@@ -1390,69 +1418,271 @@ def search_reviews_with_date_filter(
 
     raw = (query or "").strip()
     max_days = _parse_date_filter(date_filter)
+    offset = max(0, int(offset or 0))
+
+    sentiment_value = (sentiment or "").strip().lower()
+    sentiment_filter = None
+    if sentiment_value in {"positive", "negative"}:
+        sentiment_filter = sentiment_value == "positive"
+
+    language_value = (language or "").strip().lower()
 
     with db_module.get_connection() as conn:
+        # Build WHERE clauses
+        where_parts = ["r.app_id = :app_id"]
+        params: Dict[str, Any] = {
+            "app_id": int(app_id),
+            "limit": int(limit),
+            "offset": offset,
+        }
+
         if raw:
-            # Convert search query to tsquery format
             query_terms = raw.split()
             ts_query = " | ".join(query_terms)  # Use OR for broader matching
+            where_parts.append("r.search_vector @@ to_tsquery('simple', :query)")
+            params["query"] = ts_query
 
-            if max_days is not None:
-                cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
-                result = conn.execute(
-                    text("""
-                        SELECT data
-                        FROM reviews
-                        WHERE app_id = :app_id
-                          AND search_vector @@ to_tsquery('simple', :query)
-                          AND timestamp_created > :cutoff
-                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
-                        LIMIT :limit
-                    """),
-                    {"app_id": int(app_id), "query": ts_query, "cutoff": cutoff, "limit": int(limit)},
-                )
-            else:
-                result = conn.execute(
-                    text("""
-                        SELECT data
-                        FROM reviews
-                        WHERE app_id = :app_id
-                          AND search_vector @@ to_tsquery('simple', :query)
-                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
-                        LIMIT :limit
-                    """),
-                    {"app_id": int(app_id), "query": ts_query, "limit": int(limit)},
-                )
-        else:
-            # No query - just get most helpful reviews
-            if max_days is not None:
-                cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
-                result = conn.execute(
-                    text("""
-                        SELECT data
-                        FROM reviews
-                        WHERE app_id = :app_id
-                          AND timestamp_created > :cutoff
-                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
-                        LIMIT :limit
-                    """),
-                    {"app_id": int(app_id), "cutoff": cutoff, "limit": int(limit)},
-                )
-            else:
-                result = conn.execute(
-                    text("""
-                        SELECT data
-                        FROM reviews
-                        WHERE app_id = :app_id
-                        ORDER BY (data->>'votes_up')::int DESC NULLS LAST
-                        LIMIT :limit
-                    """),
-                    {"app_id": int(app_id), "limit": int(limit)},
-                )
+        if max_days is not None:
+            cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+            where_parts.append("r.timestamp_created > :cutoff")
+            params["cutoff"] = cutoff
+
+        if sentiment_filter is not None:
+            where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
+            params["is_positive"] = sentiment_filter
+
+        if language_value and language_value != "all":
+            where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+            params["language"] = language_value
+
+        where_sql = " AND ".join(where_parts)
+        order_clause = "ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST"
+        if order_by == "timestamp_created":
+            order_clause = "ORDER BY r.timestamp_created DESC NULLS LAST"
+
+        result = conn.execute(
+            text(f"""
+                SELECT r.data
+                FROM reviews r
+                WHERE {where_sql}
+                {order_clause}
+                LIMIT :limit OFFSET :offset
+            """),
+            params,
+        )
 
         rows = result.fetchall()
 
     return [_parse_json_field(row[0], {}) for row in rows]
+
+
+def get_subcategory_label_counts(
+    app_id: int,
+    label_key: str,
+    date_filter: str = "all",
+    *,
+    category: Optional[str] = None,
+    limit: Optional[int] = 10,
+    subcategories: Optional[Sequence[str]] = None,
+    sentiment: Optional[str] = None,
+    language: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Aggregate counts for a label array (subcategories/issues/requests).
+
+    Args:
+        app_id: The Steam app ID
+        label_key: One of "subcategories", "issue_subcategories", "request_subcategories"
+        date_filter: One of "30d", "90d", "365d", "all"
+        category: Optional main category filter (e.g., "technical")
+        limit: Optional max results (None for no limit)
+        subcategories: Optional list to restrict to specific subcategories
+        sentiment: Optional sentiment filter ("positive" or "negative")
+        language: Optional language filter (e.g., "english", "german")
+
+    Returns:
+        List of dicts with subcategory, count, positive_count
+    """
+    if label_key not in {"subcategories", "issue_subcategories", "request_subcategories"}:
+        raise ValueError(f"Unsupported label_key: {label_key}")
+
+    from . import db as db_module
+    import time
+
+    max_days = _parse_date_filter(date_filter)
+    category_filter = (category or "").strip().lower()
+    sentiment_value = (sentiment or "").strip().lower()
+    sentiment_filter = None
+    if sentiment_value in {"positive", "negative"}:
+        sentiment_filter = sentiment_value == "positive"
+    language_value = (language or "").strip().lower()
+
+    params: Dict[str, Any] = {
+        "app_id": int(app_id),
+    }
+    where_parts = [
+        "r.app_id = :app_id",
+        "rl.payload IS NOT NULL",
+    ]
+
+    if max_days is not None:
+        cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+        where_parts.append("r.timestamp_created > :cutoff")
+        params["cutoff"] = cutoff
+
+    if sentiment_filter is not None:
+        where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
+        params["is_positive"] = sentiment_filter
+
+    if language_value and language_value != "all":
+        where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+        params["language"] = language_value
+
+    if category_filter:
+        params["subcategory_pattern"] = f"{category_filter}/%"
+        where_parts.append("LOWER(subcat) LIKE :subcategory_pattern")
+
+    if subcategories:
+        subcats = [s.lower() for s in subcategories if s]
+        if not subcats:
+            return []
+        params["subcategories"] = subcats
+        where_parts.append("LOWER(subcat) = ANY(:subcategories)")
+
+    where_sql = " AND ".join(where_parts)
+    limit_clause = ""
+    if limit is not None:
+        params["limit"] = int(limit)
+        limit_clause = "LIMIT :limit"
+
+    query_sql = f"""
+        SELECT LOWER(subcat) AS subcat_key,
+               MIN(subcat) AS subcategory,
+               COUNT(*) AS count,
+               SUM(CASE WHEN COALESCE((r.data->>'voted_up')::boolean, false) THEN 1 ELSE 0 END) AS positive_count
+        FROM reviews r
+        JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
+        JOIN LATERAL jsonb_array_elements_text(rl.payload->'{label_key}') AS subcat ON true
+        WHERE {where_sql}
+        GROUP BY subcat_key
+        ORDER BY COUNT(*) DESC
+        {limit_clause}
+    """
+
+    with db_module.get_connection() as conn:
+        rows = conn.execute(text(query_sql), params).fetchall()
+
+    return [
+        {
+            "subcategory": row[1],
+            "count": int(row[2] or 0),
+            "positive_count": int(row[3] or 0),
+        }
+        for row in rows
+    ]
+
+
+def get_subcategory_label_counts_range(
+    app_id: int,
+    label_key: str,
+    start_ts: int,
+    end_ts: int,
+    *,
+    category: Optional[str] = None,
+    limit: Optional[int] = 10,
+    subcategories: Optional[Sequence[str]] = None,
+    sentiment: Optional[str] = None,
+    language: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Aggregate counts for a label array within a specific time range.
+
+    Args:
+        app_id: The Steam app ID
+        label_key: One of "subcategories", "issue_subcategories", "request_subcategories"
+        start_ts: Start timestamp (inclusive, Unix seconds)
+        end_ts: End timestamp (exclusive, Unix seconds)
+        category: Optional main category filter (e.g., "technical")
+        limit: Optional max results (None for no limit)
+        subcategories: Optional list to restrict to specific subcategories
+        sentiment: Optional sentiment filter ("positive" or "negative")
+        language: Optional language filter (e.g., "english", "german")
+
+    Returns:
+        List of dicts with subcategory, count, positive_count
+    """
+    if label_key not in {"subcategories", "issue_subcategories", "request_subcategories"}:
+        raise ValueError(f"Unsupported label_key: {label_key}")
+
+    from . import db as db_module
+
+    category_filter = (category or "").strip().lower()
+    sentiment_value = (sentiment or "").strip().lower()
+    sentiment_filter = None
+    if sentiment_value in {"positive", "negative"}:
+        sentiment_filter = sentiment_value == "positive"
+    language_value = (language or "").strip().lower()
+
+    params: Dict[str, Any] = {
+        "app_id": int(app_id),
+        "start_ts": int(start_ts),
+        "end_ts": int(end_ts),
+    }
+    where_parts = [
+        "r.app_id = :app_id",
+        "rl.payload IS NOT NULL",
+        "r.timestamp_created >= :start_ts",
+        "r.timestamp_created < :end_ts",
+    ]
+
+    if category_filter:
+        params["subcategory_pattern"] = f"{category_filter}/%"
+        where_parts.append("LOWER(subcat) LIKE :subcategory_pattern")
+
+    if subcategories:
+        subcats = [s.lower() for s in subcategories if s]
+        if not subcats:
+            return []
+        params["subcategories"] = subcats
+        where_parts.append("LOWER(subcat) = ANY(:subcategories)")
+
+    if sentiment_filter is not None:
+        where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
+        params["is_positive"] = sentiment_filter
+
+    if language_value and language_value != "all":
+        where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+        params["language"] = language_value
+
+    where_sql = " AND ".join(where_parts)
+    limit_clause = ""
+    if limit is not None:
+        params["limit"] = int(limit)
+        limit_clause = "LIMIT :limit"
+
+    query_sql = f"""
+        SELECT LOWER(subcat) AS subcat_key,
+               MIN(subcat) AS subcategory,
+               COUNT(*) AS count,
+               SUM(CASE WHEN COALESCE((r.data->>'voted_up')::boolean, false) THEN 1 ELSE 0 END) AS positive_count
+        FROM reviews r
+        JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
+        JOIN LATERAL jsonb_array_elements_text(rl.payload->'{label_key}') AS subcat ON true
+        WHERE {where_sql}
+        GROUP BY subcat_key
+        ORDER BY COUNT(*) DESC
+        {limit_clause}
+    """
+
+    with db_module.get_connection() as conn:
+        rows = conn.execute(text(query_sql), params).fetchall()
+
+    return [
+        {
+            "subcategory": row[1],
+            "count": int(row[2] or 0),
+            "positive_count": int(row[3] or 0),
+        }
+        for row in rows
+    ]
 
 
 def load_game_metadata_for_chat(user_id: str, app_ids: List[int]) -> List[Dict[str, Any]]:
@@ -1856,6 +2086,9 @@ def get_reviews_by_subcategory(
     date_filter: str = "all",
     limit: int = 50,
     order_by: str = "votes_up",
+    offset: int = 0,
+    sentiment: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> List[dict]:
     """Get reviews that were labeled with a specific subcategory.
 
@@ -1869,6 +2102,9 @@ def get_reviews_by_subcategory(
         date_filter: One of "30d", "90d", "365d", "all"
         limit: Maximum number of results
         order_by: Order by column - "votes_up" (default) or "timestamp_created"
+        offset: Number of results to skip (for pagination)
+        sentiment: Optional sentiment filter ("positive" or "negative")
+        language: Optional language filter (e.g., "english", "german")
 
     Returns:
         List of review dicts that have this subcategory label
@@ -1887,87 +2123,70 @@ def get_reviews_by_subcategory(
     # If user says "technical/bugs", match exactly
     subcategory_lower = subcategory.lower().strip()
 
-    with db_module.get_connection() as conn:
-        # Build the query - check subcategories, issue_subcategories, and request_subcategories
-        if max_days is not None:
-            cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
-            # Join reviews with review_labels, filter by subcategory in JSONB payload
-            result = conn.execute(
-                text("""
-                    SELECT DISTINCT r.data
-                    FROM reviews r
-                    JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
-                    WHERE r.app_id = :app_id
-                      AND r.timestamp_created > :cutoff
-                      AND rl.payload IS NOT NULL
-                      AND (
-                          -- Match in subcategories array
-                          EXISTS (
-                              SELECT 1
-                              FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat
-                              WHERE LOWER(subcat) LIKE :subcategory_pattern
-                          )
-                          -- Also check issue_subcategories (for complaints)
-                          OR EXISTS (
-                              SELECT 1
-                              FROM jsonb_array_elements_text(rl.payload->'issue_subcategories') AS subcat
-                              WHERE LOWER(subcat) LIKE :subcategory_pattern
-                          )
-                          -- Also check request_subcategories (for feature requests)
-                          OR EXISTS (
-                              SELECT 1
-                              FROM jsonb_array_elements_text(rl.payload->'request_subcategories') AS subcat
-                              WHERE LOWER(subcat) LIKE :subcategory_pattern
-                          )
-                      )
-                    ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST
-                    LIMIT :limit
-                """),
-                {
-                    "app_id": int(app_id),
-                    "cutoff": cutoff,
-                    "subcategory_pattern": f"%{subcategory_lower}%",
-                    "limit": int(limit),
-                },
-            )
-        else:
-            result = conn.execute(
-                text("""
-                    SELECT DISTINCT r.data
-                    FROM reviews r
-                    JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
-                    WHERE r.app_id = :app_id
-                      AND rl.payload IS NOT NULL
-                      AND (
-                          -- Match in subcategories array
-                          EXISTS (
-                              SELECT 1
-                              FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat
-                              WHERE LOWER(subcat) LIKE :subcategory_pattern
-                          )
-                          -- Also check issue_subcategories (for complaints)
-                          OR EXISTS (
-                              SELECT 1
-                              FROM jsonb_array_elements_text(rl.payload->'issue_subcategories') AS subcat
-                              WHERE LOWER(subcat) LIKE :subcategory_pattern
-                          )
-                          -- Also check request_subcategories (for feature requests)
-                          OR EXISTS (
-                              SELECT 1
-                              FROM jsonb_array_elements_text(rl.payload->'request_subcategories') AS subcat
-                              WHERE LOWER(subcat) LIKE :subcategory_pattern
-                          )
-                      )
-                    ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST
-                    LIMIT :limit
-                """),
-                {
-                    "app_id": int(app_id),
-                    "subcategory_pattern": f"%{subcategory_lower}%",
-                    "limit": int(limit),
-                },
-            )
+    offset = max(0, int(offset or 0))
+    sentiment_value = (sentiment or "").strip().lower()
+    sentiment_filter = None
+    if sentiment_value in {"positive", "negative"}:
+        sentiment_filter = sentiment_value == "positive"
 
+    language_value = (language or "").strip().lower()
+
+    params: Dict[str, Any] = {
+        "app_id": int(app_id),
+        "subcategory_pattern": f"%{subcategory_lower}%",
+        "limit": int(limit),
+        "offset": offset,
+    }
+
+    where_parts = [
+        "r.app_id = :app_id",
+        "rl.payload IS NOT NULL",
+        "("
+        "EXISTS ("
+        " SELECT 1 FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat"
+        " WHERE LOWER(subcat) LIKE :subcategory_pattern"
+        ")"
+        " OR EXISTS ("
+        " SELECT 1 FROM jsonb_array_elements_text(rl.payload->'issue_subcategories') AS subcat"
+        " WHERE LOWER(subcat) LIKE :subcategory_pattern"
+        ")"
+        " OR EXISTS ("
+        " SELECT 1 FROM jsonb_array_elements_text(rl.payload->'request_subcategories') AS subcat"
+        " WHERE LOWER(subcat) LIKE :subcategory_pattern"
+        ")"
+        ")",
+    ]
+
+    if max_days is not None:
+        cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
+        where_parts.append("r.timestamp_created > :cutoff")
+        params["cutoff"] = cutoff
+
+    if sentiment_filter is not None:
+        where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
+        params["is_positive"] = sentiment_filter
+
+    if language_value and language_value != "all":
+        where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+        params["language"] = language_value
+
+    where_sql = " AND ".join(where_parts)
+    order_clause = "ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST"
+    if order_by == "timestamp_created":
+        order_clause = "ORDER BY r.timestamp_created DESC NULLS LAST"
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text(f"""
+                SELECT DISTINCT r.data
+                FROM reviews r
+                JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
+                WHERE {where_sql}
+                {order_clause}
+                LIMIT :limit OFFSET :offset
+            """),
+            params,
+        )
         rows = result.fetchall()
 
     return [_parse_json_field(row[0], {}) for row in rows]

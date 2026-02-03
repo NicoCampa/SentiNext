@@ -1371,7 +1371,7 @@ class GameComparisonData(BaseModel):
 
 
 class ComparisonSummarizeRequest(BaseModel):
-    games: List[GameComparisonData] = Field(..., min_length=2, max_length=4)
+    games: List[GameComparisonData] = Field(..., min_length=2, max_length=2)
     comparison_type: str = Field(..., pattern="^(overview|category|subcategory)$")
     category: Optional[str] = None
     subcategory: Optional[str] = None
@@ -1553,6 +1553,9 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                 user_id=user_id,
                 session_id=session_id,
                 app_ids=app_ids,
+                date_filter=request.date_filter,
+                max_reviews_per_game=request.max_reviews_per_game,
+                language=request.language,
                 conversation_history=[
                     {"role": msg["role"], "content": msg["content"]}
                     for msg in history
@@ -1637,7 +1640,7 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                     for review in result_data.get("reviews", []):
                         if review.get("review_id"):
                             # Find the game name for this citation
-                            citation_app_id = app_ids[0] if app_ids else 0
+                            citation_app_id = int(tc.get("params", {}).get("app_id") or (app_ids[0] if app_ids else 0))
                             citation = ChatCitationItem(
                                 review_id=str(review.get("review_id", "")),
                                 app_id=citation_app_id,
@@ -2045,6 +2048,118 @@ def export_reviews(
     )
 
 
+@app.get("/reports/available-months/{app_id}", dependencies=[Depends(require_license)])
+def get_report_months(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+):
+    """Get list of months with review data for a game.
+
+    Returns list of months with review counts, ordered by most recent first.
+    """
+    from .senti_next import reports
+
+    # Check if game is starred/analyzed by user
+    if not storage.user_has_game(user_id, app_id):
+        raise HTTPException(status_code=404, detail="No analysis available for this game.")
+
+    months = reports.get_available_months(app_id, user_id)
+
+    return {"months": months}
+
+
+@app.get("/reports/executive-summary/{app_id}", dependencies=[Depends(require_license)])
+def generate_executive_summary(
+    app_id: int,
+    year: int,
+    month: int,
+    format: str = "pdf",
+    user_id: str = Depends(require_user_id),
+):
+    """Generate executive summary report for a game in a specific month.
+
+    Query params:
+    - year: 2024
+    - month: 1 (January)
+    - format: "pdf" (default) or "html" (preview)
+
+    Returns: StreamingResponse with PDF
+    """
+    from .senti_next import reports
+
+    # Validate year and month
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
+    if not (2000 <= year <= 2100):
+        raise HTTPException(status_code=400, detail="Invalid year")
+
+    # Check if game is starred/analyzed by user
+    if not storage.user_has_game(user_id, app_id):
+        raise HTTPException(status_code=404, detail="Game must be analyzed first")
+
+    # Get game details
+    game_context = fetch_app_details(app_id)
+    game_name = game_context.get("name", f"App {app_id}") if game_context else f"App {app_id}"
+
+    # Load reviews for this game
+    reviews = storage.load_reviews(app_id, limit=None)
+    if not reviews:
+        raise HTTPException(status_code=404, detail="No reviews found for this game")
+
+    # Build DataFrame with labels
+    cached_labels = storage.load_review_labels(app_id)
+    if not cached_labels:
+        raise HTTPException(
+            status_code=404,
+            detail="No classification data available. Please analyze this game first.",
+        )
+
+    llm_labels = {rid: data.get("payload", {}) for rid, data in cached_labels.items()}
+    df = build_reviews_dataframe(reviews)
+    df = llm.apply_review_labels(df, llm_labels)
+
+    # Filter to specified month
+    filtered_df = reports.filter_reviews_by_month(df, year, month)
+    if filtered_df.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No reviews found for {datetime(year, month, 1).strftime('%B %Y')}",
+        )
+
+    # Calculate insights
+    try:
+        insights = reports.calculate_monthly_insights(filtered_df)
+    except Exception as e:
+        logger.error(f"Failed to calculate insights: {e}")
+        raise HTTPException(status_code=500, detail="Failed to calculate insights") from e
+
+    # Generate report
+    period = datetime(year, month, 1).strftime("%B %Y")
+
+    if format == "pdf":
+        try:
+            pdf_bytes = reports.create_pdf_report(insights, game_name, period)
+        except Exception as e:
+            logger.error(f"Failed to generate PDF: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate PDF report") from e
+
+        # Format filename
+        safe_game_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in game_name)
+        safe_game_name = safe_game_name.replace(' ', '')[:50]
+        month_abbr = datetime(year, month, 1).strftime("%b%Y")
+        filename = f"ExecutiveSummary_{safe_game_name}_{month_abbr}.pdf"
+
+        return StreamingResponse(
+            iter([pdf_bytes]),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Only PDF format is currently supported")
+
+
 @app.get("/progress/{app_id}", dependencies=[Depends(require_license)])
 def classification_progress(
     app_id: int,
@@ -2354,6 +2469,36 @@ def database_games(scope: Optional[str] = None, user_id: str = Depends(require_u
     return [DatabaseGameOption(**entry) for entry in entries]
 
 
+@app.get("/database/reviews/{review_id}", dependencies=[Depends(require_license)])
+def get_database_review_by_id(
+    review_id: str,
+    user_id: str = Depends(require_user_id),
+):
+    """
+    Get a single review by its review_id for permalink support.
+    Returns the review with game information and labels.
+    """
+    # Get the review from storage
+    review_row = storage.get_review_by_id(review_id)
+    if not review_row:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    # Check if user has access to this review's game
+    app_id = review_row["app_id"]
+    user_games = storage.list_database_games(user_id)
+    user_app_ids = [entry["app_id"] for entry in user_games]
+
+    # Allow access if user owns the game or if user is admin
+    auth_status = _get_auth_status(user_id)
+    if app_id not in user_app_ids and not auth_status.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Access denied to this review")
+
+    games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
+    review_item = _database_row_to_item(review_row, games_map)
+
+    return {"review": review_item}
+
+
 @app.get("/database/reviews", response_model=DatabaseReviewsResponse, dependencies=[Depends(require_license)])
 def database_reviews(
     limit: int = 200,
@@ -2386,6 +2531,76 @@ def database_reviews(
         items.append(_database_row_to_item(row, games_map))
 
     return DatabaseReviewsResponse(items=items, total=int(total), offset=int(offset), limit=int(limit))
+
+
+@app.get("/database/reviews/count", dependencies=[Depends(require_license)])
+def database_reviews_count(
+    app_id: Optional[int] = None,
+    language: Optional[str] = None,
+    query: Optional[str] = None,
+    scope: Optional[str] = None,
+    user_id: str = Depends(require_user_id),
+):
+    """
+    Get export preview count and metadata for the database export.
+    Returns total count, games count, date range, and top games.
+    """
+    scope_user_id = resolve_scope_user_id(scope, user_id)
+    if scope_user_id is None:
+        user_games = storage.list_database_games_all()
+        user_app_ids = None
+    else:
+        user_games = storage.list_database_games(scope_user_id)
+        user_app_ids = [entry["app_id"] for entry in user_games]
+
+    # Get total count
+    _, total = storage.load_database_reviews(
+        limit=1,
+        offset=0,
+        app_id=app_id,
+        language=language,
+        query=query,
+        app_ids=user_app_ids,
+    )
+
+    # Get top games (up to 5)
+    top_games = []
+    if not app_id:
+        # Count reviews per game
+        game_counts = {}
+        offset_value = 0
+        page_size = 1000
+        while offset_value < total:
+            rows, _ = storage.load_database_reviews(
+                limit=page_size,
+                offset=offset_value,
+                app_id=app_id,
+                language=language,
+                query=query,
+                app_ids=user_app_ids,
+            )
+            if not rows:
+                break
+            for row in rows:
+                game_app_id = row["app_id"]
+                game_counts[game_app_id] = game_counts.get(game_app_id, 0) + 1
+            offset_value += len(rows)
+            if len(rows) < page_size:
+                break
+
+        # Get top 5 games
+        games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
+        sorted_games = sorted(game_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_games = [
+            {"app_id": app_id, "name": games_map.get(app_id, f"App {app_id}"), "count": count}
+            for app_id, count in sorted_games
+        ]
+
+    return {
+        "total": int(total),
+        "games": len(user_games) if not app_id else 1,
+        "top_games": top_games,
+    }
 
 
 @app.get("/database/export", dependencies=[Depends(require_license)])

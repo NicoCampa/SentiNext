@@ -324,6 +324,9 @@ CHAT_TOOLS = [
             "subcategory": "str - Filter by subcategory like 'monetization_value/pay_to_win_grind' or 'gameplay/ai'. Use to get reviews about a specific issue (optional)",
             "sentiment": "str - 'positive' or 'negative' (optional)",
             "limit": "int - Max results, default 10 (optional)",
+            "offset": "int - Number of results to skip for pagination (optional)",
+            "date_filter": "str - One of '30d', '90d', '365d', or 'all' (optional)",
+            "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
         }
     ),
     Tool(
@@ -332,6 +335,9 @@ CHAT_TOOLS = [
         parameters={
             "app_id": "int - Game ID (required)",
             "subcategory": "str - FULL subcategory path like 'gameplay/difficulty' or 'technical/bugs'. Must be in format 'main/sub' (required)",
+            "date_filter": "str - One of '30d', '90d', '365d', or 'all' (optional)",
+            "sentiment": "str - 'positive' or 'negative' (optional)",
+            "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
         }
     ),
     Tool(
@@ -341,6 +347,9 @@ CHAT_TOOLS = [
             "app_id": "int - Game ID (required)",
             "limit": "int - Number of issues to return, default 10 (optional)",
             "category": "str - Filter by main category like 'technical', 'gameplay' (optional)",
+            "date_filter": "str - One of '30d', '90d', '365d', or 'all' (optional)",
+            "sentiment": "str - 'positive' or 'negative' (optional)",
+            "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
         }
     ),
     Tool(
@@ -349,6 +358,57 @@ CHAT_TOOLS = [
         parameters={
             "app_id": "int - Game ID (required)",
             "limit": "int - Number of requests to return, default 10 (optional)",
+            "category": "str - Filter by main category like 'technical', 'gameplay' (optional)",
+            "date_filter": "str - One of '30d', '90d', '365d', or 'all' (optional)",
+            "sentiment": "str - 'positive' or 'negative' (optional)",
+            "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
+        }
+    ),
+    Tool(
+        name="list_available_topics",
+        description="List subcategories available in the game's analysis. Use when user asks what topics are available or to help pick a subcategory.",
+        parameters={
+            "app_id": "int - Game ID (required)",
+            "limit": "int - Max topics to return, default 20 (optional)",
+            "category": "str - Filter by main category like 'technical', 'gameplay' (optional)",
+            "date_filter": "str - One of '30d', '90d', '365d', or 'all' (optional)",
+            "sentiment": "str - 'positive' or 'negative' (optional)",
+            "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
+        }
+    ),
+    Tool(
+        name="get_top_praises",
+        description="Get the most common positive themes (non-issue, non-request mentions) for a game.",
+        parameters={
+            "app_id": "int - Game ID (required)",
+            "limit": "int - Number of themes to return, default 10 (optional)",
+            "category": "str - Filter by main category like 'technical', 'gameplay' (optional)",
+            "date_filter": "str - One of '30d', '90d', '365d', or 'all' (optional)",
+            "sentiment": "str - 'positive' or 'negative' (optional)",
+            "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
+        }
+    ),
+    Tool(
+        name="compare_time_windows",
+        description="Compare changes between two consecutive time windows for issues/requests/praises or specific subcategories.",
+        parameters={
+            "app_id": "int - Game ID (required)",
+            "metric": "str - One of 'issues', 'requests', 'praises', or 'topics' (required)",
+            "window_days": "int - Size of each window in days (e.g., 30) (required)",
+            "category": "str - Filter by main category like 'technical', 'gameplay' (optional)",
+            "subcategory": "str - Specific subcategory to compare (optional)",
+            "sentiment": "str - 'positive' or 'negative' (optional)",
+            "language": "str - Filter by review language (e.g., 'english', 'german') (optional)",
+            "limit": "int - Max items to return, default 10 (optional)",
+        }
+    ),
+    Tool(
+        name="compare_sentiment_trend",
+        description="Compare sentiment trends between two games over the last N weeks.",
+        parameters={
+            "app_id_1": "int - First game ID (required)",
+            "app_id_2": "int - Second game ID (required)",
+            "weeks": "int - Number of weeks to include, default 12 (optional)",
         }
     ),
     Tool(
@@ -421,16 +481,52 @@ def format_tools_for_gemini() -> List[Dict[str, Any]]:
 
             # Convert type strings to JSON schema types
             json_type = "string"
-            if param_type.startswith("int"):
+            items: Optional[Dict[str, Any]] = None
+
+            normalized_type = param_type.strip().lower()
+
+            if normalized_type.startswith("int") or normalized_type == "integer":
                 json_type = "integer"
-            elif param_type.startswith("list"):
-                json_type = "array"
-            elif param_type.startswith("bool"):
+            elif normalized_type.startswith("float") or normalized_type.startswith("number"):
+                json_type = "number"
+            elif normalized_type.startswith("bool") or normalized_type == "boolean":
                 json_type = "boolean"
+            elif normalized_type.startswith("list"):
+                json_type = "array"
+
+                item_type = "string"
+                if "[" in normalized_type and "]" in normalized_type:
+                    inner = normalized_type.split("[", 1)[1].rsplit("]", 1)[0].strip()
+                    if inner in {"int", "integer"}:
+                        item_type = "integer"
+                    elif inner in {"float", "number"}:
+                        item_type = "number"
+                    elif inner in {"dict", "object", "map"}:
+                        item_type = "object"
+                    elif inner in {"str", "string"}:
+                        item_type = "string"
+
+                items = {"type": item_type}
+
+                # Special-case: suggest_game_selection expects list[dict] with app_id + name.
+                if (
+                    tool.name == "suggest_game_selection"
+                    and param_name == "games"
+                    and item_type == "object"
+                ):
+                    items = {
+                        "type": "object",
+                        "description": "A game option with Steam app_id and display name.",
+                        "properties": {
+                            "app_id": {"type": "integer", "description": "Steam app ID"},
+                            "name": {"type": "string", "description": "Game name"},
+                        },
+                        "required": ["app_id", "name"],
+                    }
 
             prop = {"type": json_type, "description": description}
-            if json_type == "array":
-                prop["items"] = {"type": "string"}
+            if items is not None:
+                prop["items"] = items
 
             properties[param_name] = prop
 
@@ -455,9 +551,30 @@ CACHEABLE_TOOLS = {
     "get_game_overview",
     "get_top_issues",
     "get_feature_requests",
+    "list_available_topics",
+    "get_top_praises",
     "get_sentiment_trend",
     "get_subcategory_stats",
     "compare_games",
+    "compare_sentiment_trend",
+}
+
+# Tools where cache should vary by date filter
+DATE_FILTER_SENSITIVE_TOOLS = {
+    "get_top_issues",
+    "get_feature_requests",
+    "get_top_praises",
+    "list_available_topics",
+    "compare_time_windows",
+}
+
+# Tools where cache should vary by language
+LANGUAGE_SENSITIVE_TOOLS = {
+    "get_top_issues",
+    "get_feature_requests",
+    "get_top_praises",
+    "list_available_topics",
+    "compare_time_windows",
 }
 
 # Tools that should NOT be cached (may have different results or side effects)
@@ -492,7 +609,12 @@ def execute_tool(tool_name: str, params: Dict[str, Any], context: "AgentContext"
     if tool_name in CACHEABLE_TOOLS:
         # Build context key from user_id and app_ids
         context_key = f"{context.user_id}:{','.join(map(str, context.app_ids))}"
-        cache_key = _make_cache_key(tool_name, params, context_key)
+        cache_params = dict(params)
+        if tool_name in DATE_FILTER_SENSITIVE_TOOLS and "date_filter" not in cache_params:
+            cache_params["_date_filter"] = getattr(context, "date_filter", "all") or "all"
+        if tool_name in LANGUAGE_SENSITIVE_TOOLS and "language" not in cache_params:
+            cache_params["_language"] = getattr(context, "language", None)
+        cache_key = _make_cache_key(tool_name, cache_params, context_key)
 
         cached = _get_cached_result(cache_key)
         if cached is not None:
@@ -527,6 +649,18 @@ def execute_tool(tool_name: str, params: Dict[str, Any], context: "AgentContext"
 
         elif tool_name == "get_feature_requests":
             result = _execute_get_feature_requests(params, context)
+
+        elif tool_name == "list_available_topics":
+            result = _execute_list_available_topics(params, context)
+
+        elif tool_name == "get_top_praises":
+            result = _execute_get_top_praises(params, context)
+
+        elif tool_name == "compare_time_windows":
+            result = _execute_compare_time_windows(params, context)
+
+        elif tool_name == "compare_sentiment_trend":
+            result = _execute_compare_sentiment_trend(params, context)
 
         elif tool_name == "get_sentiment_trend":
             result = _execute_get_sentiment_trend(params, context)
@@ -740,7 +874,23 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
     query = params.get("query", "")
     subcategory = params.get("subcategory")
     sentiment = params.get("sentiment")
-    limit = min(params.get("limit", 10), 50)  # Cap at 50 for agent queries
+    requested_limit = params.get("limit", 10)
+    requested_offset = params.get("offset", 0)
+    default_limit = getattr(context, "max_reviews_per_game", 50) or 50
+    try:
+        requested_limit_int = int(requested_limit) if requested_limit is not None else int(default_limit)
+    except (TypeError, ValueError):
+        requested_limit_int = int(default_limit)
+    limit = max(1, min(requested_limit_int, int(default_limit), 50))  # Hard cap at 50 for agent queries
+
+    try:
+        offset = int(requested_offset or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(0, offset)
+
+    date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
+    language = (params.get("language") or getattr(context, "language", None))
 
     try:
         # Disambiguate subcategory if provided
@@ -762,9 +912,11 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
                 matches = disambiguation.get("matches", [])
                 return ToolResult(data={
                     "needs_clarification": True,
-                    "message": f"'{subcategory}' matches multiple subcategories. Please specify:",
-                    "matches": matches,
-                    "hint": "Use the full path like 'technical/bugs' or 'gameplay/difficulty'"
+                    "options": matches,
+                    "context": (
+                        f"'{subcategory}' matches multiple subcategories. Please choose one.\n"
+                        "Tip: use the full path like 'technical/bugs' or 'gameplay/difficulty'."
+                    ),
                 })
 
             if disambiguation.get("error"):
@@ -774,36 +926,47 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
             else:
                 resolved_subcategory = disambiguation.get("exact_match", subcategory)
 
+        fetch_limit = limit + 1
+
         # Search reviews based on method
         if resolved_subcategory:
             # Search by subcategory label
             reviews = storage.get_reviews_by_subcategory(
                 app_id=int(app_id),
                 subcategory=resolved_subcategory,
-                date_filter="all",
-                limit=int(limit),
+                date_filter=date_filter,
+                limit=int(fetch_limit),
+                offset=offset,
+                sentiment=sentiment,
+                language=language,
             )
         elif query:
             # Full-text search
             reviews = storage.search_reviews_with_date_filter(
                 app_id=int(app_id),
                 query=query,
-                date_filter="all",
-                limit=int(limit),
+                date_filter=date_filter,
+                limit=int(fetch_limit),
+                offset=offset,
+                sentiment=sentiment,
+                language=language,
             )
         else:
             # Just get top helpful reviews
             reviews = storage.search_reviews_with_date_filter(
                 app_id=int(app_id),
                 query="",
-                date_filter="all",
-                limit=int(limit),
+                date_filter=date_filter,
+                limit=int(fetch_limit),
+                offset=offset,
+                sentiment=sentiment,
+                language=language,
             )
 
-        # Filter by sentiment if specified
-        if sentiment:
-            is_positive = sentiment.lower() == "positive"
-            reviews = [r for r in reviews if r.get("voted_up") == is_positive]
+        has_more = len(reviews) > limit
+        if has_more:
+            reviews = reviews[:limit]
+        next_offset = offset + len(reviews) if has_more else None
 
         # Format results
         return ToolResult(data={
@@ -819,6 +982,9 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
             ],
             "total_found": len(reviews),
             "resolved_subcategory": resolved_subcategory,  # Include for transparency
+            "offset": offset,
+            "has_more": has_more,
+            "next_offset": next_offset,
         })
     except Exception as e:
         logger.exception(f"Failed to search reviews for app_id={app_id}")
@@ -851,6 +1017,10 @@ def _execute_get_subcategory_stats(params: Dict[str, Any], context: "AgentContex
             "subcategory parameter is required. Use format 'main/sub' like 'technical/performance'.",
             retryable=False
         )
+
+    date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
+    language = (params.get("language") or getattr(context, "language", None))
+    sentiment = params.get("sentiment")
 
     try:
         # Load analysis result to get subcategory insights
@@ -885,13 +1055,64 @@ def _execute_get_subcategory_stats(params: Dict[str, Any], context: "AgentContex
             matches = disambiguation.get("matches", [])
             return ToolResult(data={
                 "needs_clarification": True,
-                "message": f"'{subcategory}' matches multiple subcategories. Please specify:",
-                "matches": matches,
-                "hint": "Use the full path like 'technical/bugs' or 'gameplay/difficulty'"
+                "options": matches,
+                "context": (
+                    f"'{subcategory}' matches multiple subcategories. Please choose one.\n"
+                    "Tip: use the full path like 'technical/bugs' or 'gameplay/difficulty'."
+                ),
             })
 
         # Get the resolved subcategory
         resolved = disambiguation.get("exact_match", subcategory)
+
+        # If filters are requested, compute stats from label counts
+        if (date_filter and date_filter != "all") or language or sentiment:
+            total_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="subcategories",
+                date_filter=date_filter,
+                subcategories=[resolved],
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+            issue_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="issue_subcategories",
+                date_filter=date_filter,
+                subcategories=[resolved],
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+            request_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="request_subcategories",
+                date_filter=date_filter,
+                subcategories=[resolved],
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+
+            total_entry = total_counts[0] if total_counts else {}
+            issue_entry = issue_counts[0] if issue_counts else {}
+            request_entry = request_counts[0] if request_counts else {}
+
+            count = int(total_entry.get("count", 0) or 0)
+            positive_count = int(total_entry.get("positive_count", 0) or 0)
+            recommendation_rate = (positive_count / count) if count else 0.0
+
+            return ToolResult(data={
+                "subcategory": resolved,
+                "count": count,
+                "recommendation_rate": recommendation_rate,
+                "issue_count": int(issue_entry.get("count", 0) or 0),
+                "request_count": int(request_entry.get("count", 0) or 0),
+                "date_filter": date_filter if date_filter != "all" else None,
+                "language": language,
+                "sentiment": sentiment,
+            })
 
         # Find the matching entry in insights
         resolved_lower = resolved.lower()
@@ -938,11 +1159,78 @@ def _execute_get_top_issues(params: Dict[str, Any], context: "AgentContext") -> 
             retryable=False
         )
 
-    limit = params.get("limit", 10)
+    limit_param = params.get("limit", 10)
+    try:
+        limit = int(limit_param) if limit_param is not None else 10
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(limit, 50))
+
     category_filter = params.get("category")
+    date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
+    sentiment = params.get("sentiment")
+    language = (params.get("language") or getattr(context, "language", None))
 
     try:
-        # Load analysis result
+        game_name = context.game_names.get(int(app_id), f"Game {app_id}")
+
+        if (date_filter and date_filter != "all") or sentiment or language:
+            issue_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="issue_subcategories",
+                date_filter=date_filter,
+                category=category_filter,
+                limit=limit,
+                sentiment=sentiment,
+                language=language,
+            )
+
+            if not issue_counts:
+                return ToolResult(data={
+                    "game_name": game_name,
+                    "date_filter": date_filter,
+                    "note": "No issue data found for this time window.",
+                    "issues": [],
+                })
+
+            subcats = [i.get("subcategory") for i in issue_counts if i.get("subcategory")]
+            total_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="subcategories",
+                date_filter=date_filter,
+                subcategories=subcats,
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+            total_map = {t.get("subcategory", "").lower(): t for t in total_counts}
+
+            issues = []
+            for i, issue in enumerate(issue_counts):
+                subcat = issue.get("subcategory")
+                total_entry = total_map.get((subcat or "").lower(), {})
+                total_count = int(total_entry.get("count", 0) or 0)
+                positive_count = int(total_entry.get("positive_count", 0) or 0)
+                rec_rate_pct = round((positive_count / total_count) * 100, 1) if total_count else 0.0
+
+                issues.append({
+                    "rank": i + 1,
+                    "subcategory": subcat,
+                    "complaint_count": int(issue.get("count", 0) or 0),
+                    "recommendation_rate_pct": rec_rate_pct,
+                    "total_count": total_count,
+                })
+
+            return ToolResult(data={
+                "game_name": game_name,
+                "date_filter": date_filter if date_filter != "all" else None,
+                "language": language,
+                "sentiment": sentiment,
+                "note": "Sorted by complaint_count within the selected filters.",
+                "issues": issues,
+            })
+
+        # Default: all-time analysis stats
         result = storage.load_analysis_result(context.user_id, int(app_id))
         if not result or not result.get("insights"):
             return _make_error(
@@ -972,8 +1260,6 @@ def _execute_get_top_issues(params: Dict[str, Any], context: "AgentContext") -> 
 
         # Filter to only those with issues
         sorted_issues = [s for s in sorted_issues if s.get("issue_count", 0) > 0]
-
-        game_name = context.game_names.get(int(app_id), f"Game {app_id}")
 
         return ToolResult(data={
             "game_name": game_name,
@@ -1012,10 +1298,72 @@ def _execute_get_feature_requests(params: Dict[str, Any], context: "AgentContext
             retryable=False
         )
 
-    limit = params.get("limit", 10)
+    limit_param = params.get("limit", 10)
+    try:
+        limit = int(limit_param) if limit_param is not None else 10
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(limit, 50))
+
+    category_filter = params.get("category")
+    date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
+    sentiment = params.get("sentiment")
+    language = (params.get("language") or getattr(context, "language", None))
 
     try:
-        # Load analysis result
+        if (date_filter and date_filter != "all") or sentiment or language:
+            request_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="request_subcategories",
+                date_filter=date_filter,
+                category=category_filter,
+                limit=limit,
+                sentiment=sentiment,
+                language=language,
+            )
+
+            if not request_counts:
+                return ToolResult(data={
+                    "date_filter": date_filter,
+                    "feature_requests": [],
+                    "note": "No feature request data found for this time window.",
+                })
+
+            subcats = [r.get("subcategory") for r in request_counts if r.get("subcategory")]
+            total_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="subcategories",
+                date_filter=date_filter,
+                subcategories=subcats,
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+            total_map = {t.get("subcategory", "").lower(): t for t in total_counts}
+
+            feature_requests = []
+            for req in request_counts:
+                subcat = req.get("subcategory")
+                total_entry = total_map.get((subcat or "").lower(), {})
+                total_count = int(total_entry.get("count", 0) or 0)
+                positive_count = int(total_entry.get("positive_count", 0) or 0)
+                rec_rate = (positive_count / total_count) if total_count else 0.0
+
+                feature_requests.append({
+                    "subcategory": subcat,
+                    "request_count": int(req.get("count", 0) or 0),
+                    "total_count": total_count,
+                    "recommendation_rate": rec_rate,
+                })
+
+            return ToolResult(data={
+                "date_filter": date_filter if date_filter != "all" else None,
+                "language": language,
+                "sentiment": sentiment,
+                "feature_requests": feature_requests,
+            })
+
+        # Default: all-time analysis stats
         result = storage.load_analysis_result(context.user_id, int(app_id))
         if not result or not result.get("insights"):
             return _make_error(
@@ -1038,6 +1386,14 @@ def _execute_get_feature_requests(params: Dict[str, Any], context: "AgentContext
         # Filter to only those with requests
         sorted_requests = [s for s in sorted_requests if s.get("request_count", 0) > 0]
 
+        # Filter by main category if specified
+        if category_filter:
+            category_filter = category_filter.lower()
+            sorted_requests = [
+                s for s in sorted_requests
+                if s.get("subcategory", "").lower().startswith(category_filter)
+            ]
+
         return ToolResult(data={
             "feature_requests": [
                 {
@@ -1054,6 +1410,604 @@ def _execute_get_feature_requests(params: Dict[str, Any], context: "AgentContext
         return _make_error(
             ToolErrorCode.DB_ERROR,
             f"Failed to load feature requests: {str(e)}",
+            retryable=True
+        )
+
+
+def _execute_list_available_topics(params: Dict[str, Any], context: "AgentContext") -> ToolResult:
+    """Execute list_available_topics tool - list subcategories present in analysis."""
+    from . import storage
+
+    app_id = params.get("app_id")
+    if not app_id and context.app_ids:
+        app_id = context.app_ids[0]
+
+    if not app_id:
+        return _make_error(
+            ToolErrorCode.NO_GAME_CONTEXT,
+            "No app_id specified. Please select a game first.",
+            retryable=False
+        )
+
+    limit_param = params.get("limit", 20)
+    try:
+        limit = int(limit_param) if limit_param is not None else 20
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(limit, 100))
+
+    category = (params.get("category") or "").strip().lower()
+    category_prefix = f"{category}/" if category else ""
+    date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
+    sentiment = params.get("sentiment")
+    language = (params.get("language") or getattr(context, "language", None))
+
+    try:
+        if (date_filter and date_filter != "all") or sentiment or language:
+            counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="subcategories",
+                date_filter=date_filter,
+                category=category or None,
+                limit=limit,
+                sentiment=sentiment,
+                language=language,
+            )
+
+            if not counts:
+                return ToolResult(data={
+                    "topics": [],
+                    "total_topics": 0,
+                    "categories": [],
+                    "category_filter": category or None,
+                    "date_filter": date_filter if date_filter != "all" else None,
+                    "language": language,
+                    "sentiment": sentiment,
+                })
+
+            topics = []
+            categories_present = set()
+            for entry in counts:
+                subcat = entry.get("subcategory") or ""
+                if not subcat:
+                    continue
+                subcat_lower = subcat.lower()
+                if category_prefix and not subcat_lower.startswith(category_prefix):
+                    continue
+                main_category = subcat_lower.split("/", 1)[0]
+                if main_category:
+                    categories_present.add(main_category)
+                count = int(entry.get("count", 0) or 0)
+                positive_count = int(entry.get("positive_count", 0) or 0)
+                rec_rate = (positive_count / count) if count else 0.0
+                topics.append({
+                    "subcategory": subcat,
+                    "count": count,
+                    "issue_count": None,
+                    "request_count": None,
+                    "recommendation_rate": rec_rate,
+                })
+
+            topics.sort(key=lambda x: x.get("count", 0), reverse=True)
+            limited_topics = topics[:limit]
+
+            return ToolResult(data={
+                "topics": limited_topics,
+                "total_topics": len(topics),
+                "categories": sorted(categories_present),
+                "category_filter": category or None,
+                "date_filter": date_filter if date_filter != "all" else None,
+                "language": language,
+                "sentiment": sentiment,
+            })
+
+        # Default: all-time analysis stats
+        result = storage.load_analysis_result(context.user_id, int(app_id))
+        if not result or not result.get("insights"):
+            return _make_error(
+                ToolErrorCode.NO_ANALYSIS,
+                "No analysis available for this game. Run an analysis first.",
+                retryable=False,
+                app_id=app_id
+            )
+
+        insights = result.get("insights", {})
+        subcategory_insights = insights.get("subcategory_insights", []) or []
+
+        topics = []
+        categories_present = set()
+
+        for entry in subcategory_insights:
+            subcat = entry.get("subcategory") or ""
+            if not subcat:
+                continue
+            subcat_lower = subcat.lower()
+            if category_prefix and not subcat_lower.startswith(category_prefix):
+                continue
+
+            main_category = subcat_lower.split("/", 1)[0]
+            if main_category:
+                categories_present.add(main_category)
+
+            topics.append({
+                "subcategory": subcat,
+                "count": int(entry.get("count", 0) or 0),
+                "issue_count": int(entry.get("issue_count", 0) or 0),
+                "request_count": int(entry.get("request_count", 0) or 0),
+                "recommendation_rate": entry.get("recommendation_rate", 0),
+            })
+
+        topics.sort(key=lambda x: x.get("count", 0), reverse=True)
+        limited_topics = topics[:limit]
+
+        return ToolResult(data={
+            "topics": limited_topics,
+            "total_topics": len(topics),
+            "categories": sorted(categories_present),
+            "category_filter": category or None,
+        })
+    except Exception as e:
+        logger.exception(f"Failed to list topics for app_id={app_id}")
+        return _make_error(
+            ToolErrorCode.DB_ERROR,
+            f"Failed to load topics: {str(e)}",
+            retryable=True
+        )
+
+
+def _execute_get_top_praises(params: Dict[str, Any], context: "AgentContext") -> ToolResult:
+    """Execute get_top_praises tool - most common positive themes."""
+    from . import storage
+
+    app_id = params.get("app_id")
+    if not app_id and context.app_ids:
+        app_id = context.app_ids[0]
+
+    if not app_id:
+        return _make_error(
+            ToolErrorCode.NO_GAME_CONTEXT,
+            "No app_id specified. Please select a game first.",
+            retryable=False
+        )
+
+    limit_param = params.get("limit", 10)
+    try:
+        limit = int(limit_param) if limit_param is not None else 10
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(limit, 50))
+
+    category = (params.get("category") or "").strip().lower()
+    category_prefix = f"{category}/" if category else ""
+
+    try:
+        if (date_filter and date_filter != "all") or sentiment or language:
+            total_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="subcategories",
+                date_filter=date_filter,
+                category=category or None,
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+            issue_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="issue_subcategories",
+                date_filter=date_filter,
+                category=category or None,
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+            request_counts = storage.get_subcategory_label_counts(
+                app_id=int(app_id),
+                label_key="request_subcategories",
+                date_filter=date_filter,
+                category=category or None,
+                limit=None,
+                sentiment=sentiment,
+                language=language,
+            )
+
+            issue_map = {i.get("subcategory", "").lower(): i for i in issue_counts}
+            request_map = {r.get("subcategory", "").lower(): r for r in request_counts}
+
+            praises = []
+            for entry in total_counts:
+                subcat = entry.get("subcategory") or ""
+                if not subcat:
+                    continue
+
+                count = int(entry.get("count", 0) or 0)
+                issue_count = int(issue_map.get(subcat.lower(), {}).get("count", 0) or 0)
+                request_count = int(request_map.get(subcat.lower(), {}).get("count", 0) or 0)
+                praise_count = max(count - issue_count - request_count, 0)
+                praise_ratio = round(praise_count / count, 3) if count else 0.0
+                positive_count = int(entry.get("positive_count", 0) or 0)
+                recommendation_rate = (positive_count / count) if count else 0.0
+
+                praises.append({
+                    "subcategory": subcat,
+                    "count": count,
+                    "issue_count": issue_count,
+                    "request_count": request_count,
+                    "praise_count": praise_count,
+                    "praise_ratio": praise_ratio,
+                    "recommendation_rate": recommendation_rate,
+                })
+
+            praises.sort(
+                key=lambda x: (x.get("praise_count", 0), x.get("recommendation_rate", 0), x.get("count", 0)),
+                reverse=True,
+            )
+
+            return ToolResult(data={
+                "praises": praises[:limit],
+                "total_found": len(praises),
+                "category_filter": category or None,
+                "date_filter": date_filter if date_filter != "all" else None,
+                "language": language,
+                "sentiment": sentiment,
+                "definition": "praise_count = count - issue_count - request_count (non-issue, non-request mentions)",
+            })
+
+        # Default: all-time analysis stats
+        result = storage.load_analysis_result(context.user_id, int(app_id))
+        if not result or not result.get("insights"):
+            return _make_error(
+                ToolErrorCode.NO_ANALYSIS,
+                "No analysis available for this game. Run an analysis first.",
+                retryable=False,
+                app_id=app_id
+            )
+
+        insights = result.get("insights", {})
+        subcategory_insights = insights.get("subcategory_insights", []) or []
+
+        praises = []
+        for entry in subcategory_insights:
+            subcat = entry.get("subcategory") or ""
+            if not subcat:
+                continue
+            subcat_lower = subcat.lower()
+            if category_prefix and not subcat_lower.startswith(category_prefix):
+                continue
+
+            count = int(entry.get("count", 0) or 0)
+            issue_count = int(entry.get("issue_count", 0) or 0)
+            request_count = int(entry.get("request_count", 0) or 0)
+            praise_count = max(count - issue_count - request_count, 0)
+            praise_ratio = round(praise_count / count, 3) if count else 0.0
+
+            praises.append({
+                "subcategory": subcat,
+                "count": count,
+                "issue_count": issue_count,
+                "request_count": request_count,
+                "praise_count": praise_count,
+                "praise_ratio": praise_ratio,
+                "recommendation_rate": entry.get("recommendation_rate", 0),
+            })
+
+        praises.sort(
+            key=lambda x: (x.get("praise_count", 0), x.get("recommendation_rate", 0), x.get("count", 0)),
+            reverse=True,
+        )
+
+        return ToolResult(data={
+            "praises": praises[:limit],
+            "total_found": len(praises),
+            "category_filter": category or None,
+            "definition": "praise_count = count - issue_count - request_count (non-issue, non-request mentions)",
+        })
+    except Exception as e:
+        logger.exception(f"Failed to get top praises for app_id={app_id}")
+        return _make_error(
+            ToolErrorCode.DB_ERROR,
+            f"Failed to load top praises: {str(e)}",
+            retryable=True
+        )
+
+
+def _execute_compare_time_windows(params: Dict[str, Any], context: "AgentContext") -> ToolResult:
+    """Compare changes between two consecutive time windows."""
+    from . import storage
+    import time
+
+    app_id = params.get("app_id")
+    if not app_id and context.app_ids:
+        app_id = context.app_ids[0]
+
+    if not app_id:
+        return _make_error(
+            ToolErrorCode.NO_GAME_CONTEXT,
+            "No app_id specified. Please select a game first.",
+            retryable=False
+        )
+
+    metric = (params.get("metric") or "").strip().lower()
+    if metric not in {"issues", "requests", "praises", "topics"}:
+        return _make_error(
+            ToolErrorCode.INVALID_PARAMS,
+            "metric must be one of 'issues', 'requests', 'praises', or 'topics'.",
+            retryable=False
+        )
+
+    window_days = params.get("window_days")
+    try:
+        window_days_int = int(window_days)
+    except (TypeError, ValueError):
+        return _make_error(
+            ToolErrorCode.INVALID_PARAMS,
+            "window_days must be an integer (e.g., 30).",
+            retryable=False
+        )
+    if window_days_int <= 0 or window_days_int > 365:
+        return _make_error(
+            ToolErrorCode.INVALID_PARAMS,
+            "window_days must be between 1 and 365.",
+            retryable=False
+        )
+
+    limit_param = params.get("limit", 10)
+    try:
+        limit = int(limit_param) if limit_param is not None else 10
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(limit, 50))
+
+    category = params.get("category")
+    sentiment = params.get("sentiment")
+    language = (params.get("language") or getattr(context, "language", None))
+
+    subcategory = params.get("subcategory")
+    if subcategory:
+        # Try to resolve subcategory via analysis for robustness
+        try:
+            result = storage.load_analysis_result(context.user_id, int(app_id))
+            analysis_subcategories = []
+            if result and result.get("insights"):
+                insights = result.get("insights", {})
+                analysis_subcategories = [
+                    e.get("subcategory", "")
+                    for e in insights.get("subcategory_insights", [])
+                ]
+            disambiguation = disambiguate_subcategory(subcategory, analysis_subcategories)
+            if disambiguation.get("exact_match"):
+                subcategory = disambiguation["exact_match"]
+        except Exception:
+            pass
+
+    now = int(time.time())
+    window_seconds = window_days_int * 24 * 60 * 60
+    current_start = now - window_seconds
+    previous_start = now - (2 * window_seconds)
+    previous_end = current_start
+
+    def _count_range(label_key: str, subcats: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        return storage.get_subcategory_label_counts_range(
+            app_id=int(app_id),
+            label_key=label_key,
+            start_ts=current_start,
+            end_ts=now,
+            category=category,
+            limit=None if subcats else limit,
+            subcategories=subcats,
+            sentiment=sentiment,
+            language=language,
+        )
+
+    def _count_prev_range(label_key: str, subcats: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        return storage.get_subcategory_label_counts_range(
+            app_id=int(app_id),
+            label_key=label_key,
+            start_ts=previous_start,
+            end_ts=previous_end,
+            category=category,
+            limit=None if subcats else limit,
+            subcategories=subcats,
+            sentiment=sentiment,
+            language=language,
+        )
+
+    if metric == "praises":
+        total_current = _count_range("subcategories")
+        total_prev = _count_prev_range("subcategories")
+        issue_current = _count_range("issue_subcategories")
+        issue_prev = _count_prev_range("issue_subcategories")
+        request_current = _count_range("request_subcategories")
+        request_prev = _count_prev_range("request_subcategories")
+
+        def _map_counts(items: List[Dict[str, Any]]) -> Dict[str, int]:
+            return {i.get("subcategory", "").lower(): int(i.get("count", 0) or 0) for i in items}
+
+        name_map: Dict[str, str] = {}
+        for entry in total_current + total_prev:
+            subcat_name = entry.get("subcategory")
+            if subcat_name:
+                name_map[subcat_name.lower()] = subcat_name
+
+        total_map = _map_counts(total_current)
+        total_prev_map = _map_counts(total_prev)
+        issue_map = _map_counts(issue_current)
+        issue_prev_map = _map_counts(issue_prev)
+        request_map = _map_counts(request_current)
+        request_prev_map = _map_counts(request_prev)
+
+        subcats = set(total_map.keys()) | set(total_prev_map.keys())
+        results = []
+        for subcat_key in subcats:
+            current_total = total_map.get(subcat_key, 0)
+            prev_total = total_prev_map.get(subcat_key, 0)
+            current_praise = max(current_total - issue_map.get(subcat_key, 0) - request_map.get(subcat_key, 0), 0)
+            prev_praise = max(prev_total - issue_prev_map.get(subcat_key, 0) - request_prev_map.get(subcat_key, 0), 0)
+            delta = current_praise - prev_praise
+            delta_pct = round((delta / prev_praise) * 100, 1) if prev_praise else None
+            if subcategory and subcat_key != subcategory.lower():
+                continue
+            results.append({
+                "subcategory": name_map.get(subcat_key, subcat_key),
+                "current_count": current_praise,
+                "previous_count": prev_praise,
+                "delta": delta,
+                "delta_pct": delta_pct,
+            })
+    else:
+        label_key = {
+            "issues": "issue_subcategories",
+            "requests": "request_subcategories",
+            "topics": "subcategories",
+        }[metric]
+
+        subcats = [subcategory] if subcategory else None
+        current_counts = _count_range(label_key, subcats=subcats)
+        prev_counts = _count_prev_range(label_key, subcats=subcats)
+
+        def _map(items: List[Dict[str, Any]]) -> Dict[str, int]:
+            return {i.get("subcategory", "").lower(): int(i.get("count", 0) or 0) for i in items}
+
+        name_map: Dict[str, str] = {}
+        for entry in current_counts + prev_counts:
+            subcat_name = entry.get("subcategory")
+            if subcat_name:
+                name_map[subcat_name.lower()] = subcat_name
+
+        current_map = _map(current_counts)
+        prev_map = _map(prev_counts)
+
+        subcat_keys = set(current_map.keys()) | set(prev_map.keys())
+        results = []
+        for subcat_key in subcat_keys:
+            if subcategory and subcat_key != subcategory.lower():
+                continue
+            current_count = current_map.get(subcat_key, 0)
+            previous_count = prev_map.get(subcat_key, 0)
+            delta = current_count - previous_count
+            delta_pct = round((delta / previous_count) * 100, 1) if previous_count else None
+            results.append({
+                "subcategory": name_map.get(subcat_key, subcat_key),
+                "current_count": current_count,
+                "previous_count": previous_count,
+                "delta": delta,
+                "delta_pct": delta_pct,
+            })
+
+    # Sort by largest absolute delta
+    results.sort(key=lambda x: abs(x.get("delta", 0)), reverse=True)
+    results = results[:limit]
+
+    return ToolResult(data={
+        "metric": metric,
+        "window_days": window_days_int,
+        "current_window": {"start_ts": current_start, "end_ts": now},
+        "previous_window": {"start_ts": previous_start, "end_ts": previous_end},
+        "category_filter": category or None,
+        "subcategory": subcategory,
+        "sentiment": sentiment,
+        "language": language,
+        "results": results,
+    })
+
+
+def _execute_compare_sentiment_trend(params: Dict[str, Any], context: "AgentContext") -> ToolResult:
+    """Compare sentiment trends between two games."""
+    from . import storage
+
+    app_id_1 = params.get("app_id_1")
+    app_id_2 = params.get("app_id_2")
+    if not app_id_1 or not app_id_2:
+        return _make_error(
+            ToolErrorCode.INVALID_PARAMS,
+            "Both app_id_1 and app_id_2 are required.",
+            retryable=False
+        )
+
+    weeks_param = params.get("weeks", 12)
+    try:
+        weeks = int(weeks_param) if weeks_param is not None else 12
+    except (TypeError, ValueError):
+        weeks = 12
+    weeks = max(1, min(weeks, 52))
+
+    try:
+        result_1 = storage.load_analysis_result(context.user_id, int(app_id_1))
+        result_2 = storage.load_analysis_result(context.user_id, int(app_id_2))
+
+        game_name_1 = context.game_names.get(int(app_id_1), f"Game {app_id_1}")
+        game_name_2 = context.game_names.get(int(app_id_2), f"Game {app_id_2}")
+
+        if not result_1 or not result_1.get("insights"):
+            return _make_error(
+                ToolErrorCode.NO_ANALYSIS,
+                f"No analysis available for {game_name_1} (app_id={app_id_1}).",
+                retryable=False,
+                app_id=app_id_1
+            )
+        if not result_2 or not result_2.get("insights"):
+            return _make_error(
+                ToolErrorCode.NO_ANALYSIS,
+                f"No analysis available for {game_name_2} (app_id={app_id_2}).",
+                retryable=False,
+                app_id=app_id_2
+            )
+
+        trend_1 = (result_1.get("insights", {}).get("sentiment_trend") or [])[:weeks]
+        trend_2 = (result_2.get("insights", {}).get("sentiment_trend") or [])[:weeks]
+
+        if not trend_1 or not trend_2:
+            return _make_error(
+                ToolErrorCode.DATA_NOT_FOUND,
+                "Sentiment trend data is missing for one or both games.",
+                retryable=False
+            )
+
+        # Map by week label for alignment
+        map_1 = {t.get("week"): t for t in trend_1 if t.get("week")}
+        map_2 = {t.get("week"): t for t in trend_2 if t.get("week")}
+        weeks_aligned = [w for w in map_1.keys() if w in map_2]
+        weeks_aligned = weeks_aligned[:weeks]
+
+        trend = []
+        sum_rate_1 = 0.0
+        sum_rate_2 = 0.0
+        count = 0
+        for week in weeks_aligned:
+            t1 = map_1.get(week, {})
+            t2 = map_2.get(week, {})
+            rate_1 = float(t1.get("recommendation_rate", 0) or 0)
+            rate_2 = float(t2.get("recommendation_rate", 0) or 0)
+            sum_rate_1 += rate_1
+            sum_rate_2 += rate_2
+            count += 1
+            trend.append({
+                "week": week,
+                "game_1_rate": rate_1,
+                "game_2_rate": rate_2,
+                "game_1_count": t1.get("count", 0),
+                "game_2_count": t2.get("count", 0),
+            })
+
+        avg_rate_1 = (sum_rate_1 / count) if count else 0.0
+        avg_rate_2 = (sum_rate_2 / count) if count else 0.0
+        higher = game_name_1 if avg_rate_1 > avg_rate_2 else game_name_2 if avg_rate_2 > avg_rate_1 else "tie"
+
+        return ToolResult(data={
+            "game_1": {"app_id": app_id_1, "name": game_name_1},
+            "game_2": {"app_id": app_id_2, "name": game_name_2},
+            "weeks": weeks,
+            "trend": trend,
+            "summary": {
+                "average_rate_game_1": avg_rate_1,
+                "average_rate_game_2": avg_rate_2,
+                "higher_average": higher,
+            }
+        })
+    except Exception as e:
+        logger.exception("Failed to compare sentiment trends")
+        return _make_error(
+            ToolErrorCode.DB_ERROR,
+            f"Failed to compare sentiment trends: {str(e)}",
             retryable=True
         )
 
@@ -1426,6 +2380,12 @@ def generate_follow_up_questions(
         if call.get("tool") == "get_top_issues":
             issues = result.get("issues", [])
             mentioned_subcategories.extend([i.get("subcategory", "") for i in issues[:3]])
+        elif call.get("tool") == "get_top_praises":
+            praises = result.get("praises", [])
+            mentioned_subcategories.extend([p.get("subcategory", "") for p in praises[:3]])
+        elif call.get("tool") == "list_available_topics":
+            topics = result.get("topics", [])
+            mentioned_subcategories.extend([t.get("subcategory", "") for t in topics[:3]])
         elif call.get("tool") == "get_subcategory_stats":
             if result.get("subcategory"):
                 mentioned_subcategories.append(result["subcategory"])
@@ -1461,9 +2421,25 @@ def generate_follow_up_questions(
         if len(context.app_ids) > 1:
             suggestions.append("How do these compare to the other game?")
 
+    # If we showed top praises, suggest examples or contrast with issues
+    if "get_top_praises" in tools_used:
+        suggestions.append("Show me reviews that praise the top theme")
+        if "get_top_issues" not in tools_used:
+            suggestions.append("What are the top complaints compared to these praises?")
+
+    # If we listed topics, suggest drilling into one
+    if "list_available_topics" in tools_used and mentioned_subcategories:
+        suggestions.append(f"Show stats for {mentioned_subcategories[0].split('/')[-1]}")
+
     # If we searched reviews, suggest statistics or more examples
     if "search_reviews" in tools_used:
         suggestions.append("What's the overall sentiment on this topic?")
+        has_more = any(
+            tc.get("tool") == "search_reviews" and tc.get("result", {}).get("has_more")
+            for tc in tool_calls
+        )
+        if has_more:
+            suggestions.append("Show me more reviews")
         if "positive" in response_lower or "negative" in response_lower:
             suggestions.append("Show me examples from the opposite sentiment")
 
@@ -1477,6 +2453,14 @@ def generate_follow_up_questions(
     # If we compared games, suggest more comparison
     if "compare_games" in tools_used:
         suggestions.append("Compare a different metric between these games")
+
+    # If we compared time windows, suggest drilling into the top mover
+    if "compare_time_windows" in tools_used:
+        suggestions.append("Show reviews for the biggest change")
+
+    # If we compared sentiment trends, suggest causes
+    if "compare_sentiment_trend" in tools_used:
+        suggestions.append("What might explain the trend differences?")
 
     # Generic follow-ups if nothing specific
     if not suggestions:

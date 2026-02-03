@@ -17,7 +17,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { OverviewComparisonCard } from "@/components/compare/OverviewComparisonCard";
 import { ComparisonSummaryDisplay } from "@/components/compare/ComparisonSummaryDisplay";
 
-const MAX_SELECTION = 4;
+const MAX_SELECTION = 2;
 
 const MAIN_CATEGORY_LABELS: Record<string, string> = {
   gameplay: "Gameplay",
@@ -37,7 +37,7 @@ const CATEGORY_KEYS = Object.keys(MAIN_CATEGORY_LABELS).filter((key) => key !== 
 export default function ComparePage() {
   const { filters, filtersActive } = useGlobalFilters();
   const { t } = useLanguage();
-  const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
+  const [analyzedGames, setAnalyzedGames] = useState<StarredGameDTO[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,12 +45,12 @@ export default function ComparePage() {
     async function load() {
       try {
         const games = await fetchStarredGames();
-        setStarredGames(games);
-        // Select up to 4 games by default
-        const initialSelection = games.slice(0, Math.min(4, games.length)).map(g => g.app_id);
+        setAnalyzedGames(games);
+        // Select 2 games by default
+        const initialSelection = games.slice(0, Math.min(2, games.length)).map(g => g.app_id);
         setSelectedIds(initialSelection);
       } catch (err) {
-        console.error("Failed to load starred games:", err);
+        console.error("Failed to load analyzed games:", err);
       } finally {
         setLoading(false);
       }
@@ -59,8 +59,8 @@ export default function ComparePage() {
   }, []);
 
   const selectedGames = useMemo(() => {
-    return starredGames.filter((g) => selectedIds.includes(g.app_id));
-  }, [starredGames, selectedIds]);
+    return analyzedGames.filter((g) => selectedIds.includes(g.app_id));
+  }, [analyzedGames, selectedIds]);
 
   function toggleGame(appId: number) {
     setSelectedIds((prev) => {
@@ -75,10 +75,10 @@ export default function ComparePage() {
   }
 
   async function handleRemove(appId: number) {
-    if (!confirm("Remove this game from starred?")) return;
+    if (!confirm("Remove this game from your analyzed games?")) return;
     try {
       await removeStarredGame(appId);
-      setStarredGames((prev) => prev.filter((g) => g.app_id !== appId));
+      setAnalyzedGames((prev) => prev.filter((g) => g.app_id !== appId));
       setSelectedIds((prev) => prev.filter((id) => id !== appId));
     } catch (err) {
       console.error("Failed to remove game:", err);
@@ -101,12 +101,12 @@ export default function ComparePage() {
     );
   }
 
-  if (starredGames.length === 0) {
+  if (analyzedGames.length === 0) {
     return (
       <AppLayout>
         <div className="mx-auto max-w-7xl px-4 py-10">
           <EmptyState
-            title="No games to compare"
+            title="No analyzed games"
             description="Analyze some games first to compare them here."
             variant="info"
             action={
@@ -130,17 +130,17 @@ export default function ComparePage() {
             </span>
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Compare up to 4 games side-by-side - {selectedIds.length} selected
+            Compare 2 games side-by-side - {selectedIds.length} selected
             {filtersActive ? " - global filters applied" : ""}
           </p>
         </div>
 
         <Card variant="glass" className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-white">
-            Select Games ({starredGames.length} available)
+            Select Games to Compare ({analyzedGames.length} analyzed)
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {starredGames.map((game) => {
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {analyzedGames.map((game) => {
               const isSelected = selectedIds.includes(game.app_id);
               const previewSample = applyGlobalReviewFilters(game.sample ?? [], filters);
               const previewRecommendation = previewSample.length
@@ -192,7 +192,7 @@ export default function ComparePage() {
         {selectedGames.length < 2 ? (
           <EmptyState
             title={t('compare.selectGames')}
-            description="Pick 2-4 starred games to compare their category performance."
+            description="Select 2 games from your analyzed games to compare their performance."
             variant="default"
           />
         ) : (
@@ -339,16 +339,13 @@ function ComparisonDashboard({
     return cats;
   }, [gameData]);
 
-  const gridCols =
-    games.length === 4 ? "grid-cols-4" :
-    games.length === 3 ? "grid-cols-3" :
-    games.length === 2 ? "grid-cols-2" : "grid-cols-1";
+  const gridCols = games.length === 2 ? "grid-cols-2" : "grid-cols-1";
 
   // Radar chart data
   return (
     <div className="space-y-8">
       {/* Game Cards - Compact Design */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         {gameData.map((game) => (
           <Card key={game.appId} variant="glass" className="overflow-hidden">
             <div className="relative">
@@ -362,7 +359,7 @@ function ComparisonDashboard({
               <button
                 onClick={() => onRemove(game.appId)}
                 className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 flex items-center justify-center text-xs"
-                title="Remove from starred"
+                title="Remove from analyzed games"
               >
                 ×
               </button>

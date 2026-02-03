@@ -1097,6 +1097,37 @@ async def call_llm_with_tools(
         # Convert messages to Gemini format
         gemini_contents = _convert_messages_to_gemini(messages)
 
+        def _to_gemini_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+            """Convert a JSON-schema-like dict to a Gemini schema dict (recursive)."""
+            if not isinstance(schema, dict):
+                return {"type": "STRING"}
+
+            t = str(schema.get("type") or "string").upper()
+            if t == "INT":
+                t = "INTEGER"
+
+            out: Dict[str, Any] = {"type": t}
+
+            desc = schema.get("description")
+            if isinstance(desc, str) and desc:
+                out["description"] = desc
+
+            enum = schema.get("enum")
+            if isinstance(enum, list) and enum:
+                out["enum"] = enum
+
+            if t == "ARRAY":
+                out["items"] = _to_gemini_schema(schema.get("items") or {})
+            elif t == "OBJECT":
+                props = schema.get("properties") or {}
+                if isinstance(props, dict) and props:
+                    out["properties"] = {k: _to_gemini_schema(v) for k, v in props.items()}
+                required = schema.get("required") or []
+                if isinstance(required, list) and required:
+                    out["required"] = required
+
+            return out
+
         # Build function declarations for tools
         function_declarations = []
         for tool in tools:
@@ -1105,14 +1136,7 @@ async def call_llm_with_tools(
             required = tool.get("parameters", {}).get("required", [])
 
             # Convert to Gemini schema format
-            gemini_properties = {}
-            for prop_name, prop_def in properties.items():
-                gemini_prop = {"type": prop_def.get("type", "string").upper()}
-                if "description" in prop_def:
-                    gemini_prop["description"] = prop_def["description"]
-                if prop_def.get("type") == "array" and "items" in prop_def:
-                    gemini_prop["items"] = {"type": prop_def["items"].get("type", "string").upper()}
-                gemini_properties[prop_name] = gemini_prop
+            gemini_properties = {prop_name: _to_gemini_schema(prop_def) for prop_name, prop_def in properties.items()}
 
             func_decl = types.FunctionDeclaration(
                 name=tool["name"],
@@ -1120,7 +1144,7 @@ async def call_llm_with_tools(
                 parameters=types.Schema(
                     type="OBJECT",
                     properties=gemini_properties,
-                    required=required,
+                    required=required if isinstance(required, list) else [],
                 ) if gemini_properties else None,
             )
             function_declarations.append(func_decl)
@@ -2013,7 +2037,7 @@ def compare_games(
     category: Optional[str] = None,
     subcategory: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Generate AI-powered comparison summary for 2-4 games.
+    """Generate AI-powered comparison summary for 2 games.
 
     Args:
         games_data: List of game dicts with:
@@ -2027,9 +2051,9 @@ def compare_games(
 
     Returns:
         Dict with:
-            - summary: str (2-4 sentence overview)
+            - summary: str (2-3 sentence overview)
             - winners: Dict[str, List[int]] (app_ids that excel in different areas)
-            - key_differences: List[str] (3-5 bullet points)
+            - key_differences: List[str] (2-3 bullet points)
             - strengths_per_game: Dict[int, List[str]] (per app_id)
             - weaknesses_per_game: Dict[int, List[str]] (per app_id)
             - recommendations: Dict[int, str] (who each game is best for)

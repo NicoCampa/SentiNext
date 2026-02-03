@@ -24,6 +24,14 @@ VALID_CHART_TYPES = {"pie", "bar", "line", "doughnut"}
 # Regex to extract chart blocks from response
 CHART_BLOCK_PATTERN = re.compile(r"```chart\s*\n?(.*?)\n?```", re.DOTALL)
 
+def _tool_call_key(tool_name: str, params: Dict[str, Any]) -> str:
+    """Normalize tool call for duplicate detection."""
+    try:
+        params_str = json.dumps(params, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        params_str = str(params)
+    return f"{tool_name}:{params_str}"
+
 
 def validate_chart_json(chart_json: str) -> Dict[str, Any]:
     """Validate and fix chart JSON format.
@@ -192,6 +200,36 @@ def _summarize_tool_results(tool_calls: List[Dict[str, Any]]) -> str:
                 top_requests = [f"{r.get('subcategory')}" for r in requests[:3]]
                 summaries.append(f"- Top requests: {', '.join(top_requests)}")
 
+        elif tool_name == "list_available_topics":
+            topics = result.get("topics", [])
+            if topics:
+                top_topics = [t.get("subcategory") for t in topics[:3] if t.get("subcategory")]
+                if top_topics:
+                    summaries.append(f"- Available topics: {', '.join(top_topics)}")
+                else:
+                    summaries.append(f"- Available topics: {len(topics)}")
+            elif result.get("total_topics"):
+                summaries.append(f"- Available topics: {result.get('total_topics')}")
+
+        elif tool_name == "get_top_praises":
+            praises = result.get("praises", [])
+            if praises:
+                top_praises = [p.get("subcategory") for p in praises[:3] if p.get("subcategory")]
+                if top_praises:
+                    summaries.append(f"- Top praises: {', '.join(top_praises)}")
+
+        elif tool_name == "compare_time_windows":
+            changes = result.get("results", [])
+            if changes:
+                top_changes = [c.get("subcategory") for c in changes[:3] if c.get("subcategory")]
+                if top_changes:
+                    summaries.append(f"- Biggest changes: {', '.join(top_changes)}")
+
+        elif tool_name == "compare_sentiment_trend":
+            trend = result.get("trend", [])
+            if trend:
+                summaries.append(f"- Compared sentiment trends across {len(trend)} weeks")
+
         elif tool_name == "search_reviews":
             found = result.get("total_found", 0)
             if found:
@@ -346,6 +384,9 @@ class AgentContext:
     user_id: str
     session_id: str
     app_ids: List[int] = field(default_factory=list)
+    date_filter: str = "all"
+    max_reviews_per_game: int = 50
+    language: Optional[str] = None
     conversation_history: List[Dict[str, Any]] = field(default_factory=list)
     tool_results: List[Dict[str, Any]] = field(default_factory=list)
     game_names: Dict[int, str] = field(default_factory=dict)  # app_id -> name mapping
@@ -386,6 +427,10 @@ AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SentiNext. Anal
 | get_game_overview | General stats, recommendation rate, category breakdown |
 | get_top_issues | "What are the problems?" - Top complaints by frequency |
 | get_feature_requests | "What do players want?" - Most requested features |
+| list_available_topics | "What topics are available?" - List subcategories |
+| get_top_praises | "What do players like?" - Top positive themes |
+| compare_time_windows | "What changed lately?" - Compare last N days vs prior N days |
+| compare_sentiment_trend | Compare sentiment trends between two games |
 | search_reviews | "What do they say?" - Actual review text/quotes |
 | get_subcategory_stats | Stats for specific topic like "technical/performance" |
 | get_sentiment_trend | Sentiment changes over time |
@@ -395,6 +440,18 @@ AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SentiNext. Anal
 
 ## Workflow
 1. Call 1-2 data tools → 2. Call final_answer with insights
+
+## Pagination
+- `search_reviews` supports `offset`; use it to fetch more examples (e.g., "show me more").
+
+## Filters
+- If the user specifies a time window (e.g., "last 30 days"), pass `date_filter`.
+- If the user specifies a language, pass `language`.
+- If the user specifies positive/negative only, pass `sentiment`.
+
+## Citations
+- If you use `search_reviews`, quote only from the returned snippets.
+- When you quote or rely on specific reviews, include their `review_id`s in `final_answer.citations` (2-5 IDs).
 
 ## Subcategory Format
 **Always use full paths**: "technical/performance", "gameplay/difficulty", "monetization_value/price"
@@ -459,6 +516,7 @@ async def run_agent(
 
     # Track all tool calls for this turn
     all_tool_calls = []
+    executed_tool_calls: Dict[str, Dict[str, Any]] = {}
 
     for iteration in range(MAX_TOOL_CALLS):
         if status_callback:
@@ -492,8 +550,15 @@ async def run_agent(
 
                 logger.info(f"Executing tool: {tool_name}")
 
-                # Execute the tool
-                result = execute_tool(tool_name, tool_params, context)
+                call_key = _tool_call_key(tool_name, tool_params)
+                if call_key in executed_tool_calls:
+                    logger.info(f"Skipping duplicate tool call: {tool_name}")
+                    result = dict(executed_tool_calls[call_key])
+                    result["_duplicate"] = True
+                else:
+                    # Execute the tool
+                    result = execute_tool(tool_name, tool_params, context)
+                    executed_tool_calls[call_key] = result
 
                 # Track this tool call
                 tool_call_record = {
@@ -530,11 +595,19 @@ async def run_agent(
 
                 # Clarification needed - return to user
                 if result.get("needs_clarification"):
+                    options = result.get("options") or result.get("matches") or []
+                    if not isinstance(options, list):
+                        options = []
+
+                    context_text = result.get("context") or result.get("message") or ""
+                    hint = result.get("hint")
+                    if hint:
+                        context_text = f"{context_text}\n{hint}" if context_text else hint
                     return AgentResult(
                         response="",
                         needs_clarification=True,
-                        clarification_options=result.get("options", []),
-                        clarification_context=result.get("context", ""),
+                        clarification_options=options,
+                        clarification_context=context_text,
                         tool_calls_made=all_tool_calls,
                     )
 
@@ -651,6 +724,15 @@ def _build_messages(message: str, context: AgentContext) -> List[Dict[str, Any]]
         system_prompt += f"\n\n## Current Game Context\nThe user is asking about:\n" + "\n".join(game_info)
         system_prompt += "\n\nUse the app_id when calling tools. If multiple games, assume the first one unless the user specifies."
 
+    # Defaults/constraints from the current chat request
+    if context.date_filter and context.date_filter != "all":
+        system_prompt += f"\n\n## Review Window\nDefault date filter: {context.date_filter}"
+    if context.max_reviews_per_game:
+        system_prompt += f"\nMax review snippets per search: {context.max_reviews_per_game} (hard cap 50)"
+
+    if context.language:
+        system_prompt += f"\n\n## Response Language\nRespond in {context.language}."
+
     # Add session context for follow-up awareness
     session = context.session_context
     if session.last_topic or session.last_tool_calls:
@@ -663,10 +745,48 @@ def _build_messages(message: str, context: AgentContext) -> List[Dict[str, Any]]
         if session.last_tool_calls:
             last_tools = [c.get("tool") for c in session.last_tool_calls[:3]]
             system_prompt += f"\n- Last tools used: {', '.join(last_tools)}"
+            system_prompt += "\n- Last tool parameters (reuse when user says 'same'/'what about'):"
+            for call in session.last_tool_calls[:3]:
+                tool = call.get("tool", "")
+                params = call.get("params") or {}
+                if not tool:
+                    continue
+                keep_keys = [
+                    "app_id",
+                    "app_id_1",
+                    "app_id_2",
+                    "subcategory",
+                    "query",
+                    "sentiment",
+                    "weeks",
+                    "category",
+                    "metric",
+                    "limit",
+                ]
+                parts = []
+                for key in keep_keys:
+                    value = params.get(key)
+                    if value in (None, "", [], {}):
+                        continue
+                    parts.append(f"{key}={value!r}" if isinstance(value, str) else f"{key}={value}")
+                if parts:
+                    system_prompt += f"\n  - {tool}({', '.join(parts)})"
+                else:
+                    system_prompt += f"\n  - {tool}"
 
         if session.last_search_results:
             system_prompt += f"\n- {len(session.last_search_results)} reviews from last search are cached."
-            system_prompt += "\n- For 'show me more' or 'other examples', you can reference these."
+            system_prompt += "\n- Cached examples (for 'show me more'/'other examples'):"
+            for r in session.last_search_results[:3]:
+                rid = (r.get("review_id") or "").strip()
+                text = (r.get("text") or "").strip().replace("\n", " ")
+                if not text:
+                    continue
+                snippet = text[:200] + ("..." if len(text) > 200 else "")
+                if rid:
+                    system_prompt += f"\n  - {rid}: {snippet}"
+                else:
+                    system_prompt += f"\n  - {snippet}"
 
     messages.append({"role": "system", "content": system_prompt})
 
@@ -688,12 +808,16 @@ def _friendly_tool_name(tool_name: str) -> str:
         "get_subcategory_stats": "Loading statistics",
         "get_top_issues": "Analyzing issues",
         "get_feature_requests": "Finding feature requests",
+        "list_available_topics": "Listing available topics",
+        "get_top_praises": "Finding positive themes",
         "get_sentiment_trend": "Loading sentiment trend",
         "compare_games": "Comparing games",
         "get_game_overview": "Loading game overview",
         "list_available_games": "Checking available games",
         "clarify_question": "Preparing question",
         "final_answer": "Preparing response",
+        "compare_time_windows": "Comparing time windows",
+        "compare_sentiment_trend": "Comparing sentiment trends",
     }
     return friendly_names.get(tool_name, f"Processing {tool_name}")
 
