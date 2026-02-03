@@ -2007,10 +2007,240 @@ def summarize_subcategory_reviews(
         }
 
 
+def compare_games(
+    games_data: List[Dict[str, Any]],
+    comparison_type: str,
+    category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Generate AI-powered comparison summary for 2-4 games.
+
+    Args:
+        games_data: List of game dicts with:
+            - app_id: int
+            - name: str
+            - reviews: List[dict] (filtered sample)
+            - metrics: Dict (recommendation rates, counts)
+        comparison_type: "overview" | "category" | "subcategory"
+        category: Main category for category/subcategory comparisons
+        subcategory: Specific subcategory for subcategory comparisons
+
+    Returns:
+        Dict with:
+            - summary: str (2-4 sentence overview)
+            - winners: Dict[str, List[int]] (app_ids that excel in different areas)
+            - key_differences: List[str] (3-5 bullet points)
+            - strengths_per_game: Dict[int, List[str]] (per app_id)
+            - weaknesses_per_game: Dict[int, List[str]] (per app_id)
+            - recommendations: Dict[int, str] (who each game is best for)
+    """
+    # Build prompt based on comparison type
+    if comparison_type == "overview":
+        prompt_template = """You are analyzing Steam game reviews to compare multiple games. Generate a clear, actionable comparison.
+
+GAMES BEING COMPARED:
+{game_summaries}
+
+OUTPUT JSON SCHEMA:
+{{
+  "summary": "<2-4 sentence overview highlighting what makes each game unique>",
+  "winners": {{
+    "<aspect>": [<app_ids>],
+    ...
+  }},
+  "key_differences": [
+    "<specific comparison point with percentages>",
+    ...
+  ],
+  "strengths_per_game": {{
+    <app_id>: ["<strength 1>", "<strength 2>", ...],
+    ...
+  }},
+  "weaknesses_per_game": {{
+    <app_id>: ["<weakness 1>", "<weakness 2>", ...],
+    ...
+  }},
+  "recommendations": {{
+    <app_id>: "<who this game is best for>",
+    ...
+  }}
+}}
+
+RULES:
+- Be specific with data (use percentages, review counts)
+- Highlight competitive advantages (>10% difference is significant)
+- Focus on actionable insights, not generic praise
+- Winners can be multiple games (ties are OK)
+- Each game should have 2-4 strengths and 1-3 weaknesses
+- Recommendations should differentiate target audiences
+
+REVIEW SAMPLES:
+{review_samples}"""
+
+    elif comparison_type == "category":
+        prompt_template = """You are analyzing Steam game reviews to compare games in a specific category: {category}.
+
+GAMES BEING COMPARED:
+{game_summaries}
+
+FOCUS CATEGORY: {category}
+
+OUTPUT JSON SCHEMA:
+{{
+  "summary": "<2-3 sentence overview of differences in {category}>",
+  "winners": {{
+    "<subcategory_or_aspect>": [<app_ids>],
+    ...
+  }},
+  "key_differences": [
+    "<specific comparison point with percentages for {category}>",
+    ...
+  ],
+  "strengths_per_game": {{
+    <app_id>: ["<{category} strength 1>", "<{category} strength 2>"],
+    ...
+  }},
+  "weaknesses_per_game": {{
+    <app_id>: ["<{category} weakness 1>", ...],
+    ...
+  }},
+  "recommendations": {{
+    <app_id>: "<who this game is best for based on {category}>",
+    ...
+  }}
+}}
+
+RULES:
+- Focus ONLY on {category} aspects
+- Use specific metrics and percentages
+- Identify which game excels in specific subcategories
+- Be concise (2-3 strengths/weaknesses per game)
+
+REVIEW SAMPLES (filtered for {category}):
+{review_samples}"""
+
+    else:  # subcategory
+        prompt_template = """You are analyzing Steam game reviews to compare games on a specific subcategory: {subcategory}.
+
+GAMES BEING COMPARED:
+{game_summaries}
+
+FOCUS SUBCATEGORY: {subcategory}
+
+OUTPUT JSON SCHEMA:
+{{
+  "summary": "<1-2 sentence comparison of {subcategory} differences>",
+  "winners": {{
+    "{subcategory}": [<app_ids>]
+  }},
+  "key_differences": [
+    "<specific {subcategory} comparison with data>",
+    ...
+  ],
+  "strengths_per_game": {{
+    <app_id>: ["<{subcategory} strength>", ...],
+    ...
+  }},
+  "weaknesses_per_game": {{
+    <app_id>: ["<{subcategory} weakness>", ...],
+    ...
+  }},
+  "recommendations": {{
+    <app_id>: "<who should choose this game for {subcategory}>",
+    ...
+  }}
+}}
+
+RULES:
+- Focus ONLY on {subcategory}
+- Extract specific player feedback about {subcategory}
+- 1-2 strengths/weaknesses per game
+- Very specific and actionable insights
+
+REVIEW SAMPLES (filtered for {subcategory}):
+{review_samples}"""
+
+    # Build game summaries
+    game_summaries = []
+    for game in games_data:
+        metrics = game.get("metrics", {})
+        rec_rate = metrics.get("recommendation_rate", 0)
+        total = metrics.get("total_reviews", len(game.get("reviews", [])))
+        summary = f"Game: \"{game['name']}\" (App ID: {game['app_id']}, Recommendation: {rec_rate:.1f}%, Reviews: {total})"
+        game_summaries.append(summary)
+
+    # Build review samples
+    review_samples = []
+    for game in games_data:
+        reviews = game.get("reviews", [])[:15]  # Limit to 15 reviews per game
+        if reviews:
+            review_samples.append(f"\n--- {game['name']} (App ID: {game['app_id']}) ---")
+            for i, review in enumerate(reviews, 1):
+                review_text = review.get("review", "")[:300]  # Truncate long reviews
+                voted_up = "Positive" if review.get("voted_up") else "Negative"
+                subcats = review.get("llm_subcategories", [])
+                review_samples.append(
+                    f"{i}. [{voted_up}] {review_text}... (Subcategories: {', '.join(subcats[:3])})"
+                )
+
+    # Format the prompt
+    prompt = prompt_template.format(
+        game_summaries="\n".join(game_summaries),
+        review_samples="\n".join(review_samples),
+        category=category or "",
+        subcategory=subcategory or "",
+    )
+
+    # Call LLM
+    try:
+        model = get_model_for_classification()
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.3,
+                "response_mime_type": "application/json",
+            },
+        )
+
+        result = json.loads(response.text)
+
+        # Convert string keys to int for per-game dicts
+        if "strengths_per_game" in result:
+            result["strengths_per_game"] = {
+                int(k): v for k, v in result["strengths_per_game"].items()
+            }
+        if "weaknesses_per_game" in result:
+            result["weaknesses_per_game"] = {
+                int(k): v for k, v in result["weaknesses_per_game"].items()
+            }
+        if "recommendations" in result:
+            result["recommendations"] = {
+                int(k): v for k, v in result["recommendations"].items()
+            }
+
+        # Ensure all required fields exist
+        result.setdefault("summary", "Comparison generated successfully")
+        result.setdefault("winners", {})
+        result.setdefault("key_differences", [])
+        result.setdefault("strengths_per_game", {})
+        result.setdefault("weaknesses_per_game", {})
+        result.setdefault("recommendations", {})
+
+        return result
+
+    except Exception as exc:
+        logger.exception(f"Failed to compare games: {exc}")
+        raise LLMError(
+            f"Failed to generate comparison: {str(exc)}",
+            error_type=LLMErrorType.API_ERROR,
+        ) from exc
+
+
 __all__ = [
     "apply_review_labels",
     "call_llm_with_tools",
     "classify_review",
+    "compare_games",
     "ensure_review_labels",
     "LLMError",
     "LLMErrorType",

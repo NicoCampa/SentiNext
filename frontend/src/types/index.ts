@@ -364,3 +364,32 @@ export interface DatabaseGameOption {
   app_id: number;
   name?: string | null;
 }
+
+export interface GameComparisonData {
+  app_id: number;
+  name: string;
+  reviews: any[];
+  metrics: {
+    recommendation_rate: number;
+    total_reviews: number;
+    category_rates?: Record<string, number>;
+  };
+}
+
+export interface ComparisonSummarizeRequest {
+  games: GameComparisonData[];
+  comparison_type: 'overview' | 'category' | 'subcategory';
+  category?: string;
+  subcategory?: string;
+}
+
+export interface ComparisonSummary {
+  summary: string;
+  winners: Record<string, number[]>;
+  key_differences: string[];
+  strengths_per_game: Record<number, string[]>;
+  weaknesses_per_game: Record<number, string[]>;
+  recommendations: Record<number, string>;
+  cached: boolean;
+  credits_charged: number;
+}

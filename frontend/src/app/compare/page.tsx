@@ -14,6 +14,7 @@ import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsig
 import { formatPercentage } from "@/utils/format";
 import { getRecommendationColor } from "@/utils/colors";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { OverviewComparisonCard } from "@/components/compare/OverviewComparisonCard";
 import {
   Chart as ChartJS,
   RadialLinearScale,
@@ -507,6 +508,9 @@ function ComparisonDashboard({
           ))}
         </div>
       </Card>
+
+      {/* AI-Powered Overview Comparison */}
+      <OverviewComparisonCard selectedGames={games} />
 
       {/* Radar Chart Overview */}
       <Card variant="glass" className="p-6">

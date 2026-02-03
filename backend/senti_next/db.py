@@ -489,6 +489,29 @@ def init_postgresql_schema() -> None:
             ON chat_sessions(user_id, updated_at DESC)
         """))
 
+        # Comparison summaries table for AI-powered game comparisons
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS comparison_summaries (
+                cache_key VARCHAR(64) PRIMARY KEY,
+                app_ids INTEGER[] NOT NULL,
+                comparison_type VARCHAR(32) NOT NULL,
+                category VARCHAR(64),
+                subcategory VARCHAR(128),
+                summary_data JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                user_id VARCHAR(255) NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_comparison_expires
+            ON comparison_summaries(expires_at)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_comparison_user
+            ON comparison_summaries(user_id)
+        """))
+
         logger.info("PostgreSQL schema initialized and migrated")
 
 

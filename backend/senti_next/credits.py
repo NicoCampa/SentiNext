@@ -28,6 +28,7 @@ CREDIT_COSTS = {
     "classify_cached": 0.5,  # Per cached review (no LLM call, just retrieval)
     "chat": 3,            # Per chat message (higher token usage)
     "summarize": 2,       # Per subcategory summary generation
+    "compare": 3,         # Per comparison (variable in endpoint: 2-5 credits)
 }
 
 # Soft limit buffer (10% overage allowed)

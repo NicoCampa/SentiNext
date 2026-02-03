@@ -12,6 +12,8 @@ import {
   StoragePaths,
   DatabaseReviewsResponse,
   DatabaseGameOption,
+  ComparisonSummarizeRequest,
+  ComparisonSummary,
 } from "@/types";
 
 declare global {
@@ -422,6 +424,26 @@ export async function fetchAutoRefreshHistory(limit: number = 50): Promise<AutoR
   url.searchParams.set("limit", String(limit));
   const response = await authFetch(url.toString(), { cache: "no-store" });
   return handleResponse<AutoRefreshLogEntry[]>(response);
+}
+
+export async function generateComparisonSummary(
+  request: ComparisonSummarizeRequest
+): Promise<ComparisonSummary> {
+  const response = await authFetch(apiUrl('/compare/summarize'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    if (response.status === 402) {
+      const error = await response.json();
+      throw new Error(error.detail?.message || 'Insufficient credits');
+    }
+    throw new Error('Failed to generate comparison summary');
+  }
+
+  return response.json();
 }
 
 function optionalAdminHeaders(): HeadersInit {

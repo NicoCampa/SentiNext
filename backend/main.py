@@ -1363,6 +1363,102 @@ def summarize_subcategory(
         raise HTTPException(status_code=500, detail="Failed to generate summary.") from exc
 
 
+class GameComparisonData(BaseModel):
+    app_id: int
+    name: str
+    reviews: List[dict] = Field(..., max_length=30)
+    metrics: dict
+
+
+class ComparisonSummarizeRequest(BaseModel):
+    games: List[GameComparisonData] = Field(..., min_length=2, max_length=4)
+    comparison_type: str = Field(..., pattern="^(overview|category|subcategory)$")
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+
+
+class ComparisonSummaryResponse(BaseModel):
+    summary: str
+    winners: Dict[str, List[int]]
+    key_differences: List[str]
+    strengths_per_game: Dict[int, List[str]]
+    weaknesses_per_game: Dict[int, List[str]]
+    recommendations: Dict[int, str]
+    cached: bool
+    credits_charged: int
+
+
+@app.post("/compare/summarize", response_model=ComparisonSummaryResponse, dependencies=[Depends(require_license)])
+def compare_games_summarize(
+    request: ComparisonSummarizeRequest,
+    user_id: str = Depends(require_user_id),
+) -> ComparisonSummaryResponse:
+    """Generate AI comparison summary for 2-4 games."""
+    # 1. Generate cache key
+    app_ids = [g.app_id for g in request.games]
+    cache_key = storage.generate_comparison_cache_key(
+        app_ids, request.comparison_type, request.category, request.subcategory
+    )
+
+    # 2. Check cache
+    cached = storage.load_comparison_summary(cache_key)
+    if cached:
+        return ComparisonSummaryResponse(**cached, cached=True, credits_charged=0)
+
+    # 3. Determine credit cost
+    credit_cost = {
+        "overview": 5,
+        "category": 3,
+        "subcategory": 2,
+    }[request.comparison_type]
+
+    # 4. Check credits
+    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, credit_cost)
+    if not can_proceed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": credit_message,
+                "credits_needed": credit_cost,
+                "credits_available": credit_status["balance"],
+                "tier": credit_status["tier"],
+            },
+        )
+
+    # 5. Call LLM
+    try:
+        result = llm.compare_games(
+            games_data=[g.dict() for g in request.games],
+            comparison_type=request.comparison_type,
+            category=request.category,
+            subcategory=request.subcategory,
+        )
+
+        # 6. Save to cache
+        storage.save_comparison_summary(
+            user_id=user_id,
+            app_ids=app_ids,
+            comparison_type=request.comparison_type,
+            category=request.category,
+            subcategory=request.subcategory,
+            summary_data=result,
+        )
+
+        # 7. Deduct credits
+        credits.deduct_credits(
+            user_id=user_id,
+            amount=credit_cost,
+            operation="compare",
+            description=f"Compared {len(app_ids)} games ({request.comparison_type})",
+        )
+
+        return ComparisonSummaryResponse(**result, cached=False, credits_charged=credit_cost)
+
+    except Exception as exc:
+        logger.exception("Comparison failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate comparison.") from exc
+
+
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_license)])
 def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id)) -> ChatResponse:
     question = (request.question or "").strip()

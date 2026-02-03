@@ -2597,3 +2597,131 @@ def delete_chat_session(session_id: str) -> int:
 def _get_cutoff_timestamp(seconds_ago: int) -> datetime:
     """Get a datetime object for seconds ago from now."""
     return datetime.fromtimestamp(_get_timestamp() - seconds_ago, tz=timezone.utc)
+
+
+def generate_comparison_cache_key(
+    app_ids: List[int],
+    comparison_type: str,
+    category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+) -> str:
+    """Generate deterministic cache key for comparison.
+
+    Args:
+        app_ids: List of Steam app IDs being compared
+        comparison_type: "overview" | "category" | "subcategory"
+        category: Main category for category/subcategory comparisons
+        subcategory: Specific subcategory for subcategory comparisons
+
+    Returns:
+        SHA256 hash string (64 characters)
+    """
+    import hashlib
+
+    # Sort app_ids for deterministic key
+    sorted_ids = sorted(app_ids)
+
+    # Build key components
+    key_parts = [
+        ",".join(str(aid) for aid in sorted_ids),
+        comparison_type,
+        category or "",
+        subcategory or "",
+    ]
+
+    key_string = "|".join(key_parts)
+    return hashlib.sha256(key_string.encode()).hexdigest()
+
+
+def save_comparison_summary(
+    user_id: str,
+    app_ids: List[int],
+    comparison_type: str,
+    category: Optional[str],
+    subcategory: Optional[str],
+    summary_data: Dict[str, Any],
+    ttl_days: int = 7,
+) -> str:
+    """Save comparison summary to cache.
+
+    Args:
+        user_id: User ID who generated the comparison
+        app_ids: List of Steam app IDs being compared
+        comparison_type: "overview" | "category" | "subcategory"
+        category: Main category for category/subcategory comparisons
+        subcategory: Specific subcategory for subcategory comparisons
+        summary_data: The comparison result data
+        ttl_days: Time-to-live in days (default 7)
+
+    Returns:
+        Cache key string
+    """
+    from . import db as db_module
+    from datetime import timedelta
+
+    cache_key = generate_comparison_cache_key(app_ids, comparison_type, category, subcategory)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO comparison_summaries (
+                    cache_key, app_ids, comparison_type, category, subcategory,
+                    summary_data, expires_at, user_id
+                )
+                VALUES (:cache_key, :app_ids, :comparison_type, :category, :subcategory,
+                        :summary_data, :expires_at, :user_id)
+                ON CONFLICT (cache_key) DO UPDATE SET
+                    summary_data = EXCLUDED.summary_data,
+                    expires_at = EXCLUDED.expires_at,
+                    created_at = CURRENT_TIMESTAMP
+            """),
+            {
+                "cache_key": cache_key,
+                "app_ids": app_ids,
+                "comparison_type": comparison_type,
+                "category": category,
+                "subcategory": subcategory,
+                "summary_data": json.dumps(summary_data),
+                "expires_at": expires_at,
+                "user_id": user_id,
+            },
+        )
+        conn.commit()
+
+    logger.info(f"Saved comparison summary: cache_key={cache_key}, type={comparison_type}")
+    return cache_key
+
+
+def load_comparison_summary(cache_key: str) -> Optional[Dict[str, Any]]:
+    """Load comparison summary from cache if not expired.
+
+    Args:
+        cache_key: The cache key to look up
+
+    Returns:
+        Summary data dict if found and not expired, None otherwise
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        row = conn.execute(
+            text("""
+                SELECT summary_data, expires_at
+                FROM comparison_summaries
+                WHERE cache_key = :cache_key
+            """),
+            {"cache_key": cache_key},
+        ).mappings().fetchone()
+
+        if not row:
+            return None
+
+        # Check if expired
+        expires_at = row["expires_at"]
+        if datetime.now(timezone.utc) > expires_at:
+            logger.info(f"Comparison cache expired: {cache_key}")
+            return None
+
+        summary_data = _parse_json_field(row["summary_data"])
+        return summary_data
