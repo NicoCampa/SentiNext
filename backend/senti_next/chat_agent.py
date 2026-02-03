@@ -459,11 +459,18 @@ AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SentiNext. Anal
 
 ## Handling Uncertainty
 - **Few reviews (<5)**: "Based on limited data from X reviews..."
-- **No exact match**: "I found related data on [topic]. For [exact query], you might try..."
+- **No exact match**: Don't ask "Would you like me to search?" - just search immediately using search_reviews with relevant keywords
 - **Conflicting data**: "Reviews are mixed - X% positive mention [aspect], while negative reviews cite [issue]"
-- **Empty results**: Suggest broader terms or alternative queries
+- **Empty results**: Try searching with keywords from the user's question using search_reviews
 
-## Follow-up Awareness
+## Follow-up Responses
+When user says "yes", "sure", "okay", "go ahead", or similar affirmative responses:
+- Look at conversation history to see what you suggested
+- If you suggested searching for a term, immediately call search_reviews with that term
+- If you suggested showing more examples, call search_reviews with offset parameter
+- If you suggested analyzing a specific topic, call the appropriate tool
+- **Don't ask for confirmation - just execute the action you suggested**
+
 When user says "same for X" or "what about Y":
 - Reuse filters from last query with new subcategory
 - Reference previous context when relevant
@@ -478,6 +485,7 @@ Types: pie, bar, line, doughnut
 - Ask "what game is this?" (game context provided)
 - Loop on same tool multiple times
 - Call tools without calling final_answer after
+- Ask "Would you like me to..." - just do the action immediately
 """
 
 

@@ -317,11 +317,11 @@ CHAT_TOOLS = [
     ),
     Tool(
         name="search_reviews",
-        description="Get actual review text/quotes. Use this when user asks 'what do they say specifically?' or wants examples. Returns review snippets (up to 500 chars each) that mention the subcategory.",
+        description="Get actual review text/quotes. Use this when: (1) user asks 'what do they say specifically?' or wants examples, (2) user asks about keywords/topics that aren't standard categories (e.g., 'AI', 'Steam Deck', 'co-op'), (3) you want to find what players mention about a specific term. Returns review snippets (up to 500 chars each). Pass keywords in 'query' parameter OR use 'subcategory' for classified topics.",
         parameters={
             "app_id": "int - Game ID (required)",
-            "query": "str - Search keywords (optional)",
-            "subcategory": "str - Filter by subcategory like 'monetization_value/pay_to_win_grind' or 'gameplay/ai'. Use to get reviews about a specific issue (optional)",
+            "query": "str - Search keywords like 'AI', 'steam deck', 'multiplayer' - use this for user's custom terms (optional)",
+            "subcategory": "str - Filter by classified category like 'monetization_value/pay_to_win_grind' or 'gameplay/ai'. Only use for topics from analysis (optional)",
             "sentiment": "str - 'positive' or 'negative' (optional)",
             "limit": "int - Max results, default 10 (optional)",
             "offset": "int - Number of results to skip for pagination (optional)",
