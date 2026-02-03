@@ -367,42 +367,6 @@ function ComparisonDashboard({
   // Radar chart data
   return (
     <div className="space-y-8">
-      {/* Game Cards - Compact Design */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {gameData.map((game) => (
-          <Card key={game.appId} variant="glass" className="overflow-hidden">
-            <div className="relative">
-              <SteamImage
-                appId={game.appId}
-                variant="header"
-                alt={game.name}
-                className="h-32 w-full object-cover"
-                imageUrl={game.metadata.header_image}
-              />
-              <button
-                onClick={() => onRemove(game.appId)}
-                className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 flex items-center justify-center text-xs"
-                title="Remove from analyzed games"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-3 space-y-2">
-              <h3 className="text-sm font-semibold text-white line-clamp-1">{game.name}</h3>
-              <p className="text-xs text-slate-400">
-                {game.sampleCount.toLocaleString()} reviews
-              </p>
-              <p
-                className="text-lg font-semibold"
-                style={{ color: getRecommendationColor(game.recommendation) }}
-              >
-                {formatPercentOrDash(game.recommendation)}
-              </p>
-            </div>
-          </Card>
-        ))}
-      </div>
-
       {/* AI Comparison Button */}
       <div className="flex justify-center">
         <OverviewComparisonCard selectedGames={games} />
