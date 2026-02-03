@@ -674,6 +674,7 @@ export interface EnhancedChatResponse {
   response: string;
   session_id: string;
   citations: ChatCitationItem[];
+  source_reviews: ChatCitationItem[];
   games_used: Array<{ app_id: number; name: string }>;
   reviews_searched: number;
   has_game_context: boolean;

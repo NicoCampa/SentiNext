@@ -42,6 +42,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { SourceReviewsWidget } from "@/components/chat/SourceReviewsWidget";
 
 const markdownComponents = {
   h1: (props: ComponentPropsWithoutRef<"h1">) => (
@@ -400,6 +401,7 @@ type Message = {
   content: string;
   timestamp: Date;
   citations?: ChatCitationItem[];
+  sourceReviews?: ChatCitationItem[];
   suggestedQuestions?: string[];
   needsClarification?: boolean;
   clarificationOptions?: string[];
@@ -645,6 +647,7 @@ export default function ChatPage() {
         content: data.response,
         timestamp: new Date(),
         citations: data.citations,
+        sourceReviews: data.source_reviews,
         suggestedQuestions: data.suggested_questions,
         needsClarification: data.needs_clarification,
         clarificationOptions: data.clarification_options,
@@ -1049,6 +1052,10 @@ export default function ChatPage() {
                           )}
                         </div>
                       </div>
+                    )}
+                    {/* Source Reviews Widget */}
+                    {msg.sourceReviews && msg.sourceReviews.length > 0 && (
+                      <SourceReviewsWidget reviews={msg.sourceReviews} />
                     )}
                     {/* Suggested follow-up questions */}
                     {msg.role === "assistant" && msg.suggestedQuestions && msg.suggestedQuestions.length > 0 && (

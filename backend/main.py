@@ -440,6 +440,8 @@ class SimpleChatResponse(BaseModel):
     # Suggest searching for a game (shows button to go to home)
     suggest_search_game: bool = False
     search_game_name: str = ""
+    # Source reviews used in context
+    source_reviews: List[ChatCitationItem] = Field(default_factory=list)
 
 
 class ChatMessage(BaseModel):
@@ -1585,6 +1587,7 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                     response=clarification_text,
                     session_id=session_id,
                     citations=[],
+                    source_reviews=[],
                     games_used=game_metadata,
                     reviews_searched=0,
                     has_game_context=True,
@@ -1600,6 +1603,7 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                     response=agent_result.response or agent_result.game_selection_message,
                     session_id=session_id,
                     citations=[],
+                    source_reviews=[],
                     games_used=game_metadata,
                     reviews_searched=0,
                     has_game_context=True,
@@ -1617,6 +1621,7 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                     response=agent_result.response,
                     session_id=session_id,
                     citations=[],
+                    source_reviews=[],
                     games_used=game_metadata,
                     reviews_searched=0,
                     has_game_context=True,
@@ -1634,7 +1639,7 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
             suggested_questions = agent_result.suggested_questions
             tool_calls_made = len(agent_result.tool_calls_made)
 
-            # Extract citations from tool results
+            # Extract citations from tool results (top 5 for inline display)
             citations = []
             for tc in agent_result.tool_calls_made:
                 if tc.get("tool") == "search_reviews":
@@ -1657,6 +1662,25 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                                 break
                 if len(citations) >= 5:
                     break
+
+            # Extract ALL source reviews used in context (for expandable widget)
+            source_reviews = []
+            for tc in agent_result.tool_calls_made:
+                if tc.get("tool") == "search_reviews":
+                    result_data = tc.get("result", {})
+                    for review in result_data.get("reviews", []):
+                        if review.get("review_id"):
+                            citation_app_id = int(tc.get("params", {}).get("app_id") or (app_ids[0] if app_ids else 0))
+                            source_review = ChatCitationItem(
+                                review_id=str(review.get("review_id", "")),
+                                app_id=citation_app_id,
+                                game_name=game_names.get(citation_app_id, f"Game {citation_app_id}"),
+                                snippet=review.get("text", ""),  # Full text, not truncated
+                                votes_up=review.get("votes_up", 0),
+                                voted_up=review.get("sentiment") == "positive",
+                                playtime_hours=review.get("playtime_hours", 0),
+                            )
+                            source_reviews.append(source_review)
 
             games_used = game_metadata
             reviews_searched = sum(
@@ -1690,6 +1714,7 @@ Example:
             # Use Gemini to generate response
             response_text, model_id = llm.run_chat_completion(prompt)
             citations = []
+            source_reviews = []
             games_used = []
             reviews_searched = 0
             suggested_questions = []
@@ -1712,6 +1737,7 @@ Example:
             response=response_text,
             session_id=session_id,
             citations=citations,
+            source_reviews=source_reviews,
             games_used=games_used,
             reviews_searched=reviews_searched,
             has_game_context=has_game_context,
