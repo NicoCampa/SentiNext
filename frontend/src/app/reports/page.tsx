@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SteamImage } from '@/components/SteamImage';
 import { MonthSelector } from '@/components/reports/MonthSelector';
+import { BackButton } from '@/components/BackButton';
+import { PageTransition } from '@/components/PageTransition';
 
 export default function ReportsPage() {
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
@@ -125,10 +127,14 @@ export default function ReportsPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl space-y-8 px-4 py-6">
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight">
+      <PageTransition>
+        <div className="mx-auto max-w-7xl space-y-8 px-4 py-6">
+          {/* Back Button */}
+          <BackButton />
+
+          {/* Header */}
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight">
             <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
               Executive Summary Reports
             </span>
@@ -281,7 +287,8 @@ export default function ReportsPage() {
             </div>
           </Card>
         )}
-      </div>
+        </div>
+      </PageTransition>
     </AppLayout>
   );
 }

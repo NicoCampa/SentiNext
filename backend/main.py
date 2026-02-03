@@ -1063,7 +1063,8 @@ def analyze(
     if request.persist:
         stored_reviews = storage.load_reviews(request.app_id)
 
-    has_enough_cached = len(stored_reviews) >= int(request.review_count or 0)
+    # Treat review_count=0 as "all available reviews" (unlimited), always fetch in that case
+    has_enough_cached = request.review_count > 0 and len(stored_reviews) >= request.review_count
     should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
     # Determine which languages to fetch
@@ -1200,7 +1201,8 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
     if request.persist:
         stored_reviews = storage.load_reviews(request.app_id)
 
-    has_enough_cached = len(stored_reviews) >= int(request.review_count or 0)
+    # Treat review_count=0 as "all available reviews" (unlimited), always fetch in that case
+    has_enough_cached = request.review_count > 0 and len(stored_reviews) >= request.review_count
     should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
     # Determine which languages to fetch

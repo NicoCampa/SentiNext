@@ -16,6 +16,8 @@ import { getRecommendationColor } from "@/utils/colors";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { OverviewComparisonCard } from "@/components/compare/OverviewComparisonCard";
 import { ComparisonSummaryDisplay } from "@/components/compare/ComparisonSummaryDisplay";
+import { BackButton } from "@/components/BackButton";
+import { PageTransition } from "@/components/PageTransition";
 
 const MAX_SELECTION = 2;
 
@@ -122,9 +124,12 @@ export default function ComparePage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl px-4 py-10 space-y-10 sm:space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold">
+      <PageTransition>
+        <div className="mx-auto max-w-7xl px-4 py-10 space-y-10 sm:space-y-8">
+          <BackButton />
+
+          <div>
+            <h1 className="text-3xl font-bold">
             <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
               Game Comparison
             </span>
@@ -198,7 +203,8 @@ export default function ComparePage() {
         ) : (
           <ComparisonDashboard games={selectedGames} onRemove={handleRemove} />
         )}
-      </div>
+        </div>
+      </PageTransition>
     </AppLayout>
   );
 }
