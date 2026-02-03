@@ -158,10 +158,11 @@ export default function ReportsPage() {
                 >
                   <div className="aspect-[460/215] relative">
                     <SteamImage
-                      src={game.metadata?.header_image || ''}
+                      appId={game.app_id}
+                      variant="header"
                       alt={game.name}
-                      fill
-                      className="object-cover"
+                      className="h-full w-full object-cover"
+                      imageUrl={game.metadata?.header_image}
                     />
                     {isSelected && (
                       <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
