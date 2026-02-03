@@ -4,9 +4,11 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from "reac
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Chart as ChartJS,
+  BarController,
   CategoryScale,
   LinearScale,
   LineElement,
+  LineController,
   PointElement,
   BarElement,
   Tooltip,
@@ -44,9 +46,11 @@ import { getRecommendationColor, hexToRgba } from "@/utils/colors";
 import { formatSavedLabel } from "@/utils/format";
 
 ChartJS.register(
+  BarController,
   CategoryScale,
   LinearScale,
   LineElement,
+  LineController,
   PointElement,
   BarElement,
   Tooltip,

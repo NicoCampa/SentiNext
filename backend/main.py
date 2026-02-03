@@ -2212,7 +2212,7 @@ def admin_list_user_subscriptions(
 ) -> List[UserSubscriptionInfo]:
     """List all user subscriptions (admin only)."""
     try:
-        from . import db as db_module
+        from .senti_next import db as db_module
         with db_module.get_connection() as conn:
             result = conn.execute(
                 text("""
