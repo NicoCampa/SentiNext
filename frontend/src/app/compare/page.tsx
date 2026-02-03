@@ -466,7 +466,7 @@ function ComparisonDashboard({
                           </div>
                         )})}
                       </div>
-                    </div>
+                    </button>
                   ))
                 )}
               </div>
