@@ -576,7 +576,8 @@ def answer_chat(
     )
 
     prompt = build_chat_prompt(context)
-    raw, model_id = llm.run_chat_completion(prompt)
+    with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="chat_insights"):
+        raw, model_id = llm.run_chat_completion(prompt)
 
     try:
         payload = llm._load_json_mapping(raw)

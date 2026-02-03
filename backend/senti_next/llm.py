@@ -6,6 +6,8 @@ import hashlib
 import json
 import logging
 import os
+import contextvars
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -32,6 +34,77 @@ GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
 LLM_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_LLM_TIMEOUT", "30"))
 LLM_MAX_RETRIES = int(os.getenv("SENTINEXT_LLM_MAX_RETRIES", "3"))
 LLM_BASE_RETRY_DELAY = float(os.getenv("SENTINEXT_LLM_RETRY_DELAY", "2.0"))
+
+# Context for logging LLM usage (propagated via contextvars)
+_LLM_USAGE_CONTEXT: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar(
+    "llm_usage_context",
+    default={},
+)
+
+
+@contextmanager
+def llm_usage_context(
+    *,
+    user_id: Optional[str] = None,
+    operation: Optional[str] = None,
+    app_id: Optional[int] = None,
+    session_id: Optional[str] = None,
+) -> Any:
+    """Attach context for LLM usage logging within the current task."""
+    current = _LLM_USAGE_CONTEXT.get() or {}
+    merged = {
+        **current,
+        **{k: v for k, v in {
+            "user_id": user_id,
+            "operation": operation,
+            "app_id": app_id,
+            "session_id": session_id,
+        }.items() if v is not None},
+    }
+    token = _LLM_USAGE_CONTEXT.set(merged)
+    try:
+        yield
+    finally:
+        _LLM_USAGE_CONTEXT.reset(token)
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _record_llm_usage(response: Any, model_name: str) -> None:
+    """Record token usage metadata if available (best-effort)."""
+    try:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            return
+
+        ctx = _LLM_USAGE_CONTEXT.get() or {}
+        user_id = ctx.get("user_id")
+        if not user_id:
+            return
+
+        storage.log_llm_usage(
+            user_id=str(user_id),
+            operation=str(ctx.get("operation") or "unknown"),
+            model=_model_id("google", model_name),
+            prompt_tokens=_safe_int(getattr(usage, "prompt_token_count", None)),
+            response_tokens=_safe_int(getattr(usage, "response_token_count", None)),
+            total_tokens=_safe_int(getattr(usage, "total_token_count", None)),
+            cached_tokens=_safe_int(getattr(usage, "cached_content_token_count", None)),
+            tool_use_prompt_tokens=_safe_int(getattr(usage, "tool_use_prompt_token_count", None)),
+            thoughts_tokens=_safe_int(getattr(usage, "thoughts_token_count", None)),
+            traffic_type=str(getattr(usage, "traffic_type", None)) if getattr(usage, "traffic_type", None) else None,
+            app_id=ctx.get("app_id"),
+            session_id=ctx.get("session_id"),
+        )
+    except Exception as exc:
+        logger.debug("Failed to record LLM usage: %s", exc)
 
 
 class LLMErrorType(Enum):
@@ -976,6 +1049,7 @@ def _run_gemini(prompt: str, model: str) -> str:
 
                 if not content:
                     raise LLMError("Empty response from Gemini.", LLMErrorType.UNKNOWN, retryable=False)
+                _record_llm_usage(response, model)
                 return content
 
             except ClientError as e:
@@ -1195,6 +1269,7 @@ async def call_llm_with_tools(
                         elif hasattr(part, 'text') and part.text:
                             content = part.text
 
+                _record_llm_usage(response, model_name)
                 return LLMResponse(
                     content=content,
                     tool_calls=tool_calls,
@@ -1718,7 +1793,11 @@ def ensure_review_labels(
             return classify_reviews(batch_items, game_context=game_context)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_batch = {executor.submit(process_batch, batch): batch for batch in all_batches}
+            future_to_batch = {}
+            for batch in all_batches:
+                ctx = contextvars.copy_context()
+                future = executor.submit(ctx.run, process_batch, batch)
+                future_to_batch[future] = batch
 
             for future in as_completed(future_to_batch):
                 batch = future_to_batch[future]
@@ -2323,6 +2402,7 @@ __all__ = [
     "LLMError",
     "LLMErrorType",
     "LLMResponse",
+    "llm_usage_context",
     "run_chat_completion",
     "summarize_subcategory_reviews",
 ]

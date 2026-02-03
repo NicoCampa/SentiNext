@@ -432,6 +432,34 @@ def init_postgresql_schema() -> None:
             ON credit_transactions(user_id, created_at DESC)
         """))
 
+        # LLM usage table for token metrics
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS llm_usage (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                model TEXT,
+                prompt_tokens INTEGER,
+                response_tokens INTEGER,
+                total_tokens INTEGER,
+                cached_tokens INTEGER,
+                tool_use_prompt_tokens INTEGER,
+                thoughts_tokens INTEGER,
+                traffic_type TEXT,
+                app_id INTEGER,
+                session_id TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_llm_usage_user
+            ON llm_usage(user_id, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_llm_usage_operation
+            ON llm_usage(operation, created_at DESC)
+        """))
+
         # Chat context table for conversation memory
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS chat_context (

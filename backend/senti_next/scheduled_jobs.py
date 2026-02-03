@@ -111,21 +111,21 @@ def _refresh_single_favorite(user_id: str, app_id: int, game_name: str) -> Dict[
     )
 
     try:
-        # Check user's credit balance
+        # Early check: skip if user is already blocked
         credit_status = credits.get_credit_status(user_id)
-        if credit_status.get("balance", 0) <= 0:
-            logger.info("Skipping refresh for user %s (app %d): insufficient credits", user_id, app_id)
+        if credit_status.get("blocked"):
+            logger.info("Skipping refresh for user %s (app %d): credit limit blocked", user_id, app_id)
             storage.update_auto_refresh_log(
                 log_id=log_id,
                 status="skipped",
-                error="Insufficient credits",
+                error="Credit limit exceeded",
             )
             return {
                 "user_id": user_id,
                 "app_id": app_id,
                 "game_name": game_name,
                 "status": "skipped",
-                "reason": "insufficient_credits",
+                "reason": "credit_limit_blocked",
             }
 
         # Fetch recent reviews (last 7 days)
@@ -166,24 +166,25 @@ def _refresh_single_favorite(user_id: str, app_id: int, game_name: str) -> Dict[
         # Calculate credit cost
         credit_cost = credits.estimate_analysis_cost(llm_review_count, cached_review_count)
 
-        # Check if user can afford this
-        if credit_cost > credit_status.get("balance", 0):
+        # Check if user can afford this (respect soft limit + bonus credits)
+        can_proceed, credit_message, _ = credits.check_credits_available(user_id, credit_cost)
+        if not can_proceed:
             logger.info(
-                "Skipping refresh for user %s (app %d): cost %d exceeds balance %d",
-                user_id, app_id, credit_cost, credit_status.get("balance", 0)
+                "Skipping refresh for user %s (app %d): %s",
+                user_id, app_id, credit_message
             )
             storage.update_auto_refresh_log(
                 log_id=log_id,
                 status="skipped",
                 reviews_fetched=len(reviews),
-                error=f"Cost ({credit_cost}) exceeds balance ({credit_status.get('balance', 0)})",
+                error=credit_message,
             )
             return {
                 "user_id": user_id,
                 "app_id": app_id,
                 "game_name": game_name,
                 "status": "skipped",
-                "reason": "cost_exceeds_balance",
+                "reason": "insufficient_credits",
                 "reviews_fetched": len(reviews),
                 "estimated_cost": credit_cost,
             }
@@ -192,12 +193,13 @@ def _refresh_single_favorite(user_id: str, app_id: int, game_name: str) -> Dict[
         logger.info("Running LLM classification for %d reviews (app %d)", len(reviews), app_id)
         storage.update_auto_refresh_log(log_id=log_id, status="processing")
 
-        llm_labels = llm.ensure_review_labels(
-            app_id,
-            reviews,
-            progress_callback=None,
-            game_context=None,
-        )
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="auto_refresh"):
+            llm_labels = llm.ensure_review_labels(
+                app_id,
+                reviews,
+                progress_callback=None,
+                game_context=None,
+            )
 
         # Deduct credits
         if credit_cost > 0:

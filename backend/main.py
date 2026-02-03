@@ -833,7 +833,7 @@ def get_credit_estimate(
     balance = subscription["credits_balance"]
     limit = subscription["credits_monthly_limit"]
     used = subscription["credits_used_this_period"]
-    hard_limit = int(limit * (1 + credits.SOFT_LIMIT_BUFFER))
+    hard_limit = credits.calculate_hard_limit(limit, used, balance)
 
     return CreditEstimateResponse(
         review_count=review_count or (new_reviews + cached_reviews),
@@ -980,12 +980,13 @@ def _run_analysis_job(
         llm_review_count = int(review_estimate.get("llm_reviews", 0) or 0)
         cached_review_count = int(review_estimate.get("cached_reviews", 0) or 0)
 
-        llm_labels = llm.ensure_review_labels(
-            app_id,
-            all_reviews,
-            progress_callback=_progress_callback if progress_active else None,
-            game_context=game_context,
-        )
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
+            llm_labels = llm.ensure_review_labels(
+                app_id,
+                all_reviews,
+                progress_callback=_progress_callback if progress_active else None,
+                game_context=game_context,
+            )
 
         # Deduct credits for the reviews that were processed
         # New LLM reviews cost 1 credit each, cached reviews cost 0.5 credits each
@@ -1346,11 +1347,12 @@ def summarize_subcategory(
     game_context = fetch_app_details(request.app_id)
 
     try:
-        result = llm.summarize_subcategory_reviews(
-            reviews=request.reviews,
-            subcategory=request.subcategory,
-            game_context=game_context,
-        )
+        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize"):
+            result = llm.summarize_subcategory_reviews(
+                reviews=request.reviews,
+                subcategory=request.subcategory,
+                game_context=game_context,
+            )
 
         # Deduct credits
         credits.deduct_credits(
@@ -1432,12 +1434,13 @@ def compare_games_summarize(
     # 5. Call LLM
     try:
         logger.info(f"Generating comparison for {len(app_ids)} games (type: {request.comparison_type})")
-        result = llm.compare_games(
-            games_data=[g.dict() for g in request.games],
-            comparison_type=request.comparison_type,
-            category=request.category,
-            subcategory=request.subcategory,
-        )
+        with llm.llm_usage_context(user_id=user_id, operation="compare"):
+            result = llm.compare_games(
+                games_data=[g.dict() for g in request.games],
+                comparison_type=request.comparison_type,
+                category=request.category,
+                subcategory=request.subcategory,
+            )
 
         # 6. Save to cache
         storage.save_comparison_summary(
@@ -1568,11 +1571,17 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
             )
 
             # Run the agentic chat
-            agent_result = await chat_agent.run_agent(
-                message=message,
-                context=agent_context,
-                status_callback=status_callback,
-            )
+            with llm.llm_usage_context(
+                user_id=user_id,
+                session_id=session_id,
+                app_id=app_ids[0] if len(app_ids) == 1 else None,
+                operation="chat_agent",
+            ):
+                agent_result = await chat_agent.run_agent(
+                    message=message,
+                    context=agent_context,
+                    status_callback=status_callback,
+                )
 
             # Clear status after completion
             _clear_chat_status(session_id)
@@ -1712,7 +1721,12 @@ Example:
 """
 
             # Use Gemini to generate response
-            response_text, model_id = llm.run_chat_completion(prompt)
+            with llm.llm_usage_context(
+                user_id=user_id,
+                session_id=session_id,
+                operation="chat_simple",
+            ):
+                response_text, model_id = llm.run_chat_completion(prompt)
             citations = []
             source_reviews = []
             games_used = []
@@ -2039,7 +2053,8 @@ def export_reviews(
 
     if refresh:
         game_context = fetch_app_details(app_id)
-        llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
+            llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
     else:
         cached_labels = storage.load_review_labels(app_id)
         if not cached_labels:

@@ -59,6 +59,56 @@ def init_db() -> None:
     logger.info("Initialized PostgreSQL backend")
 
 
+def log_llm_usage(
+    *,
+    user_id: str,
+    operation: str,
+    model: Optional[str],
+    prompt_tokens: Optional[int],
+    response_tokens: Optional[int],
+    total_tokens: Optional[int],
+    cached_tokens: Optional[int] = None,
+    tool_use_prompt_tokens: Optional[int] = None,
+    thoughts_tokens: Optional[int] = None,
+    traffic_type: Optional[str] = None,
+    app_id: Optional[int] = None,
+    session_id: Optional[str] = None,
+) -> None:
+    """Persist LLM token usage metrics (best-effort)."""
+    from . import db as db_module
+
+    try:
+        with db_module.get_connection() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO llm_usage
+                    (user_id, operation, model, prompt_tokens, response_tokens, total_tokens,
+                     cached_tokens, tool_use_prompt_tokens, thoughts_tokens, traffic_type,
+                     app_id, session_id, created_at)
+                    VALUES (:user_id, :operation, :model, :prompt_tokens, :response_tokens, :total_tokens,
+                            :cached_tokens, :tool_use_prompt_tokens, :thoughts_tokens, :traffic_type,
+                            :app_id, :session_id, NOW())
+                """),
+                {
+                    "user_id": user_id,
+                    "operation": operation,
+                    "model": model,
+                    "prompt_tokens": prompt_tokens,
+                    "response_tokens": response_tokens,
+                    "total_tokens": total_tokens,
+                    "cached_tokens": cached_tokens,
+                    "tool_use_prompt_tokens": tool_use_prompt_tokens,
+                    "thoughts_tokens": thoughts_tokens,
+                    "traffic_type": traffic_type,
+                    "app_id": app_id,
+                    "session_id": session_id,
+                },
+            )
+            conn.commit()
+    except Exception as exc:  # best-effort logging
+        logger.debug("Failed to log LLM usage: %s", exc)
+
+
 def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
     """Insert or update the provided reviews. Returns number of upserts."""
     rows = list(reviews)

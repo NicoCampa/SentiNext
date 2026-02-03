@@ -28,6 +28,7 @@ import { Chart } from "react-chartjs-2";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageTransition } from "@/components/PageTransition";
 import {
   authFetch,
   sendEnhancedChat,
@@ -735,7 +736,8 @@ export default function ChatPage() {
           display: none;
         }
       `}</style>
-      <div className="w-full h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
+      <PageTransition>
+        <div className="w-full h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -1234,6 +1236,7 @@ export default function ChatPage() {
         </Card>
         </div>
       </div>
+      </PageTransition>
     </AppLayout>
   );
 }

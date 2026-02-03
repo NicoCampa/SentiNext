@@ -84,12 +84,13 @@ def run_analysis_job(
         llm_review_count = int(review_estimate.get("llm_reviews", 0) or 0)
         cached_review_count = int(review_estimate.get("cached_reviews", 0) or 0)
 
-        llm_labels = llm.ensure_review_labels(
-            app_id,
-            all_reviews,
-            progress_callback=_progress_callback if progress_active else None,
-            game_context=game_context,
-        )
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
+            llm_labels = llm.ensure_review_labels(
+                app_id,
+                all_reviews,
+                progress_callback=_progress_callback if progress_active else None,
+                game_context=game_context,
+            )
 
         # Deduct credits for the reviews that were processed
         # New LLM reviews cost 1 credit each, cached reviews cost 0.5 credits each

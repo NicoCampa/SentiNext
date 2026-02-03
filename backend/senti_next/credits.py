@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy import text
@@ -33,6 +33,37 @@ CREDIT_COSTS = {
 
 # Soft limit buffer (10% overage allowed)
 SOFT_LIMIT_BUFFER = 0.10
+
+
+def _calculate_period_end(now: datetime) -> datetime:
+    """Calculate the next billing period end (same day next month, or last day)."""
+    year = now.year + (1 if now.month == 12 else 0)
+    month = 1 if now.month == 12 else now.month + 1
+    day = now.day
+    try:
+        return datetime(year, month, day, tzinfo=timezone.utc)
+    except ValueError:
+        # Fallback to last day of the target month
+        if month == 12:
+            next_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            next_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+        return next_month - timedelta(days=1)
+
+
+def _calculate_bonus_credits(balance: int, limit: int, used: int) -> int:
+    """Calculate credits granted beyond the monthly limit."""
+    base_remaining = limit - used
+    bonus = balance - base_remaining
+    return int(bonus) if bonus > 0 else 0
+
+
+def calculate_hard_limit(limit: int, used: int, balance: int) -> int:
+    """Calculate hard limit, including bonus credits (if any)."""
+    if limit <= 0:
+        return max(int(balance or 0), 0)
+    bonus = _calculate_bonus_credits(balance, limit, used)
+    return int(limit * (1 + SOFT_LIMIT_BUFFER) + bonus)
 
 
 def get_user_subscription(user_id: str) -> Dict[str, Any]:
@@ -66,24 +97,7 @@ def get_user_subscription(user_id: str) -> Dict[str, Any]:
         if row is None:
             # Create default free tier subscription
             now = datetime.now(timezone.utc)
-            period_end = datetime(now.year, now.month + 1 if now.month < 12 else 1,
-                                  1 if now.month < 12 else now.year + 1,
-                                  tzinfo=timezone.utc)
-            # Handle month overflow properly
-            if now.month == 12:
-                period_end = datetime(now.year + 1, 1, now.day, tzinfo=timezone.utc)
-            else:
-                # Try to use same day, fallback to last day of month
-                try:
-                    period_end = datetime(now.year, now.month + 1, now.day, tzinfo=timezone.utc)
-                except ValueError:
-                    # Day doesn't exist in next month, use last day
-                    if now.month + 1 == 2:
-                        period_end = datetime(now.year, 3, 1, tzinfo=timezone.utc)
-                    elif now.month + 1 in [4, 6, 9, 11]:
-                        period_end = datetime(now.year, now.month + 1, 30, tzinfo=timezone.utc)
-                    else:
-                        period_end = datetime(now.year, now.month + 2, 1, tzinfo=timezone.utc)
+            period_end = _calculate_period_end(now)
 
             conn.execute(
                 text("""
@@ -140,8 +154,8 @@ def check_credits_available(user_id: str, amount: int) -> Tuple[bool, str, Dict[
     balance = subscription["credits_balance"]
     limit = subscription["credits_monthly_limit"]
 
-    # Calculate the hard limit (110% of monthly limit)
-    hard_limit = int(limit * (1 + SOFT_LIMIT_BUFFER))
+    # Calculate the hard limit (monthly limit + buffer + any bonus credits)
+    hard_limit = calculate_hard_limit(limit, used_this_period, balance)
     used_this_period = subscription["credits_used_this_period"]
 
     status = get_credit_status(user_id)
@@ -346,15 +360,8 @@ def reset_monthly_credits(user_id: str) -> None:
 
     now = datetime.now(timezone.utc)
 
-    # Calculate next period end (1 month from now)
-    if now.month == 12:
-        period_end = datetime(now.year + 1, 1, now.day, tzinfo=timezone.utc)
-    else:
-        try:
-            period_end = datetime(now.year, now.month + 1, now.day, tzinfo=timezone.utc)
-        except ValueError:
-            # Handle month overflow
-            period_end = datetime(now.year, now.month + 2, 1, tzinfo=timezone.utc)
+    # Calculate next period end (same day next month, or last day of month)
+    period_end = _calculate_period_end(now)
 
     with db_module.get_connection() as conn:
         conn.execute(
@@ -495,7 +502,7 @@ def get_credit_status(user_id: str) -> Dict[str, Any]:
     limit = subscription["credits_monthly_limit"]
     used = subscription["credits_used_this_period"]
     balance = subscription["credits_balance"]
-    hard_limit = int(limit * (1 + SOFT_LIMIT_BUFFER))
+    hard_limit = calculate_hard_limit(limit, used, balance)
 
     percent_used = (used / limit * 100) if limit > 0 else 0
 
@@ -530,6 +537,7 @@ __all__ = [
     "TIER_LIMITS",
     "TIER_PRICES",
     "CREDIT_COSTS",
+    "calculate_hard_limit",
     "get_user_subscription",
     "check_credits_available",
     "deduct_credits",

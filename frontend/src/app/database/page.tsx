@@ -5,6 +5,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageTransition } from '@/components/PageTransition';
 import { FilterSidebar } from '@/components/database/FilterSidebar';
 import { FilterPills } from '@/components/database/FilterPills';
 import { ReviewModal } from '@/components/database/ReviewModal';
@@ -455,7 +456,8 @@ export default function DatabasePage() {
 
   return (
     <AppLayout>
-      <div className="flex h-full">
+      <PageTransition>
+        <div className="flex h-full">
         <FilterSidebar
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
@@ -767,6 +769,7 @@ export default function DatabasePage() {
           t={t}
         />
       )}
+      </PageTransition>
     </AppLayout>
   );
 }

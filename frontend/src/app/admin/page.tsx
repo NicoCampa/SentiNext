@@ -25,6 +25,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { AppLayout } from "@/components/AppLayout";
+import { PageTransition } from "@/components/PageTransition";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -410,16 +411,19 @@ export default function AdminPage() {
   if (isAdminLoading) {
     return (
       <AppLayout>
+      <PageTransition>
         <div className="flex items-center justify-center h-screen">
           <div className="text-slate-400">Checking admin status...</div>
         </div>
-      </AppLayout>
+      </PageTransition>
+    </AppLayout>
     );
   }
 
   if (!isAdmin) {
     return (
       <AppLayout>
+      <PageTransition>
         <div className="flex items-center justify-center h-screen">
           <Card variant="glass" className="p-8 text-center">
             <div className="w-16 h-16 mx-auto mb-4 border-2 border-red-500/30 rounded-full flex items-center justify-center">
@@ -431,12 +435,14 @@ export default function AdminPage() {
             <p className="text-slate-400">You do not have admin access to view this page.</p>
           </Card>
         </div>
-      </AppLayout>
+      </PageTransition>
+    </AppLayout>
     );
   }
 
   return (
     <AppLayout>
+      <PageTransition>
       <div className="w-full h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
         {/* Header */}
         <div className="mb-6">
@@ -761,6 +767,7 @@ export default function AdminPage() {
           </Card>
         </div>
       </div>
+    </PageTransition>
     </AppLayout>
   );
 }

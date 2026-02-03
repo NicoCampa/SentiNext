@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { PageTransition } from "@/components/PageTransition";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
@@ -224,6 +225,7 @@ function ReviewsContent() {
   if (gamesLoading) {
     return (
       <AppLayout>
+      <PageTransition>
         <div className="mx-auto max-w-7xl px-4 py-10">
           <Card variant="glass" className="p-8">
             <div className="flex items-center justify-center gap-4">
@@ -232,7 +234,8 @@ function ReviewsContent() {
             </div>
           </Card>
         </div>
-      </AppLayout>
+      </PageTransition>
+    </AppLayout>
     );
   }
 
@@ -242,6 +245,7 @@ function ReviewsContent() {
 
   return (
     <AppLayout>
+      <PageTransition>
       <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -483,6 +487,7 @@ function ReviewsContent() {
           </Card>
         </div>
       </div>
+    </PageTransition>
     </AppLayout>
   );
 }

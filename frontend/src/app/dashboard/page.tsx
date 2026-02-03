@@ -23,6 +23,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import { PageTransition } from "@/components/PageTransition";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
@@ -318,21 +319,24 @@ function DashboardContent() {
   if (loadingStarred) {
     return (
       <AppLayout>
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6">
-          <Card variant="glass" className="p-5">
-            <div className="flex items-center justify-center gap-4">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
-              <p className="text-lg text-slate-300">{t('common.loading')}</p>
-            </div>
-          </Card>
-        </div>
+        <PageTransition>
+          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6">
+            <Card variant="glass" className="p-5">
+              <div className="flex items-center justify-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
+                <p className="text-lg text-slate-300">{t('common.loading')}</p>
+              </div>
+            </Card>
+          </div>
+        </PageTransition>
       </AppLayout>
     );
   }
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-8 sm:space-y-6">
+      <PageTransition>
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-8 sm:space-y-6">
         {selectedGame ? (
           <div className="flex items-center justify-end">
             <Button onClick={handleReset} variant="secondary">
@@ -769,6 +773,7 @@ function DashboardContent() {
           />
         )}
       </div>
+      </PageTransition>
     </AppLayout>
   );
 }
