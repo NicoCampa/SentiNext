@@ -143,7 +143,7 @@ export default function ReportsPage() {
           <h2 className="mb-4 text-lg font-semibold text-white">
             Select Game ({starredGames.length} analyzed)
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {starredGames.map((game) => {
               const isSelected = selectedGame?.app_id === game.app_id;
               return (
