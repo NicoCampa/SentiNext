@@ -1152,12 +1152,3 @@ export async function downloadExecutiveSummary(
   link.remove();
   window.URL.revokeObjectURL(objectUrl);
 }
-
-/**
- * Parse filename from Content-Disposition header.
- */
-function parseContentDispositionFilename(header: string | null): string | null {
-  if (!header) return null;
-  const match = header.match(/filename="?([^"]+)"?/);
-  return match ? match[1] : null;
-}

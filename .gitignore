@@ -54,8 +54,8 @@ data/*.pdf
 /data/*.sqlite
 /data/*.db
 
-# Generated reports (repo-local)
-reports/
+# Generated reports (repo-local, root level only)
+/reports/
 
 # Tauri
 src-tauri/target/
