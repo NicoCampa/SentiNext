@@ -44,11 +44,13 @@ export default function ReportsPage() {
       return;
     }
 
+    const game = selectedGame; // Capture for async function
+
     async function loadMonths() {
       setMonthsLoading(true);
       setError(null);
       try {
-        const response = await fetchReportMonths(selectedGame.app_id);
+        const response = await fetchReportMonths(game.app_id);
         setAvailableMonths(response.months);
         // Auto-select the first month
         if (response.months.length > 0) {
