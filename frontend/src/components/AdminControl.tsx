@@ -95,7 +95,7 @@ export function AdminControl() {
     <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-[10px] uppercase tracking-[0.5em] text-slate-400">Admin</p>
+          <p className="text-xs uppercase tracking-[0.5em] text-slate-400">Admin</p>
           <p className="text-xs text-slate-300">
             Status:{" "}
             <span className={unlocked ? "text-emerald-300" : "text-amber-300"}>
@@ -108,7 +108,7 @@ export function AdminControl() {
           <button
             onClick={handleLock}
             disabled={busy}
-            className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
+            className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
           >
             {busy ? "..." : "Lock"}
           </button>
@@ -116,7 +116,7 @@ export function AdminControl() {
           <button
             onClick={handleUnlock}
             disabled={busy || !canUnlock || token.trim().length < 1}
-            className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-sky-200 transition hover:bg-sky-500/20 disabled:opacity-50"
+            className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-sky-200 transition hover:bg-sky-500/20 disabled:opacity-50"
           >
             {busy ? "..." : "Unlock"}
           </button>

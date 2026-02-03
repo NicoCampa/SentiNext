@@ -24,6 +24,7 @@ import { SteamImage } from "@/components/SteamImage";
 import { GlobalFiltersBar } from "@/components/GlobalFiltersBar";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PageTransition } from "@/components/PageTransition";
+import { GameContextBar } from "@/components/GameContextBar";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
@@ -42,6 +43,7 @@ import { getRecommendationColor } from "@/utils/colors";
 import { formatSavedLabel } from "@/utils/format";
 
 const EMPTY_REVIEWS: ReviewRow[] = [];
+const ESTIMATED_SECONDS_PER_LLM_REVIEW = 1.1;
 
 const DEFAULT_THEME: ThemeDefinition = {
   name: "Twilight",
@@ -100,7 +102,7 @@ function DashboardContent() {
   const gameParam = searchParams.get("game");
   const viewParam = searchParams.get("view");
   const reviewsParam = searchParams.get("reviews") || searchParams.get("review_count");
-  const { startAnalysis, getTask } = useAnalysis();
+  const { startAnalysis, getTask, tasks } = useAnalysis();
   const { games, loading: gamesLoading, refreshGames, selectGameById, setTemporaryGame, selectedStarredGame, toggleFavorite } = useGameContext();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -307,6 +309,20 @@ function DashboardContent() {
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
   const recentAnalyses = games.slice(0, 6);
   const favoriteGames = useMemo(() => games.filter(game => game.is_favorite), [games]);
+  const activeQueueCount = useMemo(() => {
+    return Array.from(tasks.values()).filter((task) => task.status === "analyzing").length;
+  }, [tasks]);
+  const cacheReusePercent = useMemo(() => {
+    if (!estimate) return null;
+    const total = estimate.llm_reviews + estimate.cached_reviews;
+    if (!total) return 0;
+    return Math.round((estimate.cached_reviews / total) * 100);
+  }, [estimate]);
+  const etaSeconds = useMemo(() => {
+    if (!estimate) return null;
+    if (estimate.llm_reviews <= 0) return 0;
+    return estimate.llm_reviews * ESTIMATED_SECONDS_PER_LLM_REVIEW;
+  }, [estimate]);
 
   const handleToggleFavorite = async (appId: number, currentStatus: boolean) => {
     try {
@@ -337,20 +353,21 @@ function DashboardContent() {
     <AppLayout>
       <PageTransition>
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-8 sm:space-y-6">
-        {selectedGame ? (
-          <div className="flex items-center justify-end">
-            <Button onClick={handleReset} variant="secondary">
-              {t('dashboard.newSearch')}
-            </Button>
-          </div>
-        ) : null}
+          <GameContextBar />
+          {selectedGame ? (
+            <div className="flex items-center justify-end">
+              <Button onClick={handleReset} variant="secondary">
+                {t('dashboard.newSearch')}
+              </Button>
+            </div>
+          ) : null}
 
-        {!selectedGame && (
-          <>
-            <Card variant="glass" className="p-6">
-              <div className="space-y-3">
-                <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">{t('dashboard.welcome')}</p>
-                <div>
+          {!selectedGame && (
+            <>
+              <Card variant="glass" className="p-6">
+                <div className="space-y-3">
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">{t('dashboard.welcome')}</p>
+                  <div>
                   <h1 className="text-2xl font-semibold">
                     <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
                       {t('dashboard.welcomeTo')}
@@ -466,7 +483,7 @@ function DashboardContent() {
                           <div className="p-2.5">
                             <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
                             <div className="flex items-center justify-between mt-1">
-                              <p className="text-[10px] text-slate-500">{sample.length.toLocaleString()} reviews</p>
+                              <p className="text-xs text-slate-500">{sample.length.toLocaleString()} reviews</p>
                               <p className="text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
                                 {formatPercentOrDash(rate)}
                               </p>
@@ -545,7 +562,7 @@ function DashboardContent() {
                             <div className="p-2.5">
                               <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
                               <div className="flex items-center justify-between mt-1">
-                                <p className="text-[10px] text-slate-500">{sample.length.toLocaleString()} reviews</p>
+                                <p className="text-xs text-slate-500">{sample.length.toLocaleString()} reviews</p>
                                 <p className="text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
                                   {formatPercentOrDash(rate)}
                                 </p>
@@ -596,11 +613,11 @@ function DashboardContent() {
 
             {/* Analysis Settings */}
             <div className="space-y-4 py-4">
-              <h3 className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">Settings</h3>
+              <h3 className="text-xs uppercase tracking-[0.25em] text-slate-500 font-medium">{t('dashboard.settings')}</h3>
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Reviews</span>
+                  <span className="text-xs uppercase tracking-wider text-slate-500">{t('common.reviews')}</span>
                   <select
                     value={reviewCount}
                     onChange={(event) => setReviewCount(Number(event.target.value))}
@@ -613,7 +630,7 @@ function DashboardContent() {
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Languages</span>
+                  <span className="text-xs uppercase tracking-wider text-slate-500">{t('common.languages')}</span>
                   <LanguageSelector
                     selectedLanguages={selectedLanguages}
                     onChange={setSelectedLanguages}
@@ -622,7 +639,7 @@ function DashboardContent() {
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Filter</span>
+                  <span className="text-xs uppercase tracking-wider text-slate-500">{t('common.filter')}</span>
                   <select
                     value={fetchFilter}
                     onChange={(event) => setFetchFilter(event.target.value)}
@@ -641,28 +658,46 @@ function DashboardContent() {
             {/* Cost Preview */}
             <div className="space-y-3 py-4 border-t border-white/10">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">Cost Preview</h3>
+                <h3 className="text-xs uppercase tracking-[0.25em] text-slate-500 font-medium">{t('dashboard.costPreview')}</h3>
                 <Button onClick={handleEstimate} disabled={estimating || isAnalyzing} variant="ghost" size="sm">
-                  {estimating ? "Calculating..." : estimate ? "Refresh" : "Calculate"}
+                  {estimating ? t('dashboard.calculating') : estimate ? t('common.refresh') : t('common.calculate')}
                 </Button>
               </div>
 
               {!estimate && !estimating && (
-                <p className="text-xs text-slate-500">Click Calculate to see the credit cost for this analysis.</p>
+                <p className="text-xs text-slate-500">{t('dashboard.costPreviewHint')}</p>
               )}
 
               {estimate && (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Processing</p>
+                    <p className="text-xs uppercase tracking-wider text-slate-500 mb-2">{t('dashboard.processing')}</p>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-slate-400">New reviews</span>
+                        <span className="text-slate-400">{t('dashboard.newReviews')}</span>
                         <span className="text-slate-200 font-mono">{estimate.llm_reviews}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Cached</span>
+                        <span className="text-slate-400">{t('dashboard.cached')}</span>
                         <span className="text-slate-200 font-mono">{estimate.cached_reviews}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">{t('dashboard.cacheReuse')}</span>
+                        <span className="text-slate-200 font-mono">{cacheReusePercent ?? 0}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
+                    <p className="text-xs uppercase tracking-wider text-slate-500 mb-2">{t('dashboard.etaRough')}</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">{t('dashboard.processing')}</span>
+                        <span className="text-slate-200 font-mono">{formatEta(etaSeconds)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">{t('dashboard.llmCalls')}</span>
+                        <span className="text-slate-200 font-mono">{estimate.llm_reviews}</span>
                       </div>
                     </div>
                   </div>
@@ -673,25 +708,28 @@ function DashboardContent() {
                         ? "border-rose-500/30 bg-rose-500/10"
                         : creditEstimate.would_exceed_soft_limit
                         ? "border-amber-500/30 bg-amber-500/10"
-                        : "border-emerald-500/30 bg-emerald-500/10"
+                      : "border-emerald-500/30 bg-emerald-500/10"
                     }`}>
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-[10px] uppercase tracking-wider text-slate-500">Credits</p>
-                        <span className={`text-[10px] uppercase tracking-wider ${
+                        <p className="text-xs uppercase tracking-wider text-slate-500">{t('dashboard.creditsLabel')}</p>
+                        <span className={`text-xs uppercase tracking-wider ${
                           creditEstimate.would_exceed_hard_limit ? "text-rose-400" :
                           creditEstimate.would_exceed_soft_limit ? "text-amber-400" : "text-emerald-400"
                         }`}>
-                          {creditEstimate.would_exceed_hard_limit ? "Insufficient" :
-                           creditEstimate.would_exceed_soft_limit ? "Over Limit" : "OK"}
+                          {creditEstimate.would_exceed_hard_limit
+                            ? t('dashboard.creditStatusInsufficient')
+                            : creditEstimate.would_exceed_soft_limit
+                            ? t('dashboard.creditStatusOverLimit')
+                            : t('dashboard.creditStatusOk')}
                         </span>
                       </div>
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Cost</span>
+                          <span className="text-slate-400">{t('dashboard.costLabel')}</span>
                           <span className="text-slate-200 font-mono">{creditEstimate.credits_needed}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Balance</span>
+                          <span className="text-slate-400">{t('dashboard.balanceLabel')}</span>
                           <span className={`font-mono ${creditEstimate.can_afford ? "text-emerald-400" : "text-rose-400"}`}>
                             {creditEstimate.current_balance}
                           </span>
@@ -709,13 +747,20 @@ function DashboardContent() {
             <div className="pt-4 border-t border-white/10 space-y-3">
               {creditEstimate?.would_exceed_hard_limit && (
                 <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
-                  Insufficient credits. Upgrade your plan or reduce reviews.
+                  {t('dashboard.creditWarningHard')}
                 </p>
               )}
               {creditEstimate?.would_exceed_soft_limit && !creditEstimate?.would_exceed_hard_limit && (
                 <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-                  This will exceed your monthly limit but you can still proceed.
+                  {t('dashboard.creditWarningSoft')}
                 </p>
+              )}
+              {activeQueueCount > 0 && (
+                <div className="text-xs text-slate-400 bg-slate-900/40 border border-white/10 rounded-lg px-3 py-2">
+                  {isAnalyzing
+                    ? t('dashboard.queueRunning').replace('{count}', String(activeQueueCount))
+                    : t('dashboard.queueStatus').replace('{count}', String(activeQueueCount))}
+                </div>
               )}
 
               <Button
@@ -776,6 +821,18 @@ function DashboardContent() {
       </PageTransition>
     </AppLayout>
   );
+}
+
+function formatEta(seconds: number | null): string {
+  if (!seconds || seconds <= 0) return "Instant";
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remaining = rounded % 60;
+  if (minutes <= 0) return `${remaining}s`;
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return `${hours}h ${remMinutes}m`;
 }
 
 function ProgressPill({ progress }: { progress: ProgressStatus }) {
@@ -1122,11 +1179,11 @@ function AnalysisResults({
         {/* Filters toggle */}
         <div className="mt-4 flex items-center gap-3">
           {filtersActive && (
-            <button onClick={resetFilters} className="text-[10px] text-slate-500 hover:text-slate-300">
-              Reset filters
+            <button onClick={resetFilters} className="text-xs text-slate-500 hover:text-slate-300">
+              {t('common.clearFilters')}
             </button>
           )}
-          {filtersActive && <span className="text-[10px] text-emerald-400">•</span>}
+          {filtersActive && <span className="text-xs text-emerald-400">•</span>}
           <button
             onClick={() => setFiltersOpen((prev) => !prev)}
             className="text-xs text-slate-400 hover:text-sky-400 transition-colors"
@@ -1145,7 +1202,7 @@ function AnalysisResults({
                 placeholder="Search review text..."
                 className="flex-1 min-w-[200px] rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
               />
-              <span className="text-[10px] text-slate-500">
+              <span className="text-xs text-slate-500">
                 {filteredReviewSample.length} / {reviewSample.length} reviews
               </span>
             </div>
@@ -1154,15 +1211,15 @@ function AnalysisResults({
 
         <div className="mt-5 grid gap-4 sm:gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('dashboard.recommendation')}</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.recommendation')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRecommendationRate)}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('dashboard.issueRate')}</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.issueRate')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{t('dashboard.requestRate')}</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.requestRate')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
           </div>
         </div>
@@ -1472,7 +1529,7 @@ function AnalysisResults({
                 <h3 className="text-lg font-semibold text-white">{selectedSubcategoryLabel}</h3>
                 <p className="mt-1 text-sm text-slate-400">
                   {selectedMainLabel} -{selectedReviews.length.toLocaleString()} reviews
-                  {filtersActive ? " -filters applied" : ""}
+                  {filtersActive ? " - filters applied" : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1539,7 +1596,7 @@ function AnalysisResults({
                   )}
                 </div>
 
-                <p className="text-[10px] text-slate-500 pt-2 border-t border-white/10">
+                <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
                   Based on {Math.min(selectedReviews.length, 50)} reviews -2 credits used
                 </p>
               </div>

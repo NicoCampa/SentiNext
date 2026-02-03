@@ -5,12 +5,13 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, CreditStatus, fetchAdminDashboardSummary, AdminDashboardSummary } from "@/lib/api";
+import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, CreditStatus } from "@/lib/api";
 import { isTauriApp } from "@/lib/settings";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useCredits } from "@/contexts/CreditsContext";
+import { GameContextBar } from "@/components/GameContextBar";
 
 export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -25,10 +26,6 @@ export default function SettingsPage() {
   const { credits, loading: creditsLoading, refresh: refreshCredits } = useCredits();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
-  const [adminDashboard, setAdminDashboard] = useState<AdminDashboardSummary | null>(null);
-  const [adminDashboardLoading, setAdminDashboardLoading] = useState(false);
-  const [adminDashboardError, setAdminDashboardError] = useState<string | null>(null);
-  const [adminDashboardDays, setAdminDashboardDays] = useState(30);
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -73,26 +70,7 @@ export default function SettingsPage() {
     loadLogTail();
   }, [loadLogTail]);
 
-  const loadAdminDashboard = useCallback(async (days: number = 30) => {
-    if (!isAdmin) return;
-    setAdminDashboardLoading(true);
-    try {
-      const summary = await fetchAdminDashboardSummary({ days });
-      setAdminDashboard(summary);
-      setAdminDashboardError(null);
-    } catch (err) {
-      console.error("Failed to load admin dashboard", err);
-      setAdminDashboardError("Failed to load admin dashboard.");
-    } finally {
-      setAdminDashboardLoading(false);
-    }
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (isAdmin) {
-      loadAdminDashboard(adminDashboardDays);
-    }
-  }, [isAdmin, loadAdminDashboard, adminDashboardDays]);
+ 
 
   async function handleCopy(text: string) {
     try {
@@ -163,28 +141,29 @@ export default function SettingsPage() {
   return (
     <AppLayout>
       <PageTransition>
-        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-        {/* Header */}
-        <div className="mb-8 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center">
-              <span className="text-[rgb(0,255,255)] text-lg">⚙</span>
+        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-6">
+          <GameContextBar showFilters={false} />
+          {/* Header */}
+          <div className="mb-8 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center">
+                <span className="text-[rgb(0,255,255)] text-lg">⚙</span>
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-wider">
+                  <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                    {t('settings.title').toUpperCase()}
+                  </span>
+                </h1>
+                <p className="text-xs text-[rgb(150,150,170)] uppercase tracking-[0.2em]">
+                  System Configuration
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-wider">
-                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                  {t('settings.title').toUpperCase()}
-                </span>
-              </h1>
-              <p className="text-xs text-[rgb(150,150,170)] uppercase tracking-[0.2em]">
-                System Configuration
-              </p>
-            </div>
+            <div className="h-[1px] bg-gradient-to-r from-[rgb(0,255,255)]/50 via-[rgb(0,255,255)]/20 to-transparent" />
           </div>
-          <div className="h-[1px] bg-gradient-to-r from-[rgb(0,255,255)]/50 via-[rgb(0,255,255)]/20 to-transparent" />
-        </div>
 
-        <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-xl'}`}>
+          <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-xl'}`}>
           {/* Left Column */}
           <div className="space-y-6">
             {/* Language Section */}
@@ -355,7 +334,7 @@ export default function SettingsPage() {
 
                     {/* Reset Date */}
                     {credits.period_end && (
-                      <p className="text-[10px] text-[rgb(150,150,170)]">
+                      <p className="text-xs text-[rgb(150,150,170)]">
                         Resets on {new Date(credits.period_end).toLocaleDateString(undefined, {
                           month: "long",
                           day: "numeric",
@@ -384,7 +363,7 @@ export default function SettingsPage() {
                   {/* Upgrade Options */}
                   {credits.tier !== "max" && (
                     <div className="space-y-3 mb-4">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
+                      <p className="text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
                         Upgrade Your Plan
                       </p>
                       <div className="grid grid-cols-2 gap-3">
@@ -396,7 +375,7 @@ export default function SettingsPage() {
                           >
                             <p className="text-sm font-bold text-[rgb(0,255,255)]">Pro</p>
                             <p className="text-xs text-[rgb(150,150,170)]">$19/mo</p>
-                            <p className="text-[10px] text-[rgb(0,255,255)]/50 mt-1">5,000 credits</p>
+                            <p className="text-xs text-[rgb(0,255,255)]/50 mt-1">5,000 credits</p>
                           </button>
                         )}
                         <button
@@ -406,7 +385,7 @@ export default function SettingsPage() {
                         >
                           <p className="text-sm font-bold text-purple-400">Max</p>
                           <p className="text-xs text-[rgb(150,150,170)]">$49/mo</p>
-                          <p className="text-[10px] text-purple-400/50 mt-1">25,000 credits</p>
+                          <p className="text-xs text-purple-400/50 mt-1">25,000 credits</p>
                         </button>
                       </div>
                     </div>
@@ -434,186 +413,6 @@ export default function SettingsPage() {
           {/* Right Column - Diagnostics (Admin Only) */}
           {isAdmin && (
             <div className="space-y-6">
-              <Card variant="glass" className="p-6">
-                <div className="mb-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-base">🧠</span>
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                      Admin Dashboard
-                    </p>
-                  </div>
-                  <p className="text-sm text-[rgb(150,150,170)]">Metrics for the last {adminDashboard?.days ?? adminDashboardDays} days</p>
-                </div>
-
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
-                    Overview
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {[7, 30, 90].map((days) => (
-                      <button
-                        key={days}
-                        onClick={() => { setAdminDashboardDays(days); }}
-                        className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
-                          adminDashboardDays === days
-                            ? "border-[rgb(0,255,255)] text-[rgb(0,255,255)]"
-                            : "border-[rgb(0,255,255)]/30 text-[rgb(150,150,170)]"
-                        }`}
-                      >
-                        {days}d
-                      </button>
-                    ))}
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => loadAdminDashboard(adminDashboardDays)}
-                      disabled={adminDashboardLoading}
-                    >
-                      {adminDashboardLoading ? "Loading..." : "Refresh"}
-                    </Button>
-                  </div>
-                </div>
-
-                {adminDashboardLoading ? (
-                  <div className="space-y-3 animate-pulse">
-                    <div className="h-10 bg-[rgb(0,255,255)]/10 rounded" />
-                    <div className="h-3 bg-[rgb(0,255,255)]/10 rounded w-2/3" />
-                    <div className="h-10 bg-[rgb(0,255,255)]/10 rounded" />
-                  </div>
-                ) : adminDashboard ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">Total Users</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">{adminDashboard.users.total.toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">New Users</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">{adminDashboard.users.new.toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">Active Users</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">{adminDashboard.users.active.toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">Paid Users</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">{adminDashboard.users.paid.toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">MRR (Est.)</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">${adminDashboard.users.mrr_estimate.toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">Credits Used</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">{adminDashboard.credits.used.toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">LLM Cost</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">${adminDashboard.llm.cost_total_usd.toFixed(4)}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">LLM Calls</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">{adminDashboard.llm.calls.toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(150,150,170)]">LLM Tokens</p>
-                        <p className="font-mono text-xs text-[rgb(0,255,255)]">{adminDashboard.llm.total_tokens.toLocaleString()}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50 mb-2">
-                        Top Credit Operations
-                      </p>
-                      <div className="space-y-2">
-                        {adminDashboard.credits.by_operation.slice(0, 5).map((item, idx) => (
-                          <div key={`${item.operation ?? "unknown"}-${idx}`} className="flex items-center justify-between text-xs">
-                            <span className="text-[rgb(150,150,170)]">{item.operation ?? "unknown"}</span>
-                            <span className="font-mono text-[rgb(0,255,255)]">{item.credits_used.toLocaleString()} credits</span>
-                          </div>
-                        ))}
-                        {adminDashboard.credits.by_operation.length === 0 && (
-                          <p className="text-xs text-[rgb(150,150,170)]">No usage recorded yet.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50 mb-2">
-                        Tier Breakdown
-                      </p>
-                      <div className="space-y-2">
-                        {adminDashboard.users.tier_counts.map((item, idx) => (
-                          <div key={`${item.tier ?? "unknown"}-${idx}`} className="flex items-center justify-between text-xs">
-                            <span className="text-[rgb(150,150,170)]">{item.tier ?? "unknown"}</span>
-                            <span className="font-mono text-[rgb(0,255,255)]">{item.count.toLocaleString()}</span>
-                          </div>
-                        ))}
-                        {adminDashboard.users.tier_counts.length === 0 && (
-                          <p className="text-xs text-[rgb(150,150,170)]">No tier data available.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50 mb-2">
-                        Top Users by Credits
-                      </p>
-                      <div className="space-y-2">
-                        {adminDashboard.credits.top_users.slice(0, 5).map((item, idx) => (
-                          <div key={`${item.user_id}-${idx}`} className="flex items-center justify-between text-xs">
-                            <span className="text-[rgb(150,150,170)]">{item.user_id}</span>
-                            <span className="font-mono text-[rgb(0,255,255)]">{item.credits_used.toLocaleString()}</span>
-                          </div>
-                        ))}
-                        {adminDashboard.credits.top_users.length === 0 && (
-                          <p className="text-xs text-[rgb(150,150,170)]">No user data available.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50 mb-2">
-                        Top Apps by Credits
-                      </p>
-                      <div className="space-y-2">
-                        {adminDashboard.credits.top_apps.slice(0, 5).map((item, idx) => (
-                          <div key={`${item.app_id}-${idx}`} className="flex items-center justify-between text-xs">
-                            <span className="text-[rgb(150,150,170)]">App {item.app_id}</span>
-                            <span className="font-mono text-[rgb(0,255,255)]">{item.credits_used.toLocaleString()}</span>
-                          </div>
-                        ))}
-                        {adminDashboard.credits.top_apps.length === 0 && (
-                          <p className="text-xs text-[rgb(150,150,170)]">No app data available.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50 mb-2">
-                        Top LLM Costs
-                      </p>
-                      <div className="space-y-2">
-                        {adminDashboard.llm.by_operation.slice(0, 5).map((item, idx) => (
-                          <div key={`${item.key}-${idx}`} className="flex items-center justify-between text-xs">
-                            <span className="text-[rgb(150,150,170)]">{item.key}</span>
-                            <span className="font-mono text-[rgb(0,255,255)]">${item.cost_total_usd.toFixed(4)}</span>
-                          </div>
-                        ))}
-                        {adminDashboard.llm.by_operation.length === 0 && (
-                          <p className="text-xs text-[rgb(150,150,170)]">No LLM usage recorded yet.</p>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-xs text-rose-400">{adminDashboardError ?? "No dashboard data available."}</p>
-                )}
-              </Card>
-
               <Card variant="glass" className="p-6">
                 <div className="mb-5">
                   <div className="flex items-center gap-2 mb-2">
@@ -676,7 +475,7 @@ export default function SettingsPage() {
                     <span className={`text-[rgb(0,255,255)]/50 transition-transform ${showLogs ? 'rotate-90' : ''}`}>
                       ▶
                     </span>
-                    <p className="text-[10px] uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
+                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
                       System Logs
                     </p>
                   </button>
@@ -686,7 +485,7 @@ export default function SettingsPage() {
                       {logTailError ? (
                         <p className="text-xs text-rose-400">{logTailError}</p>
                       ) : (
-                        <pre className="max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-[10px] text-[rgb(200,200,210)] font-mono">
+                        <pre className="max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-xs text-[rgb(200,200,210)] font-mono">
                           {logTail || "No logs yet."}
                         </pre>
                       )}

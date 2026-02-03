@@ -28,12 +28,15 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageTransition } from "@/components/PageTransition";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { GameContextBar } from "@/components/GameContextBar";
 import {
   fetchAdminChatSessions,
   fetchAdminChatHistory,
   grantCredits,
   AdminChatSession,
   AdminChatMessage,
+  fetchAdminDashboardSummary,
+  AdminDashboardSummary,
 } from "@/lib/api";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import ReactMarkdown from "react-markdown";
@@ -284,6 +287,10 @@ export default function AdminPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "positive" | "negative">("all");
+  const [adminDashboard, setAdminDashboard] = useState<AdminDashboardSummary | null>(null);
+  const [adminDashboardLoading, setAdminDashboardLoading] = useState(false);
+  const [adminDashboardError, setAdminDashboardError] = useState<string | null>(null);
+  const [adminDashboardDays, setAdminDashboardDays] = useState(30);
 
   // Credits management state
   const [creditUserId, setCreditUserId] = useState("");
@@ -314,6 +321,27 @@ export default function AdminPage() {
       loadSessions();
     }
   }, [isAdmin, isAdminLoading]);
+
+  async function loadAdminDashboard(days: number = adminDashboardDays) {
+    if (!isAdmin) return;
+    setAdminDashboardLoading(true);
+    try {
+      const summary = await fetchAdminDashboardSummary({ days });
+      setAdminDashboard(summary);
+      setAdminDashboardError(null);
+    } catch (err) {
+      console.error("Failed to load admin dashboard", err);
+      setAdminDashboardError("Failed to load admin dashboard.");
+    } finally {
+      setAdminDashboardLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isAdminLoading && isAdmin) {
+      loadAdminDashboard(adminDashboardDays);
+    }
+  }, [isAdmin, isAdminLoading, adminDashboardDays]);
 
   async function handleSelectSession(session: AdminChatSession) {
     setSelectedSession(session);
@@ -378,7 +406,7 @@ export default function AdminPage() {
       badges.push(
         <span
           key="positive"
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[10px]"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
@@ -391,7 +419,7 @@ export default function AdminPage() {
       badges.push(
         <span
           key="negative"
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px]"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-xs"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
@@ -443,18 +471,199 @@ export default function AdminPage() {
   return (
     <AppLayout>
       <PageTransition>
-      <div className="w-full h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-xl font-bold">
-            <span className="bg-gradient-to-r from-amber-300 via-orange-200 to-red-300 bg-clip-text text-transparent">
-              Admin Dashboard
+        <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-4 px-4 py-6 sm:px-6 lg:px-6">
+          <GameContextBar showFilters={false} />
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-xl font-bold">
+              <span className="bg-gradient-to-r from-amber-300 via-orange-200 to-red-300 bg-clip-text text-transparent">
+                Admin Dashboard
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400">
+              Manage credits and view user chat sessions
+            </p>
+          </div>
+
+        <Card variant="glass" className="mb-4 p-6">
+          <div className="mb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base">🧠</span>
+              <p className="text-xs uppercase tracking-[0.25em] text-amber-300/70">
+                Usage Overview
+              </p>
+            </div>
+            <p className="text-sm text-slate-400">Metrics for the last {adminDashboard?.days ?? adminDashboardDays} days</p>
+          </div>
+
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
+              Overview
             </span>
-          </h1>
-          <p className="text-xs text-slate-400">
-            Manage credits and view user chat sessions
-          </p>
-        </div>
+            <div className="flex items-center gap-2">
+              {[7, 30, 90].map((days) => (
+                <button
+                  key={days}
+                  onClick={() => { setAdminDashboardDays(days); }}
+                  className={`px-2 py-1 text-xs uppercase tracking-[0.2em] border ${
+                    adminDashboardDays === days
+                      ? "border-amber-400 text-amber-300"
+                      : "border-white/10 text-slate-400"
+                  }`}
+                >
+                  {days}d
+                </button>
+              ))}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => loadAdminDashboard(adminDashboardDays)}
+                disabled={adminDashboardLoading}
+              >
+                {adminDashboardLoading ? "Loading..." : "Refresh"}
+              </Button>
+            </div>
+          </div>
+
+          {adminDashboardLoading ? (
+            <div className="space-y-3 animate-pulse">
+              <div className="h-10 bg-white/5 rounded" />
+              <div className="h-3 bg-white/5 rounded w-2/3" />
+              <div className="h-10 bg-white/5 rounded" />
+            </div>
+          ) : adminDashboard ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total Users</p>
+                  <p className="font-mono text-xs text-amber-300">{adminDashboard.users.total.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">New Users</p>
+                  <p className="font-mono text-xs text-amber-300">{adminDashboard.users.new.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Active Users</p>
+                  <p className="font-mono text-xs text-amber-300">{adminDashboard.users.active.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Paid Users</p>
+                  <p className="font-mono text-xs text-amber-300">{adminDashboard.users.paid.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">MRR (Est.)</p>
+                  <p className="font-mono text-xs text-amber-300">${adminDashboard.users.mrr_estimate.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Credits Used</p>
+                  <p className="font-mono text-xs text-amber-300">{adminDashboard.credits.used.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">LLM Cost</p>
+                  <p className="font-mono text-xs text-amber-300">${adminDashboard.llm.cost_total_usd.toFixed(4)}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">LLM Calls</p>
+                  <p className="font-mono text-xs text-amber-300">{adminDashboard.llm.calls.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">LLM Tokens</p>
+                  <p className="font-mono text-xs text-amber-300">{adminDashboard.llm.total_tokens.toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                  Top Credit Operations
+                </p>
+                <div className="space-y-2">
+                  {adminDashboard.credits.by_operation.slice(0, 5).map((item, idx) => (
+                    <div key={`${item.operation ?? "unknown"}-${idx}`} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">{item.operation ?? "unknown"}</span>
+                      <span className="font-mono text-amber-300">{item.credits_used.toLocaleString()} credits</span>
+                    </div>
+                  ))}
+                  {adminDashboard.credits.by_operation.length === 0 && (
+                    <p className="text-xs text-slate-500">No usage recorded yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                  Tier Breakdown
+                </p>
+                <div className="space-y-2">
+                  {adminDashboard.users.tier_counts.map((item, idx) => (
+                    <div key={`${item.tier ?? "unknown"}-${idx}`} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">{item.tier ?? "unknown"}</span>
+                      <span className="font-mono text-amber-300">{item.count.toLocaleString()}</span>
+                    </div>
+                  ))}
+                  {adminDashboard.users.tier_counts.length === 0 && (
+                    <p className="text-xs text-slate-500">No tier data available.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                  Top Users by Credits
+                </p>
+                <div className="space-y-2">
+                  {adminDashboard.credits.top_users.slice(0, 5).map((item, idx) => (
+                    <div key={`${item.user_id}-${idx}`} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">{item.user_id}</span>
+                      <span className="font-mono text-amber-300">{item.credits_used.toLocaleString()}</span>
+                    </div>
+                  ))}
+                  {adminDashboard.credits.top_users.length === 0 && (
+                    <p className="text-xs text-slate-500">No user data available.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                  Top Apps by Credits
+                </p>
+                <div className="space-y-2">
+                  {adminDashboard.credits.top_apps.slice(0, 5).map((item, idx) => (
+                    <div key={`${item.app_id}-${idx}`} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">App {item.app_id}</span>
+                      <span className="font-mono text-amber-300">{item.credits_used.toLocaleString()}</span>
+                    </div>
+                  ))}
+                  {adminDashboard.credits.top_apps.length === 0 && (
+                    <p className="text-xs text-slate-500">No app data available.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                  Top LLM Costs
+                </p>
+                <div className="space-y-2">
+                  {adminDashboard.llm.by_operation.slice(0, 5).map((item, idx) => (
+                    <div key={`${item.key}-${idx}`} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">{item.key}</span>
+                      <span className="font-mono text-amber-300">${item.cost_total_usd.toFixed(4)}</span>
+                    </div>
+                  ))}
+                  {adminDashboard.llm.by_operation.length === 0 && (
+                    <p className="text-xs text-slate-500">No LLM usage recorded yet.</p>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-rose-400">{adminDashboardError ?? "No dashboard data available."}</p>
+          )}
+        </Card>
 
         {/* Credits Management Section */}
         <Card variant="glass" className="mb-4 p-5">
@@ -593,15 +802,15 @@ export default function AdminPage() {
                             {session.first_user_message?.slice(0, 60) || "No message"}
                             {session.first_user_message && session.first_user_message.length > 60 ? "..." : ""}
                           </p>
-                          <p className="text-[10px] text-slate-500 mt-1">
+                          <p className="text-xs text-slate-500 mt-1">
                             User: {session.user_id.slice(0, 20)}...
                           </p>
-                          <p className="text-[10px] text-slate-500">
+                          <p className="text-xs text-slate-500">
                             {session.message_count} messages
                           </p>
                           {getFeedbackBadge(session)}
                         </div>
-                        <div className="text-[9px] text-slate-600 whitespace-nowrap">
+                        <div className="text-xs text-slate-600 whitespace-nowrap">
                           {session.updated_at
                             ? new Date(session.updated_at).toLocaleDateString()
                             : "Unknown"}
@@ -637,7 +846,7 @@ export default function AdminPage() {
                       <h2 className="text-sm font-semibold text-slate-200">
                         {selectedSession.first_user_message?.slice(0, 80) || "Chat Session"}
                       </h2>
-                      <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500">
+                      <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                         <span>User: {selectedSession.user_id}</span>
                         <span>|</span>
                         <span>{selectedSession.message_count} messages</span>
@@ -753,7 +962,7 @@ export default function AdminPage() {
                             })}
                           </div>
                           {msg.timestamp && (
-                            <p className="text-[10px] text-slate-500 mt-2">
+                            <p className="text-xs text-slate-500 mt-2">
                               {new Date(msg.timestamp).toLocaleString()}
                             </p>
                           )}

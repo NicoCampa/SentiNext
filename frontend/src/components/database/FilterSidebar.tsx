@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { formatTaxonomyLabel, MAIN_CATEGORY_LABELS, titleize } from '@/lib/taxonomyLabels';
+import { LANGUAGE_OPTIONS } from '@/lib/languageOptions';
 import type { DatabaseGameOption } from '@/types';
 
 interface FilterSidebarProps {
@@ -10,7 +10,7 @@ interface FilterSidebarProps {
   onClose: () => void;
   queryInput: string;
   setQueryInput: (value: string) => void;
-  onApplyQuery: () => void;
+  onApplyFilters: () => void;
   languageFilter: string;
   setLanguageFilter: (value: string) => void;
   selectedAppId: number | null;
@@ -31,6 +31,7 @@ interface FilterSidebarProps {
   setQuickType: (value: 'all' | 'issue' | 'request') => void;
   onClearAll: () => void;
   activeFilterCount: number;
+  hasPendingChanges: boolean;
   onExportPreview: () => void;
   downloadBusy: boolean;
   t: (key: string) => string;
@@ -41,7 +42,7 @@ export function FilterSidebar({
   onClose,
   queryInput,
   setQueryInput,
-  onApplyQuery,
+  onApplyFilters,
   languageFilter,
   setLanguageFilter,
   selectedAppId,
@@ -62,6 +63,7 @@ export function FilterSidebar({
   setQuickType,
   onClearAll,
   activeFilterCount,
+  hasPendingChanges,
   onExportPreview,
   downloadBusy,
   t,
@@ -92,10 +94,15 @@ export function FilterSidebar({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 p-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-white">Filters</h2>
+              <h2 className="text-sm font-semibold text-white">{t('common.filters')}</h2>
               {activeFilterCount > 0 && (
                 <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-xs text-sky-300">
                   {activeFilterCount}
+                </span>
+              )}
+              {hasPendingChanges && (
+                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs uppercase tracking-wider text-amber-300">
+                  {t('common.pending')}
                 </span>
               )}
             </div>
@@ -119,7 +126,7 @@ export function FilterSidebar({
                 onClick={() => setSearchExpanded(!searchExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>🔍 Search</span>
+                <span>🔍 {t('common.search')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${searchExpanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -132,28 +139,33 @@ export function FilterSidebar({
               {searchExpanded && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400">Text Search</label>
+                    <label className="text-xs text-slate-400">{t('database.searchText')}</label>
                     <div className="flex gap-2">
                       <input
                         value={queryInput}
                         onChange={(e) => setQueryInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && onApplyQuery()}
-                        placeholder="Search reviews..."
+                        onKeyDown={(e) => e.key === 'Enter' && onApplyFilters()}
+                        placeholder={t('database.searchPlaceholder')}
                         className="flex-1 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
                       />
-                      <Button variant="secondary" size="sm" onClick={onApplyQuery}>
-                        Go
+                      <Button variant="secondary" size="sm" onClick={onApplyFilters} disabled={!hasPendingChanges}>
+                        {t('common.apply')}
                       </Button>
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400">Language</label>
-                    <input
+                    <label className="text-xs text-slate-400">{t('database.language')}</label>
+                    <select
                       value={languageFilter}
-                      onChange={(e) => setLanguageFilter(e.target.value || 'all')}
-                      placeholder="all"
+                      onChange={(e) => setLanguageFilter(e.target.value)}
                       className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
-                    />
+                    >
+                      {LANGUAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )}
@@ -166,7 +178,7 @@ export function FilterSidebar({
                 onClick={() => setGameExpanded(!gameExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>🎮 Game</span>
+                <span>🎮 {t('database.game')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${gameExpanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -179,13 +191,13 @@ export function FilterSidebar({
               {gameExpanded && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400">Game</label>
+                    <label className="text-xs text-slate-400">{t('database.game')}</label>
                     <select
                       value={selectedAppId ?? ''}
                       onChange={(e) => setSelectedAppId(e.target.value ? Number(e.target.value) : null)}
                       className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
                     >
-                      <option value="">All Games</option>
+                      <option value="">{t('database.allGames')}</option>
                       {games.map((game) => (
                         <option key={game.app_id} value={game.app_id}>
                           {game.name ? `${game.name} (${game.app_id})` : `App ${game.app_id}`}
@@ -195,7 +207,7 @@ export function FilterSidebar({
                   </div>
                   {isAdmin && (
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-400">Scope</label>
+                      <label className="text-xs text-slate-400">{t('database.scope')}</label>
                       <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/50 p-1">
                         <button
                           type="button"
@@ -206,7 +218,7 @@ export function FilterSidebar({
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          My Data
+                          {t('database.myData')}
                         </button>
                         <button
                           type="button"
@@ -217,7 +229,7 @@ export function FilterSidebar({
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          All Users
+                          {t('database.allUsers')}
                         </button>
                       </div>
                     </div>
@@ -233,7 +245,7 @@ export function FilterSidebar({
                 onClick={() => setCategoryExpanded(!categoryExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>📊 Categories</span>
+                <span>📊 {t('database.categories')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${categoryExpanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -246,7 +258,7 @@ export function FilterSidebar({
               {categoryExpanded && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400">Category</label>
+                    <label className="text-xs text-slate-400">{t('database.category')}</label>
                     <select
                       value={selectedCategory}
                       onChange={(e) => {
@@ -255,7 +267,7 @@ export function FilterSidebar({
                       }}
                       className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
                     >
-                      <option value="all">All Categories</option>
+                      <option value="all">{t('database.allCategories')}</option>
                       {categoryOptions.map((cat) => (
                         <option key={cat.value} value={cat.value}>
                           {cat.label}
@@ -264,13 +276,13 @@ export function FilterSidebar({
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400">Subcategory</label>
+                    <label className="text-xs text-slate-400">{t('database.subcategory')}</label>
                     <select
                       value={selectedSubcategory}
                       onChange={(e) => setSelectedSubcategory(e.target.value)}
                       className="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
                     >
-                      <option value="all">All Subcategories</option>
+                      <option value="all">{t('database.allSubcategories')}</option>
                       {subcategoryOptions
                         .filter((opt) => !selectedCategory || selectedCategory === 'all' || opt.main === selectedCategory)
                         .map((subcat) => (
@@ -291,7 +303,7 @@ export function FilterSidebar({
                 onClick={() => setMetadataExpanded(!metadataExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>⚙️ Metadata</span>
+                <span>⚙️ {t('database.metadata')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${metadataExpanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -304,7 +316,7 @@ export function FilterSidebar({
               {metadataExpanded && (
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400">Sentiment</label>
+                    <label className="text-xs text-slate-400">{t('database.sentiment')}</label>
                     <div className="flex flex-col gap-1">
                       {(['all', 'positive', 'negative'] as const).map((value) => (
                         <button
@@ -317,13 +329,13 @@ export function FilterSidebar({
                               : 'border-white/10 bg-white/5 text-slate-300 hover:border-sky-400/40'
                           }`}
                         >
-                          {value === 'all' ? 'All' : value === 'positive' ? 'Recommended' : 'Not Recommended'}
+                          {value === 'all' ? t('common.all') : value === 'positive' ? t('common.recommended') : t('common.notRecommended')}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400">Type</label>
+                    <label className="text-xs text-slate-400">{t('database.type')}</label>
                     <div className="flex flex-col gap-1">
                       {(['all', 'issue', 'request'] as const).map((value) => (
                         <button
@@ -336,7 +348,7 @@ export function FilterSidebar({
                               : 'border-white/10 bg-white/5 text-slate-300 hover:border-purple-400/40'
                           }`}
                         >
-                          {value === 'all' ? 'All' : value === 'issue' ? 'Issues' : 'Requests'}
+                          {value === 'all' ? t('common.all') : value === 'issue' ? t('common.issues') : t('common.requests')}
                         </button>
                       ))}
                     </div>
@@ -352,7 +364,7 @@ export function FilterSidebar({
                 onClick={() => setExportExpanded(!exportExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>📤 Export</span>
+                <span>📤 {t('database.export')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${exportExpanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -371,7 +383,7 @@ export function FilterSidebar({
                     disabled={downloadBusy}
                     onClick={onExportPreview}
                   >
-                    {downloadBusy ? 'Preparing…' : 'Preview Export'}
+                    {downloadBusy ? t('database.preparingExport') : t('database.previewExport')}
                   </Button>
                 </div>
               )}
@@ -381,13 +393,22 @@ export function FilterSidebar({
           {/* Footer */}
           <div className="border-t border-white/10 p-4">
             <Button
+              size="sm"
+              variant="primary"
+              className="w-full mb-2"
+              onClick={onApplyFilters}
+              disabled={!hasPendingChanges}
+            >
+              {t('database.applyFilters')}
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               className="w-full"
               onClick={onClearAll}
               disabled={activeFilterCount === 0}
             >
-              Clear All Filters
+              {t('common.clearFilters')}
             </Button>
           </div>
         </div>

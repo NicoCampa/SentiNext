@@ -13,9 +13,11 @@ import { ExportPreviewDialog, type ExportOptions } from '@/components/database/E
 import { useGlobalFilters } from '@/contexts/GlobalFiltersContext';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { GameContextBar } from '@/components/GameContextBar';
 import { applyGlobalReviewFilters } from '@/lib/reviewFilters';
 import { deleteGame, downloadDatabaseExport, fetchAuthStatus, fetchDatabaseReviews, fetchDatabaseStats, fetchDatabaseGames, fetchDatabaseExportCount, type DatabaseExportCount } from '@/lib/api';
 import { formatTaxonomyLabel, MAIN_CATEGORY_LABELS, titleize } from '@/lib/taxonomyLabels';
+import { languageLabelFor } from '@/lib/languageOptions';
 import type { DatabaseReviewsResponse, DatabaseReviewItem, DatabaseGameOption } from '@/types';
 import type { AuthStatus, DatabaseScope, DatabaseStats } from '@/lib/api';
 
@@ -50,13 +52,16 @@ export default function DatabasePage() {
   const [reviewsResponse, setReviewsResponse] = useState<DatabaseReviewsResponse | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [scope, setScope] = useState<DatabaseScope>('me');
+  const [draftScope, setDraftScope] = useState<DatabaseScope>('me');
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [queryInput, setQueryInput] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
   const [languageFilter, setLanguageFilter] = useState('all');
+  const [draftLanguageFilter, setDraftLanguageFilter] = useState('all');
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
+  const [draftSelectedAppId, setDraftSelectedAppId] = useState<number | null>(null);
   const [limit, setLimit] = useState(200);
   const [offset, setOffset] = useState(0);
   const [quickSentiment, setQuickSentiment] = useState<'all' | 'positive' | 'negative'>('all');
@@ -84,6 +89,7 @@ export default function DatabasePage() {
         setAuthStatus(data);
         if (!data.is_admin) {
           setScope('me');
+          setDraftScope('me');
         }
       } catch (err) {
         console.error('Failed to load auth status:', err);
@@ -115,6 +121,18 @@ export default function DatabasePage() {
     loadStats();
     loadGames();
   }, [scope]);
+
+  useEffect(() => {
+    setDraftScope(scope);
+  }, [scope]);
+
+  useEffect(() => {
+    setDraftLanguageFilter(languageFilter);
+  }, [languageFilter]);
+
+  useEffect(() => {
+    setDraftSelectedAppId(selectedAppId);
+  }, [selectedAppId]);
 
   useEffect(() => {
     async function loadReviews() {
@@ -271,8 +289,11 @@ export default function DatabasePage() {
     item?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
-  function handleApplyQuery() {
+  function handleApplyFilters() {
     setActiveQuery(queryInput.trim());
+    setLanguageFilter(draftLanguageFilter);
+    setSelectedAppId(draftSelectedAppId);
+    setScope(draftScope);
     setOffset(0);
   }
 
@@ -280,13 +301,25 @@ export default function DatabasePage() {
     setQueryInput('');
     setActiveQuery('');
     setLanguageFilter('all');
+    setDraftLanguageFilter('all');
     setSelectedAppId(null);
+    setDraftSelectedAppId(null);
     setSelectedCategory('all');
     setSelectedSubcategory('all');
     setQuickSentiment('all');
     setQuickType('all');
+    setScope('me');
+    setDraftScope('me');
     setOffset(0);
   }
+
+  const hasPendingChanges = useMemo(() => {
+    if (queryInput.trim() !== activeQuery) return true;
+    if (draftLanguageFilter !== languageFilter) return true;
+    if (draftSelectedAppId !== selectedAppId) return true;
+    if (draftScope !== scope) return true;
+    return false;
+  }, [queryInput, activeQuery, draftLanguageFilter, languageFilter, draftSelectedAppId, selectedAppId, draftScope, scope]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -297,8 +330,9 @@ export default function DatabasePage() {
     if (selectedSubcategory !== 'all') count++;
     if (quickSentiment !== 'all') count++;
     if (quickType !== 'all') count++;
+    if (scope === 'all') count++;
     return count;
-  }, [activeQuery, languageFilter, selectedAppId, selectedCategory, selectedSubcategory, quickSentiment, quickType]);
+  }, [activeQuery, languageFilter, selectedAppId, selectedCategory, selectedSubcategory, quickSentiment, quickType, scope]);
 
   const filterPills = useMemo(() => {
     const pills = [];
@@ -318,9 +352,10 @@ export default function DatabasePage() {
       pills.push({
         key: 'language',
         label: 'Language',
-        value: languageFilter,
+        value: languageLabelFor(languageFilter),
         onRemove: () => {
           setLanguageFilter('all');
+          setDraftLanguageFilter('all');
           setOffset(0);
         },
       });
@@ -333,6 +368,19 @@ export default function DatabasePage() {
         value: game?.name || `App ${selectedAppId}`,
         onRemove: () => {
           setSelectedAppId(null);
+          setDraftSelectedAppId(null);
+          setOffset(0);
+        },
+      });
+    }
+    if (scope === 'all') {
+      pills.push({
+        key: 'scope',
+        label: 'Scope',
+        value: 'All users',
+        onRemove: () => {
+          setScope('me');
+          setDraftScope('me');
           setOffset(0);
         },
       });
@@ -363,7 +411,7 @@ export default function DatabasePage() {
       pills.push({
         key: 'sentiment',
         label: 'Sentiment',
-        value: quickSentiment === 'positive' ? 'Recommended' : 'Not Recommended',
+        value: quickSentiment === 'positive' ? 'Recommended' : 'Not recommended',
         onRemove: () => {
           setQuickSentiment('all');
         },
@@ -463,31 +511,23 @@ export default function DatabasePage() {
           onClose={() => setSidebarOpen(false)}
           queryInput={queryInput}
           setQueryInput={setQueryInput}
-          onApplyQuery={handleApplyQuery}
-          languageFilter={languageFilter}
-          setLanguageFilter={(value) => {
-            setLanguageFilter(value);
-            setOffset(0);
-          }}
-          selectedAppId={selectedAppId}
-          setSelectedAppId={(value) => {
-            setSelectedAppId(value);
-            setOffset(0);
-          }}
+          onApplyFilters={handleApplyFilters}
+          languageFilter={draftLanguageFilter}
+          setLanguageFilter={setDraftLanguageFilter}
+          selectedAppId={draftSelectedAppId}
+          setSelectedAppId={setDraftSelectedAppId}
           games={games}
-          scope={scope}
-          setScope={setScope}
+          scope={draftScope}
+          setScope={setDraftScope}
           isAdmin={isAdmin}
           selectedCategory={selectedCategory}
           setSelectedCategory={(value) => {
             setSelectedCategory(value);
             setSelectedSubcategory('all');
-            setOffset(0);
           }}
           selectedSubcategory={selectedSubcategory}
           setSelectedSubcategory={(value) => {
             setSelectedSubcategory(value);
-            setOffset(0);
           }}
           categoryOptions={categoryOptions}
           subcategoryOptions={subcategoryOptions}
@@ -497,6 +537,7 @@ export default function DatabasePage() {
           setQuickType={setQuickType}
           onClearAll={handleClearAll}
           activeFilterCount={activeFilterCount}
+          hasPendingChanges={hasPendingChanges}
           onExportPreview={handleExportPreview}
           downloadBusy={downloadBusy}
           t={t}
@@ -511,57 +552,73 @@ export default function DatabasePage() {
         />
         <div className="flex-1 overflow-auto">
           <div className="mx-auto max-w-7xl space-y-10 sm:space-y-8 px-4 py-6 sm:px-6 sm:py-8">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="rounded-lg border border-white/10 bg-slate-900/50 p-2 text-slate-400 transition hover:bg-slate-900/70 hover:text-white lg:hidden"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-              <h1 className="text-3xl font-semibold tracking-tight">
-                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                  {t('database.title')}
-                </span>
-              </h1>
+            <GameContextBar />
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    className="rounded-lg border border-white/10 bg-slate-900/50 p-2 text-slate-400 transition hover:bg-slate-900/70 hover:text-white lg:hidden"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </button>
+                  <h1 className="text-3xl font-semibold tracking-tight">
+                    <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                      {t('database.title')}
+                    </span>
+                  </h1>
+                </div>
+                <p className="text-sm text-slate-400">
+                  {t('database.subtitle')}
+                </p>
+              </div>
+              {isAdmin && (
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-xs uppercase tracking-[0.25em] text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScope('me');
+                      setDraftScope('me');
+                      setOffset(0);
+                    }}
+                    className={`rounded-full px-3 py-1 transition ${
+                      scope === 'me'
+                        ? 'bg-sky-500/20 text-sky-200'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {t('database.myData')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScope('all');
+                      setDraftScope('all');
+                      setOffset(0);
+                    }}
+                    className={`rounded-full px-3 py-1 transition ${
+                      scope === 'all'
+                        ? 'bg-amber-500/20 text-amber-200'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {t('database.allUsers')}
+                  </button>
+                </div>
+              )}
             </div>
-            <p className="text-sm text-slate-400">
-              {t('database.subtitle')}
-            </p>
-          </div>
-          {isAdmin && (
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-[10px] uppercase tracking-[0.25em] text-slate-400">
-              <button
-                type="button"
-                onClick={() => setScope('me')}
-                className={`rounded-full px-3 py-1 transition ${
-                  scope === 'me'
-                    ? 'bg-sky-500/20 text-sky-200'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {t('database.myData')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setScope('all')}
-                className={`rounded-full px-3 py-1 transition ${
-                  scope === 'all'
-                    ? 'bg-amber-500/20 text-amber-200'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {t('database.allUsers')}
-              </button>
-            </div>
-          )}
-        </div>
 
-        <FilterPills pills={filterPills} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <FilterPills pills={filterPills} />
+          {activeFilterCount > 0 ? (
+            <Button variant="secondary" size="sm" onClick={handleClearAll}>
+              {t('common.clearFilters')}
+            </Button>
+          ) : null}
+        </div>
 
         <Card variant="glass" className="p-5">
           <h2 className="mb-3 text-base font-semibold text-white">{t('database.stats')}</h2>
@@ -635,6 +692,30 @@ export default function DatabasePage() {
               </div>
               <div className="text-xs text-slate-500">
                 Showing {filteredReviews.length} of {pageItems.length} loaded
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+              <div>
+                Page {currentPage} of {totalPages}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setOffset(Math.max(0, offset - limit))}
+                  disabled={offset === 0 || loadingReviews}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setOffset(offset + limit)}
+                  disabled={offset + limit >= pageTotal || loadingReviews}
+                >
+                  Next
+                </Button>
               </div>
             </div>
 

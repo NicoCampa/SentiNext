@@ -11,6 +11,7 @@ import { SteamImage } from '@/components/SteamImage';
 import { MonthSelector } from '@/components/reports/MonthSelector';
 import { BackButton } from '@/components/BackButton';
 import { PageTransition } from '@/components/PageTransition';
+import { GameContextBar } from '@/components/GameContextBar';
 
 export default function ReportsPage() {
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
@@ -21,6 +22,7 @@ export default function ReportsPage() {
   const [monthsLoading, setMonthsLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null);
 
   // Load starred games on mount
   useEffect(() => {
@@ -43,6 +45,7 @@ export default function ReportsPage() {
     if (!selectedGame) {
       setAvailableMonths([]);
       setSelectedMonth(null);
+      setLastGeneratedAt(null);
       return;
     }
 
@@ -72,6 +75,10 @@ export default function ReportsPage() {
     loadMonths();
   }, [selectedGame]);
 
+  useEffect(() => {
+    setLastGeneratedAt(null);
+  }, [selectedMonth?.year, selectedMonth?.month]);
+
   const handleGameSelect = (game: StarredGameDTO) => {
     setSelectedGame(game);
   };
@@ -83,6 +90,7 @@ export default function ReportsPage() {
     setError(null);
     try {
       await downloadExecutiveSummary(selectedGame.app_id, selectedMonth.year, selectedMonth.month);
+      setLastGeneratedAt(new Date());
     } catch (err) {
       console.error('Failed to download report:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate report');
@@ -90,6 +98,14 @@ export default function ReportsPage() {
       setDownloadLoading(false);
     }
   };
+
+  const selectedRange = selectedMonth
+    ? (() => {
+        const start = new Date(selectedMonth.year, selectedMonth.month - 1, 1);
+        const end = new Date(selectedMonth.year, selectedMonth.month, 0);
+        return `${start.toLocaleDateString()} – ${end.toLocaleDateString()}`;
+      })()
+    : null;
 
   if (loading) {
     return (
@@ -129,20 +145,21 @@ export default function ReportsPage() {
     <AppLayout>
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-8 px-4 py-6">
+          <GameContextBar showFilters={false} />
           {/* Back Button */}
           <BackButton />
 
           {/* Header */}
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight">
-            <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-              Executive Summary Reports
-            </span>
-          </h1>
-          <p className="text-sm text-slate-400">
-            Generate monthly PDF reports with insights, trends, and key metrics
-          </p>
-        </div>
+              <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                Executive Summary Reports
+              </span>
+            </h1>
+            <p className="text-sm text-slate-400">
+              Generate monthly PDF reports with insights, trends, and key metrics
+            </p>
+          </div>
 
         {/* Game Selection Grid */}
         <Card variant="glass" className="p-6">
@@ -223,10 +240,13 @@ export default function ReportsPage() {
             {/* Stats Preview */}
             {selectedMonth && (
               <div className="rounded-lg bg-slate-900/50 border border-white/10 p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium text-slate-300">Selected Period</p>
                     <p className="text-lg font-semibold text-white">{selectedMonth.label}</p>
+                    {selectedRange && (
+                      <p className="text-xs text-slate-500 mt-1">{selectedRange}</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-slate-300">Reviews</p>
@@ -234,6 +254,42 @@ export default function ReportsPage() {
                       {selectedMonth.review_count.toLocaleString()}
                     </p>
                   </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3 text-xs text-slate-400">
+                  <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
+                    <p className="uppercase tracking-wider text-xs text-slate-500">Pages</p>
+                    <p className="text-sm text-slate-200 mt-1">6 pages</p>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
+                    <p className="uppercase tracking-wider text-xs text-slate-500">Last generated</p>
+                    <p className="text-sm text-slate-200 mt-1">
+                      {lastGeneratedAt ? lastGeneratedAt.toLocaleString() : "Not generated yet"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
+                    <p className="uppercase tracking-wider text-xs text-slate-500">Includes</p>
+                    <p className="text-sm text-slate-200 mt-1">Summary + insights</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedMonth && (
+              <div className="rounded-lg border border-white/10 bg-slate-950/30 p-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3">Report contents</p>
+                <div className="grid gap-2 sm:grid-cols-2 text-xs text-slate-300">
+                  {[
+                    "Executive overview & key metrics",
+                    "Sentiment trends + risk signals",
+                    "Top issues and complaints",
+                    "Top feature requests",
+                    "Player segment breakdowns",
+                    "Executive recommendations",
+                  ].map((item) => (
+                    <div key={item} className="rounded-lg border border-white/5 bg-white/5 px-3 py-2">
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

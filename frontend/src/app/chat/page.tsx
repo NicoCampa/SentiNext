@@ -29,6 +29,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
+import { GameContextBar } from "@/components/GameContextBar";
 import {
   authFetch,
   sendEnhancedChat,
@@ -204,6 +205,15 @@ const CHART_BORDER_COLORS = [
   'rgba(103, 232, 249, 1)',
   'rgba(196, 181, 253, 1)',
   'rgba(134, 239, 212, 1)',
+];
+
+const NO_GAME_PROMPTS = [
+  "Summarize the top issues players mention this month",
+  "What are the most requested features?",
+  "Show the biggest sentiment risks",
+  "Compare two games by recommendation rate",
+  "Which subcategories drive negative reviews?",
+  "Highlight common onboarding complaints",
 ];
 
 function normalizeChartData(spec: ChartSpec): ChartSpec["data"] {
@@ -441,6 +451,9 @@ export default function ChatPage() {
   const [selectedGames, setSelectedGames] = useState<number[]>([]);
   const [chatStatus, setChatStatus] = useState<string | null>(null);
   const [loadingGames, setLoadingGames] = useState(false);
+  const [showSources, setShowSources] = useState(true);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [promptNotice, setPromptNotice] = useState<string | null>(null);
 
   // Message feedback state: tracks which message indices user has voted on
   const [messageFeedback, setMessageFeedback] = useState<Record<number, boolean>>({});
@@ -453,6 +466,24 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (!copyToast) return;
+    const timeout = setTimeout(() => setCopyToast(null), 2000);
+    return () => clearTimeout(timeout);
+  }, [copyToast]);
+
+  useEffect(() => {
+    if (!promptNotice) return;
+    const timeout = setTimeout(() => setPromptNotice(null), 2000);
+    return () => clearTimeout(timeout);
+  }, [promptNotice]);
+
+  useEffect(() => {
+    if (selectedGames.length > 0) {
+      setPromptNotice(null);
+    }
+  }, [selectedGames]);
 
   // Load starred games on mount
   useEffect(() => {
@@ -572,6 +603,29 @@ export default function ChatPage() {
     }
   }
 
+  async function handleCopyAnswer(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyToast(t("chat.copySuccess"));
+    } catch {
+      setCopyToast(t("chat.copyFailed"));
+    }
+  }
+
+  function findPreviousUserMessage(index: number): string | null {
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (messages[i].role === "user") return messages[i].content;
+    }
+    return null;
+  }
+
+  function handleRegenerate(index: number) {
+    if (loading) return;
+    const prompt = findPreviousUserMessage(index);
+    if (!prompt) return;
+    sendMessage(prompt);
+  }
+
   async function handleSuggestedQuestion(question: string) {
     if (loading) return;
     setInput(question);
@@ -579,6 +633,16 @@ export default function ChatPage() {
     setTimeout(() => {
       sendMessage(question);
     }, 0);
+  }
+
+  function handlePresetPrompt(prompt: string) {
+    if (loading) return;
+    if (selectedGames.length === 0) {
+      setInput(prompt);
+      setPromptNotice(t("chat.selectGameNotice"));
+      return;
+    }
+    sendMessage(prompt);
   }
 
   async function handleClarificationOption(option: string) {
@@ -737,46 +801,47 @@ export default function ChatPage() {
         }
       `}</style>
       <PageTransition>
-        <div className="w-full h-[calc(100vh-2rem)] flex flex-col px-4 py-6 sm:px-6 lg:px-6">
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">
-              <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                {t('chat.title')}
-              </span>
-            </h1>
-            <p className="text-xs text-slate-400">
-              {selectedGames.length > 0
-                ? `Chatting with ${selectedGames.length} game${selectedGames.length > 1 ? "s" : ""} selected`
-                : t('chat.subtitle')}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {currentSessionId && messages.length > 0 && (
+        <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-4 px-4 py-6 sm:px-6 lg:px-6">
+          <GameContextBar showFilters={false} />
+          {/* Header */}
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold">
+                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                  {t('chat.title')}
+                </span>
+              </h1>
+              <p className="text-xs text-slate-400">
+                {selectedGames.length > 0
+                  ? `Chatting with ${selectedGames.length} game${selectedGames.length > 1 ? "s" : ""} selected`
+                  : t('chat.subtitle')}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {currentSessionId && messages.length > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={handleExportChat}
+                  className="text-xs"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export
+                </Button>
+              )}
               <Button
                 variant="secondary"
-                onClick={handleExportChat}
+                onClick={handleNewConversation}
                 className="text-xs"
               >
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Export
+                {t('chat.newChat')}
               </Button>
-            )}
-            <Button
-              variant="secondary"
-              onClick={handleNewConversation}
-              className="text-xs"
-            >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              {t('chat.newChat')}
-            </Button>
+            </div>
           </div>
-        </div>
 
         {/* Main Content Area */}
         <div className="flex-1 flex gap-4 overflow-hidden">
@@ -796,7 +861,7 @@ export default function ChatPage() {
                 <p className="text-xs text-slate-500 text-center py-2">{t('chat.noStarredGames')}</p>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-[10px] text-slate-500 mb-2">{t('chat.selectGames')}</p>
+                  <p className="text-xs text-slate-500 mb-2">{t('chat.selectGames')}</p>
                   <div className="max-h-32 overflow-y-auto space-y-1 scrollbar-hide">
                     {starredGames.map((game) => (
                       <button
@@ -830,7 +895,7 @@ export default function ChatPage() {
                   {selectedGames.length > 0 && (
                     <button
                       onClick={() => setSelectedGames([])}
-                      className="text-[10px] text-slate-500 hover:text-slate-300 mt-1"
+                      className="text-xs text-slate-500 hover:text-slate-300 mt-1"
                     >
                       {t('chat.clearSelection')}
                     </button>
@@ -880,7 +945,7 @@ export default function ChatPage() {
                               {title}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500">
+                          <p className="text-xs text-slate-500">
                             {session.last_message_at
                               ? new Date(session.last_message_at).toLocaleString()
                               : "No date"}
@@ -895,9 +960,28 @@ export default function ChatPage() {
           </Card>
 
           {/* Messages Container */}
-          <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6">
+          <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6 relative">
+            {copyToast && (
+              <div className="absolute right-6 top-4 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-1 text-xs text-slate-200">
+                {copyToast}
+              </div>
+            )}
             {/* Messages */}
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 scrollbar-hide">
+            {messages.length > 0 && (
+              <div className="sticky top-0 z-10 -mx-6 mb-3 border-b border-white/10 bg-slate-900/90 px-6 py-2 backdrop-blur">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>{t("chat.sourcesUsed")}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowSources((prev) => !prev)}
+                    className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-slate-200 hover:border-slate-400"
+                  >
+                    {showSources ? t("chat.hideSources") : t("chat.showSources")}
+                  </button>
+                </div>
+              </div>
+            )}
             {loadingHistory ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center space-y-4">
@@ -907,7 +991,7 @@ export default function ChatPage() {
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
                   </div>
-                  <p className="text-sm text-slate-400">Loading conversation...</p>
+                  <p className="text-sm text-slate-400">{t("chat.loadingConversation")}</p>
                 </div>
               </div>
             ) : messages.length === 0 ? (
@@ -929,6 +1013,23 @@ export default function ChatPage() {
                       <>
                         <p className="text-sm text-slate-300">Select a game to start chatting</p>
                         <p className="text-xs text-slate-500 mt-1">Choose games from the sidebar to analyze reviews and get insights</p>
+                        <div className="mt-4 rounded-xl border border-white/10 bg-slate-900/40 p-4 text-left">
+                          <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-2">{t("chat.promptPresets")}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {NO_GAME_PROMPTS.map((prompt) => (
+                              <button
+                                key={prompt}
+                                onClick={() => handlePresetPrompt(prompt)}
+                                className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                              >
+                                {prompt}
+                              </button>
+                            ))}
+                          </div>
+                          {promptNotice && (
+                            <p className="mt-2 text-[11px] text-amber-300">{promptNotice}</p>
+                          )}
+                        </div>
                       </>
                     ) : (
                       <>
@@ -1028,9 +1129,9 @@ export default function ChatPage() {
                       })}
                     </div>
                     {/* Citations for game-aware responses */}
-                    {msg.citations && msg.citations.length > 0 && (
+                    {showSources && msg.citations && msg.citations.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">{t('chat.sources')} ({msg.citations.length})</p>
+                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t('chat.sources')} ({msg.citations.length})</p>
                         <div className="space-y-2">
                           {msg.citations.slice(0, 3).map((citation, citIdx) => (
                             <div
@@ -1048,7 +1149,7 @@ export default function ChatPage() {
                             </div>
                           ))}
                           {msg.citations.length > 3 && (
-                            <p className="text-[10px] text-slate-500">
+                            <p className="text-xs text-slate-500">
                               +{msg.citations.length - 3} more citations
                             </p>
                           )}
@@ -1056,13 +1157,13 @@ export default function ChatPage() {
                       </div>
                     )}
                     {/* Source Reviews Widget */}
-                    {msg.sourceReviews && msg.sourceReviews.length > 0 && (
+                    {showSources && msg.sourceReviews && msg.sourceReviews.length > 0 && (
                       <SourceReviewsWidget reviews={msg.sourceReviews} />
                     )}
                     {/* Suggested follow-up questions */}
                     {msg.role === "assistant" && msg.suggestedQuestions && msg.suggestedQuestions.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Suggested Questions</p>
+                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.suggestedQuestions")}</p>
                         <div className="flex flex-wrap gap-2">
                           {msg.suggestedQuestions.map((q, qIdx) => (
                             <button
@@ -1079,7 +1180,7 @@ export default function ChatPage() {
                     {/* Clarification options */}
                     {msg.role === "assistant" && msg.needsClarification && msg.clarificationOptions && msg.clarificationOptions.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Please clarify</p>
+                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.pleaseClarify")}</p>
                         <div className="flex flex-wrap gap-2">
                           {msg.clarificationOptions.map((opt, optIdx) => (
                             <button
@@ -1096,7 +1197,7 @@ export default function ChatPage() {
                     {/* Game selection suggestions */}
                     {msg.role === "assistant" && msg.suggestGameSelection && msg.suggestedGames && msg.suggestedGames.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-[10px] text-slate-500 mb-2 uppercase tracking-wider">Select a game</p>
+                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.selectGame")}</p>
                         <div className="flex flex-wrap gap-2">
                           {msg.suggestedGames.map((game) => (
                             <button
@@ -1125,15 +1226,36 @@ export default function ChatPage() {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                           </svg>
-                          Search for {msg.searchGameName ? `"${msg.searchGameName}"` : "games"}
+                          {msg.searchGameName
+                            ? t("chat.searchFor").replace("{game}", `"${msg.searchGameName}"`)
+                            : t("chat.searchForGames")}
                         </Link>
                       </div>
                     )}
                     {/* Timestamp and message feedback */}
-                    <div className="flex items-center justify-between mt-2">
-                      <p className="text-[10px] text-slate-500">
-                        {formatTime(msg.timestamp)}
-                      </p>
+                    <div className="flex items-center justify-between mt-2 gap-2">
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>{formatTime(msg.timestamp)}</span>
+                        {msg.role === "assistant" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyAnswer(msg.content)}
+                              className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400"
+                            >
+                              {t("chat.copy")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRegenerate(idx)}
+                              disabled={loading}
+                              className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400 disabled:opacity-50"
+                            >
+                              {t("chat.regenerate")}
+                            </button>
+                          </>
+                        )}
+                      </div>
                       {/* Message feedback buttons - only for assistant messages */}
                       {msg.role === "assistant" && (
                         <div className="flex items-center gap-1">
@@ -1225,7 +1347,7 @@ export default function ChatPage() {
                 )}
               </Button>
             </div>
-            <p className="text-[10px] text-slate-600 mt-2">
+            <p className="text-xs text-slate-600 mt-2">
               {selectedGames.length > 0 ? (
                 <>Press Enter to search reviews and get insights</>
               ) : (

@@ -7,31 +7,34 @@ import { Button } from "@/components/ui/button";
 import { SteamImage } from "@/components/SteamImage";
 import { useGameContext } from "@/contexts/GameContext";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
+import { languageLabelFor } from "@/lib/languageOptions";
 
-function labelForSentiment(value: string) {
-  if (value === "positive") return "Recommended";
-  if (value === "negative") return "Not recommended";
-  return "All sentiment";
+function labelForSentiment(value: string, t: (key: string) => string) {
+  if (value === "positive") return t("common.recommended");
+  if (value === "negative") return t("common.notRecommended");
+  return t("filters.allSentiment");
 }
 
-function labelForDate(value: string) {
-  if (value === "30d") return "Last 30 days";
-  if (value === "90d") return "Last 90 days";
-  if (value === "365d") return "Last 12 months";
-  return "All time";
+function labelForDate(value: string, t: (key: string) => string) {
+  if (value === "30d") return t("filters.last30Days");
+  if (value === "90d") return t("filters.last90Days");
+  if (value === "365d") return t("filters.last12Months");
+  return t("filters.allTime");
 }
 
-function labelForPlaytime(value: string) {
-  if (value === "lt2h") return "<2h playtime";
-  if (value === "2to20h") return "2–20h playtime";
-  if (value === "20hplus") return "20h+ playtime";
-  return "All playtime";
+function labelForPlaytime(value: string, t: (key: string) => string) {
+  if (value === "lt2h") return t("filters.playtimeLt2h");
+  if (value === "2to20h") return t("filters.playtime2to20h");
+  if (value === "20hplus") return t("filters.playtime20hplus");
+  return t("filters.allPlaytime");
 }
 
-export function GameContextBar() {
+export function GameContextBar({ showFilters = true }: { showFilters?: boolean }) {
   const { games, selectedGame, selectedStarredGame, selectedGameId, selectGameById } = useGameContext();
   const { filters, updateFilters, resetFilters, filtersActive } = useGlobalFilters();
+  const { t } = useLanguage();
 
   const filteredCount = useMemo(() => {
     if (!selectedStarredGame?.sample) return null;
@@ -42,11 +45,22 @@ export function GameContextBar() {
   const hasStarredSelection = selectedGameId !== null && games.some((game) => game.app_id === selectedGameId);
 
   const activeChips = [
-    { key: "sentiment", value: filters.sentiment, label: labelForSentiment(filters.sentiment) },
-    { key: "dateRange", value: filters.dateRange, label: labelForDate(filters.dateRange) },
-    { key: "minHelpful", value: filters.minHelpful, label: filters.minHelpful ? `${filters.minHelpful}+ helpful` : "" },
-    { key: "playtime", value: filters.playtime, label: labelForPlaytime(filters.playtime) },
-    { key: "language", value: filters.language, label: filters.language && filters.language !== "all" ? `Lang: ${filters.language}` : "" },
+    { key: "sentiment", value: filters.sentiment, label: labelForSentiment(filters.sentiment, t) },
+    { key: "dateRange", value: filters.dateRange, label: labelForDate(filters.dateRange, t) },
+    {
+      key: "minHelpful",
+      value: filters.minHelpful,
+      label: filters.minHelpful ? t("filters.helpfulVotes").replace("{count}", String(filters.minHelpful)) : "",
+    },
+    { key: "playtime", value: filters.playtime, label: labelForPlaytime(filters.playtime, t) },
+    {
+      key: "language",
+      value: filters.language,
+      label:
+        filters.language && filters.language !== "all"
+          ? t("filters.languageChip").replace("{lang}", languageLabelFor(filters.language))
+          : "",
+    },
   ].filter((chip) => chip.label);
 
   return (
@@ -63,11 +77,11 @@ export function GameContextBar() {
             />
           ) : (
             <div className="flex h-12 w-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-slate-500">
-              No game
+              {t("gameContext.noGame")}
             </div>
           )}
           <div className="flex-1">
-            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Current game</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t("gameContext.currentGame")}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <select
                 value={selectedGameId ?? ""}
@@ -80,7 +94,7 @@ export function GameContextBar() {
                   </option>
                 ) : null}
                 {games.length === 0 ? (
-                  <option value="">No saved games</option>
+                  <option value="">{t("gameContext.noSavedGames")}</option>
                 ) : null}
                 {games.map((game) => (
                   <option key={game.app_id} value={game.app_id}>
@@ -89,47 +103,55 @@ export function GameContextBar() {
                 ))}
               </select>
               <Link href="/dashboard" className="text-xs text-slate-400 hover:text-slate-200">
-                Analyze new game
+                {t("gameContext.analyzeNew")}
               </Link>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {filteredCount !== null && totalCount !== null
-                ? `Filtered reviews: ${filteredCount} / ${totalCount}`
-                : "Filters apply to your current game reviews."}
+              {showFilters
+                ? filteredCount !== null && totalCount !== null
+                  ? t("gameContext.filteredReviews")
+                      .replace("{filtered}", filteredCount.toLocaleString())
+                      .replace("{total}", totalCount.toLocaleString())
+                  : t("gameContext.filtersApply")
+                : totalCount !== null
+                ? t("gameContext.sampledReviews").replace("{total}", totalCount.toLocaleString())
+                : t("gameContext.filtersApply")}
             </p>
           </div>
         </div>
 
-        <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:flex-1 sm:justify-end">
-          {activeChips.length ? (
-            <>
-              <span className="text-xs text-slate-500">Active filters:</span>
-              {activeChips.map((chip) => (
-                <button
-                  key={chip.key}
-                  onClick={() => {
-                    if (chip.key === "sentiment") updateFilters({ sentiment: "all" });
-                    if (chip.key === "dateRange") updateFilters({ dateRange: "all" });
-                    if (chip.key === "minHelpful") updateFilters({ minHelpful: 0 });
-                    if (chip.key === "playtime") updateFilters({ playtime: "all" });
-                    if (chip.key === "language") updateFilters({ language: "all" });
-                  }}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 transition hover:border-sky-500/40 hover:text-white"
-                  type="button"
-                >
-                  {chip.label} ×
-                </button>
-              ))}
-            </>
-          ) : (
-            <span className="text-xs text-slate-500">No global filters active</span>
-          )}
-          {filtersActive ? (
-            <Button variant="secondary" size="sm" onClick={resetFilters}>
-              Clear all
-            </Button>
-          ) : null}
-        </div>
+        {showFilters ? (
+          <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:flex-1 sm:justify-end">
+            {activeChips.length ? (
+              <>
+                <span className="text-xs text-slate-500">{t("gameContext.activeFilters")}</span>
+                {activeChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    onClick={() => {
+                      if (chip.key === "sentiment") updateFilters({ sentiment: "all" });
+                      if (chip.key === "dateRange") updateFilters({ dateRange: "all" });
+                      if (chip.key === "minHelpful") updateFilters({ minHelpful: 0 });
+                      if (chip.key === "playtime") updateFilters({ playtime: "all" });
+                      if (chip.key === "language") updateFilters({ language: "all" });
+                    }}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200 transition hover:border-sky-500/40 hover:text-white"
+                    type="button"
+                  >
+                    {chip.label} ×
+                  </button>
+                ))}
+              </>
+            ) : (
+              <span className="text-xs text-slate-500">{t("gameContext.noFiltersActive")}</span>
+            )}
+            {filtersActive ? (
+              <Button variant="secondary" size="sm" onClick={resetFilters}>
+                {t("common.clearFilters")}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </Card>
   );

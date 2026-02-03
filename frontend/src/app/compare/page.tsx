@@ -18,6 +18,7 @@ import { OverviewComparisonCard } from "@/components/compare/OverviewComparisonC
 import { ComparisonSummaryDisplay } from "@/components/compare/ComparisonSummaryDisplay";
 import { BackButton } from "@/components/BackButton";
 import { PageTransition } from "@/components/PageTransition";
+import { GameContextBar } from "@/components/GameContextBar";
 
 const MAX_SELECTION = 2;
 
@@ -37,11 +38,12 @@ const MAIN_CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_KEYS = Object.keys(MAIN_CATEGORY_LABELS).filter((key) => key !== "other");
 
 export default function ComparePage() {
-  const { filters, filtersActive } = useGlobalFilters();
+  const { filters, filtersActive, resetFilters } = useGlobalFilters();
   const { t } = useLanguage();
   const [analyzedGames, setAnalyzedGames] = useState<StarredGameDTO[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+  const [swapCandidateId, setSwapCandidateId] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -63,17 +65,33 @@ export default function ComparePage() {
   const selectedGames = useMemo(() => {
     return analyzedGames.filter((g) => selectedIds.includes(g.app_id));
   }, [analyzedGames, selectedIds]);
+  const swapCandidate = useMemo(() => {
+    if (swapCandidateId === null) return null;
+    return analyzedGames.find((g) => g.app_id === swapCandidateId) || null;
+  }, [analyzedGames, swapCandidateId]);
 
   function toggleGame(appId: number) {
     setSelectedIds((prev) => {
       if (prev.includes(appId)) {
+        setSwapCandidateId(null);
         return prev.filter((id) => id !== appId);
       }
       if (prev.length >= MAX_SELECTION) {
+        setSwapCandidateId(appId);
         return prev;
       }
+      setSwapCandidateId(null);
       return [...prev, appId];
     });
+  }
+
+  function handleSwap(targetId: number) {
+    if (swapCandidateId === null) return;
+    setSelectedIds((prev) => {
+      const next = prev.filter((id) => id !== targetId);
+      return [...next, swapCandidateId].slice(-MAX_SELECTION);
+    });
+    setSwapCandidateId(null);
   }
 
   async function handleRemove(appId: number) {
@@ -82,6 +100,7 @@ export default function ComparePage() {
       await removeStarredGame(appId);
       setAnalyzedGames((prev) => prev.filter((g) => g.app_id !== appId));
       setSelectedIds((prev) => prev.filter((id) => id !== appId));
+      setSwapCandidateId((prev) => (prev === appId ? null : prev));
     } catch (err) {
       console.error("Failed to remove game:", err);
     }
@@ -126,19 +145,55 @@ export default function ComparePage() {
     <AppLayout>
       <PageTransition>
         <div className="mx-auto max-w-7xl px-4 py-10 space-y-10 sm:space-y-8">
+          <GameContextBar />
           <BackButton />
 
-          <div>
-            <h1 className="text-3xl font-bold">
-            <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-              Game Comparison
-            </span>
-          </h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Compare 2 games side-by-side - {selectedIds.length} selected
-            {filtersActive ? " - global filters applied" : ""}
-          </p>
-        </div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h1 className="text-3xl font-bold">
+                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                  Game Comparison
+                </span>
+              </h1>
+              <p className="mt-1 text-sm text-slate-400">
+                Compare 2 games side-by-side - {selectedIds.length} selected
+                {filtersActive ? " - filters applied" : ""}
+              </p>
+            </div>
+            {filtersActive ? (
+              <Button variant="secondary" size="sm" onClick={resetFilters}>
+                {t("common.clearFilters")}
+              </Button>
+            ) : null}
+          </div>
+
+          {swapCandidate && selectedIds.length >= MAX_SELECTION && (
+            <Card variant="glass" className="p-4 border border-amber-500/30 bg-amber-500/10">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-amber-200">
+                    {t("compare.swapPrompt").replace("{game}", swapCandidate.name)}
+                  </p>
+                  <p className="text-xs text-amber-300/80">{t("compare.swapHint")}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedGames.map((game) => (
+                    <Button
+                      key={game.app_id}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleSwap(game.app_id)}
+                    >
+                      {t("compare.swapReplace").replace("{game}", game.name)}
+                    </Button>
+                  ))}
+                  <Button size="sm" variant="ghost" onClick={() => setSwapCandidateId(null)}>
+                    {t("common.dismiss")}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
 
         <Card variant="glass" className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-white">
@@ -403,7 +458,7 @@ function ComparisonDashboard({
 
                   return (
                   <div key={game.name} className={`space-y-1 p-2 rounded-lg ${isHighest ? 'ring-2 ring-blue-500/50 bg-blue-500/5' : ''}`}>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 truncate">
+                    <p className="text-xs uppercase tracking-wider text-slate-500 truncate">
                       {game.name.length > 12 ? game.name.substring(0, 12) + '...' : game.name}
                     </p>
                     <p
@@ -412,7 +467,7 @@ function ComparisonDashboard({
                     >
                       {formatPercentOrDash(game.rate)}
                     </p>
-                    <p className="text-[10px] text-slate-500">
+                    <p className="text-xs text-slate-500">
                       {formatCount(game.count)} reviews
                     </p>
                   </div>

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
+import { GameContextBar } from "@/components/GameContextBar";
 import { applyGlobalReviewFilters } from "@/lib/reviewFilters";
 
 const MAIN_CATEGORY_LABELS: Record<string, string> = {
@@ -90,7 +91,7 @@ export default function ReviewsPage() {
 function ReviewsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { filters, filtersActive } = useGlobalFilters();
+  const { filters, filtersActive, resetFilters } = useGlobalFilters();
   const { games, loading: gamesLoading, selectGameById } = useGameContext();
   const { density } = useUiPreferences();
 
@@ -101,6 +102,20 @@ function ReviewsContent() {
   const appId = parseInt(searchParams.get("appId") || "0");
   const filterType = searchParams.get("filterType") || "";
   const filterValue = searchParams.get("filterValue") || "";
+  const hasActiveFilters =
+    filtersActive || quickSentiment !== "all" || quickType !== "all" || !!filterType || !!filterValue;
+
+  const clearAllFilters = () => {
+    setQuickSentiment("all");
+    setQuickType("all");
+    if (filtersActive) {
+      resetFilters();
+    }
+    if (filterType || filterValue) {
+      const next = appId ? `/reviews?appId=${appId}` : "/reviews";
+      router.replace(next);
+    }
+  };
 
   const game = useMemo(() => {
     if (!appId) return null;
@@ -246,30 +261,38 @@ function ReviewsContent() {
   return (
     <AppLayout>
       <PageTransition>
-      <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold">
-              <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
-                {game.name}
-              </span>
-            </h1>
-            <p className="mt-1 text-sm text-slate-400">
-              {filtersActive
-                ? `Global filters: ${baseReviews.length} / ${(game.sample || []).length} reviews`
-                : `${(game.sample || []).length} reviews`}{" "}
-              -Showing: {quickFilteredReviews.length}
-            </p>
-            {filterType === "subcategory" && (
-              <p className="mt-1 text-sm text-sky-400">
-                Subcategory: &quot;{filterValue.replace(/_/g, " ").replace("/", " / ")}&quot;
+        <div className="mx-auto max-w-7xl space-y-8 sm:space-y-6 px-4 py-10">
+          <GameContextBar />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-3xl font-bold">
+                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                  {game.name}
+                </span>
+              </h1>
+              <p className="mt-1 text-sm text-slate-400">
+                {filtersActive
+                  ? `Filtered reviews: ${baseReviews.length} / ${(game.sample || []).length}`
+                  : `${(game.sample || []).length} reviews`}{" "}
+                - Showing: {quickFilteredReviews.length}
               </p>
-            )}
+              {filterType === "subcategory" && (
+                <p className="mt-1 text-sm text-sky-400">
+                  Subcategory: &quot;{filterValue.replace(/_/g, " ").replace("/", " / ")}&quot;
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {hasActiveFilters ? (
+                <Button onClick={clearAllFilters} variant="secondary" size="sm">
+                  Clear filters
+                </Button>
+              ) : null}
+              <Button onClick={() => router.back()} variant="secondary">
+                ← Back to Analysis
+              </Button>
+            </div>
           </div>
-          <Button onClick={() => router.back()} variant="secondary">
-            ← Back to Analysis
-          </Button>
-        </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <Card variant="glass" className="flex flex-col p-5">
@@ -279,7 +302,7 @@ function ReviewsContent() {
                 <p className="text-xs text-slate-400">Use ↑/↓ or J/K to move</p>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Quick filters</span>
+                <span className="text-xs uppercase tracking-[0.25em] text-slate-500">Quick filters</span>
                 <div className="flex flex-wrap gap-2">
                   {(["all", "positive", "negative"] as const).map((value) => (
                     <button
@@ -306,7 +329,7 @@ function ReviewsContent() {
                       }`}
                       type="button"
                     >
-                      {value === "all" ? "All labels" : value === "issue" ? "Issues" : "Requests"}
+                      {value === "all" ? "All types" : value === "issue" ? "Issues" : "Requests"}
                     </button>
                   ))}
                 </div>
@@ -316,7 +339,7 @@ function ReviewsContent() {
             <div className="mt-4 flex-1 overflow-auto pr-1">
               {quickFilteredReviews.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-center text-sm text-slate-400">
-                  No reviews match these filters. Try clearing quick filters or global filters above.
+                  No reviews match these filters. Try clearing filters above.
                 </div>
               ) : (
                 <div className="space-y-3">
