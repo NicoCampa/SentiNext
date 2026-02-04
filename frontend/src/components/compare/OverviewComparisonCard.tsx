@@ -24,7 +24,7 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
       const gamesData: GameComparisonData[] = selectedGames.map(game => ({
         app_id: game.app_id,
         name: game.name,
-        reviews: game.sample.slice(0, 20), // Limit reviews
+        reviews: game.sample.slice(0, 50), // Limit reviews
         metrics: {
           recommendation_rate: game.insights?.recommendation || 0,
           total_reviews: game.metadata.retrieved,

@@ -11,12 +11,7 @@ import { SteamImage } from '@/components/SteamImage';
 import { MonthSelector } from '@/components/reports/MonthSelector';
 import { BackButton } from '@/components/BackButton';
 import { PageTransition } from '@/components/PageTransition';
-import { useAdminStatus } from '@/hooks/useAdminStatus';
-import { ComingSoon } from '@/components/ComingSoon';
-
 export default function ReportsPage() {
-  const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
-  const showComingSoon = true;
   const [starredGames, setStarredGames] = useState<StarredGameDTO[]>([]);
   const [selectedGame, setSelectedGame] = useState<StarredGameDTO | null>(null);
   const [availableMonths, setAvailableMonths] = useState<ReportMonth[]>([]);
@@ -29,7 +24,6 @@ export default function ReportsPage() {
 
   // Load starred games on mount
   useEffect(() => {
-    if (showComingSoon || isAdminLoading || !isAdmin) return;
     async function load() {
       try {
         const games = await fetchStarredGames();
@@ -42,11 +36,11 @@ export default function ReportsPage() {
       }
     }
     load();
-  }, [isAdmin, isAdminLoading]);
+  }, []);
 
   // Load available months when game is selected
   useEffect(() => {
-    if (showComingSoon || !selectedGame || isAdminLoading || !isAdmin) {
+    if (!selectedGame) {
       setAvailableMonths([]);
       setSelectedMonth(null);
       setLastGeneratedAt(null);
@@ -77,7 +71,7 @@ export default function ReportsPage() {
       }
     }
     loadMonths();
-  }, [selectedGame, isAdmin, isAdminLoading]);
+  }, [selectedGame]);
 
   useEffect(() => {
     setLastGeneratedAt(null);
@@ -110,19 +104,6 @@ export default function ReportsPage() {
         return `${start.toLocaleDateString()} – ${end.toLocaleDateString()}`;
       })()
     : null;
-
-  if (showComingSoon || isAdminLoading || !isAdmin) {
-    return (
-      <AppLayout>
-        <PageTransition>
-          <ComingSoon
-            title="Reports coming soon"
-            description="This section is under construction. Check back soon."
-          />
-        </PageTransition>
-      </AppLayout>
-    );
-  }
 
   if (loading) {
     return (

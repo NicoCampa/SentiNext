@@ -14,6 +14,8 @@ from .circuit_breaker import steam_api_breaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
 
+# Maximum reviews per game - this limits both storage and fetching
+MAX_REVIEWS_PER_GAME = 1000
 
 # In-memory cache for game context with TTL
 _CONTEXT_CACHE: Dict[int, Tuple[Dict, float]] = {}
@@ -203,7 +205,7 @@ def fetch_reviews(
 
     Args:
         app_id: Steam application ID
-        count: Number of reviews to fetch
+        count: Number of reviews to fetch (capped at MAX_REVIEWS_PER_GAME)
         language: Language code or "all" for all languages
         filter_type: "recent", "updated", or "all" (by helpfulness)
         day_range: For filter="all", range from now to n days ago (max 365)
@@ -211,6 +213,9 @@ def fetch_reviews(
                               Default False filters them out.
         progress_callback: Optional callback(fetched_count) called after each batch
     """
+    # Enforce maximum reviews per game
+    count = min(count, MAX_REVIEWS_PER_GAME)
+
     reviews: List[dict] = []
     cursor = "*"
 

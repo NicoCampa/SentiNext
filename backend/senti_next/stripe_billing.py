@@ -12,6 +12,9 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_MAX = os.getenv("STRIPE_PRICE_MAX")
+# Annual pricing (20% discount)
+STRIPE_PRICE_PRO_ANNUAL = os.getenv("STRIPE_PRICE_PRO_ANNUAL")
+STRIPE_PRICE_MAX_ANNUAL = os.getenv("STRIPE_PRICE_MAX_ANNUAL")
 
 # Map price IDs to tiers
 PRICE_TO_TIER = {}
@@ -19,6 +22,11 @@ if STRIPE_PRICE_PRO:
     PRICE_TO_TIER[STRIPE_PRICE_PRO] = "pro"
 if STRIPE_PRICE_MAX:
     PRICE_TO_TIER[STRIPE_PRICE_MAX] = "max"
+# Annual prices map to same tiers
+if STRIPE_PRICE_PRO_ANNUAL:
+    PRICE_TO_TIER[STRIPE_PRICE_PRO_ANNUAL] = "pro"
+if STRIPE_PRICE_MAX_ANNUAL:
+    PRICE_TO_TIER[STRIPE_PRICE_MAX_ANNUAL] = "max"
 
 
 def is_stripe_configured() -> bool:
@@ -42,6 +50,7 @@ def create_checkout_session(
     success_url: str,
     cancel_url: str,
     user_email: Optional[str] = None,
+    billing_period: str = "monthly",
 ) -> str:
     """Create a Stripe Checkout session for subscription.
 
@@ -51,6 +60,7 @@ def create_checkout_session(
         success_url: URL to redirect to on success
         cancel_url: URL to redirect to on cancel
         user_email: Optional email to prefill
+        billing_period: 'monthly' or 'annual' (annual gets 20% discount)
 
     Returns:
         Checkout session URL to redirect user to
@@ -59,16 +69,25 @@ def create_checkout_session(
 
     stripe = _get_stripe()
 
-    # Get price ID for tier
-    if tier == "pro":
-        price_id = STRIPE_PRICE_PRO
-    elif tier == "max":
-        price_id = STRIPE_PRICE_MAX
+    # Get price ID for tier and billing period
+    if billing_period == "annual":
+        if tier == "pro":
+            price_id = STRIPE_PRICE_PRO_ANNUAL
+        elif tier == "max":
+            price_id = STRIPE_PRICE_MAX_ANNUAL
+        else:
+            raise ValueError(f"Invalid tier for checkout: {tier}")
+        if not price_id:
+            raise ValueError(f"STRIPE_PRICE_{tier.upper()}_ANNUAL is not configured")
     else:
-        raise ValueError(f"Invalid tier for checkout: {tier}")
-
-    if not price_id:
-        raise ValueError(f"STRIPE_PRICE_{tier.upper()} is not configured")
+        if tier == "pro":
+            price_id = STRIPE_PRICE_PRO
+        elif tier == "max":
+            price_id = STRIPE_PRICE_MAX
+        else:
+            raise ValueError(f"Invalid tier for checkout: {tier}")
+        if not price_id:
+            raise ValueError(f"STRIPE_PRICE_{tier.upper()} is not configured")
 
     # Get or create Stripe customer
     subscription = credits.get_user_subscription(user_id)

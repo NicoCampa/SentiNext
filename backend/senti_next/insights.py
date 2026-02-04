@@ -41,7 +41,11 @@ def _frame_records(df: pd.DataFrame) -> list[dict[str, Any]]:
 def aggregate_subcategory_insights(
     df: pd.DataFrame, *, max_snippets: int = 6
 ) -> list[dict[str, Any]]:
-    """Aggregate evidence snippets for issue/request subcategories."""
+    """Aggregate evidence snippets for issue/request subcategories.
+
+    Snippets are prioritized from English reviews with the most helpful votes,
+    ensuring the UI displays the most relevant evidence first.
+    """
     if (
         df is None
         or df.empty
@@ -69,8 +73,23 @@ def aggregate_subcategory_insights(
                 cleaned.append(text[:160])
         return cleaned
 
+    # Sort DataFrame to prioritize English reviews with most helpful votes
+    # This ensures snippets come from most relevant/helpful English reviews first
+    df_sorted = df.copy()
+    if "language" in df_sorted.columns and "votes_up" in df_sorted.columns:
+        # Create sort key: English first (0), then other languages (1)
+        df_sorted["_is_english"] = df_sorted["language"].apply(
+            lambda x: 0 if str(x).lower() == "english" else 1
+        )
+        df_sorted = df_sorted.sort_values(
+            by=["_is_english", "votes_up"],
+            ascending=[True, False]  # English first, then highest votes
+        )
+    elif "votes_up" in df_sorted.columns:
+        df_sorted = df_sorted.sort_values(by="votes_up", ascending=False)
+
     results: dict[str, dict[str, Any]] = {}
-    for _, row in df.iterrows():
+    for _, row in df_sorted.iterrows():
         subcats = _listify(row.get("llm_subcategories"))
         if not subcats:
             continue

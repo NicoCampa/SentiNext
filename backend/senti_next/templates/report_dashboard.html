@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Executive Summary - {{ game_name }}</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.4in;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --primary: #0ea5e9;
+      --primary-dark: #0284c7;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --bg: #ffffff;
+      --card-bg: #f8fafc;
+      --border: #e2e8f0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: 100%;
+      padding: 4px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary);
+    }
+
+    .brand {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--primary);
+    }
+
+    .game-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 2px;
+    }
+
+    .report-period {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    /* Metrics Row */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .metric-card.highlight {
+      border-top: 3px solid var(--primary);
+    }
+
+    .metric-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .metric-value.positive {
+      color: var(--success);
+    }
+
+    .metric-value.negative {
+      color: var(--danger);
+    }
+
+    .metric-subtext {
+      font-size: 8px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Progress bar in metric */
+    .metric-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .metric-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    .metric-bar-fill.success {
+      background: var(--success);
+    }
+
+    .metric-bar-fill.warning {
+      background: var(--warning);
+    }
+
+    .metric-bar-fill.danger {
+      background: var(--danger);
+    }
+
+    /* Two Column Section */
+    .two-column {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-header.issues {
+      color: var(--danger);
+    }
+
+    .section-header.requests {
+      color: var(--success);
+    }
+
+    .section-icon {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: white;
+    }
+
+    .section-icon.issues {
+      background: var(--danger);
+    }
+
+    .section-icon.requests {
+      background: var(--success);
+    }
+
+    /* List Items */
+    .item-list {
+      list-style: none;
+    }
+
+    .item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .item:last-child {
+      border-bottom: none;
+    }
+
+    .item-rank {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--text-muted);
+      width: 16px;
+    }
+
+    .item-name {
+      flex: 1;
+      font-size: 10px;
+      color: var(--text);
+    }
+
+    .item-count {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--border);
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+
+    /* Segments Section */
+    .segments-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .segment-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .segment-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .segment-label {
+      width: 70px;
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: capitalize;
+    }
+
+    .segment-bar-container {
+      flex: 1;
+      height: 12px;
+      background: var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .segment-bar {
+      height: 100%;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
+    }
+
+    .segment-value {
+      width: 50px;
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--text);
+      text-align: right;
+    }
+
+    /* Risk Section */
+    .risk-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .risk-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .risk-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .risk-indicator.low {
+      background: var(--success);
+    }
+
+    .risk-indicator.moderate {
+      background: var(--warning);
+    }
+
+    .risk-indicator.high {
+      background: var(--danger);
+    }
+
+    .risk-label {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    .risk-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin-left: auto;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-brand {
+      font-size: 8px;
+      color: var(--text-muted);
+    }
+
+    .footer-link {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .footer-date {
+      font-size: 8px;
+      color: var(--text-muted);
+    }
+
+    /* Empty state */
+    .empty-state {
+      color: var(--text-muted);
+      font-style: italic;
+      font-size: 9px;
+      padding: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Header -->
+    <header class="header">
+      <div>
+        <div class="brand">SentiNext</div>
+        <h1 class="game-title">{{ game_name }}</h1>
+      </div>
+      <div class="report-period">
+        <div style="font-weight: 600;">Executive Summary</div>
+        <div>{{ period }}</div>
+      </div>
+    </header>
+
+    <!-- Key Metrics -->
+    <div class="metrics-row">
+      <div class="metric-card highlight">
+        <div class="metric-label">Total Reviews</div>
+        <div class="metric-value">{{ "{:,}".format(data.total_reviews) }}</div>
+        <div class="metric-subtext">this month</div>
+      </div>
+
+      <div class="metric-card highlight">
+        <div class="metric-label">Recommendation Rate</div>
+        <div class="metric-value {% if data.recommendation_rate >= 0.7 %}positive{% elif data.recommendation_rate < 0.5 %}negative{% endif %}">
+          {{ "%.1f"|format(data.recommendation_rate * 100) }}%
+        </div>
+        <div class="metric-bar">
+          <div class="metric-bar-fill {% if data.recommendation_rate >= 0.7 %}success{% elif data.recommendation_rate >= 0.5 %}warning{% else %}danger{% endif %}"
+               style="width: {{ data.recommendation_rate * 100 }}%"></div>
+        </div>
+      </div>
+
+      <div class="metric-card highlight">
+        <div class="metric-label">Avg Sentiment</div>
+        <div class="metric-value {% if data.sentiment.average_compound >= 0.2 %}positive{% elif data.sentiment.average_compound < 0 %}negative{% endif %}">
+          {{ "%+.2f"|format(data.sentiment.average_compound) }}
+        </div>
+        <div class="metric-subtext">compound score</div>
+      </div>
+
+      <div class="metric-card highlight">
+        <div class="metric-label">Median Playtime</div>
+        <div class="metric-value">{{ "%.1f"|format(data.playtime.median_playtime_hours) }}h</div>
+        <div class="metric-subtext">at review</div>
+      </div>
+    </div>
+
+    <!-- Issues and Requests -->
+    <div class="two-column">
+      <!-- Top Issues -->
+      <div class="section-card">
+        <div class="section-header issues">
+          <div class="section-icon issues">!</div>
+          Top Issues
+        </div>
+        {% if data.top_issues %}
+        <ul class="item-list">
+          {% for issue in data.top_issues[:5] %}
+          <li class="item">
+            <span class="item-rank">{{ loop.index }}.</span>
+            <span class="item-name">{{ issue.subcategory | replace('_', ' ') | title }}</span>
+            <span class="item-count">{{ issue.count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state">No issues identified this period</div>
+        {% endif %}
+      </div>
+
+      <!-- Top Requests -->
+      <div class="section-card">
+        <div class="section-header requests">
+          <div class="section-icon requests">+</div>
+          Top Requests
+        </div>
+        {% if data.top_requests %}
+        <ul class="item-list">
+          {% for request in data.top_requests[:5] %}
+          <li class="item">
+            <span class="item-rank">{{ loop.index }}.</span>
+            <span class="item-name">{{ request.subcategory | replace('_', ' ') | title }}</span>
+            <span class="item-count">{{ request.count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state">No feature requests this period</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Player Segments -->
+    <div class="segments-section">
+      <div class="section-header" style="color: var(--primary);">
+        Player Segments by Experience
+      </div>
+      {% if data.player_segments %}
+      {% for segment in data.player_segments %}
+      <div class="segment-row">
+        <span class="segment-label">{{ segment.segment | title }}</span>
+        <div class="segment-bar-container">
+          <div class="segment-bar" style="width: {{ segment.recommendation_rate * 100 }}%"></div>
+        </div>
+        <span class="segment-value">{{ "%.0f"|format(segment.recommendation_rate * 100) }}% rec</span>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty-state">No segment data available</div>
+      {% endif %}
+    </div>
+
+    <!-- Risk Signals -->
+    <div class="risk-section">
+      <div class="risk-card">
+        <div class="risk-indicator {% if data.refund_risk < 0.3 %}low{% elif data.refund_risk < 0.5 %}moderate{% else %}high{% endif %}"></div>
+        <span class="risk-label">Refund Risk Index</span>
+        <span class="risk-value">{{ "%.2f"|format(data.refund_risk) }}</span>
+      </div>
+      <div class="risk-card">
+        <div class="risk-indicator {% if data.core_fan_disappointment < 0.2 %}low{% elif data.core_fan_disappointment < 0.4 %}moderate{% else %}high{% endif %}"></div>
+        <span class="risk-label">Core Fan Disappointment</span>
+        <span class="risk-value">{{ "%.2f"|format(data.core_fan_disappointment) }}</span>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-brand">
+        Generated by <span class="footer-link">SentiNext</span> &bull; sentinext.com
+      </div>
+      <div class="footer-date">
+        {{ generated_at }}
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

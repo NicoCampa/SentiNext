@@ -406,10 +406,6 @@ class AgentResult:
     needs_clarification: bool = False
     clarification_options: List[str] = field(default_factory=list)
     clarification_context: str = ""
-    # Game selection suggestion
-    suggest_game_selection: bool = False
-    suggested_games: List[Dict[str, Any]] = field(default_factory=list)
-    game_selection_message: str = ""
     # Suggest searching for a game
     suggest_search_game: bool = False
     search_game_name: str = ""
@@ -435,7 +431,6 @@ AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SentiNext. Anal
 | get_subcategory_stats | Stats for specific topic like "technical/performance" |
 | get_sentiment_trend | Sentiment changes over time |
 | compare_games | Compare metrics between two games |
-| list_available_games | Find game by name in user's starred games |
 | final_answer | **REQUIRED** - Provide your response |
 
 ## Workflow
@@ -624,16 +619,6 @@ async def run_agent(
                         needs_clarification=True,
                         clarification_options=options,
                         clarification_context=context_text,
-                        tool_calls_made=all_tool_calls,
-                    )
-
-                # Game selection suggestion - return to user
-                if result.get("suggest_selection"):
-                    return AgentResult(
-                        response=result.get("message", "Please select a game:"),
-                        suggest_game_selection=True,
-                        suggested_games=result.get("games", []),
-                        game_selection_message=result.get("message", ""),
                         tool_calls_made=all_tool_calls,
                     )
 
@@ -829,7 +814,6 @@ def _friendly_tool_name(tool_name: str) -> str:
         "get_sentiment_trend": "Loading sentiment trend",
         "compare_games": "Comparing games",
         "get_game_overview": "Loading game overview",
-        "list_available_games": "Checking available games",
         "clarify_question": "Preparing question",
         "final_answer": "Preparing response",
         "compare_time_windows": "Comparing time windows",

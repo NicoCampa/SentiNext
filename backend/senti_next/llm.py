@@ -77,11 +77,18 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
-def _record_llm_usage(response: Any, model_name: str) -> None:
+def _record_llm_usage(
+    response: Any,
+    model_name: str,
+    *,
+    prompt_tokens: Optional[int] = None,
+    response_tokens: Optional[int] = None,
+    total_tokens: Optional[int] = None,
+) -> None:
     """Record token usage metadata if available (best-effort)."""
     try:
         usage = getattr(response, "usage_metadata", None)
-        if usage is None:
+        if usage is None and prompt_tokens is None and response_tokens is None and total_tokens is None:
             return
 
         ctx = _LLM_USAGE_CONTEXT.get() or {}
@@ -93,13 +100,13 @@ def _record_llm_usage(response: Any, model_name: str) -> None:
             user_id=str(user_id),
             operation=str(ctx.get("operation") or "unknown"),
             model=_model_id("google", model_name),
-            prompt_tokens=_safe_int(getattr(usage, "prompt_token_count", None)),
-            response_tokens=_safe_int(getattr(usage, "response_token_count", None)),
-            total_tokens=_safe_int(getattr(usage, "total_token_count", None)),
-            cached_tokens=_safe_int(getattr(usage, "cached_content_token_count", None)),
-            tool_use_prompt_tokens=_safe_int(getattr(usage, "tool_use_prompt_token_count", None)),
-            thoughts_tokens=_safe_int(getattr(usage, "thoughts_token_count", None)),
-            traffic_type=str(getattr(usage, "traffic_type", None)) if getattr(usage, "traffic_type", None) else None,
+            prompt_tokens=prompt_tokens if prompt_tokens is not None else _safe_int(getattr(usage, "prompt_token_count", None)),
+            response_tokens=response_tokens if response_tokens is not None else _safe_int(getattr(usage, "response_token_count", None)),
+            total_tokens=total_tokens if total_tokens is not None else _safe_int(getattr(usage, "total_token_count", None)),
+            cached_tokens=_safe_int(getattr(usage, "cached_content_token_count", None)) if usage is not None else None,
+            tool_use_prompt_tokens=_safe_int(getattr(usage, "tool_use_prompt_token_count", None)) if usage is not None else None,
+            thoughts_tokens=_safe_int(getattr(usage, "thoughts_token_count", None)) if usage is not None else None,
+            traffic_type=str(getattr(usage, "traffic_type", None)) if usage is not None and getattr(usage, "traffic_type", None) else None,
             app_id=ctx.get("app_id"),
             session_id=ctx.get("session_id"),
         )
@@ -1281,8 +1288,12 @@ async def call_llm_with_tools(
                 tool_calls = []
                 content = None
 
-                if response.candidates and response.candidates[0].content.parts:
-                    for part in response.candidates[0].content.parts:
+                content_obj = None
+                if response.candidates:
+                    content_obj = response.candidates[0].content
+
+                if content_obj and content_obj.parts:
+                    for part in content_obj.parts:
                         # Check for function call
                         if hasattr(part, 'function_call') and part.function_call:
                             fc = part.function_call
@@ -1294,7 +1305,54 @@ async def call_llm_with_tools(
                         elif hasattr(part, 'text') and part.text:
                             content = part.text
 
-                _record_llm_usage(response, model_name)
+                # Token accounting (fallback to count_tokens if usage metadata missing)
+                prompt_tokens = None
+                response_tokens = None
+                total_tokens = None
+                usage = getattr(response, "usage_metadata", None)
+                if usage is not None:
+                    prompt_tokens = _safe_int(getattr(usage, "prompt_token_count", None))
+                    response_tokens = _safe_int(getattr(usage, "response_token_count", None))
+                    total_tokens = _safe_int(getattr(usage, "total_token_count", None))
+
+                if prompt_tokens is None or response_tokens is None or total_tokens is None:
+                    if prompt_tokens is None:
+                        try:
+                            count_cfg = types.CountTokensConfig(tools=gemini_tools)
+                            prompt_count = await asyncio.to_thread(
+                                client.models.count_tokens,
+                                model=model_name,
+                                contents=gemini_contents,
+                                config=count_cfg,
+                            )
+                            prompt_tokens = _safe_int(getattr(prompt_count, "total_tokens", None))
+                        except Exception as exc:
+                            logger.debug("Failed to count prompt tokens: %s", exc)
+
+                    if response_tokens is None:
+                        try:
+                            if content_obj:
+                                response_count = await asyncio.to_thread(
+                                    client.models.count_tokens,
+                                    model=model_name,
+                                    contents=content_obj,
+                                )
+                                response_tokens = _safe_int(getattr(response_count, "total_tokens", None))
+                            else:
+                                response_tokens = 0
+                        except Exception as exc:
+                            logger.debug("Failed to count response tokens: %s", exc)
+
+                    if total_tokens is None and prompt_tokens is not None and response_tokens is not None:
+                        total_tokens = prompt_tokens + response_tokens
+
+                _record_llm_usage(
+                    response,
+                    model_name,
+                    prompt_tokens=prompt_tokens,
+                    response_tokens=response_tokens,
+                    total_tokens=total_tokens,
+                )
                 return LLMResponse(
                     content=content,
                     tool_calls=tool_calls,
@@ -2288,30 +2346,75 @@ def summarize_subcategory_reviews(
         game_genres = "Unknown"
         game_description = "Not available"
 
-    # Build reviews text (limit to ~15 reviews to stay within context)
-    max_reviews = min(15, len(reviews))
-    sampled_reviews = reviews[:max_reviews]
-
-    review_blocks = []
-    for i, review in enumerate(sampled_reviews, 1):
-        text = (review.get("review") or "").strip()
+    def _clean_snippet(value: Any, max_len: int = 160) -> Optional[str]:
+        text = str(value).replace("\n", " ").replace("\r", " ").strip()
         if not text:
-            continue
-        # Truncate long reviews
-        if len(text) > 500:
-            text = text[:500] + "..."
+            return None
+        if len(text) > max_len:
+            return text[:max_len] + "..."
+        return text
+
+    def _extract_evidence_snippets(review: Mapping[str, Any], target_subcategory: str, max_snippets: int = 2) -> list[str]:
+        evidence = review.get("llm_subcategory_evidence") or review.get("subcategory_evidence") or {}
+        if not isinstance(evidence, dict):
+            return []
+        evidence_map = {
+            str(key).lower(): value
+            for key, value in evidence.items()
+            if isinstance(key, str)
+        }
+        values = evidence_map.get(target_subcategory.lower())
+        if values is None:
+            return []
+        if isinstance(values, list):
+            raw_items = values
+        else:
+            raw_items = [values]
+        snippets: list[str] = []
+        for item in raw_items:
+            cleaned = _clean_snippet(item)
+            if cleaned and cleaned not in snippets:
+                snippets.append(cleaned)
+            if len(snippets) >= max_snippets:
+                break
+        return snippets
+
+    # Hybrid: evidence snippets for coverage + a few full reviews for nuance
+    max_reviews = min(50, len(reviews))
+    sampled_reviews = reviews[:max_reviews]
+    full_review_limit = min(10, max_reviews)
+
+    evidence_blocks: list[str] = []
+    full_review_blocks: list[str] = []
+
+    for i, review in enumerate(sampled_reviews, 1):
         voted_up = review.get("voted_up", True)
         sentiment = "Positive" if voted_up else "Negative"
-        review_blocks.append(f"[Review {i}] ({sentiment})\n{text}")
 
-    if not review_blocks:
+        snippets = _extract_evidence_snippets(review, subcategory, max_snippets=2)
+        if snippets:
+            evidence_blocks.append(f"[Review {i}] ({sentiment}) " + " | ".join(snippets))
+
+        if i <= full_review_limit:
+            text = (review.get("review") or "").strip()
+            if text:
+                if len(text) > 500:
+                    text = text[:500] + "..."
+                full_review_blocks.append(f"[Review {i}] ({sentiment})\n{text}")
+
+    sections: list[str] = []
+    if evidence_blocks:
+        sections.append("EVIDENCE SNIPPETS (extracted highlights):\n" + "\n".join(evidence_blocks))
+    if full_review_blocks:
+        sections.append("FULL REVIEW EXAMPLES (top helpful):\n" + "\n\n".join(full_review_blocks))
+
+    reviews_text = "\n\n".join(sections)
+    if not reviews_text.strip():
         return {
             "summary": "No review text available for this subcategory.",
             "pros": [],
             "cons": [],
         }
-
-    reviews_text = "\n\n".join(review_blocks)
 
     # Select prompt template based on summary type
     if summary_type == "issue":
@@ -2524,19 +2627,88 @@ REVIEW SAMPLES (filtered for {subcategory}):
         summary = f"Game: \"{game['name']}\" (App ID: {game['app_id']}, Recommendation: {rec_rate:.1f}%, Reviews: {total})"
         game_summaries.append(summary)
 
-    # Build review samples
+    def _clean_snippet(value: Any, max_len: int = 160) -> Optional[str]:
+        text = str(value).replace("\n", " ").replace("\r", " ").strip()
+        if not text:
+            return None
+        if len(text) > max_len:
+            return text[:max_len] + "..."
+        return text
+
+    def _extract_evidence(review: Mapping[str, Any], *, target_subcategory: Optional[str], target_category: Optional[str]) -> list[str]:
+        evidence = review.get("llm_subcategory_evidence") or review.get("subcategory_evidence") or {}
+        if not isinstance(evidence, dict):
+            return []
+        evidence_map = {
+            str(key).lower(): value
+            for key, value in evidence.items()
+            if isinstance(key, str)
+        }
+
+        items: list[Any] = []
+        if target_subcategory:
+            values = evidence_map.get(target_subcategory.lower())
+            if values is not None:
+                items = values if isinstance(values, list) else [values]
+        elif target_category:
+            prefix = f"{target_category.lower()}/"
+            for key, value in evidence_map.items():
+                if key.startswith(prefix):
+                    if isinstance(value, list):
+                        items.extend(value)
+                    else:
+                        items.append(value)
+        else:
+            for value in evidence_map.values():
+                if isinstance(value, list):
+                    items.extend(value)
+                else:
+                    items.append(value)
+                if items:
+                    break
+
+        snippets: list[str] = []
+        for item in items:
+            cleaned = _clean_snippet(item)
+            if cleaned and cleaned not in snippets:
+                snippets.append(cleaned)
+            if len(snippets) >= 2:
+                break
+        return snippets
+
+    # Build review samples (hybrid: evidence snippets + a few full reviews)
     review_samples = []
     for game in games_data:
-        reviews = game.get("reviews", [])[:15]  # Limit to 15 reviews per game
-        if reviews:
-            review_samples.append(f"\n--- {game['name']} (App ID: {game['app_id']}) ---")
-            for i, review in enumerate(reviews, 1):
+        reviews = game.get("reviews", [])[:50]  # Limit to 50 reviews per game
+        if not reviews:
+            continue
+
+        review_samples.append(f"\n--- {game['name']} (App ID: {game['app_id']}) ---")
+        evidence_lines: list[str] = []
+        full_review_lines: list[str] = []
+        full_review_limit = min(10, len(reviews))
+
+        for i, review in enumerate(reviews, 1):
+            voted_up = "Positive" if review.get("voted_up") else "Negative"
+            subcats = review.get("llm_subcategories", [])
+            snippets = _extract_evidence(
+                review,
+                target_subcategory=subcategory if comparison_type == "subcategory" else None,
+                target_category=category if comparison_type == "category" else None,
+            )
+            if snippets:
+                evidence_text = " | ".join(snippets)
+            else:
+                fallback = review.get("review", "")[:160]
+                evidence_text = fallback + ("..." if len(fallback) == 160 else "")
+            evidence_lines.append(f"{i}. [{voted_up}] {evidence_text} (Subcategories: {', '.join(subcats[:3])})")
+
+            if i <= full_review_limit:
                 review_text = review.get("review", "")[:300]  # Truncate long reviews
-                voted_up = "Positive" if review.get("voted_up") else "Negative"
-                subcats = review.get("llm_subcategories", [])
-                review_samples.append(
-                    f"{i}. [{voted_up}] {review_text}... (Subcategories: {', '.join(subcats[:3])})"
-                )
+                full_review_lines.append(f"{i}. [{voted_up}] {review_text}... (Subcategories: {', '.join(subcats[:3])})")
+
+        review_samples.append("EVIDENCE SNIPPETS:\n" + "\n".join(evidence_lines))
+        review_samples.append("FULL REVIEW EXAMPLES:\n" + "\n".join(full_review_lines))
 
     # Format the prompt
     prompt = prompt_template.format(

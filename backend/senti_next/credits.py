@@ -9,11 +9,11 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-# Tier configuration
-TIER_LIMITS = {
-    "free": 500,
-    "pro": 5000,
-    "max": 25000,
+# Tier configuration - GAME LIMITS (primary billing model)
+TIER_GAME_LIMITS = {
+    "free": 3,       # 3 games max
+    "pro": 25,       # 25 games max
+    "max": 100,      # 100 games max
 }
 
 TIER_PRICES = {
@@ -22,7 +22,14 @@ TIER_PRICES = {
     "max": 49,
 }
 
-# Credit costs per operation
+# Legacy credit limits (kept for backwards compatibility during migration)
+TIER_LIMITS = {
+    "free": 500,
+    "pro": 5000,
+    "max": 25000,
+}
+
+# Credit costs per operation (legacy - kept for reference)
 CREDIT_COSTS = {
     "classify": 1,        # Per new review classification (LLM call)
     "classify_cached": 0.5,  # Per cached review (no LLM call, just retrieval)
@@ -195,6 +202,18 @@ def check_credits_available(user_id: str, amount: int) -> Tuple[bool, str, Dict[
             True,
             f"Warning: This operation will exceed your monthly credit limit ({limit:,}). "
             f"You have {max(limit - used_this_period, 0):,} credits remaining in your allowance.",
+            status,
+        )
+
+    # Check if approaching limit (80% threshold) - allow but warn
+    warning_threshold = limit * 0.8
+    if used_this_period >= warning_threshold:
+        percent_used = int((used_this_period / limit) * 100)
+        remaining = limit - used_this_period
+        return (
+            True,
+            f"Notice: You've used {percent_used}% of your monthly credits ({remaining:,} remaining). "
+            f"Consider upgrading if you need more capacity.",
             status,
         )
 
@@ -484,39 +503,96 @@ def estimate_analysis_cost(new_reviews: int, cached_reviews: int = 0) -> int:
     return math.ceil(new_cost + cached_cost)
 
 
+def get_user_game_count(user_id: str) -> int:
+    """Get count of games analyzed by user."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT COUNT(*) FROM starred_games WHERE user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        row = result.fetchone()
+        return row[0] if row else 0
+
+
+def check_game_limit(user_id: str) -> Tuple[bool, str]:
+    """Check if user can analyze another game.
+
+    Returns:
+        Tuple of (can_analyze, message)
+        - can_analyze: True if user can add another game
+        - message: Error message if blocked, empty string if allowed
+    """
+    subscription = get_user_subscription(user_id)
+    tier = subscription["tier"]
+    game_limit = TIER_GAME_LIMITS.get(tier)
+
+    # No limit for this tier (e.g., Max)
+    if game_limit is None:
+        return (True, "")
+
+    current_games = get_user_game_count(user_id)
+
+    if current_games >= game_limit:
+        return (
+            False,
+            f"You've reached your game limit ({game_limit} games). "
+            f"Upgrade to analyze more games.",
+        )
+
+    return (True, "")
+
+
 def get_credit_status(user_id: str) -> Dict[str, Any]:
-    """Get current credit status for display in UI.
+    """Get current subscription status for display in UI.
 
     Returns:
         Dict with:
-        - balance: Current credit balance
-        - limit: Monthly credit limit
-        - used: Credits used this period
         - tier: Subscription tier
-        - period_end: When credits reset
-        - percent_used: Percentage of limit used
-        - warning: True if over 100% of limit
-        - blocked: True if at hard limit (monthly limit + buffer + bonus credits)
+        - games_used: Number of games analyzed
+        - games_limit: Max games allowed (null = unlimited)
+        - games_remaining: Games remaining (null = unlimited)
+        - at_game_limit: True if at game limit
+        - stripe_customer_id: Stripe customer ID (if any)
+
+        Legacy fields (for backwards compatibility):
+        - balance, limit, used, percent_used, approaching_limit, warning, blocked
     """
     subscription = get_user_subscription(user_id)
+    tier = subscription["tier"]
 
+    # Game limits (new primary model)
+    games_used = get_user_game_count(user_id)
+    games_limit = TIER_GAME_LIMITS.get(tier)
+    games_remaining = None if games_limit is None else max(0, games_limit - games_used)
+    at_game_limit = games_limit is not None and games_used >= games_limit
+
+    # Legacy credit fields (kept for backwards compatibility)
     limit = subscription["credits_monthly_limit"]
     used = subscription["credits_used_this_period"]
     balance = subscription["credits_balance"]
     hard_limit = calculate_hard_limit(limit, used, balance)
-
     percent_used = (used / limit * 100) if limit > 0 else 0
 
     return {
+        # New game-based model
+        "tier": tier,
+        "games_used": games_used,
+        "games_limit": games_limit,
+        "games_remaining": games_remaining,
+        "at_game_limit": at_game_limit,
+        "stripe_customer_id": subscription.get("stripe_customer_id"),
+
+        # Legacy credit fields (for backwards compatibility during migration)
         "balance": balance,
         "limit": limit,
         "used": used,
-        "tier": subscription["tier"],
         "period_end": subscription["current_period_end"].isoformat() if subscription["current_period_end"] else None,
         "percent_used": round(percent_used, 1),
+        "approaching_limit": percent_used >= 80 and percent_used < 100,
         "warning": used >= limit,
-        "blocked": used >= hard_limit,
-        "stripe_customer_id": subscription.get("stripe_customer_id"),
+        "blocked": at_game_limit,  # Now based on game limit, not credits
     }
 
 
@@ -536,11 +612,14 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> Optional[str]:
 
 __all__ = [
     "TIER_LIMITS",
+    "TIER_GAME_LIMITS",
     "TIER_PRICES",
     "CREDIT_COSTS",
     "calculate_hard_limit",
     "get_user_subscription",
     "check_credits_available",
+    "check_game_limit",
+    "get_user_game_count",
     "deduct_credits",
     "add_credits",
     "reset_monthly_credits",

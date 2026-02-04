@@ -15,6 +15,8 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from .chat_agent import AgentContext
 
+from .steam_api import STEAM_LANGUAGES
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,6 +146,27 @@ SUBCATEGORY_ALIASES = {
     "menu": ["ui_ux_accessibility/menus_hud"],
     "tutorial": ["onboarding/tutorial"],
 }
+
+
+def _normalize_language_filter(language: Optional[str]) -> Optional[str]:
+    """Normalize a language filter to a Steam language key, or return None.
+
+    The chat UI sends locale codes like "en" for response language. We only
+    apply a language filter when the value matches a Steam review language.
+    """
+    if not language:
+        return None
+    lang = str(language).strip().lower()
+    if not lang or lang == "all":
+        return None
+    return lang if lang in STEAM_LANGUAGES else None
+
+
+def _resolve_language_filter(params: Dict[str, Any], context: "AgentContext") -> Optional[str]:
+    """Return the effective review-language filter from params/context."""
+    if "language" in params:
+        return _normalize_language_filter(params.get("language"))
+    return _normalize_language_filter(getattr(context, "language", None))
 
 
 def disambiguate_subcategory(
@@ -300,19 +323,6 @@ class Tool(BaseModel):
 
 # Tool definitions for the chat agent
 CHAT_TOOLS = [
-    Tool(
-        name="list_available_games",
-        description="List all games available for analysis (user's starred games). Use this when user asks about a game by name and you need to find its app_id, or when user wants to know what games they can analyze.",
-        parameters={}
-    ),
-    Tool(
-        name="suggest_game_selection",
-        description="Suggest games for the user to select. Use this when user mentions a game name that matches one or more available games. The frontend will show selection buttons.",
-        parameters={
-            "games": "list[dict] - List of games to suggest, each with 'app_id' and 'name' (required)",
-            "message": "str - Message to show the user explaining the suggestion (required)",
-        }
-    ),
     Tool(
         name="suggest_search_game",
         description="Suggest the user to search for a game. Use this when user asks about a game that is NOT in their starred games list. Shows a button to go to the home page and search.",
@@ -521,22 +531,6 @@ def format_tools_for_gemini() -> List[Dict[str, Any]]:
 
                 items = {"type": item_type}
 
-                # Special-case: suggest_game_selection expects list[dict] with app_id + name.
-                if (
-                    tool.name == "suggest_game_selection"
-                    and param_name == "games"
-                    and item_type == "object"
-                ):
-                    items = {
-                        "type": "object",
-                        "description": "A game option with Steam app_id and display name.",
-                        "properties": {
-                            "app_id": {"type": "integer", "description": "Steam app ID"},
-                            "name": {"type": "string", "description": "Game name"},
-                        },
-                        "required": ["app_id", "name"],
-                    }
-
             prop = {"type": json_type, "description": description}
             if items is not None:
                 prop["items"] = items
@@ -593,8 +587,6 @@ LANGUAGE_SENSITIVE_TOOLS = {
 # Tools that should NOT be cached (may have different results or side effects)
 NON_CACHEABLE_TOOLS = {
     "search_reviews",  # May want fresh results
-    "list_available_games",  # User might have added new games
-    "suggest_game_selection",
     "suggest_search_game",
     "clarify_question",
     "final_answer",
@@ -639,13 +631,7 @@ def execute_tool(tool_name: str, params: Dict[str, Any], context: "AgentContext"
     try:
         result: Optional[ToolResult] = None
 
-        if tool_name == "list_available_games":
-            result = _execute_list_available_games(params, context)
-
-        elif tool_name == "suggest_game_selection":
-            return _execute_suggest_game_selection(params, context)
-
-        elif tool_name == "suggest_search_game":
+        if tool_name == "suggest_search_game":
             return _execute_suggest_search_game(params, context)
 
         elif tool_name == "get_game_overview":
@@ -726,46 +712,6 @@ def execute_tool(tool_name: str, params: Dict[str, Any], context: "AgentContext"
             str(e),
             retryable=True  # Unknown errors may be transient
         ).to_dict()
-
-
-def _execute_list_available_games(params: Dict[str, Any], context: "AgentContext") -> ToolResult:
-    """Execute list_available_games tool - returns user's starred games."""
-    from . import storage
-
-    try:
-        starred = storage.load_starred_games(context.user_id)
-        games = [
-            {
-                "app_id": g.get("app_id"),
-                "name": g.get("name", f"Game {g.get('app_id')}"),
-            }
-            for g in starred
-        ]
-        return ToolResult(data={
-            "available_games": games,
-            "count": len(games),
-        })
-    except Exception as e:
-        logger.exception("Failed to list available games")
-        return _make_error(
-            ToolErrorCode.DB_ERROR,
-            f"Failed to load starred games: {str(e)}",
-            retryable=True,
-            available_games=[],
-            count=0
-        )
-
-
-def _execute_suggest_game_selection(params: Dict[str, Any], context: "AgentContext") -> Dict[str, Any]:
-    """Execute suggest_game_selection tool - returns game suggestions for frontend."""
-    games = params.get("games", [])
-    message = params.get("message", "Please select a game:")
-
-    return {
-        "suggest_selection": True,
-        "games": games,
-        "message": message,
-    }
 
 
 def _execute_suggest_search_game(params: Dict[str, Any], context: "AgentContext") -> Dict[str, Any]:
@@ -889,12 +835,12 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
     sentiment = params.get("sentiment")
     requested_limit = params.get("limit", 10)
     requested_offset = params.get("offset", 0)
-    default_limit = getattr(context, "max_reviews_per_game", 100) or 100
+    default_limit = getattr(context, "max_reviews_per_game", 50) or 50
     try:
         requested_limit_int = int(requested_limit) if requested_limit is not None else int(default_limit)
     except (TypeError, ValueError):
         requested_limit_int = int(default_limit)
-    limit = max(1, min(requested_limit_int, int(default_limit), 100))  # Hard cap at 100 for agent queries
+    limit = max(1, min(requested_limit_int, int(default_limit), 50))  # Hard cap at 50 for agent queries
 
     try:
         offset = int(requested_offset or 0)
@@ -903,7 +849,7 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
     offset = max(0, offset)
 
     date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
-    language = (params.get("language") or getattr(context, "language", None))
+    language = _resolve_language_filter(params, context)
 
     try:
         # Disambiguate subcategory if provided
@@ -995,10 +941,8 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
                 language=language,
             )
 
-        # Sort combined results by helpfulness (votes_up)
-        if resolved_subcategory and query:
-            # When combining subcategory + keyword results, sort by votes_up
-            reviews.sort(key=lambda r: r.get("votes_up", 0), reverse=True)
+        # Always sort by helpfulness (votes_up) to return the most helpful reviews
+        reviews.sort(key=lambda r: r.get("votes_up", 0), reverse=True)
 
         has_more = len(reviews) > limit
         if has_more:
@@ -1056,7 +1000,7 @@ def _execute_get_subcategory_stats(params: Dict[str, Any], context: "AgentContex
         )
 
     date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
-    language = (params.get("language") or getattr(context, "language", None))
+    language = _resolve_language_filter(params, context)
     sentiment = params.get("sentiment")
 
     try:
@@ -1206,7 +1150,7 @@ def _execute_get_top_issues(params: Dict[str, Any], context: "AgentContext") -> 
     category_filter = params.get("category")
     date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
     sentiment = params.get("sentiment")
-    language = (params.get("language") or getattr(context, "language", None))
+    language = _resolve_language_filter(params, context)
 
     try:
         game_name = context.game_names.get(int(app_id), f"Game {app_id}")
@@ -1345,7 +1289,7 @@ def _execute_get_feature_requests(params: Dict[str, Any], context: "AgentContext
     category_filter = params.get("category")
     date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
     sentiment = params.get("sentiment")
-    language = (params.get("language") or getattr(context, "language", None))
+    language = _resolve_language_filter(params, context)
 
     try:
         if (date_filter and date_filter != "all") or sentiment or language:
@@ -1477,7 +1421,7 @@ def _execute_list_available_topics(params: Dict[str, Any], context: "AgentContex
     category_prefix = f"{category}/" if category else ""
     date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
     sentiment = params.get("sentiment")
-    language = (params.get("language") or getattr(context, "language", None))
+    language = _resolve_language_filter(params, context)
 
     try:
         if (date_filter and date_filter != "all") or sentiment or language:
@@ -1616,6 +1560,9 @@ def _execute_get_top_praises(params: Dict[str, Any], context: "AgentContext") ->
 
     category = (params.get("category") or "").strip().lower()
     category_prefix = f"{category}/" if category else ""
+    date_filter = (params.get("date_filter") or getattr(context, "date_filter", "all") or "all")
+    sentiment = params.get("sentiment")
+    language = _resolve_language_filter(params, context)
 
     try:
         if (date_filter and date_filter != "all") or sentiment or language:
@@ -1796,7 +1743,7 @@ def _execute_compare_time_windows(params: Dict[str, Any], context: "AgentContext
 
     category = params.get("category")
     sentiment = params.get("sentiment")
-    language = (params.get("language") or getattr(context, "language", None))
+    language = _resolve_language_filter(params, context)
 
     subcategory = params.get("subcategory")
     if subcategory:

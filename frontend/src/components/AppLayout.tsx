@@ -39,11 +39,12 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
       { href: "/chat", label: t('nav.chat'), code: "02" },
       { href: "/compare", label: t('nav.compare'), code: "03" },
-      { href: "/reports", label: t('nav.reports'), code: "04", restricted: true, icon: LOCK_ICON },
-      { href: "/database", label: t('nav.database'), code: "05", restricted: true, icon: LOCK_ICON },
+      { href: "/reports", label: t('nav.reports'), code: "04" },
+      { href: "/support", label: t('nav.support'), code: "0S" },
     ];
 
     if (isAdmin) {
+      items.push({ href: "/database", label: t('nav.database'), code: "05" });
       items.push({ href: "/admin", label: "Admin", code: "0A" });
     }
 
@@ -113,11 +114,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                     <span className={clsx("text-[10px] font-mono", codeClasses)}>
                       {item.code}
                     </span>
-                    {item.icon ? (
-                      <span className={clsx(restricted ? "text-orange-300/80" : "text-slate-400")}>
-                        {item.icon}
-                      </span>
-                    ) : null}
                     <span className="text-xs uppercase tracking-[0.2em]">{item.label}</span>
                     {active && (
                       <span className={clsx("ml-auto w-1.5 h-1.5 rounded-full", restricted ? "bg-orange-400" : "bg-sky-500")} />
@@ -137,64 +133,63 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Bottom section */}
             <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
-              {/* Game Limit Bar */}
+              {/* Game Limit Bar (for Free/Pro tiers) */}
               <GameLimitBar />
 
-              {/* User Profile - Fully Clickable */}
+              {/* Combined User Profile + Settings */}
               <SignedIn>
-                <button
-                  onClick={() => openUserProfile()}
-                  className="w-full flex items-center gap-3 p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 hover:border-[rgb(0,255,255)]/30 hover:bg-[rgb(10,10,25)] transition-all group text-left"
-                >
-                  {/* Avatar */}
-                  <div className="relative">
-                    {user?.imageUrl ? (
-                      <img
-                        src={user.imageUrl}
-                        alt="Profile"
-                        className="h-10 w-10 rounded-full border border-[rgb(0,255,255)]/30 group-hover:border-[rgb(0,255,255)]/60 transition-colors"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 flex items-center justify-center">
-                        <span className="text-[rgb(0,255,255)] text-sm font-bold">
-                          {user?.firstName?.[0] || user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() || '?'}
-                        </span>
-                      </div>
-                    )}
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[rgb(0,255,136)] rounded-full border-2 border-[rgb(10,10,25)]" />
-                  </div>
-                  {/* User Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[rgb(200,200,210)] truncate group-hover:text-white transition-colors">
-                      {user?.firstName || user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 'User'}
-                    </p>
-                    <p className="text-[9px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50 group-hover:text-[rgb(0,255,255)]/70 transition-colors">
-                      Manage Account
-                    </p>
-                  </div>
-                  {/* Arrow */}
-                  <span className="text-[rgb(0,255,255)]/30 group-hover:text-[rgb(0,255,255)] transition-colors">
-                    →
-                  </span>
-                </button>
-              </SignedIn>
+                <div className="border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)]/50 overflow-hidden">
+                  {/* User Profile Section */}
+                  <button
+                    onClick={() => openUserProfile()}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-[rgb(0,255,255)]/5 transition-all group text-left border-b border-[rgb(0,255,255)]/10"
+                  >
+                    {/* Avatar */}
+                    <div className="relative">
+                      {user?.imageUrl ? (
+                        <img
+                          src={user.imageUrl}
+                          alt="Profile"
+                          className="h-9 w-9 rounded-full border border-[rgb(0,255,255)]/30 group-hover:border-[rgb(0,255,255)]/60 transition-colors"
+                        />
+                      ) : (
+                        <div className="h-9 w-9 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 flex items-center justify-center">
+                          <span className="text-[rgb(0,255,255)] text-sm font-bold">
+                            {user?.firstName?.[0] || user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() || '?'}
+                          </span>
+                        </div>
+                      )}
+                      <span className="absolute bottom-0 right-0 w-2 h-2 bg-[rgb(0,255,136)] rounded-full border-2 border-[rgb(10,10,25)]" />
+                    </div>
+                    {/* User Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[rgb(200,200,210)] truncate group-hover:text-white transition-colors">
+                        {user?.firstName || user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 'User'}
+                      </p>
+                      <p className="text-[9px] uppercase tracking-[0.15em] text-[rgb(0,255,255)]/40 group-hover:text-[rgb(0,255,255)]/60 transition-colors">
+                        Account
+                      </p>
+                    </div>
+                  </button>
 
-              {/* Settings Link */}
-              <Link
-                href="/settings"
-                className={clsx(
-                  "flex items-center gap-3 px-4 py-3 transition-all duration-200",
-                  isActiveRoute("/settings")
-                    ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-[rgb(0,255,255)]"
-                    : "border border-[rgb(0,255,255)]/10 text-[rgb(150,150,170)] hover:text-[rgb(0,255,255)] hover:border-[rgb(0,255,255)]/30 hover:bg-[rgb(0,255,255)]/5"
-                )}
-              >
-                <span className="text-sm">⚙</span>
-                <span className="text-xs uppercase tracking-[0.2em]">{t('nav.settings')}</span>
-                {isActiveRoute("/settings") && (
-                  <span className="ml-auto w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
-                )}
-              </Link>
+                  {/* Settings Link */}
+                  <Link
+                    href="/settings"
+                    className={clsx(
+                      "flex items-center gap-3 px-3 py-2.5 transition-all duration-200",
+                      isActiveRoute("/settings")
+                        ? "bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)]"
+                        : "text-[rgb(150,150,170)] hover:text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/5"
+                    )}
+                  >
+                    <span className="text-sm">⚙</span>
+                    <span className="text-xs uppercase tracking-[0.2em]">{t('nav.settings')}</span>
+                    {isActiveRoute("/settings") && (
+                      <span className="ml-auto w-1.5 h-1.5 bg-[rgb(0,255,255)] rounded-full" />
+                    )}
+                  </Link>
+                </div>
+              </SignedIn>
             </div>
           </div>
         </aside>

@@ -13,6 +13,9 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
+# Maximum reviews to keep per game (older reviews are deleted on refresh)
+MAX_REVIEWS_PER_GAME = 1000
+
 
 def _parse_json_field(val: Any, default: Any = None) -> Any:
     """Parse a JSON field (PostgreSQL JSONB returns dict/list directly)."""
@@ -389,6 +392,59 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
 
         conn.commit()
     return count
+
+
+def enforce_review_limit(app_id: int, max_reviews: int = MAX_REVIEWS_PER_GAME) -> int:
+    """Delete oldest reviews beyond the limit for a game.
+
+    Keeps the most recent `max_reviews` reviews based on timestamp_created.
+    Also deletes associated labels for removed reviews.
+
+    Returns number of reviews deleted.
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        # First, get the review IDs to delete (oldest beyond limit)
+        result = conn.execute(
+            text("""
+                SELECT review_id FROM reviews
+                WHERE app_id = :app_id
+                ORDER BY timestamp_created DESC
+                OFFSET :max_reviews
+            """),
+            {"app_id": app_id, "max_reviews": max_reviews},
+        )
+        review_ids_to_delete = [row[0] for row in result.fetchall()]
+
+        if not review_ids_to_delete:
+            return 0
+
+        # Delete associated labels first (foreign key constraint)
+        conn.execute(
+            text("""
+                DELETE FROM review_labels
+                WHERE review_id = ANY(:review_ids)
+            """),
+            {"review_ids": review_ids_to_delete},
+        )
+
+        # Delete the old reviews
+        result = conn.execute(
+            text("""
+                DELETE FROM reviews
+                WHERE review_id = ANY(:review_ids)
+            """),
+            {"review_ids": review_ids_to_delete},
+        )
+        deleted_count = result.rowcount
+
+        conn.commit()
+
+        if deleted_count > 0:
+            logger.info(f"Enforced review limit for app {app_id}: deleted {deleted_count} old reviews")
+
+        return deleted_count
 
 
 def load_reviews(app_id: int, limit: Optional[int] = None) -> List[dict]:
@@ -1816,6 +1872,166 @@ def clear_chat_history(user_id: str, session_id: str = None) -> int:
     return count
 
 
+# Support Message Functions
+
+def _format_support_message(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize support message rows for API responses."""
+    if row is None:
+        return {}
+    created_at = row["created_at"].isoformat() if row.get("created_at") else None
+    return {
+        "id": row.get("id"),
+        "thread_id": row.get("thread_id"),
+        "user_id": row.get("user_id"),
+        "sender_id": row.get("sender_id"),
+        "sender_role": row.get("sender_role"),
+        "message": row.get("message"),
+        "created_at": created_at,
+        "read_by_admin": bool(row.get("read_by_admin")),
+        "read_by_user": bool(row.get("read_by_user")),
+    }
+
+
+def save_support_message(
+    *,
+    user_id: str,
+    sender_id: str,
+    sender_role: str,
+    message: str,
+) -> Dict[str, Any]:
+    """Save a support message (user/admin)."""
+    from . import db as db_module
+    clean_message = (message or "").strip()
+    if not clean_message:
+        raise ValueError("Message cannot be empty.")
+    thread_id = user_id
+    read_by_admin = sender_role == "admin"
+    read_by_user = sender_role == "user"
+    with db_module.get_connection() as conn:
+        row = conn.execute(
+            text("""
+            INSERT INTO support_messages
+                (thread_id, user_id, sender_id, sender_role, message, read_by_admin, read_by_user)
+            VALUES
+                (:thread_id, :user_id, :sender_id, :sender_role, :message, :read_by_admin, :read_by_user)
+            RETURNING id, thread_id, user_id, sender_id, sender_role, message, created_at, read_by_admin, read_by_user
+            """),
+            {
+                "thread_id": thread_id,
+                "user_id": user_id,
+                "sender_id": sender_id,
+                "sender_role": sender_role,
+                "message": clean_message,
+                "read_by_admin": read_by_admin,
+                "read_by_user": read_by_user,
+            },
+        ).mappings().fetchone()
+        conn.commit()
+    return _format_support_message(row)
+
+
+def load_support_thread(user_id: str, limit: int = 200) -> List[Dict[str, Any]]:
+    """Load support thread messages for a user."""
+    from . import db as db_module
+    safe_limit = max(1, min(int(limit or 200), 500))
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+            SELECT id, thread_id, user_id, sender_id, sender_role, message, created_at, read_by_admin, read_by_user
+            FROM support_messages
+            WHERE user_id = :user_id
+            ORDER BY created_at DESC
+            LIMIT :limit
+            """),
+            {"user_id": user_id, "limit": safe_limit},
+        ).mappings().fetchall()
+
+    messages = [_format_support_message(row) for row in reversed(rows)]
+    return messages
+
+
+def mark_support_thread_read_by_admin(user_id: str) -> int:
+    """Mark all messages in a thread as read by admin."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        cursor = conn.execute(
+            text("""
+            UPDATE support_messages
+            SET read_by_admin = TRUE
+            WHERE user_id = :user_id AND read_by_admin = FALSE
+            """),
+            {"user_id": user_id},
+        )
+        count = cursor.rowcount
+        conn.commit()
+    return count
+
+
+def mark_support_thread_read_by_user(user_id: str) -> int:
+    """Mark all messages in a thread as read by the user."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        cursor = conn.execute(
+            text("""
+            UPDATE support_messages
+            SET read_by_user = TRUE
+            WHERE user_id = :user_id AND read_by_user = FALSE
+            """),
+            {"user_id": user_id},
+        )
+        count = cursor.rowcount
+        conn.commit()
+    return count
+
+
+def list_support_threads(limit: int = 100) -> List[Dict[str, Any]]:
+    """List support threads with unread counts for admin inbox."""
+    from . import db as db_module
+    safe_limit = max(1, min(int(limit or 100), 500))
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+            SELECT
+                sm.user_id,
+                MAX(sm.created_at) AS last_message_at,
+                COUNT(*) AS message_count,
+                SUM(CASE WHEN sm.sender_role = 'user' AND sm.read_by_admin = FALSE THEN 1 ELSE 0 END) AS unread_count,
+                (
+                    SELECT message
+                    FROM support_messages sm2
+                    WHERE sm2.user_id = sm.user_id
+                    ORDER BY sm2.created_at DESC
+                    LIMIT 1
+                ) AS last_message,
+                (
+                    SELECT sender_role
+                    FROM support_messages sm2
+                    WHERE sm2.user_id = sm.user_id
+                    ORDER BY sm2.created_at DESC
+                    LIMIT 1
+                ) AS last_sender_role
+            FROM support_messages sm
+            GROUP BY sm.user_id
+            ORDER BY last_message_at DESC
+            LIMIT :limit
+            """),
+            {"limit": safe_limit},
+        ).mappings().fetchall()
+
+    threads: List[Dict[str, Any]] = []
+    for row in rows:
+        last_message_at = row["last_message_at"].isoformat() if row.get("last_message_at") else None
+        threads.append({
+            "user_id": row["user_id"],
+            "last_message_at": last_message_at,
+            "last_message": row.get("last_message"),
+            "last_sender_role": row.get("last_sender_role"),
+            "message_count": int(row.get("message_count") or 0),
+            "unread_count": int(row.get("unread_count") or 0),
+        })
+    return threads
+
+
 def _parse_date_filter(date_filter: str) -> Optional[int]:
     """Convert date filter string to days. Returns None for 'all'."""
     if not date_filter or date_filter == "all":
@@ -2009,8 +2225,18 @@ def get_subcategory_label_counts(
         {limit_clause}
     """
 
-    with db_module.get_connection() as conn:
-        rows = conn.execute(text(query_sql), params).fetchall()
+    def _run_query() -> List[Any]:
+        with db_module.get_connection() as conn:
+            return conn.execute(text(query_sql), params).fetchall()
+
+    try:
+        rows = _run_query()
+    except Exception as exc:
+        if "deadlock detected" in str(exc).lower():
+            time.sleep(0.2)
+            rows = _run_query()
+        else:
+            raise
 
     return [
         {
@@ -2113,8 +2339,19 @@ def get_subcategory_label_counts_range(
         {limit_clause}
     """
 
-    with db_module.get_connection() as conn:
-        rows = conn.execute(text(query_sql), params).fetchall()
+    def _run_query() -> List[Any]:
+        with db_module.get_connection() as conn:
+            return conn.execute(text(query_sql), params).fetchall()
+
+    try:
+        rows = _run_query()
+    except Exception as exc:
+        if "deadlock detected" in str(exc).lower():
+            import time as _time
+            _time.sleep(0.2)
+            rows = _run_query()
+        else:
+            raise
 
     return [
         {
@@ -2619,7 +2856,7 @@ def get_reviews_by_subcategory(
     with db_module.get_connection() as conn:
         result = conn.execute(
             text(f"""
-                SELECT DISTINCT r.data
+                SELECT r.data
                 FROM reviews r
                 JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
                 WHERE {where_sql}

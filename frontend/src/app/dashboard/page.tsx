@@ -1496,6 +1496,8 @@ function AnalysisResults({
           review_id: String(r.review_id ?? ""),
           review: r.review ?? "",
           voted_up: r.voted_up,
+          llm_subcategory_evidence: r.llm_subcategory_evidence ?? {},
+          llm_subcategories: r.llm_subcategories ?? [],
         })),
       });
       setSubcategorySummary(result);
@@ -1549,26 +1551,13 @@ function AnalysisResults({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {onUpdate && (
+        {onUpdate && (
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <Button onClick={onUpdate} variant="ghost" size="sm">
               Update
             </Button>
-          )}
-          <Button
-            onClick={() => {
-              router.push('/database');
-            }}
-            className="inline-flex items-center gap-2 bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500"
-          >
-            <svg className="h-3.5 w-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <rect x="5" y="10" width="14" height="10" rx="3" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10V8a4 4 0 118 0v2" />
-              <circle cx="12" cy="15" r="1.2" />
-            </svg>
-            <span className="text-amber-400">{t('dashboard.openReviews')}</span>
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
 
         <div className="mt-4 flex items-center gap-3">

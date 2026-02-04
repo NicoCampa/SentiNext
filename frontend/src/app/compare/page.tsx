@@ -563,7 +563,7 @@ function ComparisonDashboard({
                             return subcats.some((s: string) => normalizeSubcategoryKey({ subcategory: s } as any) === reviewsModal.subcategory);
                           })
                           .sort((a: any, b: any) => (b.votes_up ?? 0) - (a.votes_up ?? 0))
-                          .slice(0, 30);
+                          .slice(0, 50);
 
                         return {
                           app_id: game.appId,

@@ -366,6 +366,37 @@ def init_postgresql_schema() -> None:
             ON chat_messages(user_id, session_id, created_at DESC)
         """))
 
+        # Support messages table
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS support_messages (
+                id SERIAL PRIMARY KEY,
+                thread_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                sender_id TEXT NOT NULL,
+                sender_role TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                read_by_admin BOOLEAN NOT NULL DEFAULT FALSE,
+                read_by_user BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_support_messages_user
+            ON support_messages(user_id, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_support_messages_thread
+            ON support_messages(thread_id, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_support_messages_admin_unread
+            ON support_messages(created_at DESC) WHERE read_by_admin = FALSE
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_support_messages_user_unread
+            ON support_messages(created_at DESC) WHERE read_by_user = FALSE
+        """))
+
         # Full-text search using tsvector (PostgreSQL specific)
         conn.execute(text("""
             ALTER TABLE reviews

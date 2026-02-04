@@ -449,6 +449,160 @@
       box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
     }
 
+    /* Problem Scale Visualization */
+    .problem-scale {
+      margin-top: 3rem;
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .scale-metric {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 0, 128, 0.3);
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+      opacity: 0;
+      animation: fade-slide-up 0.6s ease forwards;
+    }
+
+    .scale-metric:nth-child(1) { animation-delay: 0.1s; }
+    .scale-metric:nth-child(2) { animation-delay: 0.3s; }
+    .scale-metric:nth-child(3) { animation-delay: 0.5s; }
+
+    .scale-metric::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg,
+        transparent,
+        rgba(255, 0, 128, 0.5),
+        transparent);
+      animation: scan-line 3s linear infinite;
+    }
+
+    @keyframes scan-line {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .metric-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .metric-label {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex: 1;
+    }
+
+    .metric-icon {
+      font-size: 1.5rem;
+      opacity: 0.8;
+    }
+
+    .metric-text {
+      font-size: 0.95rem;
+      color: var(--slate-300);
+      line-height: 1.4;
+    }
+
+    .metric-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--pink);
+      font-family: monospace;
+      text-shadow: 0 0 20px rgba(255, 0, 128, 0.5);
+      white-space: nowrap;
+    }
+
+    .progress-bar-container {
+      margin-top: 1rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg,
+        rgba(255, 0, 128, 0.8),
+        rgba(239, 68, 68, 0.8));
+      border-radius: 4px;
+      position: relative;
+      animation: progress-fill 2s ease-out forwards;
+    }
+
+    .progress-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 40px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3));
+      animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes progress-fill {
+      from { width: 0%; }
+    }
+
+    @keyframes shimmer {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 1; }
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+      font-size: 0.7rem;
+      color: var(--slate-400);
+      font-family: monospace;
+      text-transform: uppercase;
+    }
+
+    .conversion-flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      font-family: monospace;
+      margin-top: 0.5rem;
+    }
+
+    .conversion-arrow {
+      color: var(--pink);
+      font-size: 1.5rem;
+    }
+
+    .conversion-number {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .conversion-number.bad {
+      color: var(--pink);
+    }
+
+    .conversion-number.worse {
+      color: rgb(239, 68, 68);
+    }
+
     /* Bullet List */
     .bullet-list {
       text-align: left;
@@ -673,38 +827,38 @@
     <section class="slide" data-slide="2">
       <div class="slide-content">
         <h2>LA SFIDA</h2>
-        <p style="max-width: 700px; margin: 0 auto 3rem; font-size: 1.125rem;">Gli sviluppatori di giochi affrontano ostacoli critici nel comprendere il feedback dei giocatori</p>
+        <p style="max-width: 700px; margin: 0 auto 3rem; font-size: 1.125rem;">Il feedback dei giocatori è sommerso dal volume. Domande critiche restano senza risposta.</p>
 
         <div class="bullet-list">
           <div class="bullet-item">
-            <div class="bullet-icon">⏱</div>
-            <div class="bullet-content">
-              <h3>Analisi Dispendiosa</h3>
-              <p>L'analisi manuale delle recensioni richiede oltre 20 ore a settimana con risultati incoerenti</p>
-            </div>
-          </div>
-
-          <div class="bullet-item">
-            <div class="bullet-icon">🔍</div>
-            <div class="bullet-content">
-              <h3>Problemi Critici Nascosti</h3>
-              <p>Bug importanti e preoccupazioni dei giocatori si perdono in migliaia di recensioni</p>
-            </div>
-          </div>
-
-          <div class="bullet-item">
             <div class="bullet-icon">📊</div>
             <div class="bullet-content">
-              <h3>Trend di Sentiment Poco Chiari</h3>
-              <p>Tracciare i cambiamenti di sentiment tra gli aggiornamenti è quasi impossibile manualmente</p>
+              <h3>10,000+ Recensioni per Gioco</h3>
+              <p>Impossibile leggere e categorizzare manualmente ogni review in modo efficace</p>
             </div>
           </div>
 
           <div class="bullet-item">
-            <div class="bullet-icon">⚠️</div>
+            <div class="bullet-icon">❓</div>
             <div class="bullet-content">
-              <h3>Rischi di Rimborso Inosservati</h3>
-              <p>I segnali di allarme passano inosservati finché i tassi di rimborso non aumentano</p>
+              <h3>Quali Problemi Sono Più Urgenti?</h3>
+              <p>Bug tecnici o game design? Senza dati strutturati è impossibile prioritizzare</p>
+            </div>
+          </div>
+
+          <div class="bullet-item">
+            <div class="bullet-icon">⚡</div>
+            <div class="bullet-content">
+              <h3>Flusso Continuo di Feedback</h3>
+              <p>Nuove recensioni ogni ora richiedono monitoraggio costante che nessuno ha tempo di fare</p>
+            </div>
+          </div>
+
+          <div class="bullet-item">
+            <div class="bullet-icon">❓</div>
+            <div class="bullet-content">
+              <h3>L'Ultimo Update Ha Funzionato?</h3>
+              <p>Nessuna visibilità chiara sull'impatto reale degli aggiornamenti sul sentiment</p>
             </div>
           </div>
         </div>
@@ -892,25 +1046,6 @@
       <div class="slide-content">
         <h2>INTELLIGENCE AZIONABILE</h2>
         <p style="max-width: 700px; margin: 0 auto 3rem; font-size: 1.125rem;">Prendi decisioni migliori con insight basati sui dati</p>
-
-        <div class="metrics-grid">
-          <div class="metric">
-            <div class="metric-value">20+ ore</div>
-            <div class="metric-label">Risparmiate a settimana</div>
-          </div>
-          <div class="metric">
-            <div class="metric-value">Top 10</div>
-            <div class="metric-label">Problemi identificati istantaneamente</div>
-          </div>
-          <div class="metric">
-            <div class="metric-value">Real-time</div>
-            <div class="metric-label">Monitoraggio continuo</div>
-          </div>
-          <div class="metric">
-            <div class="metric-value">Precoce</div>
-            <div class="metric-label">Rilevamento rischi</div>
-          </div>
-        </div>
 
         <a href="https://sentinext.nicolocampagnoli.com" target="_blank" class="cta-button">Inizia ad Analizzare il Tuo Gioco Oggi</a>
 

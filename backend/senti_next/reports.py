@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
+from jinja2 import Environment, FileSystemLoader
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -23,6 +26,9 @@ from reportlab.platypus import (
 from .analysis import summarize_playtime, summarize_sentiment
 
 logger = logging.getLogger(__name__)
+
+# Template directory
+TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 def get_available_months(app_id: int, user_id: str) -> List[Dict[str, Any]]:
@@ -273,8 +279,68 @@ def calculate_monthly_insights(reviews_df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
+def create_dashboard_html(data: Dict[str, Any], game_name: str, period: str) -> str:
+    """Generate HTML dashboard report from Jinja2 template.
+
+    Args:
+        data: Monthly insights data from calculate_monthly_insights()
+        game_name: Name of the game
+        period: Report period label (e.g., "January 2024")
+
+    Returns:
+        HTML string of the dashboard report
+    """
+    env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
+    template = env.get_template("report_dashboard.html")
+
+    generated_at = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+
+    return template.render(
+        data=data,
+        game_name=game_name,
+        period=period,
+        generated_at=generated_at,
+    )
+
+
+def create_dashboard_pdf(data: Dict[str, Any], game_name: str, period: str) -> bytes:
+    """Generate 1-page PDF dashboard report using WeasyPrint.
+
+    Args:
+        data: Monthly insights data from calculate_monthly_insights()
+        game_name: Name of the game
+        period: Report period label (e.g., "January 2024")
+
+    Returns:
+        PDF bytes
+    """
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        logger.warning("WeasyPrint not installed, falling back to legacy PDF")
+        return create_pdf_report_legacy(data, game_name, period)
+
+    html_content = create_dashboard_html(data, game_name, period)
+
+    try:
+        pdf_bytes = HTML(string=html_content).write_pdf()
+        return pdf_bytes
+    except Exception as e:
+        logger.error(f"WeasyPrint PDF generation failed: {e}, falling back to legacy")
+        return create_pdf_report_legacy(data, game_name, period)
+
+
 def create_pdf_report(data: Dict[str, Any], game_name: str, period: str) -> bytes:
-    """Generate PDF executive summary report using ReportLab.
+    """Generate PDF executive summary report.
+
+    This is the main entry point - uses the new dashboard PDF by default,
+    falls back to legacy if WeasyPrint is not available.
+    """
+    return create_dashboard_pdf(data, game_name, period)
+
+
+def create_pdf_report_legacy(data: Dict[str, Any], game_name: str, period: str) -> bytes:
+    """Generate PDF executive summary report using ReportLab (legacy 6-page version).
 
     PDF Structure:
     - Page 1: Cover & Overview

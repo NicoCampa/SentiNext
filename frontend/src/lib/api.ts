@@ -717,10 +717,6 @@ export interface EnhancedChatResponse {
   clarification_options?: string[];
   /** Number of tool calls made by agent (for debugging) */
   tool_calls_made?: number;
-  /** True if the agent is suggesting games to select */
-  suggest_game_selection?: boolean;
-  /** Games suggested for selection */
-  suggested_games?: Array<{ app_id: number; name: string }>;
   /** True if the agent suggests searching for a game (not found in starred) */
   suggest_search_game?: boolean;
   /** The game name that wasn't found */
@@ -882,6 +878,75 @@ export async function fetchAdminChatHistory(
     cache: "no-store",
   });
   return handleResponse<AdminChatMessage[]>(response);
+}
+
+// ============================================================================
+// Support Messaging API
+// ============================================================================
+
+export interface SupportMessage {
+  id: number;
+  thread_id: string;
+  user_id: string;
+  sender_id: string;
+  sender_role: "user" | "admin";
+  message: string;
+  created_at?: string | null;
+  read_by_admin: boolean;
+  read_by_user: boolean;
+}
+
+export interface SupportThreadSummary {
+  user_id: string;
+  last_message_at?: string | null;
+  last_message?: string | null;
+  last_sender_role?: "user" | "admin" | null;
+  message_count: number;
+  unread_count: number;
+}
+
+export async function fetchSupportThread(): Promise<SupportMessage[]> {
+  const response = await authFetch(apiUrl("/support/thread"), {
+    cache: "no-store",
+  });
+  return handleResponse<SupportMessage[]>(response);
+}
+
+export async function sendSupportMessage(message: string): Promise<SupportMessage> {
+  const response = await authFetch(apiUrl("/support/message"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  return handleResponse<SupportMessage>(response);
+}
+
+export async function fetchAdminSupportThreads(limit: number = 100): Promise<SupportThreadSummary[]> {
+  const response = await authFetch(apiUrl(`/admin/support/threads?limit=${limit}`), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<SupportThreadSummary[]>(response);
+}
+
+export async function fetchAdminSupportThread(userId: string): Promise<SupportMessage[]> {
+  const response = await authFetch(apiUrl(`/admin/support/thread/${encodeURIComponent(userId)}`), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<SupportMessage[]>(response);
+}
+
+export async function sendAdminSupportReply(userId: string, message: string): Promise<SupportMessage> {
+  const response = await authFetch(apiUrl(`/admin/support/thread/${encodeURIComponent(userId)}/reply`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...optionalAdminHeaders(),
+    },
+    body: JSON.stringify({ message }),
+  });
+  return handleResponse<SupportMessage>(response);
 }
 
 export interface AdminDashboardTierCount {
@@ -1126,9 +1191,15 @@ export interface CreditStatus {
   tier: SubscriptionTier;
   period_end: string | null;
   percent_used: number;
-  warning: boolean;
-  blocked: boolean;
+  approaching_limit: boolean;  // True if 80-99% of limit used
+  warning: boolean;            // True if 100%+ of limit used
+  blocked: boolean;            // Now based on game limit
   stripe_customer_id: string | null;
+  // Game-based limits (new system)
+  games_used: number;
+  games_limit: number | null;  // null = unlimited
+  games_remaining: number | null;  // null = unlimited
+  at_game_limit: boolean;
 }
 
 export interface CreditEstimate {
@@ -1182,7 +1253,8 @@ export async function fetchCreditEstimate(
 export async function createCheckoutSession(
   tier: "pro" | "max",
   successUrl: string,
-  cancelUrl: string
+  cancelUrl: string,
+  billingPeriod: "monthly" | "annual" = "monthly"
 ): Promise<CheckoutResponse> {
   const response = await authFetch(apiUrl("/credits/checkout"), {
     method: "POST",
@@ -1191,6 +1263,7 @@ export async function createCheckoutSession(
       tier,
       success_url: successUrl,
       cancel_url: cancelUrl,
+      billing_period: billingPeriod,
     }),
   });
   return handleResponse<CheckoutResponse>(response);

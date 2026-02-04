@@ -409,7 +409,7 @@ class SimpleChatRequest(BaseModel):
     # Game context for "Chat with Your Data"
     app_ids: Optional[List[int]] = Field(None, max_length=2, description="App IDs for game context (max 2)")
     date_filter: str = Field("all", description="Date filter: 30d, 90d, 365d, or all")
-    max_reviews_per_game: int = Field(50, ge=1, le=100, description="Max reviews per game")
+    max_reviews_per_game: int = Field(50, ge=1, le=50, description="Max reviews per game")
     language: Optional[str] = Field(None, description="Preferred language for responses (e.g., 'en', 'it', 'fr', 'de')")
 
 
@@ -436,9 +436,6 @@ class SimpleChatResponse(BaseModel):
     needs_clarification: bool = False
     clarification_options: List[str] = Field(default_factory=list)
     tool_calls_made: int = 0
-    # Game selection suggestions
-    suggest_game_selection: bool = False
-    suggested_games: List[Dict[str, Any]] = Field(default_factory=list)
     # Suggest searching for a game (shows button to go to home)
     suggest_search_game: bool = False
     search_game_name: str = ""
@@ -473,6 +470,31 @@ class AdminChatSession(BaseModel):
     message_count: int = 0
     positive_feedback: int = 0
     negative_feedback: int = 0
+
+
+class SupportMessage(BaseModel):
+    id: int
+    thread_id: str
+    user_id: str
+    sender_id: str
+    sender_role: str
+    message: str
+    created_at: Optional[str] = None
+    read_by_admin: bool = False
+    read_by_user: bool = False
+
+
+class SupportThreadSummary(BaseModel):
+    user_id: str
+    last_message_at: Optional[str] = None
+    last_message: Optional[str] = None
+    last_sender_role: Optional[str] = None
+    message_count: int = 0
+    unread_count: int = 0
+
+
+class SupportMessageRequest(BaseModel):
+    message: str
 
 
 class LLMUsageBreakdownItem(BaseModel):
@@ -666,6 +688,7 @@ class CheckoutSessionRequest(BaseModel):
     tier: str = Field(..., pattern="^(pro|max)$")
     success_url: str
     cancel_url: str
+    billing_period: str = Field(default="monthly", pattern="^(monthly|annual)$")
 
 
 REVIEW_EXPORT_COLUMNS = [
@@ -974,6 +997,7 @@ def create_checkout(
             success_url=request.success_url,
             cancel_url=request.cancel_url,
             user_email=user_email,
+            billing_period=request.billing_period,
         )
         return {"checkout_url": checkout_url}
     except ValueError as exc:
@@ -1100,18 +1124,8 @@ def _run_analysis_job(
                 game_context=game_context,
             )
 
-        # Deduct credits for the reviews that were processed
-        # New LLM reviews cost 1 credit each, cached reviews cost 0.5 credits each
-        total_processed = llm_review_count + cached_review_count
-        if total_processed > 0:
-            credit_cost = credits.estimate_analysis_cost(llm_review_count, cached_review_count)
-            credits.deduct_credits(
-                user_id=user_id,
-                amount=credit_cost,
-                operation="classify",
-                description=f"Analyzed {total_processed} reviews ({llm_review_count} new, {cached_review_count} cached) for app {app_id}",
-                app_id=app_id,
-            )
+        # Note: Credit deduction removed - now using game-based billing
+        # LLM usage is still tracked via log_llm_usage for cost monitoring
 
         df = build_reviews_dataframe(all_reviews)
         df = llm.apply_review_labels(df, llm_labels)
@@ -1252,6 +1266,8 @@ def analyze(
 
         if request.persist:
             storage.upsert_reviews(request.app_id, fetched_reviews)
+            # Enforce review limit - keep only most recent reviews, delete old ones
+            storage.enforce_review_limit(request.app_id)
             stored_reviews = storage.load_reviews(request.app_id)
         else:
             stored_reviews = fetched_reviews
@@ -1269,21 +1285,19 @@ def analyze(
     # (groups same-language reviews together for batching, newest first within each language)
     all_reviews.sort(key=lambda r: (r.get("language", "english"), -(r.get("timestamp_created") or 0)))
 
-    # Check game limit for free tier (max 2 games)
-    subscription = credits.get_user_subscription(user_id)
-    if subscription["tier"] == "free":
-        # Count how many games user has already analyzed
-        analyzed_games_count = storage.count_starred_games(user_id)
-        # Check if this is a new game (not already analyzed)
-        is_new_game = not storage.user_has_game(user_id, request.app_id)
-        if is_new_game and analyzed_games_count >= 2:
+    # Check game limit for all tiers
+    is_new_game = not storage.user_has_game(user_id, request.app_id)
+    if is_new_game:
+        can_add_game, limit_message = credits.check_game_limit(user_id)
+        if not can_add_game:
+            status = credits.get_credit_status(user_id)
             raise HTTPException(
                 status_code=402,
                 detail={
-                    "message": "Free tier limit reached. You can analyze up to 2 games. Upgrade to Pro to analyze unlimited games.",
-                    "games_analyzed": analyzed_games_count,
-                    "games_limit": 2,
-                    "tier": "free",
+                    "message": limit_message,
+                    "games_used": status["games_used"],
+                    "games_limit": status["games_limit"],
+                    "tier": status["tier"],
                 },
             )
 
@@ -1677,14 +1691,7 @@ def summarize_subcategory(
                 summary_type=request.summary_type,
             )
 
-        # Deduct credits
-        credits.deduct_credits(
-            user_id=user_id,
-            amount=summarize_cost,
-            operation="summarize",
-            description=f"Summarized {len(request.reviews)} reviews for {request.subcategory}",
-            app_id=request.app_id,
-        )
+        # Note: Credit deduction removed - now using game-based billing
 
         return SummarizeSubcategoryResponse(**result)
     except Exception as exc:
@@ -1775,16 +1782,10 @@ def compare_games_summarize(
             summary_data=result,
         )
 
-        # 7. Deduct credits
-        credits.deduct_credits(
-            user_id=user_id,
-            amount=credit_cost,
-            operation="compare",
-            description=f"Compared {len(app_ids)} games ({request.comparison_type})",
-        )
+        # Note: Credit deduction removed - now using game-based billing
 
         logger.info(f"Successfully generated comparison for {len(app_ids)} games")
-        return ComparisonSummaryResponse(**result, cached=False, credits_charged=credit_cost)
+        return ComparisonSummaryResponse(**result, cached=False, credits_charged=0)
 
     except llm.LLMError as exc:
         logger.exception("LLM comparison failed: %s", exc)
@@ -1850,30 +1851,12 @@ def translate_text_endpoint(
     if not target_language:
         raise HTTPException(status_code=400, detail="Target language is required.")
 
-    # Translation costs 1 credit
-    translate_cost = 1
-    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, translate_cost)
-    if not can_proceed:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": credit_message,
-                "credits_needed": translate_cost,
-                "credits_available": credit_status["balance"],
-                "tier": credit_status["tier"],
-            },
-        )
+    # Note: Credit check removed - now using game-based billing
 
     try:
         translated, model_id = llm.translate_text(text, target_language)
 
-        # Deduct credits
-        credits.deduct_credits(
-            user_id=user_id,
-            amount=translate_cost,
-            operation="translate",
-            description=f"Translated text to {target_language}",
-        )
+        # Note: Credit deduction removed - now using game-based billing
 
         return TranslateResponse(translated_text=translated, model_id=model_id)
     except Exception as exc:
@@ -1892,19 +1875,7 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    # Check credits for chat (costs 3 credits per message)
-    chat_cost = credits.CREDIT_COSTS["chat"]
-    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, chat_cost)
-    if not can_proceed:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": credit_message,
-                "credits_needed": chat_cost,
-                "credits_available": credit_status["balance"],
-                "tier": credit_status["tier"],
-            },
-        )
+    # Note: Credit check removed - now using game-based billing
 
     try:
         import uuid
@@ -1984,24 +1955,6 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                     tool_calls_made=len(agent_result.tool_calls_made),
                 )
 
-            # Handle game selection suggestion
-            if agent_result.suggest_game_selection:
-                return SimpleChatResponse(
-                    response=agent_result.response or agent_result.game_selection_message,
-                    session_id=session_id,
-                    citations=[],
-                    source_reviews=[],
-                    games_used=game_metadata,
-                    reviews_searched=0,
-                    has_game_context=True,
-                    suggested_questions=[],
-                    needs_clarification=False,
-                    clarification_options=[],
-                    tool_calls_made=len(agent_result.tool_calls_made),
-                    suggest_game_selection=True,
-                    suggested_games=agent_result.suggested_games,
-                )
-
             # Handle suggest searching for a game
             if agent_result.suggest_search_game:
                 return SimpleChatResponse(
@@ -2016,8 +1969,6 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                     needs_clarification=False,
                     clarification_options=[],
                     tool_calls_made=len(agent_result.tool_calls_made),
-                    suggest_game_selection=False,
-                    suggested_games=[],
                     suggest_search_game=True,
                     search_game_name=agent_result.search_game_name,
                 )
@@ -2112,14 +2063,7 @@ Example:
             suggested_questions = []
             tool_calls_made = 0
 
-        # Deduct credits for this chat message
-        credits.deduct_credits(
-            user_id=user_id,
-            amount=chat_cost,
-            operation="chat",
-            description="Chat message",
-            session_id=session_id,
-        )
+        # Note: Credit deduction removed - now using game-based billing
 
         # Save both user message and assistant response with session_id
         storage.save_chat_message(user_id, "user", message, session_id=session_id)
@@ -2137,8 +2081,6 @@ Example:
             needs_clarification=False,
             clarification_options=[],
             tool_calls_made=tool_calls_made,
-            suggest_game_selection=False,
-            suggested_games=[],
             suggest_search_game=False,
             search_game_name="",
         )
@@ -2203,6 +2145,104 @@ def submit_citation_feedback(
     except Exception as exc:
         logger.exception("Failed to save citation feedback: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save feedback.") from exc
+
+
+@app.get("/support/thread", response_model=List[SupportMessage])
+def get_support_thread(
+    mark_read: bool = True,
+    user_id: str = Depends(require_user_id),
+) -> List[SupportMessage]:
+    """Get support thread messages for the current user."""
+    try:
+        messages = storage.load_support_thread(user_id, limit=500)
+        if mark_read:
+            storage.mark_support_thread_read_by_user(user_id)
+        return [SupportMessage(**msg) for msg in messages]
+    except Exception as exc:
+        logger.exception("Failed to load support thread: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load support thread.") from exc
+
+
+@app.post("/support/message", response_model=SupportMessage)
+def send_support_message(
+    request: SupportMessageRequest,
+    user_id: str = Depends(require_user_id),
+) -> SupportMessage:
+    """Send a support message as the current user."""
+    message = (request.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    try:
+        saved = storage.save_support_message(
+            user_id=user_id,
+            sender_id=user_id,
+            sender_role="user",
+            message=message,
+        )
+        return SupportMessage(**saved)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to send support message: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to send support message.") from exc
+
+
+@app.get("/admin/support/threads", response_model=List[SupportThreadSummary])
+def get_admin_support_threads(
+    limit: int = 100,
+    _: None = Depends(require_admin),
+) -> List[SupportThreadSummary]:
+    """List support threads with unread counts (admin only)."""
+    try:
+        threads = storage.list_support_threads(limit=limit)
+        return [SupportThreadSummary(**thread) for thread in threads]
+    except Exception as exc:
+        logger.exception("Failed to load support threads: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load support threads.") from exc
+
+
+@app.get("/admin/support/thread/{thread_user_id}", response_model=List[SupportMessage])
+def get_admin_support_thread(
+    thread_user_id: str,
+    mark_read: bool = True,
+    _: None = Depends(require_admin),
+) -> List[SupportMessage]:
+    """Get support thread messages for a user (admin only)."""
+    try:
+        messages = storage.load_support_thread(thread_user_id, limit=500)
+        if mark_read:
+            storage.mark_support_thread_read_by_admin(thread_user_id)
+        return [SupportMessage(**msg) for msg in messages]
+    except Exception as exc:
+        logger.exception("Failed to load support thread: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load support thread.") from exc
+
+
+@app.post("/admin/support/thread/{thread_user_id}/reply", response_model=SupportMessage)
+def send_admin_support_reply(
+    thread_user_id: str,
+    request: SupportMessageRequest,
+    http_request: Request,
+    _: None = Depends(require_admin),
+) -> SupportMessage:
+    """Send a reply in a support thread (admin only)."""
+    message = (request.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    sender_id = _resolve_admin_user_id(http_request) or "admin"
+    try:
+        saved = storage.save_support_message(
+            user_id=thread_user_id,
+            sender_id=sender_id,
+            sender_role="admin",
+            message=message,
+        )
+        return SupportMessage(**saved)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to send admin support reply: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to send support reply.") from exc
 
 
 @app.get("/admin/chat-sessions", response_model=List[AdminChatSession])
@@ -2790,19 +2830,33 @@ def generate_executive_summary(
     # Generate report
     period = datetime(year, month, 1).strftime("%B %Y")
 
-    if format == "pdf":
+    # Format filename for downloads
+    safe_game_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in game_name)
+    safe_game_name = safe_game_name.replace(' ', '')[:50]
+    month_abbr = datetime(year, month, 1).strftime("%b%Y")
+
+    if format == "html":
+        # Return HTML for preview
         try:
-            pdf_bytes = reports.create_pdf_report(insights, game_name, period)
+            html_content = reports.create_dashboard_html(insights, game_name, period)
         except Exception as e:
-            logger.error(f"Failed to generate PDF: {e}")
+            logger.error(f"Failed to generate HTML: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate HTML report") from e
+
+        return StreamingResponse(
+            iter([html_content.encode("utf-8")]),
+            media_type="text/html; charset=utf-8",
+        )
+
+    elif format == "legacy":
+        # Legacy multi-page PDF using ReportLab
+        try:
+            pdf_bytes = reports.create_pdf_report_legacy(insights, game_name, period)
+        except Exception as e:
+            logger.error(f"Failed to generate legacy PDF: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate PDF report") from e
 
-        # Format filename
-        safe_game_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in game_name)
-        safe_game_name = safe_game_name.replace(' ', '')[:50]
-        month_abbr = datetime(year, month, 1).strftime("%b%Y")
         filename = f"ExecutiveSummary_{safe_game_name}_{month_abbr}.pdf"
-
         return StreamingResponse(
             iter([pdf_bytes]),
             media_type="application/pdf",
@@ -2810,8 +2864,26 @@ def generate_executive_summary(
                 "Content-Disposition": f'attachment; filename="{filename}"',
             },
         )
+
+    elif format == "pdf":
+        # New 1-page dashboard PDF (default)
+        try:
+            pdf_bytes = reports.create_pdf_report(insights, game_name, period)
+        except Exception as e:
+            logger.error(f"Failed to generate PDF: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate PDF report") from e
+
+        filename = f"ExecutiveSummary_{safe_game_name}_{month_abbr}.pdf"
+        return StreamingResponse(
+            iter([pdf_bytes]),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+
     else:
-        raise HTTPException(status_code=400, detail="Only PDF format is currently supported")
+        raise HTTPException(status_code=400, detail="Format must be 'pdf', 'html', or 'legacy'")
 
 
 @app.get("/progress/{app_id}", dependencies=[Depends(require_license)])

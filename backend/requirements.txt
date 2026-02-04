@@ -13,3 +13,5 @@ sqlalchemy>=2.0
 google-genai>=0.2.0
 python-dotenv>=1.0
 reportlab>=4.0.0
+weasyprint>=62.0
+jinja2>=3.1

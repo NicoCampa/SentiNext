@@ -201,15 +201,7 @@ def _refresh_single_favorite(user_id: str, app_id: int, game_name: str) -> Dict[
                 game_context=None,
             )
 
-        # Deduct credits
-        if credit_cost > 0:
-            credits.deduct_credits(
-                user_id=user_id,
-                amount=credit_cost,
-                operation="auto_refresh",
-                description=f"Auto-refresh for {game_name} ({len(reviews)} reviews)",
-                app_id=app_id,
-            )
+        # Note: Credit deduction removed - now using game-based billing
 
         # Build insights
         df = build_reviews_dataframe(reviews)

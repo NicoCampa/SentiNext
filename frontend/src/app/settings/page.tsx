@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const { credits, loading: creditsLoading, refresh: refreshCredits } = useCredits();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -86,7 +87,8 @@ export default function SettingsPage() {
       const result = await createCheckoutSession(
         tier,
         `${baseUrl}/settings?upgrade=success`,
-        `${baseUrl}/settings?upgrade=cancelled`
+        `${baseUrl}/settings?upgrade=cancelled`,
+        billingPeriod
       );
       if (result.checkout_url) {
         window.location.href = result.checkout_url;
@@ -266,16 +268,16 @@ export default function SettingsPage() {
               </div>
             </Card>
 
-            {/* Subscription & Credits */}
+            {/* Subscription & Games */}
             <Card variant="glass" className="p-6">
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-base">💎</span>
                   <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                    Subscription & Credits
+                    Subscription & Usage
                   </p>
                 </div>
-                <p className="text-sm text-[rgb(150,150,170)]">Manage your plan and credit usage</p>
+                <p className="text-sm text-[rgb(150,150,170)]">Manage your plan and game limits</p>
               </div>
 
               {creditsLoading && !credits ? (
@@ -295,65 +297,81 @@ export default function SettingsPage() {
                         credits.tier === "max"
                           ? "text-purple-400"
                           : credits.tier === "pro"
-                          ? "text-[rgb(0,255,255)]"
+                          ? "text-sky-400"
                           : "text-[rgb(150,150,170)]"
                       }`}>
                         {credits.tier}
                       </span>
                     </div>
 
-                    {/* Credit Usage Bar */}
-                    <div className="mb-2">
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="text-[rgb(150,150,170)]">Credits Used</span>
-                        <span className={`font-mono ${
-                          credits.blocked
-                            ? "text-rose-400"
-                            : credits.warning
-                            ? "text-amber-400"
-                            : "text-[rgb(0,255,255)]"
-                        }`}>
-                          {credits.used.toLocaleString()} / {credits.limit.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-300 ${
-                            credits.blocked
-                              ? "bg-rose-500"
-                              : credits.warning
-                              ? "bg-amber-500"
-                              : "bg-[rgb(0,255,255)]"
-                          }`}
-                          style={{ width: `${Math.min(credits.percent_used, 100)}%` }}
-                        />
-                      </div>
-                    </div>
+                    {/* Game Usage */}
+                    {(() => {
+                      const defaultLimits: Record<string, number> = { free: 3, pro: 25, max: 100 };
+                      const gamesLimit = credits.games_limit ?? defaultLimits[credits.tier] ?? 100;
+                      const gamesUsed = credits.games_used ?? 0;
+                      const percentUsed = gamesLimit > 0 ? (gamesUsed / gamesLimit) * 100 : 0;
+                      const isApproaching = gamesUsed >= gamesLimit - 1;
 
-                    {/* Reset Date */}
-                    {credits.period_end && (
-                      <p className="text-xs text-[rgb(150,150,170)]">
-                        Resets on {new Date(credits.period_end).toLocaleDateString(undefined, {
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </p>
-                    )}
+                      return (
+                        <div className="mb-2">
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="text-[rgb(150,150,170)]">Games Analyzed</span>
+                            <span className={`font-mono ${
+                              credits.at_game_limit
+                                ? "text-rose-400"
+                                : isApproaching
+                                ? "text-amber-400"
+                                : credits.tier === "max"
+                                ? "text-purple-400"
+                                : credits.tier === "pro"
+                                ? "text-sky-400"
+                                : "text-[rgb(0,255,255)]"
+                            }`}>
+                              {gamesUsed} / {gamesLimit}
+                            </span>
+                          </div>
+                          <div className="h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                credits.at_game_limit
+                                  ? "bg-rose-500"
+                                  : isApproaching
+                                  ? "bg-amber-500"
+                                  : credits.tier === "max"
+                                  ? "bg-purple-500"
+                                  : credits.tier === "pro"
+                                  ? "bg-sky-400"
+                                  : "bg-[rgb(0,255,255)]"
+                              }`}
+                              style={{ width: `${Math.min(percentUsed, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Tier Benefits */}
+                    <p className="text-xs text-[rgb(150,150,170)]">
+                      {credits.tier === "free" && "Analyze up to 3 games"}
+                      {credits.tier === "pro" && "Analyze up to 25 games"}
+                      {credits.tier === "max" && "Analyze up to 100 games"}
+                    </p>
                   </div>
 
                   {/* Warning/Blocked Messages */}
-                  {credits.blocked && (
+                  {credits.at_game_limit && (
                     <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/30">
                       <p className="text-xs text-rose-400">
-                        You&apos;ve exceeded your credit limit. Upgrade your plan or wait for credits to reset.
+                        {credits.tier === "free"
+                          ? "You've reached your game limit. Upgrade to Pro to analyze more games."
+                          : "You've reached your game limit. Upgrade to Max for unlimited games."}
                       </p>
                     </div>
                   )}
-                  {credits.warning && !credits.blocked && (
+                  {!credits.at_game_limit && credits.games_limit && credits.games_used >= credits.games_limit - 1 && (
                     <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30">
                       <p className="text-xs text-amber-400">
-                        You&apos;ve used over 100% of your monthly credits. Consider upgrading.
+                        You&apos;re approaching your game limit. Consider upgrading for more capacity.
                       </p>
                     </div>
                   )}
@@ -361,19 +379,52 @@ export default function SettingsPage() {
                   {/* Upgrade Options */}
                   {credits.tier !== "max" && (
                     <div className="space-y-3 mb-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
-                        Upgrade Your Plan
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
+                          Upgrade Your Plan
+                        </p>
+                        {/* Billing Period Toggle */}
+                        <div className="flex items-center gap-1 p-0.5 bg-[rgb(10,10,25)] border border-[rgb(0,255,255)]/20 rounded">
+                          <button
+                            onClick={() => setBillingPeriod("monthly")}
+                            className={`px-2 py-1 text-[10px] uppercase tracking-wider transition-all rounded-sm ${
+                              billingPeriod === "monthly"
+                                ? "bg-[rgb(0,255,255)]/20 text-[rgb(0,255,255)]"
+                                : "text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]"
+                            }`}
+                          >
+                            Monthly
+                          </button>
+                          <button
+                            onClick={() => setBillingPeriod("annual")}
+                            className={`px-2 py-1 text-[10px] uppercase tracking-wider transition-all rounded-sm ${
+                              billingPeriod === "annual"
+                                ? "bg-[rgb(0,255,136)]/20 text-[rgb(0,255,136)]"
+                                : "text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]"
+                            }`}
+                          >
+                            Annual
+                            <span className="ml-1 text-[rgb(0,255,136)]">-20%</span>
+                          </button>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         {credits.tier === "free" && (
                           <button
                             onClick={() => handleUpgrade("pro")}
                             disabled={upgradeLoading !== null}
-                            className="p-3 border border-[rgb(0,255,255)]/30 bg-[rgb(10,10,25)] hover:bg-[rgb(0,255,255)]/10 hover:border-[rgb(0,255,255)]/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-3 border border-sky-500/30 bg-[rgb(10,10,25)] hover:bg-sky-500/10 hover:border-sky-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <p className="text-sm font-bold text-[rgb(0,255,255)]">Pro</p>
-                            <p className="text-xs text-[rgb(150,150,170)]">$19/mo</p>
-                            <p className="text-xs text-[rgb(0,255,255)]/50 mt-1">5,000 credits</p>
+                            <p className="text-sm font-bold text-sky-400">Pro</p>
+                            {billingPeriod === "monthly" ? (
+                              <p className="text-xs text-[rgb(150,150,170)]">$19/mo</p>
+                            ) : (
+                              <div>
+                                <p className="text-xs text-[rgb(0,255,136)]">$15/mo</p>
+                                <p className="text-[10px] text-[rgb(150,150,170)] line-through">$19/mo</p>
+                              </div>
+                            )}
+                            <p className="text-xs text-sky-400/50 mt-1">25 games</p>
                           </button>
                         )}
                         <button
@@ -382,10 +433,22 @@ export default function SettingsPage() {
                           className="p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <p className="text-sm font-bold text-purple-400">Max</p>
-                          <p className="text-xs text-[rgb(150,150,170)]">$49/mo</p>
-                          <p className="text-xs text-purple-400/50 mt-1">25,000 credits</p>
+                          {billingPeriod === "monthly" ? (
+                            <p className="text-xs text-[rgb(150,150,170)]">$49/mo</p>
+                          ) : (
+                            <div>
+                              <p className="text-xs text-[rgb(0,255,136)]">$39/mo</p>
+                              <p className="text-[10px] text-[rgb(150,150,170)] line-through">$49/mo</p>
+                            </div>
+                          )}
+                          <p className="text-xs text-purple-400/50 mt-1">100 games</p>
                         </button>
                       </div>
+                      {billingPeriod === "annual" && (
+                        <p className="text-[10px] text-[rgb(0,255,136)] text-center">
+                          Billed annually. Save 20% compared to monthly billing.
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -403,7 +466,7 @@ export default function SettingsPage() {
                   )}
                 </>
               ) : (
-                <p className="text-xs text-rose-400">Failed to load credit information</p>
+                <p className="text-xs text-rose-400">Failed to load subscription information</p>
               )}
             </Card>
           </div>

@@ -425,8 +425,6 @@ type Message = {
   suggestedQuestions?: string[];
   needsClarification?: boolean;
   clarificationOptions?: string[];
-  suggestGameSelection?: boolean;
-  suggestedGames?: Array<{ app_id: number; name: string }>;
   suggestSearchGame?: boolean;
   searchGameName?: string;
 };
@@ -525,9 +523,9 @@ export default function ChatPage() {
     loadGames();
   }, []);
 
-  // Load chat sessions and latest session history on mount
+  // Load chat sessions on mount (start with a fresh chat view)
   useEffect(() => {
-    async function loadHistory() {
+    async function loadSessions() {
       try {
         // Load all sessions
         console.log("Loading chat sessions from:", apiUrl("/chat/sessions"));
@@ -536,37 +534,20 @@ export default function ChatPage() {
           const sessionsList = await sessionsResponse.json();
           console.log("Loaded chat sessions:", sessionsList.length);
           setSessions(sessionsList);
-
-          // Load latest session if exists
-          if (sessionsList.length > 0) {
-            const latestSession = sessionsList[0];
-            setCurrentSessionId(latestSession.session_id);
-
-            console.log("Loading chat history for session:", latestSession.session_id);
-            const historyResponse = await authFetch(
-              apiUrl(`/chat/history?session_id=${latestSession.session_id}`)
-            );
-            if (historyResponse.ok) {
-              const history = await historyResponse.json();
-              console.log("Loaded chat history:", history.length, "messages");
-              const loadedMessages = history.map((msg: any) => ({
-                role: msg.role,
-                content: msg.content,
-                timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-              }));
-              setMessages(loadedMessages);
-            }
-          }
         } else {
           console.error("Failed to load chat sessions, status:", sessionsResponse.status);
         }
       } catch (error) {
-        console.error("Failed to load chat history:", error);
+        console.error("Failed to load chat sessions:", error);
       } finally {
         setLoadingHistory(false);
       }
     }
-    loadHistory();
+    // Ensure the chat view starts fresh by default.
+    setCurrentSessionId(null);
+    setMessages([]);
+    setHasStartedChat(false);
+    loadSessions();
   }, []);
 
   async function handleSend() {
@@ -675,12 +656,6 @@ export default function ChatPage() {
     }, 0);
   }
 
-  function handleSelectSuggestedGame(appId: number) {
-    if (!selectedGames.includes(appId)) {
-      setSelectedGames(prev => [...prev, appId].slice(-2)); // Keep max 2 games
-    }
-  }
-
   // Extract the core send logic to be reusable
   async function sendMessage(messageText: string) {
     const message = messageText.trim();
@@ -720,7 +695,7 @@ export default function ChatPage() {
         message,
         session_id: sessionId,
         app_ids: selectedGames.length > 0 ? selectedGames : undefined,
-        max_reviews_per_game: 100,
+        max_reviews_per_game: 50,
         language: language,
       });
 
@@ -738,21 +713,11 @@ export default function ChatPage() {
         suggestedQuestions: data.suggested_questions,
         needsClarification: data.needs_clarification,
         clarificationOptions: data.clarification_options,
-        suggestGameSelection: data.suggest_game_selection,
-        suggestedGames: data.suggested_games,
         suggestSearchGame: data.suggest_search_game,
         searchGameName: data.search_game_name,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-
-      // If games were suggested, auto-select them if only one
-      if (data.suggest_game_selection && data.suggested_games?.length === 1) {
-        const game = data.suggested_games[0];
-        if (!selectedGames.includes(game.app_id)) {
-          setSelectedGames(prev => [...prev, game.app_id].slice(-2));
-        }
-      }
 
       // Refresh credits after chat (chat consumes credits)
       refreshCredits();
@@ -1271,28 +1236,6 @@ export default function ChatPage() {
                               className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition"
                             >
                               {opt}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Game selection suggestions */}
-                    {msg.role === "assistant" && msg.suggestGameSelection && msg.suggestedGames && msg.suggestedGames.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.selectGame")}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {msg.suggestedGames.map((game) => (
-                            <button
-                              key={game.app_id}
-                              onClick={() => handleSelectSuggestedGame(game.app_id)}
-                              disabled={selectedGames.includes(game.app_id)}
-                              className={`text-xs px-3 py-1.5 rounded-lg border transition ${
-                                selectedGames.includes(game.app_id)
-                                  ? "border-green-500/30 bg-green-500/10 text-green-300"
-                                  : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
-                              }`}
-                            >
-                              {selectedGames.includes(game.app_id) ? "✓ " : ""}{game.name}
                             </button>
                           ))}
                         </div>
