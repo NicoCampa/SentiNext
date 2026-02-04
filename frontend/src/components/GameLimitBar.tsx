@@ -24,19 +24,63 @@ export function GameLimitBar() {
   const tier = credits.tier;
   const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
 
+  const creditsRemaining = Math.max(0, credits.limit - credits.used);
+  const creditPercentRemaining = Math.max(0, 100 - Math.min(credits.percent_used, 110));
+  const isWarning = credits.warning;
+  const isBlocked = credits.blocked;
+
+  const getCreditBarColor = () => {
+    if (isBlocked) return "bg-rose-500";
+    if (isWarning) return "bg-amber-500";
+    if (creditPercentRemaining < 20) return "bg-amber-400";
+    return "bg-[rgb(0,255,255)]";
+  };
+
+  const getCreditTextColor = () => {
+    if (isBlocked) return "text-rose-400";
+    if (isWarning) return "text-amber-400";
+    return "text-[rgb(0,255,255)]";
+  };
+
   // Only show for free tier
   if (tier !== 'free') {
     return (
-      <div className="p-3 border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)]/50">
-        <div className="flex items-center justify-between">
+      <Link
+        href="/settings"
+        className="block p-3 border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)]/50 hover:border-[rgb(0,255,255)]/30 transition-colors"
+      >
+        {/* Header with Plan */}
+        <div className="flex items-center justify-between mb-2">
           <span className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
             Plan
           </span>
-          <span className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]">
+          <span className={`text-[10px] uppercase tracking-wider ${
+            tier === "max" ? "text-purple-400" : "text-[rgb(0,255,255)]"
+          }`}>
             {tierLabel}
           </span>
         </div>
-      </div>
+
+        {/* Credits Progress Bar */}
+        <div className="mb-2">
+          <div className="h-1.5 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${getCreditBarColor()} transition-all duration-300`}
+              style={{ width: `${creditPercentRemaining}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Credits Stats */}
+        <div className="flex items-center justify-between">
+          <span className={`text-xs font-mono ${getCreditTextColor()}`}>
+            {creditsRemaining.toLocaleString()} credits
+          </span>
+          <span className="text-[9px] text-[rgb(150,150,170)]">
+            / {credits.limit.toLocaleString()}
+          </span>
+        </div>
+      </Link>
     );
   }
 
@@ -95,6 +139,24 @@ export function GameLimitBar() {
         <span className={`text-sm font-mono ${getTextColor()}`}>
           {gamesAnalyzed} / {gamesLimit} games
         </span>
+      </div>
+
+      {/* Credits Section */}
+      <div className="mt-3 pt-3 border-t border-[rgb(0,255,255)]/10">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[9px] uppercase tracking-[0.15em] text-[rgb(0,255,255)]/40">
+            Credits
+          </span>
+          <span className={`text-xs font-mono ${getCreditTextColor()}`}>
+            {creditsRemaining.toLocaleString()} left
+          </span>
+        </div>
+        <div className="h-1 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${getCreditBarColor()} transition-all duration-300`}
+            style={{ width: `${creditPercentRemaining}%` }}
+          />
+        </div>
       </div>
 
       {/* Warning Message */}

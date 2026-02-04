@@ -248,9 +248,27 @@ def init_postgresql_schema() -> None:
                 app_id INTEGER NOT NULL,
                 processed INTEGER DEFAULT 0,
                 total INTEGER DEFAULT 0,
+                phase TEXT DEFAULT 'fetching',
+                fetched_count INTEGER DEFAULT 0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, app_id)
             )
+        """))
+
+        # Add phase, fetched_count, and cancelled columns if they don't exist (migration)
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='progress' AND column_name='phase') THEN
+                    ALTER TABLE progress ADD COLUMN phase TEXT DEFAULT 'fetching';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='progress' AND column_name='fetched_count') THEN
+                    ALTER TABLE progress ADD COLUMN fetched_count INTEGER DEFAULT 0;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='progress' AND column_name='cancelled') THEN
+                    ALTER TABLE progress ADD COLUMN cancelled BOOLEAN DEFAULT FALSE;
+                END IF;
+            END $$;
         """))
 
         # Starred games table with JSONB

@@ -1,9 +1,11 @@
 import { getDictionary } from "@/lib/get-dictionary";
+import { normalizeLocale } from "@/lib/i18n";
 import HowItWorksClient from "./HowItWorksClient";
 
-export default async function HowItWorks({ params }: { params: Promise<{ lang: 'en' | 'it' | 'fr' | 'de' }> }) {
+export default async function HowItWorks({ params }: { params: Promise<{ lang: string }> }) {
     const { lang } = await params;
-    const dict = await getDictionary(lang);
+    const locale = normalizeLocale(lang);
+    const dict = await getDictionary(locale);
 
-    return <HowItWorksClient dict={dict} lang={lang} />;
+    return <HowItWorksClient dict={dict} lang={locale} />;
 }

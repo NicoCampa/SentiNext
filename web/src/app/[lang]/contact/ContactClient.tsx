@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Mail, Github } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { ReactNode } from "react";
+import type { SupportedLocale } from "@/lib/i18n";
 
-export function ContactClient({ dict, lang }: { dict: any, lang: string }) {
+export function ContactClient({ lang }: { lang: SupportedLocale }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10 w-full">
@@ -21,7 +23,7 @@ export function ContactClient({ dict, lang }: { dict: any, lang: string }) {
                         {lang === 'it' ? 'Connessione' : 'Connect'} <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{lang === 'it' ? 'Sistema.' : 'System.'}</span>
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        {lang === 'it' ? 'Protocolli di interfaccia umano-agente.' : 'Human-to-agent interface protocols.'}
+                        {lang === 'it' ? 'Domande, feedback e supporto.' : 'Questions, feedback, and support.'}
                     </p>
                 </div>
             </section>
@@ -32,15 +34,15 @@ export function ContactClient({ dict, lang }: { dict: any, lang: string }) {
                         <ContactCard
                             icon={<Mail className="h-8 w-8 text-[#00F0FF]" />}
                             title={lang === 'it' ? "Mail Diretta" : "Direct Mail"}
-                            description={lang === 'it' ? "Per richieste enterprise e protocolli di partnership." : "For enterprise inquiries and partnership protocols."}
+                            description={lang === 'it' ? "Supporto, feedback e richieste." : "Support, feedback, and inquiries."}
                             link="mailto:nicolocampagnoli20@icloud.com"
                             label="nicolocampagnoli20@icloud.com"
                         />
                         <ContactCard
                             icon={<Github className="h-8 w-8 text-[#00F0FF]" />}
                             title={lang === 'it' ? "Codice Sorgente" : "Source Code"}
-                            description={lang === 'it' ? "Segnala bug o suggerisci miglioramenti della classificazione." : "Report bugs or suggest classification Improvements."}
-                            link="https://github.com"
+                            description={lang === 'it' ? "Segnala bug o proponi miglioramenti." : "Report bugs or propose improvements."}
+                            link="https://github.com/NicoCampa/SentiNext"
                             label={lang === 'it' ? "Apri Repository" : "Open Repository"}
                         />
                     </div>
@@ -50,7 +52,15 @@ export function ContactClient({ dict, lang }: { dict: any, lang: string }) {
     );
 }
 
-function ContactCard({ icon, title, description, link, label }: any) {
+type ContactCardProps = {
+    icon: ReactNode;
+    title: string;
+    description: string;
+    link: string;
+    label: string;
+};
+
+function ContactCard({ icon, title, description, link, label }: ContactCardProps) {
     return (
         <motion.div
             whileHover={{ y: -5, scale: 1.01 }}

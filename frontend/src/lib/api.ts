@@ -142,6 +142,13 @@ export async function fetchProgress(appId: number): Promise<ProgressStatus> {
   return handleResponse<ProgressStatus>(response);
 }
 
+export async function cancelAnalysis(appId: number): Promise<{ cancelled: boolean; app_id: number }> {
+  const response = await authFetch(apiUrl(`/progress/${appId}/cancel`), {
+    method: "POST",
+  });
+  return handleResponse<{ cancelled: boolean; app_id: number }>(response);
+}
+
 export interface ProgressStreamEvent {
   type: "progress" | "completed" | "error" | "timeout";
   processed?: number;
@@ -149,10 +156,12 @@ export interface ProgressStreamEvent {
   active?: boolean;
   status?: string;
   error?: string;
+  phase?: "fetching" | "classifying" | "idle";
+  fetched_count?: number;
 }
 
 export interface ProgressStreamCallbacks {
-  onProgress?: (processed: number, total: number, active: boolean) => void;
+  onProgress?: (processed: number, total: number, active: boolean, phase?: "fetching" | "classifying" | "idle", fetchedCount?: number) => void;
   onCompleted?: () => void;
   onError?: (error: string) => void;
   onTimeout?: () => void;
@@ -200,7 +209,9 @@ export function subscribeToProgress(
           callbacks.onProgress?.(
             data.processed ?? 0,
             data.total ?? 0,
-            data.active ?? false
+            data.active ?? false,
+            data.phase,
+            data.fetched_count
           );
         } catch {
           // Ignore parse errors
@@ -1055,6 +1066,31 @@ export async function updateUserTier(
     body: JSON.stringify(payload),
   });
   return handleResponse<UpdateTierResponse>(response);
+}
+
+// ============================================================================
+// Translation API
+// ============================================================================
+
+export interface TranslatePayload {
+  text: string;
+  target_language: string;
+}
+
+export interface TranslateResponse {
+  translated_text: string;
+  model_id: string;
+}
+
+export async function translateText(
+  payload: TranslatePayload
+): Promise<TranslateResponse> {
+  const response = await authFetch(apiUrl("/translate"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<TranslateResponse>(response);
 }
 
 // ============================================================================

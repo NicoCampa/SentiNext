@@ -25,6 +25,10 @@ from .analysis import (
     purchase_type_insights,
     engagement_based_topics,
     activity_based_feedback,
+    platform_segment_insights,
+    language_segment_insights,
+    quality_weighted_insights,
+    cross_segment_analysis,
 )
 def _frame_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     if df is None or df.empty:
@@ -407,7 +411,11 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
             "purchase_type": purchase_type_insights(df),
             "engagement_topics": engagement_based_topics(df),
             "activity_status": activity_based_feedback(df),
+            "platform": platform_segment_insights(df),
+            "language": language_segment_insights(df),
         },
+        "quality_weighted": quality_weighted_insights(df),
+        "cross_segment": cross_segment_analysis(df),
         "theme": derive_theme(metrics),
     }
 

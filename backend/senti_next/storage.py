@@ -392,10 +392,13 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
 
 
 def load_reviews(app_id: int, limit: Optional[int] = None) -> List[dict]:
-    """Load reviews for an app, ordered by creation time (newest first)."""
+    """Load reviews for an app, ordered by creation time (newest first).
+
+    Ensures timestamp_created is always present by using the database column as fallback.
+    """
     from . import db as db_module
 
-    query = "SELECT data FROM reviews WHERE app_id = :app_id ORDER BY timestamp_created DESC"
+    query = "SELECT data, timestamp_created FROM reviews WHERE app_id = :app_id ORDER BY timestamp_created DESC"
     params = {"app_id": app_id}
 
     if limit is not None:
@@ -406,7 +409,14 @@ def load_reviews(app_id: int, limit: Optional[int] = None) -> List[dict]:
         result = conn.execute(text(query), params)
         rows = result.fetchall()
 
-    return [_parse_json_field(row[0], {}) for row in rows]
+    reviews = []
+    for row in rows:
+        review = _parse_json_field(row[0], {})
+        # Ensure timestamp_created is set (fallback to database column)
+        if not review.get("timestamp_created") and row[1] is not None:
+            review["timestamp_created"] = int(row[1]) if isinstance(row[1], (int, float)) else row[1]
+        reviews.append(review)
+    return reviews
 
 
 def load_reviews_by_ids(app_id: int, review_ids: Sequence[str]) -> List[dict]:
@@ -572,7 +582,7 @@ def load_review_labels(app_id: int) -> Dict[str, Dict]:
     return labels
 
 
-def reset_progress(user_id: str, app_id: int, total: int) -> None:
+def reset_progress(user_id: str, app_id: int, total: int, phase: str = "classifying") -> None:
     """Reset progress tracking for an app."""
     from . import db as db_module
 
@@ -580,36 +590,74 @@ def reset_progress(user_id: str, app_id: int, total: int) -> None:
     with db_module.get_connection() as conn:
         conn.execute(
             text("""
-                INSERT INTO progress (user_id, app_id, total, processed, updated_at)
-                VALUES (:user_id, :app_id, :total, 0, :updated_at)
+                INSERT INTO progress (user_id, app_id, total, processed, phase, fetched_count, updated_at)
+                VALUES (:user_id, :app_id, :total, 0, :phase, 0, :updated_at)
                 ON CONFLICT(user_id, app_id) DO UPDATE SET
                     total = EXCLUDED.total,
                     processed = EXCLUDED.processed,
+                    phase = EXCLUDED.phase,
+                    fetched_count = EXCLUDED.fetched_count,
                     updated_at = EXCLUDED.updated_at
             """),
-            {"user_id": user_id, "app_id": app_id, "total": int(total), "updated_at": timestamp},
+            {"user_id": user_id, "app_id": app_id, "total": int(total), "phase": phase, "updated_at": timestamp},
+        )
+        conn.commit()
+
+
+def update_fetch_progress(user_id: str, app_id: int, fetched_count: int) -> None:
+    """Update fetch progress during Steam review fetching.
+
+    Uses UPSERT to create/update the progress row with fetch count.
+    """
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO progress (user_id, app_id, total, processed, phase, fetched_count, updated_at)
+                VALUES (:user_id, :app_id, 0, 0, 'fetching', :fetched_count, :updated_at)
+                ON CONFLICT(user_id, app_id) DO UPDATE SET
+                    fetched_count = GREATEST(progress.fetched_count, EXCLUDED.fetched_count),
+                    phase = 'fetching',
+                    updated_at = EXCLUDED.updated_at
+            """),
+            {
+                "user_id": user_id,
+                "app_id": app_id,
+                "fetched_count": int(fetched_count),
+                "updated_at": timestamp,
+            },
         )
         conn.commit()
 
 
 def update_progress(user_id: str, app_id: int, processed: int, total: Optional[int] = None) -> None:
-    """Update progress for classification."""
+    """Update progress for classification.
+
+    Progress updates are monotonic - only increases are applied to prevent
+    race conditions when multiple batches complete out of order.
+    Uses UPSERT to handle cases where the progress row doesn't exist yet.
+    """
     from . import db as db_module
 
     timestamp = datetime.now(timezone.utc)
     new_total = int(total) if total is not None else None
+    processed_int = int(processed)
 
     with db_module.get_connection() as conn:
+        # Use UPSERT with GREATEST to ensure progress only increases (monotonic)
         conn.execute(
             text("""
-                UPDATE progress
-                SET processed = :processed,
-                    updated_at = :updated_at,
-                    total = COALESCE(:total, total)
-                WHERE user_id = :user_id AND app_id = :app_id
+                INSERT INTO progress (user_id, app_id, total, processed, updated_at)
+                VALUES (:user_id, :app_id, COALESCE(:total, 0), :processed, :updated_at)
+                ON CONFLICT(user_id, app_id) DO UPDATE SET
+                    processed = GREATEST(progress.processed, EXCLUDED.processed),
+                    updated_at = EXCLUDED.updated_at,
+                    total = COALESCE(EXCLUDED.total, progress.total)
             """),
             {
-                "processed": int(processed),
+                "processed": processed_int,
                 "updated_at": timestamp,
                 "total": new_total,
                 "user_id": user_id,
@@ -631,13 +679,48 @@ def clear_progress(user_id: str, app_id: int) -> None:
         conn.commit()
 
 
-def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, int]]:
+def cancel_progress(user_id: str, app_id: int) -> bool:
+    """Mark a progress entry as cancelled. Returns True if there was an active job to cancel."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                UPDATE progress
+                SET cancelled = TRUE, updated_at = :updated_at
+                WHERE user_id = :user_id AND app_id = :app_id
+                RETURNING id
+            """),
+            {"user_id": user_id, "app_id": app_id, "updated_at": datetime.now(timezone.utc)},
+        )
+        row = result.fetchone()
+        conn.commit()
+        return row is not None
+
+
+def is_cancelled(user_id: str, app_id: int) -> bool:
+    """Check if a job has been cancelled."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("SELECT cancelled FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
+            {"user_id": user_id, "app_id": app_id},
+        )
+        row = result.fetchone()
+
+    if row is None:
+        return False
+    return bool(row[0])
+
+
+def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
     """Load progress tracking for an app."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         result = conn.execute(
-            text("SELECT total, processed, updated_at FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
+            text("SELECT total, processed, updated_at, phase, fetched_count FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
             {"user_id": user_id, "app_id": app_id},
         )
         row = result.fetchone()
@@ -649,6 +732,8 @@ def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, int]]:
         "total": int(row[0] or 0),
         "processed": int(row[1] or 0),
         "updated_at": _timestamp_to_int(row[2]) or 0,
+        "phase": row[3] or "classifying",
+        "fetched_count": int(row[4] or 0),
     }
 
 

@@ -1,39 +1,39 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Search, Database, HardDrive, ShieldCheck } from "lucide-react";
+import { Search, Database, ShieldCheck } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { ReactNode } from "react";
 
 export default function IngestingReviewsPage() {
     return (
         <div className="space-y-12 pb-20">
             <section className="space-y-4">
-                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Cloud Ingestion</h1>
+                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Review Ingestion</h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    High-throughput Steam Community synchronization. The SentiNext Agent autonomously scales ingestion to match your project's review volume.
+                    SentiNext fetches public Steam reviews for a given <code>AppID</code> and stores them so you can analyze, search, and export them later.
                 </p>
             </section>
 
             <div className="space-y-16 mt-16">
                 <DocsStep
                     number="01"
-                    title="Batch Query"
+                    title="Fetch From Steam"
                     icon={<Search className="h-6 w-6" />}
-                    description="The agent initiates a secure handshake with the Steam Community interface."
+                    description="We paginate Steam's reviews endpoint and collect review text plus useful metadata."
                 >
                     <p>
-                        Every cycle, the agent performs a deep scan of the target <code>AppID</code>. It retrieves metadata including playtime, purchase verification, and review text in a structured telemetry format. The system can ingest <span className="text-[#00F0FF]">5,000+ reviews</span> per job for Pro accounts.
+                        Reviews are pulled from the public Steam reviews API (no Steam login required). We store fields like language, recommendation, timestamps, helpful votes, and playtime so you can filter and drill down later.
                     </p>
                 </DocsStep>
 
                 <DocsStep
                     number="02"
-                    title="Heuristic Filtering"
+                    title="Filters & Safety"
                     icon={<ShieldCheck className="h-6 w-6" />}
-                    description="Removing noise and outliers for high-precision AI training."
+                    description="Rate limits, deduplication, and optional filters keep runs reliable."
                 >
                     <p>
-                        Before classification, the system applies strict heuristic filters. We prioritize reviews with verified ownership and minimum playtime thresholds (defaulting to {">"} 2.0h) to ensure the feedback represents actual player experience.
+                        The backend supports fetching recent, updated, best, or all reviews and can work across multiple languages. The hosted dashboard focuses on recent reviews and keeps limits in place to stay fast and stable.
                     </p>
                 </DocsStep>
 
@@ -41,25 +41,25 @@ export default function IngestingReviewsPage() {
                     number="03"
                     title="Persistence Layer"
                     icon={<Database className="h-6 w-6" />}
-                    description="Long-term storage for historical sentiment tracking."
+                    description="PostgreSQL storage for search, exports, and repeat analyses."
                 >
                     <p>
-                        Filtered data is committed to our <span className="text-[#00F0FF]">PostgreSQL storage layer</span>. This allows for rapid cross-referencing and historical comparisons between different game versions or patches.
+                        Data is persisted to PostgreSQL along with the AI labels and evidence quotes. If you analyze the same game again, cached labels can be reused instead of re-calling the model.
                     </p>
                 </DocsStep>
             </div>
 
             <section className="p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm relative overflow-hidden">
                 <CornerMarkers className="opacity-40" />
-                <h2 className="text-2xl font-bold tracking-widest uppercase mb-6">Quota Protocols</h2>
+                <h2 className="text-2xl font-bold tracking-widest uppercase mb-6">Defaults & Limits</h2>
                 <div className="grid md:grid-cols-2 gap-8">
                     <div className="space-y-2">
-                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Max Throughput (Pro)</div>
-                        <div className="text-3xl font-bold font-mono">5,000+ ENV/JOB</div>
+                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Dashboard Default</div>
+                        <div className="text-3xl font-bold font-mono">1,000 REV/RUN</div>
                     </div>
                     <div className="space-y-2">
-                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Free Tier</div>
-                        <div className="text-3xl font-bold font-mono">2,000 ENV/JOB</div>
+                        <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">Backend Fetch Cap (Default)</div>
+                        <div className="text-3xl font-bold font-mono">5,000 REV</div>
                     </div>
                 </div>
             </section>
@@ -67,7 +67,15 @@ export default function IngestingReviewsPage() {
     );
 }
 
-function DocsStep({ number, title, icon, description, children }: any) {
+type DocsStepProps = {
+    number: string;
+    title: string;
+    icon: ReactNode;
+    description: string;
+    children: ReactNode;
+};
+
+function DocsStep({ number, title, icon, description, children }: DocsStepProps) {
     return (
         <section className="space-y-6 group">
             <div className="flex items-center gap-6">

@@ -5,8 +5,9 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Sparkles, Zap, BrainCircuit, ShieldCheck, Cpu, Bot, Terminal } from "lucide-react";
+import { Sparkles, Cpu, Bot } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { Dictionary, SupportedLocale } from "@/lib/i18n";
 
 function TerminalLine({ text, delay, color = "text-[#00F0FF]/70", className, cursor }: { text: string, delay: number, color?: string, className?: string, cursor?: boolean }) {
     return (
@@ -28,7 +29,7 @@ function TerminalLine({ text, delay, color = "text-[#00F0FF]/70", className, cur
     );
 }
 
-export default function HomeClient({ dict, lang }: { dict: any, lang: string }) {
+export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
     const [bootPhase, setBootPhase] = useState<"booting" | "complete">("booting");
 
     useEffect(() => {
@@ -127,29 +128,43 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
             {/* Social Proof (Implicitly Client due to CornerMarkers) */}
             <section className="py-20 w-full border-b border-[#00F0FF]/10 bg-black/40">
                 <div className="container px-4 md:px-6 mx-auto">
-                    <div className="flex flex-col items-center text-center gap-12">
-                        <div className="text-[10px] font-mono uppercase tracking-[0.4em] text-[#00F0FF]/50 border-b border-[#00F0FF]/10 pb-4">
-                            Trusted by Autonomous Developers
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
-                            <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
-                                <CornerMarkers className="opacity-20" />
-                                <p className="text-lg italic font-light mb-6 opacity-80 leading-relaxed">
-                                    "SentiNext identified a specific crash spike in our 1.2.4 patch hours before our manual lead could. It's now a core part of our post-patch protocol."
-                                </p>
-                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">Lead Engineer — Alpha Studio</div>
-                            </div>
-                            <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
-                                <CornerMarkers className="opacity-20" />
-                                <p className="text-lg italic font-light mb-6 opacity-80 leading-relaxed">
-                                    "The evidence extraction alone saves us three days of spreadsheet work every month. We don't just see 'Performance' issues; we see exactly which levels are failing."
-                                </p>
-                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">Producer — Ember Games</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
+	                    <div className="flex flex-col items-center text-center gap-12">
+	                        <div className="text-[10px] font-mono uppercase tracking-[0.4em] text-[#00F0FF]/50 border-b border-[#00F0FF]/10 pb-4">
+	                            {lang === 'it'
+	                                ? 'Pensato per team di gioco'
+	                                : lang === 'fr'
+	                                    ? 'Pensé pour les équipes de jeu'
+	                                    : lang === 'de'
+	                                        ? 'Für Game-Teams gebaut'
+	                                        : 'Built for game teams'}
+	                        </div>
+	                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
+	                            <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
+	                                <CornerMarkers className="opacity-20" />
+	                                <p className="text-lg font-light mb-6 opacity-80 leading-relaxed">
+	                                    {lang === 'it'
+	                                        ? "Insight verificabili: ogni etichetta include citazioni testuali, così puoi controllare velocemente cosa stanno dicendo davvero i giocatori."
+	                                        : "Auditable insights: every label includes verbatim quotes, so you can verify what players are actually saying."}
+	                                </p>
+	                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">
+	                                    {lang === 'it' ? 'Citazioni di evidenza' : 'Evidence quotes'}
+	                                </div>
+	                            </div>
+	                            <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
+	                                <CornerMarkers className="opacity-20" />
+	                                <p className="text-lg font-light mb-6 opacity-80 leading-relaxed">
+	                                    {lang === 'it'
+	                                        ? "Dal quadro generale al dettaglio: dashboard, esplorazione recensioni, ricerca + export CSV/JSONL, confronto tra giochi e report PDF mensili."
+	                                        : "From overview to action: dashboards, review explorer, search + CSV/JSONL export, game comparisons, and monthly PDF reports."}
+	                                </p>
+	                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">
+	                                    {lang === 'it' ? 'Dashboard, export, report' : 'Dashboards, exports, reports'}
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+	                </div>
+	            </section>
 
             {/* AI Agent Chat Section */}
             <section className="py-24 md:py-32 w-full flex justify-center border-b border-[#00F0FF]/10 bg-[#00F0FF]/[0.01]">
@@ -160,21 +175,29 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                             whileInView={{ opacity: 1, x: 0 }}
                             viewport={{ once: true }}
                             className="space-y-8"
-                        >
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm border border-[#00F0FF]/30 bg-[#00F0FF]/5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#00F0FF]">
-                                <Cpu className="h-3 w-3" />
-                                <span>Neural Engine: Online</span>
-                            </div>
+	                        >
+	                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm border border-[#00F0FF]/30 bg-[#00F0FF]/5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#00F0FF]">
+	                                <Cpu className="h-3 w-3" />
+	                                <span>
+                                        {lang === 'it'
+                                            ? 'Agente AI: Online'
+                                            : lang === 'fr'
+                                                ? 'Agent IA: En ligne'
+                                                : lang === 'de'
+                                                    ? 'KI-Agent: Online'
+                                                    : 'AI Agent: Online'}
+                                    </span>
+	                            </div>
                             <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter uppercase leading-[0.9]">
                                 {lang === 'it' ? 'Interazione' : lang === 'fr' ? 'Interaction' : lang === 'de' ? 'Direkte' : 'Direct'} <br />
                                 <span className="text-[#00F0FF]">{lang === 'it' ? 'Diretta' : lang === 'fr' ? 'Directe' : lang === 'de' ? 'Interaktion' : 'Interaction'}</span>
                             </h2>
-                            <p className="text-lg text-muted-foreground leading-relaxed font-light max-w-xl">
-                                {lang === 'it'
-                                    ? "Non limitarti a guardare i grafici. Interroga l'agente SentiNext per approfondire specifici segmenti di giocatori o identificare cambiamenti nel meta in tempo reale."
-                                    : "Don't just look at charts. Prompt the SentiNext agent to drill into specific player segments, cross-reference version updates, or identify emerging meta-shifts in real-time."}
-                            </p>
-                        </motion.div>
+	                            <p className="text-lg text-muted-foreground leading-relaxed font-light max-w-xl">
+	                                {lang === 'it'
+	                                    ? "Fai domande in linguaggio naturale: l’agente AI interroga i tuoi insight, cerca citazioni e confronta giochi—con grafici quando serve."
+	                                    : "Ask questions in natural language: the AI agent pulls stats, searches quotes, and compares games—grounded in your analyzed data (with charts when useful)."}
+	                            </p>
+	                        </motion.div>
 
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
@@ -189,10 +212,10 @@ export default function HomeClient({ dict, lang }: { dict: any, lang: string }) 
                                     <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[8px]">STABLE</span>
                                 </div>
 
-                                <div className="flex-1 space-y-6">
-                                    <ChatMessage role="user" content={lang === 'it' ? "Analizza recensioni negative per v1.4.2" : "Analyze negative reviews for v1.4.2"} />
-                                    <ChatMessage role="agent" content={lang === 'it' ? "> SCANSIONE 1.242 RECENSIONI... Categoria 'Performance' +15%. Evidenza: 'Stuttering nel menu principale' (42 istanze)." : "> SCANNING 1,242 REVIEWS... Category 'Performance' up 15%. Evidence: 'Stuttering in main menu' (42 instances)."} />
-                                </div>
+	                                <div className="flex-1 space-y-6">
+	                                    <ChatMessage role="user" content={lang === 'it' ? "Mostrami recensioni negative sulla performance" : "Show me negative reviews about performance"} />
+	                                    <ChatMessage role="agent" content={lang === 'it' ? "> TOOLS: get_subcategory_stats + search_reviews. TOPIC: technical/performance (negative). EVIDENZA: \"Cali di FPS\", \"stuttering\"." : "> TOOLS: get_subcategory_stats + search_reviews. TOPIC: technical/performance (negative). EVIDENCE: \"FPS drops\", \"stuttering\"."} />
+	                                </div>
 
                                 <div className="mt-8 p-4 border border-[#00F0FF]/20 bg-[#00F0FF]/5 rounded-sm flex items-center justify-between animate-pulse">
                                     <span className="text-[#00F0FF]/50 uppercase tracking-[0.2em]">{lang === 'it' ? 'Esecuzione...' : 'Executing...'}</span>

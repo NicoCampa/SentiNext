@@ -178,7 +178,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       {/* Main Content */}
       <main className="min-w-0 flex-1 pb-24 lg:pb-0 lg:pl-72 relative">
         {/* Top accent line */}
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[rgb(0,255,255)]/30 to-transparent" />
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[rgb(0,255,255)]/30 to-transparent z-0" />
 
         {children}
       </main>

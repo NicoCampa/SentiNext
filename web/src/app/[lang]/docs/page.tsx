@@ -1,11 +1,14 @@
 import { getDictionary } from "@/lib/get-dictionary";
 import Link from "next/link";
-import { ArrowRight, Terminal, Search, BarChart2 } from "lucide-react";
+import { Terminal, Search, BarChart2 } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { ReactNode } from "react";
+import { normalizeLocale } from "@/lib/i18n";
 
 export default async function DocsIndex({ params }: { params: Promise<{ lang: string }> }) {
     const { lang } = await params;
-    const dict = await getDictionary(lang as any);
+    const locale = normalizeLocale(lang);
+    const dict = await getDictionary(locale);
 
     return (
         <div className="space-y-12 pb-20">
@@ -21,43 +24,43 @@ export default async function DocsIndex({ params }: { params: Promise<{ lang: st
                     icon={<Terminal className="h-5 w-5" />}
                     title={dict.docs.quickStart.title}
                     description={dict.docs.quickStart.description}
-                    href={`/${lang}/docs/getting-started`}
+                    href={`/${locale}/docs/getting-started`}
                 />
                 <DocsCard
                     icon={<Search className="h-5 w-5" />}
                     title={dict.docs.dataIngestion.title}
                     description={dict.docs.dataIngestion.description}
-                    href={`/${lang}/docs/ingesting-reviews`}
+                    href={`/${locale}/docs/ingesting-reviews`}
                 />
                 <DocsCard
                     icon={<BarChart2 className="h-5 w-5" />}
                     title={dict.docs.aiTaxonomy.title}
                     description={dict.docs.aiTaxonomy.description}
-                    href={`/${lang}/docs/insights-and-taxonomy`}
+                    href={`/${locale}/docs/insights-and-taxonomy`}
                 />
             </div>
 
             <section className="space-y-6">
                 <h2 className="text-3xl font-bold tracking-tighter uppercase">
-                    {lang === 'it' ? 'Panoramica Protocollo' : lang === 'fr' ? 'Aperçu du Protocole' : lang === 'de' ? 'Protokoll-Übersicht' : 'Protocol Overview'}
+                    {lang === 'it' ? 'Panoramica Prodotto' : lang === 'fr' ? 'Aperçu du Produit' : lang === 'de' ? 'Produktübersicht' : 'Product Overview'}
                 </h2>
                 <div className="prose prose-invert max-w-none space-y-6">
                     <p>
                         {lang === 'it'
-                            ? "SentiNext è un livello di intelligence ad alta precisione per il loop di feedback del tuo gioco. Supera il rumore dei punteggi medi delle recensioni per estrarre insight specifici e quantificati."
-                            : "SentiNext is a high-precision intelligence layer for your game's feedback loop. It bypasses the noise of aggregate review scores to extract specific, quantified insights."}
+                            ? "SentiNext analizza le recensioni Steam pubbliche del tuo gioco e le trasforma in insight strutturati: tassonomia coerente, citazioni di evidenza e metriche utili per decidere cosa fare dopo."
+                            : "SentiNext analyzes public Steam reviews for your game and turns them into structured insights: a consistent taxonomy, evidence quotes, and metrics to decide what to do next."}
                     </p>
                     <p>
                         {lang === 'it'
-                            ? "Distribuendo agenti autonomi nella tua Steam community, ottieni visibilità su:"
-                            : "By deploying autonomous agents to your Steam community, you gain visibility into:"}
+                            ? "Dopo aver analizzato un gioco, puoi:"
+                            : "After you analyze a game, you can:"}
                     </p>
                     <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 list-none p-0">
                         {[
-                            lang === 'it' ? "Correlazione problemi tecnici con il tempo di gioco" : "Technical issue correlation with playtime",
-                            lang === 'it' ? "Scoring dell'impatto delle richieste di feature" : "Feature request impact scoring",
-                            lang === 'it' ? "Analisi del sentiment post-patch" : "Post-patch sentiment drift analysis",
-                            lang === 'it' ? "Mappatura tassonomica supportata da evidenze" : "Evidence-backed taxonomy mapping"
+                            lang === 'it' ? "Vedere problemi e richieste più frequenti, con citazioni" : "See top issues and requests, backed by quotes",
+                            lang === 'it' ? "Esplorare recensioni etichettate e fare drill‑down" : "Explore labeled reviews and drill down into details",
+                            lang === 'it' ? "Fare domande via chat con grafici/citazioni" : "Ask questions via chat with charts/quotes",
+                            lang === 'it' ? "Confrontare giochi ed esportare dataset/report" : "Compare games and export datasets/reports"
                         ].map((item, i) => (
                             <li key={i} className="flex items-center gap-3 p-4 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm m-0">
                                 <span className="text-[#00F0FF] font-mono font-bold">{" >> "}</span>
@@ -71,7 +74,14 @@ export default async function DocsIndex({ params }: { params: Promise<{ lang: st
     );
 }
 
-function DocsCard({ icon, title, description, href }: any) {
+type DocsCardProps = {
+    icon: ReactNode;
+    title: string;
+    description: string;
+    href: string;
+};
+
+function DocsCard({ icon, title, description, href }: DocsCardProps) {
     return (
         <Link href={href} className="group relative block h-full no-underline">
             <div className="h-full p-8 border border-[#00F0FF]/10 bg-[#00F0FF]/5 hover:bg-[#00F0FF]/10 transition-all rounded-sm overflow-hidden">

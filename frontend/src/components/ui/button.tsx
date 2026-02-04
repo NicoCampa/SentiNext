@@ -5,7 +5,7 @@ import clsx from 'clsx';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'update';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   icon?: ReactNode;
@@ -56,6 +56,13 @@ export function Button({
       text-[rgb(0,255,255)]/70
       hover:text-[rgb(0,255,255)]
       hover:bg-[rgb(0,255,255)]/5
+    `,
+    update: `
+      bg-violet-500/10
+      border-violet-500/50
+      text-violet-300
+      hover:bg-violet-500/20
+      hover:border-violet-500
     `,
     danger: `
       bg-rose-500/10

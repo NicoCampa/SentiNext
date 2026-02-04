@@ -687,6 +687,10 @@ REVIEW_EXPORT_COLUMNS = [
     "author_playtime_last_two_weeks",
     "author_playtime_hours",
     "author_recent_playtime_hours",
+    # Purchase & platform info
+    "steam_purchase",
+    "received_for_free",
+    "primarily_steam_deck",
     # LLM classification
     "llm_main_category",
     "llm_subcategory",
@@ -717,6 +721,12 @@ def _parse_json_payload(value: Any, fallback: dict) -> dict:
 def _database_row_to_item(row: Dict[str, Any], games_map: Dict[int, Optional[str]]) -> "DatabaseReviewItem":
     payload = _parse_json_payload(row.get("data"), {})
     label_payload = _parse_json_payload(row.get("label_payload"), {})
+    if label_payload and (
+        label_payload.get("subcategories")
+        or label_payload.get("main_category")
+        or label_payload.get("subcategory")
+    ):
+        label_payload = llm.normalize_taxonomy_payload(label_payload)
 
     author = payload.get("author", {}) or {}
     playtime_forever = int(author.get("playtime_forever") or 0)
@@ -1061,9 +1071,13 @@ def _run_analysis_job(
     progress_active = total_reviews > 0
 
     if progress_active:
-        storage.reset_progress(user_id, app_id, total_reviews)
+        # Reset progress to classifying phase (fetch phase is done at this point)
+        storage.reset_progress(user_id, app_id, total_reviews, phase="classifying")
 
         def _progress_callback(processed: int, total: int) -> None:
+            # Check for cancellation
+            if storage.is_cancelled(user_id, app_id):
+                raise InterruptedError("Analysis cancelled by user")
             try:
                 storage.update_progress(user_id, app_id, processed, total)
             except Exception as exc:  # pragma: no cover - defensive
@@ -1129,6 +1143,21 @@ def _run_analysis_job(
             snapshot_hash=snapshot_hash,
             context_hash=context_hash,
         )
+    except InterruptedError as exc:
+        # User cancelled the analysis
+        logger.info(f"Analysis cancelled for app {app_id}: {exc}")
+        storage.save_analysis_result(
+            user_id=user_id,
+            app_id=app_id,
+            metadata=metadata.dict(),
+            insights=None,
+            reviews=[],
+            status="cancelled",
+            error="Analysis cancelled by user",
+            run_id=run_id,
+            snapshot_hash=snapshot_hash,
+            context_hash=context_hash,
+        )
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("Analysis job failed: %s", exc)
         storage.save_analysis_result(
@@ -1182,6 +1211,16 @@ def analyze(
 
     fetched_reviews: List[dict] = []
     if should_fetch:
+        # Set up fetch progress tracking
+        def _fetch_progress_callback(fetched_count: int) -> None:
+            try:
+                storage.update_fetch_progress(user_id, request.app_id, fetched_count)
+            except Exception as exc:
+                logger.warning("Fetch progress update failed: %s", exc)
+
+        # Initialize progress with fetching phase
+        storage.reset_progress(user_id, request.app_id, total=0, phase="fetching")
+
         try:
             if languages_to_fetch and len(languages_to_fetch) > 1:
                 # Multi-language fetch
@@ -1191,6 +1230,7 @@ def analyze(
                     languages=languages_to_fetch,
                     filter_type=filter_type,
                     day_range=request.refresh_days or request.day_range,
+                    progress_callback=_fetch_progress_callback,
                 )
             else:
                 # Single language fetch (or "all")
@@ -1200,8 +1240,10 @@ def analyze(
                     language=languages_to_fetch[0] if languages_to_fetch else "all",
                     filter_type=filter_type,
                     day_range=request.refresh_days or request.day_range,
+                    progress_callback=_fetch_progress_callback,
                 )
         except SteamAPIError as exc:
+            storage.clear_progress(user_id, request.app_id)
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         if request.persist:
@@ -1218,6 +1260,10 @@ def analyze(
     # Always apply review_count limit if specified
     if request.review_count and len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
+
+    # Sort reviews by language to maximize LLM batch efficiency
+    # (groups same-language reviews together for batching, newest first within each language)
+    all_reviews.sort(key=lambda r: (r.get("language", "english"), -(r.get("timestamp_created") or 0)))
 
     # Check game limit for free tier (max 2 games)
     subscription = credits.get_user_subscription(user_id)
@@ -1236,6 +1282,24 @@ def analyze(
                     "tier": "free",
                 },
             )
+
+    # Check if there's already a running analysis for this game
+    existing_result = storage.load_analysis_result(user_id, request.app_id)
+    if existing_result and existing_result.get("status") == "running":
+        # Check if there's active progress (job is actually running)
+        progress = storage.load_progress(user_id, request.app_id)
+        if progress and progress.get("total", 0) > 0:
+            processed = progress.get("processed", 0)
+            total = progress.get("total", 0)
+            if processed < total:
+                # Job is actively running - don't start another
+                logger.info(f"Analysis already running for app {request.app_id} ({processed}/{total})")
+                # Return the existing metadata
+                return AnalyzeResponse(
+                    metadata=AnalyzeMetadata(**existing_result.get("metadata", {})),
+                    insights=None,
+                    reviews=[],
+                )
 
     game_context = fetch_app_details(request.app_id)
     header_image = None
@@ -1618,6 +1682,61 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc
 
     return ChatResponse(**payload)
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    target_language: str  # e.g., 'en', 'it', 'fr', 'de'
+
+
+class TranslateResponse(BaseModel):
+    translated_text: str
+    model_id: str
+
+
+@app.post("/translate", response_model=TranslateResponse, dependencies=[Depends(require_license)])
+def translate_text_endpoint(
+    request: TranslateRequest,
+    user_id: str = Depends(require_user_id),
+) -> TranslateResponse:
+    """Translate text to the target language using the LLM."""
+    text = (request.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    target_language = (request.target_language or "").strip().lower()
+    if not target_language:
+        raise HTTPException(status_code=400, detail="Target language is required.")
+
+    # Translation costs 1 credit
+    translate_cost = 1
+    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, translate_cost)
+    if not can_proceed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": credit_message,
+                "credits_needed": translate_cost,
+                "credits_available": credit_status["balance"],
+                "tier": credit_status["tier"],
+            },
+        )
+
+    try:
+        translated, model_id = llm.translate_text(text, target_language)
+
+        # Deduct credits
+        credits.deduct_credits(
+            user_id=user_id,
+            amount=translate_cost,
+            operation="translate",
+            description=f"Translated text to {target_language}",
+        )
+
+        return TranslateResponse(translated_text=translated, model_id=model_id)
+    except Exception as exc:
+        logger.exception("Translation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Translation failed.") from exc
 
 
 @app.post("/chat/simple", response_model=SimpleChatResponse)
@@ -2566,10 +2685,14 @@ def classification_progress(
             "processed": 0,
             "active": False,
             "updated_at": None,
+            "phase": "idle",
+            "fetched_count": 0,
         }
 
     total = int(progress.get("total", 0))
     processed = int(progress.get("processed", 0))
+    phase = progress.get("phase", "classifying")
+    fetched_count = int(progress.get("fetched_count", 0))
     timestamp = progress.get("updated_at")
     updated_at = (
         datetime.utcfromtimestamp(timestamp).isoformat() + "Z"
@@ -2577,12 +2700,21 @@ def classification_progress(
         else None
     )
 
+    # For fetching phase, consider active if fetched_count > 0
+    # For classifying phase, consider active if processed < total
+    if phase == "fetching":
+        active = True
+    else:
+        active = processed < total
+
     return {
         "app_id": app_id,
         "total": total,
         "processed": processed,
-        "active": processed < total,
+        "active": active,
         "updated_at": updated_at,
+        "phase": phase,
+        "fetched_count": fetched_count,
     }
 
 
@@ -2595,12 +2727,13 @@ async def progress_stream(
 
     Streams progress updates every 500ms until analysis completes or client disconnects.
     Event types:
-        - progress: {"processed": int, "total": int, "active": bool}
+        - progress: {"processed": int, "total": int, "active": bool, "phase": str, "fetched_count": int}
         - completed: {"status": "completed"}
         - error: {"status": "failed", "error": str}
     """
     async def event_generator():
         last_processed = -1
+        last_fetched = -1
         idle_count = 0
         max_idle = 120  # 60 seconds of no progress = timeout
 
@@ -2622,20 +2755,36 @@ async def progress_stream(
                             return
 
                     # No progress and no result - send empty state
-                    yield f"event: progress\ndata: {json.dumps({'processed': 0, 'total': 0, 'active': False})}\n\n"
+                    yield f"event: progress\ndata: {json.dumps({'processed': 0, 'total': 0, 'active': False, 'phase': 'idle', 'fetched_count': 0})}\n\n"
                     idle_count += 1
                 else:
                     total = int(progress.get("total", 0))
                     processed = int(progress.get("processed", 0))
-                    active = processed < total
+                    phase = progress.get("phase", "classifying")
+                    fetched_count = int(progress.get("fetched_count", 0))
 
-                    yield f"event: progress\ndata: {json.dumps({'processed': processed, 'total': total, 'active': active})}\n\n"
-
-                    if processed == last_processed:
-                        idle_count += 1
+                    # For fetching phase, consider active if fetched_count is changing
+                    # For classifying phase, consider active if processed < total
+                    if phase == "fetching":
+                        active = True  # Always active during fetching
                     else:
-                        idle_count = 0
-                        last_processed = processed
+                        active = processed < total
+
+                    yield f"event: progress\ndata: {json.dumps({'processed': processed, 'total': total, 'active': active, 'phase': phase, 'fetched_count': fetched_count})}\n\n"
+
+                    # Track progress changes for both phases
+                    if phase == "fetching":
+                        if fetched_count == last_fetched:
+                            idle_count += 1
+                        else:
+                            idle_count = 0
+                            last_fetched = fetched_count
+                    else:
+                        if processed == last_processed:
+                            idle_count += 1
+                        else:
+                            idle_count = 0
+                            last_processed = processed
 
                     # Check if completed
                     if not active and total > 0:
@@ -2673,6 +2822,28 @@ async def progress_stream(
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
+
+
+@app.post("/progress/{app_id}/cancel", dependencies=[Depends(require_license)])
+def cancel_analysis(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+) -> dict:
+    """Cancel a running analysis job."""
+    cancelled = storage.cancel_progress(user_id, app_id)
+    if cancelled:
+        logger.info(f"Analysis cancelled for app {app_id} by user {user_id}")
+        # Also mark the analysis result as cancelled
+        storage.save_analysis_result(
+            user_id=user_id,
+            app_id=app_id,
+            metadata={},
+            insights=None,
+            reviews=[],
+            status="cancelled",
+            error="Analysis cancelled by user",
+        )
+    return {"cancelled": cancelled, "app_id": app_id}
 
 
 @app.get("/starred", response_model=List[StarredGameResponse], dependencies=[Depends(require_license)])

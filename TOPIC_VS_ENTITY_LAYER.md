@@ -261,7 +261,7 @@ Topics are things **already in your LLM taxonomy**:
 ✅ "what do people say about AI?" → `ai` subcategory
 ✅ "find performance issues" → `technical/performance`
 ✅ "gameplay complaints" → `gameplay/*`
-✅ "reviews about crashes" → `technical/crashes`
+✅ "reviews about crashes" → `technical/stability_crashes`
 
 ### Entities (Use Keyword Search)
 ✅ 'what do people think of "Sonic"?' → FTS "Sonic"

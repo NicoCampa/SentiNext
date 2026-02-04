@@ -3,10 +3,12 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Search, Sliders, BarChart2, Layers } from "lucide-react";
+import { Search, BarChart2, Layers } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { ReactNode } from "react";
+import type { Dictionary, SupportedLocale } from "@/lib/i18n";
 
-export default function ProductClient({ dict, lang }: { dict: any, lang: string }) {
+export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
     return (
         <div className="flex flex-col min-h-screen">
             {/* Hero */}
@@ -28,8 +30,8 @@ export default function ProductClient({ dict, lang }: { dict: any, lang: string 
                         className="text-xl md:text-2xl text-muted-foreground max-w-4xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60"
                     >
                         {lang === 'it'
-                            ? 'Ingestione dati autonoma e classificazione neurale.'
-                            : 'Autonomous data ingestion and neural classification.'}
+                            ? 'Dalle recensioni Steam a insight strutturati, con evidenze.'
+                            : 'From Steam reviews to structured insights, with evidence.'}
                     </motion.p>
                 </div>
             </section>
@@ -40,16 +42,16 @@ export default function ProductClient({ dict, lang }: { dict: any, lang: string 
                 icon={<Search className="h-7 w-7 text-[#00F0FF]" />}
                 title={lang === 'it' ? "1. Ricerca e Ingestione" : "1. Search & Ingest"}
                 description={lang === 'it'
-                    ? "Collegati a qualsiasi Steam App ID. SentiNext recupera migliaia di recensioni in pochi secondi, rispettando i limiti delle API di Steam."
-                    : "Connect to any Steam App ID. SentiNext fetches thousands of reviews in seconds, respecting Steam's API rate limits and handling pagination automatically."}
+                    ? "Cerca un gioco (nome o App ID) e avvia un'analisi. SentiNext recupera recensioni Steam recenti e salva i risultati sul tuo account."
+                    : "Search a game (name or App ID) and run an analysis. SentiNext fetches recent Steam reviews and saves results to your account."}
                 details={lang === 'it' ? [
-                    "Filtra per intervallo di date, lingua e tempo di gioco.",
-                    "La cache intelligente consente la ri-analisi offline.",
-                    "Persistenza dati su PostgreSQL per il monitoraggio a lungo termine."
+                    "Cerca per nome o incolla un App ID.",
+                    "Recupera recensioni recenti da Steam (endpoint pubblico; nessun login Steam).",
+                    "Esegue in background con tracking del progresso e persistenza su PostgreSQL."
                 ] : [
-                    "Filter by date range, language, and playtime.",
-                    "Smart caching allows offline re-analysis.",
-                    "Persist data to PostgreSQL for long-term tracking."
+                    "Search by name or paste an App ID.",
+                    "Fetch recent reviews from Steam (public endpoint; no Steam login).",
+                    "Runs in the background with progress tracking and PostgreSQL persistence."
                 ]}
                 align="left"
                 mockup={
@@ -60,13 +62,13 @@ export default function ProductClient({ dict, lang }: { dict: any, lang: string 
                         </div>
                         <div className="space-y-3">
                             <div className="flex justify-between text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest">
-                                <span>Ingesting reports...</span>
-                                <span>1,240 / 5,000</span>
+                                <span>Fetching Steam reviews...</span>
+                                <span>74%</span>
                             </div>
                             <div className="h-2 w-full bg-[#00F0FF]/10 rounded-full overflow-hidden">
                                 <motion.div
                                     initial={{ width: 0 }}
-                                    whileInView={{ width: "25%" }}
+                                    whileInView={{ width: "74%" }}
                                     className="h-full bg-[#00F0FF]"
                                 />
                             </div>
@@ -81,16 +83,16 @@ export default function ProductClient({ dict, lang }: { dict: any, lang: string 
                 icon={<Layers className="h-7 w-7 text-[#00F0FF]" />}
                 title={lang === 'it' ? "2. Classificazione" : "2. Classification"}
                 description={lang === 'it'
-                    ? "La nostra pipeline LLM fine-tuned legge ogni recensione per identificare problemi specifici e richieste di caratteristiche."
-                    : "Our fine-tuned LLM pipeline reads every review to identify specific issues and feature requests, not just generic sentiment."}
+                    ? "Google Gemini etichetta ogni recensione con una tassonomia coerente ed estrae citazioni di evidenza."
+                    : "Google Gemini labels each review with a consistent taxonomy and extracts evidence quotes."}
                 details={lang === 'it' ? [
-                    "Distingue tra bug, richieste ed elogi.",
-                    "Normalizza termini vari (es. 'lag' -> 'Performance').",
-                    "Usa l'estrazione di evidenze per citare il reclamo esatto dell'utente."
+                    "Assegna 1–6 tag (es. technical/performance, ui_ux_accessibility/quality_of_life).",
+                    "Separa problemi (issue) e richieste di feature (request).",
+                    "Salva citazioni testuali per ogni tag per la verifica."
                 ] : [
-                    "Distinguishes between bugs, requests, and praise.",
-                    "Normalizes varying terms (e.g., 'lag' -> 'Performance').",
-                    "Uses evidence extraction to quote the exact user complaint."
+                    "Assigns 1–6 tags (e.g., technical/performance, ui_ux_accessibility/quality_of_life).",
+                    "Separates issues vs feature requests.",
+                    "Stores verbatim evidence quotes for every tag so you can audit results."
                 ]}
                 align="right"
                 mockup={
@@ -113,16 +115,16 @@ export default function ProductClient({ dict, lang }: { dict: any, lang: string 
                 icon={<BarChart2 className="h-7 w-7 text-[#00F0FF]" />}
                 title={lang === 'it' ? "3. Insight Quantificati" : "3. Quantified Insights"}
                 description={lang === 'it'
-                    ? "Visualizza un dashboard di alto livello di ciò che conta di più. SentiNext classifica i problemi per frequenza e impatto."
-                    : "View a high-level dashboard of what matters most. SentiNext ranks issues by frequency and impact, helping you decide what to fix next."}
+                    ? "Dashboard, esplorazione recensioni, chat agente e confronto: passa dai numeri alle decisioni con evidenze e drill‑down."
+                    : "Dashboards, review explorer, AI agent chat, and comparisons: go from numbers to decisions with evidence and drill‑down."}
                 details={lang === 'it' ? [
-                    "Grafici interattivi e mappe di calore.",
-                    "Approfondisci dalla categoria alle singole recensioni.",
-                    "Esporta i dati per la tua analisi."
+                    "Dashboard: breakdown per categoria, top issue/request e trend.",
+                    "Chat agente: domande e grafici basati sui tuoi dati analizzati.",
+                    "Confronto giochi, export CSV/JSONL e report PDF mensili."
                 ] : [
-                    "Interactive charts and heatmaps.",
-                    "Drill down from category to individual reviews.",
-                    "Export data for your own analysis."
+                    "Dashboard: category breakdown, top issues/requests, and trends.",
+                    "AI agent chat: questions and charts grounded in your analyzed data.",
+                    "Compare games, export CSV/JSONL, and generate monthly PDF reports."
                 ]}
                 align="left"
                 mockup={
@@ -168,7 +170,17 @@ export default function ProductClient({ dict, lang }: { dict: any, lang: string 
     );
 }
 
-function FeatureSection({ id, icon, title, description, details, align, mockup }: any) {
+type FeatureSectionProps = {
+    id: string;
+    icon: ReactNode;
+    title: string;
+    description: string;
+    details: string[];
+    align: "left" | "right";
+    mockup: ReactNode;
+};
+
+function FeatureSection({ id, icon, title, description, details, align, mockup }: FeatureSectionProps) {
     return (
         <section id={id} className="py-24 md:py-32 border-b border-[#00F0FF]/10 last:border-0 overflow-hidden">
             <div className="container px-4 md:px-6 mx-auto">

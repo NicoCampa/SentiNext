@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import type { Dictionary, SupportedLocale } from "@/lib/i18n";
 
-export function DocsSidebar({ dict, lang }: { dict: any, lang: string }) {
+export function DocsSidebar({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
     const pathname = usePathname();
 
     // We construct the nav items using the translated labels from the dictionary

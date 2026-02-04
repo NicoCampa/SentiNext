@@ -169,8 +169,10 @@ def _calculate_retry_delay(attempt: int, error_type: LLMErrorType, extracted_del
     delay = base_delay * (2 ** (attempt - 1))
     jitter = random.uniform(0, delay * 0.1)
     return min(delay + jitter, 60.0)  # Cap at 60 seconds
-PROMPT_VERSION = "steam_review_insights_v13_subcategories_primary_json"
+PROMPT_VERSION_V1 = "steam_review_insights_v13_subcategories_primary_json"
+PROMPT_VERSION = "steam_review_insights_v14_taxonomy_v11_json"
 ACTIVE_PROMPT_VERSION = PROMPT_VERSION
+ACCEPTED_PROMPT_VERSIONS = {ACTIVE_PROMPT_VERSION, PROMPT_VERSION_V1}
 
 # Batch size configuration (lower = faster individual responses, higher = fewer API calls)
 # Gemini works well with 3-5 reviews per batch
@@ -287,17 +289,18 @@ _PROMPT_TEMPLATE = Template(
 
         TAXONOMY (allowed main/sub):
         - gameplay: mechanics (combat/movement/core loop), controls (input/controller), balance, difficulty, progression, ai
-        - technical: performance, bugs, stability, crashes, compatibility (deck/ultrawide/VR/HDR), networking,
-          installation (launcher/DRM/account linking/cloud saves)
+        - technical: performance, bugs, stability_crashes (freezes/CTD/unstable), compatibility (deck/ultrawide/VR/HDR), networking,
+          installation (launcher/DRM/account linking), save_data (Steam Cloud sync, corrupted saves, progress loss)
         - content_design: amount_variety, level_design, quests_modes, narrative_characters, replayability, pacing, customization
         - ui_ux_accessibility: menus_hud, readability, quality_of_life, controller_support, accessibility_options
         - onboarding: tutorial, learning_curve, clarity, tooltips
-        - presentation: visuals_art_style, animation, audio_music_voice, atmosphere, localization
+        - presentation: visuals_art_style, animation, audio_music, voice_acting, atmosphere, localization
         - online_community: multiplayer_experience (non-technical), matchmaking, social_features, toxicity_moderation, mods_ugc,
           cheating_anti_cheat
-        - developer_updates: patch_quality, update_frequency, roadmap_events, communication, customer_support
-        - monetization_value: price, regional_pricing, dlc, microtransactions, pay_to_win_grind, value_for_money
-        - other: general, mixed, meta, unclear
+        - developer_updates: patch_quality, update_frequency, roadmap_events, communication, customer_support,
+          response_time (ONLY explicit wait/time-to-fix is mentioned)
+        - monetization_value: pricing, regional_pricing, dlc, microtransactions, battle_pass_fomo, pay_to_win_grind, value_for_money
+        - other: general, mixed, meta, unclear, off_topic, meme
 
         REVIEW TEXT (verbatim):
         <<<BEGIN REVIEW>>>
@@ -356,17 +359,18 @@ _BATCH_PROMPT_TEMPLATE = Template(
 
         TAXONOMY (allowed main/sub):
         - gameplay: mechanics (combat/movement/core loop), controls (input/controller), balance, difficulty, progression, ai
-        - technical: performance, bugs, stability, crashes, compatibility (deck/ultrawide/VR/HDR), networking,
-          installation (launcher/DRM/account linking/cloud saves)
+        - technical: performance, bugs, stability_crashes (freezes/CTD/unstable), compatibility (deck/ultrawide/VR/HDR), networking,
+          installation (launcher/DRM/account linking), save_data (Steam Cloud sync, corrupted saves, progress loss)
         - content_design: amount_variety, level_design, quests_modes, narrative_characters, replayability, pacing, customization
         - ui_ux_accessibility: menus_hud, readability, quality_of_life, controller_support, accessibility_options
         - onboarding: tutorial, learning_curve, clarity, tooltips
-        - presentation: visuals_art_style, animation, audio_music_voice, atmosphere, localization
+        - presentation: visuals_art_style, animation, audio_music, voice_acting, atmosphere, localization
         - online_community: multiplayer_experience (non-technical), matchmaking, social_features, toxicity_moderation, mods_ugc,
           cheating_anti_cheat
-        - developer_updates: patch_quality, update_frequency, roadmap_events, communication, customer_support
-        - monetization_value: price, regional_pricing, dlc, microtransactions, pay_to_win_grind, value_for_money
-        - other: general, mixed, meta, unclear
+        - developer_updates: patch_quality, update_frequency, roadmap_events, communication, customer_support,
+          response_time (ONLY explicit wait/time-to-fix is mentioned)
+        - monetization_value: pricing, regional_pricing, dlc, microtransactions, battle_pass_fomo, pay_to_win_grind, value_for_money
+        - other: general, mixed, meta, unclear, off_topic, meme
 
         REVIEWS (each block is independent; do not mix evidence across blocks):
         <<<BEGIN REVIEWS>>>
@@ -398,7 +402,7 @@ _ALLOWED_MAIN_CATEGORIES = {
 }
 _ALLOWED_SUBCATEGORIES = {
     "gameplay": {"mechanics", "controls", "balance", "difficulty", "progression", "ai"},
-    "technical": {"performance", "bugs", "stability", "crashes", "compatibility", "networking", "installation"},
+    "technical": {"performance", "bugs", "stability_crashes", "compatibility", "networking", "installation", "save_data"},
     "content_design": {
         "amount_variety",
         "level_design",
@@ -410,7 +414,7 @@ _ALLOWED_SUBCATEGORIES = {
     },
     "ui_ux_accessibility": {"menus_hud", "readability", "quality_of_life", "controller_support", "accessibility_options"},
     "onboarding": {"tutorial", "learning_curve", "clarity", "tooltips"},
-    "presentation": {"visuals_art_style", "animation", "audio_music_voice", "atmosphere", "localization"},
+    "presentation": {"visuals_art_style", "animation", "audio_music", "voice_acting", "atmosphere", "localization"},
     "online_community": {
         "multiplayer_experience",
         "matchmaking",
@@ -419,9 +423,24 @@ _ALLOWED_SUBCATEGORIES = {
         "mods_ugc",
         "cheating_anti_cheat",
     },
-    "developer_updates": {"patch_quality", "update_frequency", "roadmap_events", "communication", "customer_support"},
-    "monetization_value": {"price", "regional_pricing", "dlc", "microtransactions", "pay_to_win_grind", "value_for_money"},
-    "other": {"general", "mixed", "meta", "unclear"},
+    "developer_updates": {
+        "patch_quality",
+        "update_frequency",
+        "roadmap_events",
+        "communication",
+        "customer_support",
+        "response_time",
+    },
+    "monetization_value": {
+        "pricing",
+        "regional_pricing",
+        "dlc",
+        "microtransactions",
+        "battle_pass_fomo",
+        "pay_to_win_grind",
+        "value_for_money",
+    },
+    "other": {"general", "mixed", "meta", "unclear", "off_topic", "meme"},
 }
 _ALLOWED_SUBCATEGORY_KEYS = {
     f"{main}/{sub}" for main, subs in _ALLOWED_SUBCATEGORIES.items() for sub in subs
@@ -445,7 +464,9 @@ _MAIN_CATEGORY_ALIASES: dict[str, str] = {
 _SUBCATEGORY_ALIASES: dict[str, dict[str, str]] = {
     "technical": {
         "bug": "bugs",
-        "crash": "crashes",
+        "crash": "stability_crashes",
+        "crashes": "stability_crashes",
+        "stability": "stability_crashes",
     },
     "gameplay": {
         "mechanic": "mechanics",
@@ -465,10 +486,14 @@ _SUBCATEGORY_ALIASES: dict[str, dict[str, str]] = {
     "monetization_value": {
         "microtransaction": "microtransactions",
         "dlcs": "dlc",
+        "price": "pricing",
+    },
+    "presentation": {
+        "audio_music_voice": "audio_music",
     },
 }
 MAX_EVIDENCE_SNIPPET_CHARS = 160
-HYBRID_RULES_VERSION = "v1"
+HYBRID_RULES_VERSION = "v2"
 
 
 def _hybrid_rules_model_id() -> str:
@@ -567,7 +592,7 @@ def _compile_patterns(patterns: Sequence[str]) -> tuple[re.Pattern[str], ...]:
 
 _HYBRID_RULES: list[dict[str, Any]] = [
     {
-        "key": "technical/crashes",
+        "key": "technical/stability_crashes",
         "weight": 12,
         "patterns": _compile_patterns(
             [
@@ -575,20 +600,32 @@ _HYBRID_RULES: list[dict[str, Any]] = [
                 r"\bcrash(?:es|ed|ing)?\b",
                 r"\bcrash[- ]?to[- ]?desktop\b",
                 r"\bcrash\s+on\s+launch\b",
+                r"\bfreez(?:e|es|ing|en)\b",
+                r"\bhang(?:s|ing)?\b",
+                r"\bsoft[- ]?lock(?:ed|s)?\b",
             ]
         ),
     },
     {
-        "key": "technical/stability",
+        "key": "technical/save_data",
         "weight": 10,
         "patterns": _compile_patterns(
             [
-                r"\bfreez(?:e|es|ing|en)\b",
-                r"\bhang(?:s|ing)?\b",
-                r"\bsoft[- ]?lock(?:ed|s)?\b",
+                r"\bsteam\s+cloud\b",
+                r"\bcloud\s+sync\b",
+                r"\bcloud\s+saves?\b",
+                r"\bsync\s+(?:conflict|issue|issues|problem|problems|fail|fails|failed)\b",
+                r"\bcan['’]?t\s+save\b",
+                r"\bcannot\s+save\b",
+                r"\bwon['’]?t\s+save\b",
                 r"\bsave\s+corrupt(?:ion|ed)?\b",
                 r"\bcorrupt(?:ed)?\s+save\b",
                 r"\bprogress\s+los(?:s|t)\b",
+                r"\blost\s+(?:my\s+)?save\b",
+                r"\bmissing\s+save\b",
+                r"\bsave\s+file\b",
+                r"\bsave\s*game\b",
+                r"\bautosave\b.*\b(?:broken|not\s+work(?:ing)?|fail(?:s|ed)?)\b",
             ]
         ),
     },
@@ -894,8 +931,17 @@ def _parse_evidence(value: Any, allowed_subcategories: list[str]) -> dict[str, l
             text = _clean_snippet(snippet)
             if text and text not in cleaned:
                 cleaned.append(text)
-        if cleaned:
-            evidence[normalized_key] = cleaned[:4]
+        if not cleaned:
+            continue
+        existing = evidence.get(normalized_key, [])
+        for item in cleaned:
+            if item in existing:
+                continue
+            if len(existing) >= 4:
+                break
+            existing.append(item)
+        if existing:
+            evidence[normalized_key] = existing
     return evidence
 
 
@@ -1016,32 +1062,11 @@ def _run_gemini(prompt: str, model: str) -> str:
         while attempt < LLM_MAX_RETRIES:
             attempt += 1
             try:
-                # Use ThreadPoolExecutor for timeout on synchronous call
-                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-
-                def _call_api():
-                    return client.models.generate_content(
-                        model=model,
-                        contents=prompt
-                    )
-
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_call_api)
-                    try:
-                        response = future.result(timeout=LLM_TIMEOUT_SECONDS)
-                    except FuturesTimeoutError:
-                        logger.warning(f"Gemini API call timed out after {LLM_TIMEOUT_SECONDS}s (attempt {attempt}/{LLM_MAX_RETRIES})")
-                        error_type, retryable = _classify_error(None, "timeout")
-                        if attempt < LLM_MAX_RETRIES and retryable:
-                            retry_delay = _calculate_retry_delay(attempt, error_type)
-                            logger.info(f"Retrying in {retry_delay:.1f}s...")
-                            time.sleep(retry_delay)
-                            continue
-                        raise LLMError(
-                            f"Gemini API call timed out after {LLM_TIMEOUT_SECONDS}s",
-                            LLMErrorType.TIMEOUT,
-                            retryable=False
-                        )
+                # Direct API call - SDK has default 60s timeout
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt
+                )
 
                 content = response.text
                 elapsed = time.time() - start_time
@@ -1476,6 +1501,63 @@ def run_chat_completion(
     return _run_llm(prompt)
 
 
+# Language name mapping for translation prompts
+LANGUAGE_NAMES = {
+    "en": "English",
+    "it": "Italian",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese",
+    "pl": "Polish",
+    "tr": "Turkish",
+    "nl": "Dutch",
+    "sv": "Swedish",
+    "no": "Norwegian",
+    "da": "Danish",
+    "fi": "Finnish",
+    "cs": "Czech",
+    "hu": "Hungarian",
+    "ro": "Romanian",
+    "uk": "Ukrainian",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "ar": "Arabic",
+    "id": "Indonesian",
+    "el": "Greek",
+}
+
+
+def translate_text(text: str, target_language: str) -> tuple[str, str]:
+    """Translate text to the target language using the LLM.
+
+    Args:
+        text: The text to translate
+        target_language: Target language code (e.g., 'en', 'it', 'fr', 'de')
+
+    Returns:
+        Tuple of (translated_text, model_id)
+    """
+    if not text or not text.strip():
+        return text, _model_id("google", GEMINI_MODEL)
+
+    target_name = LANGUAGE_NAMES.get(target_language, target_language)
+
+    prompt = f"""Translate the following text to {target_name}.
+Only output the translated text, nothing else. Preserve the original formatting and tone.
+If the text is already in {target_name}, return it unchanged.
+
+Text to translate:
+{text}"""
+
+    translated, model_used = _run_llm(prompt)
+    return translated.strip(), model_used
+
+
 def _parse_payload(raw: str) -> Dict[str, Any]:
     if not raw:
         raise ValueError("Empty response from LLM")
@@ -1528,6 +1610,39 @@ def _parse_payload_mapping(payload: Mapping[str, Any]) -> Dict[str, Any]:
         "request_subcategories": request_subcategories,
         "evidence": evidence,
     }
+
+
+def normalize_taxonomy_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Normalize a stored label payload to the currently supported taxonomy.
+
+    This is used to keep older cached labels compatible when subcategory keys are renamed
+    (e.g., v1 -> v1.1) without forcing a full re-labeling run.
+    """
+    if not isinstance(payload, Mapping):
+        return _DEFAULT_LABEL.copy()
+
+    proxy: Dict[str, Any] = {
+        "subcategories": payload.get("subcategories"),
+        "issue_subcategories": payload.get("issue_subcategories"),
+        "request_subcategories": payload.get("request_subcategories"),
+        "evidence": payload.get("evidence"),
+        # Optional fallback fields (some payloads may contain these).
+        "main_category": payload.get("main_category") or payload.get("main"),
+        "subcategory": payload.get("subcategory") or payload.get("sub"),
+    }
+
+    try:
+        normalized = _parse_payload_mapping(proxy)
+    except Exception:
+        fallback = _DEFAULT_LABEL.copy()
+        fallback["evidence"] = _parse_evidence(payload.get("evidence"), fallback["subcategories"])
+        return fallback
+
+    for extra_key in ("_label_source", "_label_model"):
+        if extra_key in payload:
+            normalized[extra_key] = payload.get(extra_key)
+
+    return normalized
 
 
 def _build_batch_prompt(
@@ -1604,42 +1719,56 @@ def classify_reviews_batch(
     payload = _load_json_mapping(raw)
 
     results: Dict[str, Dict[str, Any]] = {}
+    failed_ids = []
     for review_id in expected_ids:
         entry = payload.get(review_id)
         if not isinstance(entry, dict):
-            raise ValueError(f"Missing/invalid payload for review_id={review_id}.")
-        results[review_id] = _parse_payload_mapping(entry)
+            logger.warning(f"Missing/invalid payload for review_id={review_id}, using default label")
+            results[review_id] = _DEFAULT_LABEL.copy()
+            failed_ids.append(review_id)
+            continue
+        try:
+            results[review_id] = _parse_payload_mapping(entry)
+        except ValueError as e:
+            logger.warning(f"Failed to parse payload for review_id={review_id}: {e}, using default label")
+            results[review_id] = _DEFAULT_LABEL.copy()
+            failed_ids.append(review_id)
+
+    if failed_ids:
+        logger.warning(f"Batch had {len(failed_ids)} parsing failures out of {len(expected_ids)} reviews")
 
     return results, model_used
 
 
 def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Optional[Dict[str, Any]] = None) -> tuple[Dict[str, Dict[str, Any]], str]:
-    """Classify reviews with best-effort batching and automatic split-on-failure."""
+    """Classify reviews in a batch with fallback to single-review processing on failure."""
     if not items:
         return {}, _model_id("google", GEMINI_MODEL)
 
     try:
         return classify_reviews_batch(items, game_context=game_context)
-    except Exception:
+    except Exception as batch_error:
+        # Batch failed completely - retry each review individually
         if len(items) == 1:
-            item = items[0]
-            payload, model_used = classify_review(
-                str(item.get("review_text") or ""),
-                game_context=game_context,
-                reviewer_playtime=float(item.get("reviewer_playtime") or 0),
-                reviewer_voted_up=bool(item.get("reviewer_voted_up", True)),
-                review_language=str(item.get("review_language") or "english"),
-            )
-            review_id = str(item.get("review_id") or "")
-            if not review_id:
-                raise ValueError("Missing review_id in batch input.")
-            return {review_id: payload}, model_used
+            # Already single review, use default label
+            review_id = str(items[0].get("review_id") or "unknown")
+            logger.error(f"Single review classification failed for {review_id}: {batch_error}")
+            return {review_id: _DEFAULT_LABEL.copy()}, _model_id("google", GEMINI_MODEL)
 
-        mid = len(items) // 2
-        left, left_model = classify_reviews(items[:mid], game_context=game_context)
-        right, right_model = classify_reviews(items[mid:], game_context=game_context)
-        model_used = left_model or right_model or _model_id("google", GEMINI_MODEL)
-        return {**left, **right}, model_used
+        logger.warning(f"Batch of {len(items)} failed: {batch_error}. Retrying individually...")
+        results: Dict[str, Dict[str, Any]] = {}
+        model_used = _model_id("google", GEMINI_MODEL)
+
+        for item in items:
+            review_id = str(item.get("review_id") or "unknown")
+            try:
+                single_result, model_used = classify_reviews_batch([item], game_context=game_context)
+                results.update(single_result)
+            except Exception as single_error:
+                logger.warning(f"Individual review {review_id} failed: {single_error}, using default label")
+                results[review_id] = _DEFAULT_LABEL.copy()
+
+        return results, model_used
 
 
 def classify_review(
@@ -1703,7 +1832,8 @@ def ensure_review_labels(
         if cached is not None:
             if cached.get("review_hash") != review_hash:
                 needs_refresh = True
-            if cached.get("prompt_version") != ACTIVE_PROMPT_VERSION:
+            cached_prompt_version = cached.get("prompt_version")
+            if cached_prompt_version not in ACCEPTED_PROMPT_VERSIONS:
                 needs_refresh = True
             cached_model = cached.get("model")
             if cached_model not in valid_cached_models:
@@ -1754,7 +1884,20 @@ def ensure_review_labels(
             continue
 
         if not needs_refresh:
-            results[review_id] = cached["payload"]
+            cached_payload = cached.get("payload") or {}
+            payload = normalize_taxonomy_payload(cached_payload)
+            if cache_enabled and (
+                cached.get("prompt_version") != ACTIVE_PROMPT_VERSION or payload != cached_payload
+            ):
+                storage.upsert_review_label(
+                    app_id,
+                    review_id,
+                    review_hash,
+                    payload,
+                    str(cached.get("model") or expected_llm_model_id),
+                    ACTIVE_PROMPT_VERSION,
+                )
+            results[review_id] = payload
             processed_count += 1
             if progress_callback is not None:
                 progress_callback(processed_count, total_reviews)
@@ -1790,8 +1933,9 @@ def ensure_review_labels(
 
     # Process all batches in parallel
     if all_batches:
-        # Use 2 workers for Gemini free tier (10 req/min limit)
-        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "2"))
+        # Default to 5 workers (good for paid Gemini API)
+        # Set SENTINEXT_MAX_PARALLEL_BATCHES=2 for free tier (10 req/min limit)
+        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "5"))
         logger.info(f"Processing {len(all_batches)} batches in parallel (max_workers={max_workers})")
 
         def process_batch(batch_items: list[Dict[str, Any]]) -> tuple[Dict[str, Dict[str, Any]], str]:
@@ -1800,8 +1944,8 @@ def ensure_review_labels(
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_batch = {}
             for batch in all_batches:
-                ctx = contextvars.copy_context()
-                future = executor.submit(ctx.run, process_batch, batch)
+                # Submit directly without context copying to avoid "cannot enter context" errors
+                future = executor.submit(process_batch, batch)
                 future_to_batch[future] = batch
 
             for future in as_completed(future_to_batch):
@@ -1894,7 +2038,8 @@ def estimate_review_labeling(
             if cached.get("review_hash") != review_hash:
                 needs_refresh = True
                 reasons["hash_mismatch"] = reasons.get("hash_mismatch", 0) + 1
-            if cached.get("prompt_version") != ACTIVE_PROMPT_VERSION:
+            cached_prompt_version = cached.get("prompt_version")
+            if cached_prompt_version not in ACCEPTED_PROMPT_VERSIONS:
                 needs_refresh = True
                 reasons["prompt_version_mismatch"] = reasons.get("prompt_version_mismatch", 0) + 1
             cached_model = cached.get("model")

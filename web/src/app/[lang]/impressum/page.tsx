@@ -1,9 +1,9 @@
-import { getDictionary } from "@/lib/get-dictionary";
+import { normalizeLocale } from "@/lib/i18n";
 import { ImpressumClient } from "./ImpressumClient";
 
 export default async function ImpressumPage({ params }: { params: Promise<{ lang: string }> }) {
     const { lang } = await params;
-    const dict = await getDictionary(lang as any);
+    const locale = normalizeLocale(lang);
 
-    return <ImpressumClient dict={dict} lang={lang} />;
+    return <ImpressumClient lang={locale} />;
 }

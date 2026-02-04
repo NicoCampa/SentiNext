@@ -23,6 +23,10 @@ from .analysis import (
     purchase_type_insights,
     engagement_based_topics,
     activity_based_feedback,
+    platform_segment_insights,
+    language_segment_insights,
+    quality_weighted_insights,
+    cross_segment_analysis,
 )
 from .insights import prepare_insights
 from . import storage
@@ -88,6 +92,10 @@ __all__ = [
     "purchase_type_insights",
     "engagement_based_topics",
     "activity_based_feedback",
+    "platform_segment_insights",
+    "language_segment_insights",
+    "quality_weighted_insights",
+    "cross_segment_analysis",
     "storage",
     "llm",
     "ingest",

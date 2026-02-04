@@ -96,11 +96,38 @@ export function AnalysisWidget() {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs text-slate-400">
                         <span>
-                          {!task.progress || task.progress.total === 0
-                            ? 'Fetching reviews from Steam...'
-                            : task.progress.processed < task.progress.total
-                            ? 'Classifying reviews with AI...'
-                            : 'Building insights...'}
+                          {(() => {
+                            const phase = task.progress?.phase;
+                            const total = task.progress?.total ?? 0;
+                            const processed = task.progress?.processed ?? 0;
+                            const fetchedCount = task.progress?.fetched_count ?? 0;
+
+                            // Use phase if available (more reliable)
+                            if (phase === 'fetching') {
+                              return fetchedCount > 0
+                                ? `Fetching reviews from Steam... (${fetchedCount})`
+                                : 'Fetching reviews from Steam...';
+                            }
+                            if (phase === 'classifying') {
+                              return processed >= total && total > 0
+                                ? 'Building insights...'
+                                : 'Classifying reviews with AI...';
+                            }
+                            // When phase is 'idle' or undefined with no meaningful data,
+                            // show finalizing to avoid confusion (completion event is imminent)
+                            if (phase === 'idle') {
+                              return 'Finalizing...';
+                            }
+
+                            // Fallback for backwards compatibility (no phase data)
+                            if (!task.progress || total === 0) {
+                              return 'Fetching reviews from Steam...';
+                            }
+                            if (processed < total) {
+                              return 'Classifying reviews with AI...';
+                            }
+                            return 'Building insights...';
+                          })()}
                         </span>
                         {task.progress && task.progress.total > 0 && (
                           <span>

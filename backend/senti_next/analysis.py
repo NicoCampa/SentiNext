@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 import re
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 
@@ -40,12 +40,14 @@ def build_reviews_dataframe(reviews: Sequence[dict]) -> pd.DataFrame:
                 "steam_purchase": bool(review.get("steam_purchase")),
                 "received_for_free": bool(review.get("received_for_free")),
                 "written_during_early_access": bool(review.get("written_during_early_access")),
+                "primarily_steam_deck": bool(review.get("primarily_steam_deck")),
                 "author_steamid": author.get("steamid"),
                 "author_num_games_owned": author.get("num_games_owned", 0),
                 "author_num_reviews": author.get("num_reviews", 0),
                 "author_playtime_forever": playtime_forever,
                 "author_playtime_last_two_weeks": playtime_recent,
                 "author_playtime_at_review": playtime_at_review,
+                "author_deck_playtime_at_review": author.get("deck_playtime_at_review") or 0,
                 "author_last_played": author.get("last_played"),
             }
         )
@@ -188,7 +190,7 @@ def recommended_share_over_time(df: pd.DataFrame, freq: str = "7D") -> pd.DataFr
         .reset_index()
     )
     resampled.rename(columns={"index": "period"}, inplace=True)
-    resampled[["recommendation_rate", "avg_compound"]].fillna(0.0, inplace=True)
+    resampled.loc[:, ["recommendation_rate", "avg_compound"]] = resampled[["recommendation_rate", "avg_compound"]].fillna(0.0)
 
     # Filter out periods with zero reviews (keep structure but mark as no data)
     return resampled
@@ -531,4 +533,257 @@ def activity_based_feedback(df: pd.DataFrame) -> Dict[str, Any]:
         "currently_active": analyze_activity_segment(currently_active),
         "recently_stopped": analyze_activity_segment(recently_stopped),
         "inactive": analyze_activity_segment(inactive),
+    }
+
+
+def platform_segment_insights(df: pd.DataFrame) -> Dict[str, Any]:
+    """Segment reviews by platform: Steam Deck vs Desktop.
+
+    Uses the primarily_steam_deck flag to identify Steam Deck players.
+    Returns metrics comparing both platforms including recommendation rates,
+    top issues, and control/performance-related feedback.
+    """
+    if df.empty:
+        return {
+            "steam_deck": {"count": 0, "recommendation_rate": 0.0, "top_issues": [], "issue_count": 0},
+            "desktop": {"count": 0, "recommendation_rate": 0.0, "top_issues": [], "issue_count": 0},
+        }
+
+    # Check if column exists
+    if "primarily_steam_deck" not in df.columns:
+        # Treat all as desktop if column missing
+        return {
+            "steam_deck": {"count": 0, "recommendation_rate": 0.0, "top_issues": [], "issue_count": 0},
+            "desktop": _analyze_platform_segment(df),
+        }
+
+    deck_reviews = df[df["primarily_steam_deck"] == True]  # noqa: E712
+    desktop_reviews = df[df["primarily_steam_deck"] == False]  # noqa: E712
+
+    return {
+        "steam_deck": _analyze_platform_segment(deck_reviews),
+        "desktop": _analyze_platform_segment(desktop_reviews),
+    }
+
+
+def _analyze_platform_segment(segment_df: pd.DataFrame) -> Dict[str, Any]:
+    """Helper to analyze a platform segment."""
+    if segment_df.empty:
+        return {"count": 0, "recommendation_rate": 0.0, "top_issues": [], "issue_count": 0}
+
+    recommendation_rate = float(segment_df["voted_up"].mean()) if "voted_up" in segment_df.columns else 0.0
+
+    top_issues = []
+    if "llm_issue_subcategories" in segment_df.columns:
+        exploded = segment_df["llm_issue_subcategories"].explode()
+        if not exploded.empty:
+            counts = exploded.dropna().value_counts().head(5)
+            top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
+
+    issue_count = 0
+    if "llm_issue_subcategories" in segment_df.columns:
+        issue_count = int(segment_df["llm_issue_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).sum())
+
+    return {
+        "count": len(segment_df),
+        "recommendation_rate": recommendation_rate,
+        "top_issues": top_issues,
+        "issue_count": issue_count,
+    }
+
+
+def language_segment_insights(df: pd.DataFrame) -> Dict[str, Any]:
+    """Segment reviews by language/region.
+
+    Groups reviews by language and calculates per-language metrics.
+    Useful for identifying regional pain points and localization issues.
+    """
+    if df.empty or "language" not in df.columns:
+        return {"languages": [], "total_languages": 0}
+
+    language_stats = []
+    for lang in df["language"].unique():
+        if pd.isna(lang):
+            continue
+        lang_df = df[df["language"] == lang]
+        if lang_df.empty:
+            continue
+
+        recommendation_rate = float(lang_df["voted_up"].mean()) if "voted_up" in lang_df.columns else 0.0
+
+        top_issues = []
+        if "llm_issue_subcategories" in lang_df.columns:
+            exploded = lang_df["llm_issue_subcategories"].explode()
+            if not exploded.empty:
+                counts = exploded.dropna().value_counts().head(3)
+                top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
+
+        issue_count = 0
+        if "llm_issue_subcategories" in lang_df.columns:
+            issue_count = int(lang_df["llm_issue_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).sum())
+
+        language_stats.append({
+            "language": str(lang),
+            "count": len(lang_df),
+            "recommendation_rate": recommendation_rate,
+            "top_issues": top_issues,
+            "issue_count": issue_count,
+        })
+
+    # Sort by count descending
+    language_stats.sort(key=lambda x: x["count"], reverse=True)
+
+    return {
+        "languages": language_stats[:15],  # Top 15 languages
+        "total_languages": len(language_stats),
+    }
+
+
+def quality_weighted_insights(df: pd.DataFrame) -> Dict[str, Any]:
+    """Weight insights by review helpfulness (votes_up).
+
+    Highly-voted reviews likely represent common pain points.
+    Returns top issues weighted by helpfulness votes.
+    """
+    if df.empty or "votes_up" not in df.columns:
+        return {
+            "high_quality_reviews": 0,
+            "avg_helpfulness": 0.0,
+            "weighted_top_issues": [],
+            "weighted_recommendation_rate": 0.0,
+        }
+
+    # Filter to reviews with significant helpfulness (votes_up >= 5)
+    high_quality = df[df["votes_up"] >= 5]
+    if high_quality.empty:
+        high_quality = df[df["votes_up"] >= 1]  # Fallback to at least 1 vote
+
+    if high_quality.empty:
+        return {
+            "high_quality_reviews": 0,
+            "avg_helpfulness": float(df["votes_up"].mean()),
+            "weighted_top_issues": [],
+            "weighted_recommendation_rate": float(df["voted_up"].mean()) if "voted_up" in df.columns else 0.0,
+        }
+
+    # Calculate weighted recommendation rate (by helpfulness)
+    if "voted_up" in high_quality.columns:
+        weights = high_quality["votes_up"].fillna(1)
+        weighted_sum = (high_quality["voted_up"].astype(float) * weights).sum()
+        total_weight = weights.sum()
+        weighted_recommendation_rate = float(weighted_sum / total_weight) if total_weight > 0 else 0.0
+    else:
+        weighted_recommendation_rate = 0.0
+
+    # Get weighted top issues
+    weighted_issues: Dict[str, float] = {}
+    if "llm_issue_subcategories" in high_quality.columns:
+        for _, row in high_quality.iterrows():
+            issues = row.get("llm_issue_subcategories")
+            if not isinstance(issues, list):
+                continue
+            weight = float(row.get("votes_up", 1) or 1)
+            for issue in issues:
+                if isinstance(issue, str):
+                    weighted_issues[issue] = weighted_issues.get(issue, 0) + weight
+
+    # Sort by weighted count
+    sorted_issues = sorted(weighted_issues.items(), key=lambda x: x[1], reverse=True)[:10]
+    weighted_top_issues = [{"category": cat, "weighted_count": round(count, 1)} for cat, count in sorted_issues]
+
+    return {
+        "high_quality_reviews": len(high_quality),
+        "avg_helpfulness": float(df["votes_up"].mean()),
+        "weighted_top_issues": weighted_top_issues,
+        "weighted_recommendation_rate": weighted_recommendation_rate,
+    }
+
+
+def cross_segment_analysis(df: pd.DataFrame) -> Dict[str, Any]:
+    """Analyze cross-segment combinations for unique insights.
+
+    Combines multiple segmentation dimensions to find specific pain points.
+    E.g., "Veterans on Steam Deck" or "Newcomers who received for free".
+    """
+    if df.empty:
+        return {"cross_segments": [], "notable_findings": []}
+
+    cross_segments = []
+    notable_findings = []
+
+    minutes = df["author_playtime_forever"].fillna(0)
+
+    # Define segment masks
+    segment_defs = {
+        "newcomers": minutes < 120,
+        "veterans": minutes >= 6000,
+        "steam_deck": df.get("primarily_steam_deck", pd.Series([False] * len(df))).fillna(False) == True,  # noqa: E712
+        "desktop": df.get("primarily_steam_deck", pd.Series([True] * len(df))).fillna(True) == False,  # noqa: E712
+        "negative": df["voted_up"] == False,  # noqa: E712
+        "positive": df["voted_up"] == True,  # noqa: E712
+        "free_users": df.get("received_for_free", pd.Series([False] * len(df))).fillna(False) == True,  # noqa: E712
+        "steam_buyers": df.get("steam_purchase", pd.Series([True] * len(df))).fillna(True) == True,  # noqa: E712
+    }
+
+    # Key cross-segment combinations to analyze
+    combinations = [
+        ("veterans", "negative", "Disappointed Veterans"),
+        ("newcomers", "negative", "Frustrated Newcomers"),
+        ("steam_deck", "negative", "Steam Deck Issues"),
+        ("veterans", "steam_deck", "Veteran Deck Players"),
+        ("free_users", "negative", "Unhappy Free Users"),
+    ]
+
+    for seg1_key, seg2_key, label in combinations:
+        if seg1_key not in segment_defs or seg2_key not in segment_defs:
+            continue
+
+        mask1 = segment_defs[seg1_key]
+        mask2 = segment_defs[seg2_key]
+
+        # Handle potential series alignment issues
+        try:
+            combined_mask = mask1 & mask2
+            segment_df = df[combined_mask]
+        except Exception:
+            continue
+
+        if len(segment_df) < 3:  # Need minimum sample
+            continue
+
+        top_issues = []
+        if "llm_issue_subcategories" in segment_df.columns:
+            exploded = segment_df["llm_issue_subcategories"].explode()
+            if not exploded.empty:
+                counts = exploded.dropna().value_counts().head(3)
+                top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
+
+        recommendation_rate = float(segment_df["voted_up"].mean()) if "voted_up" in segment_df.columns else 0.0
+
+        segment_data = {
+            "label": label,
+            "segments": [seg1_key, seg2_key],
+            "count": len(segment_df),
+            "recommendation_rate": recommendation_rate,
+            "top_issues": top_issues,
+        }
+        cross_segments.append(segment_data)
+
+        # Check for notable findings (significantly different from average)
+        overall_rec_rate = float(df["voted_up"].mean()) if "voted_up" in df.columns else 0.5
+        if len(segment_df) >= 5:
+            diff = recommendation_rate - overall_rec_rate
+            if abs(diff) >= 0.15:  # 15%+ difference is notable
+                direction = "lower" if diff < 0 else "higher"
+                notable_findings.append({
+                    "segment": label,
+                    "finding": f"{label} have {abs(diff)*100:.0f}% {direction} recommendation rate than average",
+                    "count": len(segment_df),
+                    "recommendation_rate": recommendation_rate,
+                    "overall_rate": overall_rec_rate,
+                })
+
+    return {
+        "cross_segments": cross_segments,
+        "notable_findings": notable_findings,
     }

@@ -4,7 +4,41 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatTaxonomyLabel } from '@/lib/taxonomyLabels';
+import { translateText } from '@/lib/api';
+import { useLanguage } from '@/contexts/LanguageContext';
 import type { DatabaseReviewItem } from '@/types';
+
+// Map Steam language codes to our app language codes
+const STEAM_TO_APP_LANGUAGE: Record<string, string> = {
+  english: 'en',
+  italian: 'it',
+  french: 'fr',
+  german: 'de',
+  spanish: 'es',
+  portuguese: 'pt',
+  brazilian: 'pt',
+  russian: 'ru',
+  japanese: 'ja',
+  koreana: 'ko',
+  schinese: 'zh',
+  tchinese: 'zh',
+  polish: 'pl',
+  turkish: 'tr',
+  dutch: 'nl',
+  swedish: 'sv',
+  norwegian: 'no',
+  danish: 'da',
+  finnish: 'fi',
+  czech: 'cs',
+  hungarian: 'hu',
+  romanian: 'ro',
+  ukrainian: 'uk',
+  thai: 'th',
+  vietnamese: 'vi',
+  arabic: 'ar',
+  indonesian: 'id',
+  greek: 'el',
+};
 
 interface ReviewModalProps {
   review: DatabaseReviewItem;
@@ -117,6 +151,20 @@ export function ReviewModal({
   t,
 }: ReviewModalProps) {
   const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [translatedText, setTranslatedText] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const { language: userLanguage } = useLanguage();
+
+  // Check if the review is in a different language than the user's preference
+  const reviewLangCode = STEAM_TO_APP_LANGUAGE[review.language?.toLowerCase() || ''] || review.language?.toLowerCase();
+  const needsTranslation = reviewLangCode !== userLanguage && review.language;
+
+  // Reset translation state when review changes
+  useEffect(() => {
+    setTranslatedText(null);
+    setShowTranslation(false);
+  }, [review.review_id]);
 
   useEffect(() => {
     if (copyToast) {
@@ -124,6 +172,29 @@ export function ReviewModal({
       return () => clearTimeout(timeout);
     }
   }, [copyToast]);
+
+  async function handleTranslate() {
+    if (translatedText) {
+      // Toggle visibility if already translated
+      setShowTranslation(!showTranslation);
+      return;
+    }
+
+    setIsTranslating(true);
+    try {
+      const result = await translateText({
+        text: review.review,
+        target_language: userLanguage,
+      });
+      setTranslatedText(result.translated_text);
+      setShowTranslation(true);
+    } catch (error) {
+      console.error('Translation failed:', error);
+      setCopyToast('Translation failed. Please try again.');
+    } finally {
+      setIsTranslating(false);
+    }
+  }
 
   function handleCopyText() {
     navigator.clipboard.writeText(review.review);
@@ -311,7 +382,60 @@ export function ReviewModal({
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
-          <p className="whitespace-pre-line">{review.review}</p>
+          {/* Translate button for foreign language reviews */}
+          {needsTranslation && (
+            <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-xs text-slate-400">
+                Original language: {review.language}
+              </span>
+              <button
+                type="button"
+                onClick={handleTranslate}
+                disabled={isTranslating}
+                className="flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
+              >
+                {isTranslating ? (
+                  <>
+                    <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Translating...
+                  </>
+                ) : translatedText ? (
+                  <>
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                    </svg>
+                    {showTranslation ? 'Show Original' : 'Show Translation'}
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                    </svg>
+                    Translate
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Translated text */}
+          {showTranslation && translatedText && (
+            <div className="mb-3 rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
+              <p className="mb-1 text-[10px] uppercase tracking-wider text-sky-400">Translated</p>
+              <p className="whitespace-pre-line text-slate-200">{translatedText}</p>
+            </div>
+          )}
+
+          {/* Original text */}
+          <div className={showTranslation && translatedText ? 'opacity-60' : ''}>
+            {showTranslation && translatedText && (
+              <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-500">Original</p>
+            )}
+            <p className="whitespace-pre-line">{review.review}</p>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2">

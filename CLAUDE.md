@@ -95,11 +95,11 @@ cd frontend && npm run lint
 ## LLM Classification Taxonomy
 
 Reviews are classified into categories like:
-- `technical/` - performance, bugs, crashes, networking
+- `technical/` - performance, bugs, stability_crashes, compatibility, networking, installation, save_data
 - `gameplay/` - mechanics, controls, difficulty, balance
 - `content_design/` - level_design, narrative, replayability
 - `ui_ux_accessibility/` - menus, quality_of_life
-- `monetization_value/` - price, dlc, microtransactions
+- `monetization_value/` - pricing, regional_pricing, dlc, microtransactions, battle_pass_fomo
 
 Labels include `subcategories`, `issue_subcategories`, `request_subcategories`, and `evidence` (verbatim quotes).
 

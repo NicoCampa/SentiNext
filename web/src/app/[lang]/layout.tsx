@@ -9,11 +9,11 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "SentiNext | Steam Review Intelligence & AI Analytics",
-  description: "Turn 2,000+ Steam reviews into a prioritized bug backlog in minutes. Autonomous LLM classification for game developers and publishers.",
+  title: "SentiNext | Steam Review Intelligence",
+  description: "Analyze Steam reviews with AI: label issues and feature requests, extract evidence quotes, and track what to fix next.",
   openGraph: {
     title: "SentiNext | Steam Review Intelligence",
-    description: "Autonomous LLM classification for game feedback.",
+    description: "AI-assisted review analysis for Steam game teams.",
     url: "https://sentinext.com",
     siteName: "SentiNext",
     locale: "en_US",
@@ -22,12 +22,13 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "SentiNext | Steam Review Intelligence",
-    description: "Autonomous LLM classification for game feedback.",
+    description: "AI-assisted review analysis for Steam game teams.",
   },
 };
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { normalizeLocale } from "@/lib/i18n";
 
 export async function generateStaticParams() {
   return [{ lang: 'en' }, { lang: 'it' }, { lang: 'fr' }, { lang: 'de' }];
@@ -41,9 +42,10 @@ export default async function RootLayout({
   params: Promise<{ lang: string }>;
 }>) {
   const { lang } = await params;
+  const locale = normalizeLocale(lang);
 
   return (
-    <html lang={lang} className="dark">
+    <html lang={locale} className="dark">
       <body
         className={`${spaceGrotesk.variable} antialiased bg-background text-foreground font-sans flex flex-col min-h-screen relative overflow-x-hidden`}
       >
@@ -54,9 +56,9 @@ export default async function RootLayout({
           <div className="absolute top-[30%] right-[10%] w-[20%] h-[20%] bg-primary/5 rounded-full blur-[80px] animate-pulse-soft" style={{ animationDelay: '4s' }} />
         </div>
 
-        <Header lang={lang} />
+        <Header lang={locale} />
         <main className="flex-1">{children}</main>
-        <Footer lang={lang} />
+        <Footer lang={locale} />
       </body>
     </html>
   );

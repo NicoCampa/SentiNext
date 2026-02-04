@@ -3,10 +3,11 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Check, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { Dictionary, SupportedLocale } from "@/lib/i18n";
 
-export default function PricingClient({ dict, lang }: { dict: any, lang: string }) {
+export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             {/* Hero */}
@@ -19,13 +20,20 @@ export default function PricingClient({ dict, lang }: { dict: any, lang: string 
                         className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-8 backdrop-blur-md glass"
                     >
                         <Sparkles className="h-3.5 w-3.5 mr-2 text-primary animate-pulse" />
-                        <span className="tracking-widest uppercase text-xs font-bold">BETA ACCESS ACTIVE</span>
+                        <span className="tracking-widest uppercase text-xs font-bold">
+                            {lang === 'it' ? 'PIANI A CREDITI' : 'CREDITS-BASED PLANS'}
+                        </span>
                     </motion.div>
                     <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase">
-                        Free <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">Beta.</span>
+                        {lang === 'it' ? 'Piani' : 'Plans'}{" "}
+                        <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">
+                            {lang === 'it' ? 'a Crediti.' : 'by Credits.'}
+                        </span>
                     </h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        {lang === 'it' ? 'Analisi di nuova generazione per sviluppatori moderni.' : 'Next-gen analysis for modern developers.'}
+                        {lang === 'it'
+                            ? 'Scegli un limite mensile di crediti. I crediti vengono usati per analisi, chat e confronti.'
+                            : 'Pick a monthly credit allowance. Credits are used for analysis, chat, and comparisons.'}
                     </p>
                 </div>
             </section>
@@ -33,17 +41,18 @@ export default function PricingClient({ dict, lang }: { dict: any, lang: string 
             <section className="py-24 w-full flex justify-center relative">
                 <div className="container px-4 md:px-6 mx-auto relative z-10">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-10 max-w-7xl mx-auto items-start">
-                        {/* Starter */}
+                        {/* Free */}
                         <PricingCard
-                            name="Starter"
+                            name="Free"
                             price="$0"
-                            period="/ beta"
-                            description={lang === 'it' ? 'Per sviluppatori indie che provano l\'analisi AI.' : 'For indie developers trying out AI analysis.'}
+                            period="/ month"
+                            description={lang === 'it' ? 'Per provare SentiNext con un limite di crediti.' : 'Try SentiNext with a limited monthly credit allowance.'}
                             features={[
-                                lang === 'it' ? "Ingestione 2.000 recensioni / job" : "2,000 review ingestion / job",
-                                lang === 'it' ? "1 Cluster di Progetto Attivo" : "1 Active Project Cluster",
-                                lang === 'it' ? "Tassonomia AI Standard" : "Standard AI Taxonomy",
-                                lang === 'it' ? "Ritenzione telemetria 7 giorni" : "7-day telemetry retention",
+                                lang === 'it' ? "500 crediti / mese" : "500 credits / month",
+                                lang === 'it' ? "Fino a 2 giochi analizzati" : "Up to 2 analyzed games",
+                                lang === 'it' ? "Analisi recensioni (crediti applicati)" : "Review analysis (credits apply)",
+                                lang === 'it' ? "Chat agente e confronti (crediti applicati)" : "AI agent chat + comparisons (credits apply)",
+                                lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
                             ]}
                             cta={dict.common.initialize}
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
@@ -51,36 +60,37 @@ export default function PricingClient({ dict, lang }: { dict: any, lang: string 
 
                         {/* Pro Tier (Highlighted) */}
                         <PricingCard
-                            name="Pro Agent"
-                            price="$0"
-                            period="/ beta"
-                            description={lang === 'it' ? 'Piena potenza AI per studi in crescita.' : 'Full AI power for growing studios.'}
+                            name="Pro"
+                            price="$19"
+                            period="/ month"
+                            description={lang === 'it' ? 'Per studi che analizzano regolarmente.' : 'For teams that analyze reviews regularly.'}
                             features={[
-                                lang === 'it' ? "5.000+ ingestione recensioni / job" : "5,000+ review ingestion / job",
-                                lang === 'it' ? "Coda Neurale Prioritaria" : "Priority Neural Queue",
-                                lang === 'it' ? "5 Cluster di Progetto Attivi" : "5 Active Project Clusters",
-                                lang === 'it' ? "Estrazione Evidenze Profonda" : "Deep Evidence Extraction",
-                                lang === 'it' ? "Ritenzione telemetria 90 giorni" : "90-day telemetry retention",
-                                lang === 'it' ? "Esportazione Telemetria CSV/JSON" : "CSV/JSON Telemetry Export"
+                                lang === 'it' ? "5.000 crediti / mese" : "5,000 credits / month",
+                                lang === 'it' ? "Giochi analizzati illimitati" : "Unlimited analyzed games",
+                                lang === 'it' ? "Dashboard + Chat agente + Confronti" : "Dashboards + AI agent chat + Compare",
+                                lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
+                                lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
                             ]}
-                            cta={lang === 'it' ? 'Ottieni Accesso Pro' : 'Get Pro Access'}
+                            cta={lang === 'it' ? 'Passa a Pro' : 'Upgrade to Pro'}
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
                             popular
                         />
 
-                        {/* Team Tier */}
+                        {/* Max */}
                         <PricingCard
-                            name="Enterprise"
-                            price="Custom"
-                            description={lang === 'it' ? 'Per publisher che necessitano di fine-tuning.' : 'For publishers needing custom taxonomy fine-tuning.'}
+                            name="Max"
+                            price="$49"
+                            period="/ month"
+                            description={lang === 'it' ? 'Per portfolio e uso intensivo di chat.' : 'For portfolios and heavy chat usage.'}
                             features={[
-                                lang === 'it' ? "Ingestione Illimitata" : "Unlimited Ingestion",
-                                lang === 'it' ? "Fine-tuning LLM Personalizzato" : "Custom LLM Fine-tuning",
-                                lang === 'it' ? "Supporto Dedicato" : "Dedicated Support",
-                                lang === 'it' ? "SLA e Compliance" : "SLA & Compliance",
+                                lang === 'it' ? "25.000 crediti / mese" : "25,000 credits / month",
+                                lang === 'it' ? "Giochi analizzati illimitati" : "Unlimited analyzed games",
+                                lang === 'it' ? "Ideale per confronti e report su più titoli" : "Best for comparisons across many titles",
+                                lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
+                                lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
                             ]}
-                            cta={lang === 'it' ? 'Contatta Sales' : 'Contact Sales'}
-                            href={`/${lang}/contact`}
+                            cta={lang === 'it' ? 'Passa a Max' : 'Upgrade to Max'}
+                            href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
                         />
                     </div>
                 </div>
@@ -90,8 +100,8 @@ export default function PricingClient({ dict, lang }: { dict: any, lang: string 
                 <div className="container px-4 text-center">
                     <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">
                         {lang === 'it'
-                            ? "* I modelli di prezzo saranno introdotti a fine 2026. Gli utenti beta ricevono uno sconto legacy."
-                            : "* Pricing models will be introduced in late 2026. Beta users receive a legacy discount."}
+                            ? "* I crediti vengono usati per analisi, chat e confronti. I report PDF usano dati già analizzati."
+                            : "* Credits are used for analysis, chat, and comparisons. PDF reports use existing analysis data."}
                     </p>
                 </div>
             </section>
@@ -99,7 +109,18 @@ export default function PricingClient({ dict, lang }: { dict: any, lang: string 
     );
 }
 
-function PricingCard({ name, price, period, description, features, cta, href, popular }: any) {
+type PricingCardProps = {
+    name: string;
+    price: string;
+    period?: string;
+    description: string;
+    features: string[];
+    cta: string;
+    href: string;
+    popular?: boolean;
+};
+
+function PricingCard({ name, price, period, description, features, cta, href, popular }: PricingCardProps) {
     return (
         <motion.div
             whileHover={{ y: -5, scale: 1.01 }}

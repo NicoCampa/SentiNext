@@ -376,6 +376,13 @@ def build_chat_context(
 
     wants_issue, wants_request = _question_flags(question)
     labels = storage.load_review_labels(app_id)
+    for entry in labels.values():
+        payload = entry.get("payload")
+        if not payload or not isinstance(payload, dict):
+            continue
+        if not (payload.get("subcategories") or payload.get("main_category") or payload.get("subcategory")):
+            continue
+        entry["payload"] = llm.normalize_taxonomy_payload(payload)
 
     query = _fts_query_from_question(question)
     ranked_ids = storage.search_review_ids(app_id, query, limit=max_reviews, language=language) if query else []

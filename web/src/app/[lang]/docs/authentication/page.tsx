@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ShieldCheck, UserCheck, Key, Lock } from "lucide-react";
-import { CornerMarkers } from "@/components/ui/corner-markers";
+import { ShieldCheck, UserCheck, Lock } from "lucide-react";
+import type { ReactNode } from "react";
 
 export default function AuthenticationPage() {
     return (
@@ -10,47 +10,47 @@ export default function AuthenticationPage() {
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Authentication</h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    Enterprise-grade managed identity protocols. SentiNext uses industry-standard encryption to protect your project telemetry.
+                    SentiNext uses Clerk for sign-in. Authentication is required to save analyses, manage credits, and keep data separated per user.
                 </p>
             </section>
 
             <div className="space-y-16 mt-16">
                 <DocsAuthStep
-                    title="Managed Identity"
+                    title="Sign In With Clerk"
                     icon={<UserCheck className="h-6 w-6" />}
-                    description="We use Clerk for enterprise-grade authentication management."
+                    description="Clerk handles sessions and account management for SentiNext."
                 >
                     <p>
-                        Every analyst identity is verified via <Link href="https://clerk.com" target="_blank" className="text-[#00F0FF] underline decoration-[#00F0FF]/30">Clerk</Link>. This ensures your analysis history and project clusters are isolated and protected by modern security frameworks.
+                        You authenticate via <Link href="https://clerk.com" target="_blank" className="text-[#00F0FF] underline decoration-[#00F0FF]/30">Clerk</Link>. Your analysis history, saved games, and credit usage are tied to your account.
                     </p>
                 </DocsAuthStep>
 
                 <DocsAuthStep
-                    title="Access Control"
+                    title="Why Sign In Is Required"
                     icon={<Lock className="h-6 w-6" />}
-                    description="Why a secure session is required for agent deployment."
+                    description="Sign-in enables persistence, exports, and usage tracking."
                 >
-                    <p>While public telemetry is viewable by anyone, deploying active agents requires an authenticated session to:</p>
+                    <p>Authentication is required to:</p>
                     <ul className="space-y-3 list-none p-0 mt-6">
                         <li className="flex items-center gap-3 font-mono text-sm uppercase opacity-70">
-                            <span className="text-[#00F0FF] font-bold">{">"}</span> Initialize New Analysis Pipelines
+                            <span className="text-[#00F0FF] font-bold">{">"}</span> Save analyzed games and results
                         </li>
                         <li className="flex items-center gap-3 font-mono text-sm uppercase opacity-70">
-                            <span className="text-[#00F0FF] font-bold">{">"}</span> Commit Games to Personal Cluster
+                            <span className="text-[#00F0FF] font-bold">{">"}</span> Track credits and subscriptions
                         </li>
                         <li className="flex items-center gap-3 font-mono text-sm uppercase opacity-70">
-                            <span className="text-[#00F0FF] font-bold">{">"}</span> Manage Organization Teams
+                            <span className="text-[#00F0FF] font-bold">{">"}</span> Export datasets and generate reports
                         </li>
                     </ul>
                 </DocsAuthStep>
 
                 <DocsAuthStep
-                    title="API Protocols"
-                    icon={<Key className="h-6 w-6" />}
-                    description="Headless access for automated CI/CD workflows."
+                    title="Security"
+                    icon={<ShieldCheck className="h-6 w-6" />}
+                    description="The dashboard handles tokens for you."
                 >
                     <p>
-                        For automated extraction via CLI or external scripts, you must generate a <span className="text-[#00F0FF]">Bearer Token</span> from your profile settings. These tokens bypass the UI and allow direct agent triggering.
+                        The web dashboard automatically authenticates API requests using your Clerk session. If you call the API directly, you’ll need to provide a valid <span className="text-[#00F0FF]">Bearer</span> token from Clerk.
                     </p>
                 </DocsAuthStep>
             </div>
@@ -58,7 +58,14 @@ export default function AuthenticationPage() {
     );
 }
 
-function DocsAuthStep({ title, icon, description, children }: any) {
+type DocsAuthStepProps = {
+    title: string;
+    icon: ReactNode;
+    description: string;
+    children: ReactNode;
+};
+
+function DocsAuthStep({ title, icon, description, children }: DocsAuthStepProps) {
     return (
         <section className="space-y-6">
             <div className="flex items-center gap-6">

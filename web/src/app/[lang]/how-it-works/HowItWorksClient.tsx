@@ -3,10 +3,11 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Search, Zap, BarChart2, ShieldCheck, Cpu } from "lucide-react";
+import { Search, Zap, BarChart2 } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { Dictionary, SupportedLocale } from "@/lib/i18n";
 
-export default function HowItWorksClient({ dict, lang }: { dict: any, lang: string }) {
+export default function HowItWorksClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             {/* Hero */}
@@ -22,7 +23,7 @@ export default function HowItWorksClient({ dict, lang }: { dict: any, lang: stri
                         {lang === 'it' ? 'Il' : 'The'} <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{lang === 'it' ? 'Processo.' : 'Process.'}</span>
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        {lang === 'it' ? 'Dai feedback grezzi all\'intelligence quantificata.' : 'From raw feedback to quantified intelligence.'}
+                        {lang === 'it' ? 'Dalle recensioni Steam a insight azionabili.' : 'From Steam reviews to actionable insights.'}
                     </p>
                 </div>
             </section>
@@ -36,8 +37,8 @@ export default function HowItWorksClient({ dict, lang }: { dict: any, lang: stri
                             icon={<Search className="h-10 w-10 text-[#00F0FF]" />}
                             title={lang === 'it' ? "INGESTIONE" : "INGESTION"}
                             description={lang === 'it'
-                                ? "Scansione profonda delle recensioni Steam per qualsiasi App ID. Gestione automatica dei limiti e persistenza dei dati."
-                                : "Deep crawl of Steam reviews for any App ID. Automatic rate-limit handling and data persistence."}
+                                ? "Recupera recensioni Steam per qualsiasi App ID (endpoint pubblico). Gestione paginazione e persistenza su database."
+                                : "Fetch Steam reviews for any App ID (public endpoint). Handles pagination and persists data to the database."}
                             delay={0.1}
                         />
                         <PipelineStep
@@ -45,17 +46,17 @@ export default function HowItWorksClient({ dict, lang }: { dict: any, lang: stri
                             icon={<Zap className="h-10 w-10 text-[#00F0FF]" />}
                             title={lang === 'it' ? "CLASSIFICAZIONE" : "CLASSIFICATION"}
                             description={lang === 'it'
-                                ? "Categorizzazione neurale di ogni parola. Rimozione del rumore e identificazione di cluster tecnici distinti."
-                                : "Neural categorization of every word. Removing noise and identifying distinct technical clusters."}
+                                ? "Google Gemini etichetta ogni recensione con una tassonomia coerente e salva citazioni di evidenza per ogni tag."
+                                : "Google Gemini labels each review with a consistent taxonomy and stores evidence quotes for every tag."}
                             delay={0.3}
                         />
                         <PipelineStep
                             number="03"
                             icon={<BarChart2 className="h-10 w-10 text-[#00F0FF]" />}
-                            title={lang === 'it' ? "QUANTIFICAZIONE" : "QUANTIFICATION"}
+                            title={lang === 'it' ? "INSIGHT" : "INSIGHTS"}
                             description={lang === 'it'
-                                ? "Aggregazione del sentiment in punteggi di impatto azionabili. Scopri esattamente cosa sta danneggiando il tuo punteggio."
-                                : "Aggregating sentiment into actionable impact scores. See exactly what is hurting your review score."}
+                                ? "Dashboard, esplorazione e confronto: identifica i principali problemi e richieste, poi fai domande all’agente AI e genera report."
+                                : "Dashboards, exploration, and comparisons: surface top issues and requests, ask the AI agent questions, and generate reports."}
                             delay={0.5}
                         />
                     </div>

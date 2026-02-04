@@ -1,5 +1,6 @@
 import { getDictionary } from "@/lib/get-dictionary";
 import { DocsSidebar } from "@/components/layout/docs-sidebar";
+import { normalizeLocale } from "@/lib/i18n";
 
 export default async function DocsLayout({
     children,
@@ -9,13 +10,14 @@ export default async function DocsLayout({
     params: Promise<{ lang: string }>
 }) {
     const { lang } = await params;
-    const dict = await getDictionary(lang as any);
+    const locale = normalizeLocale(lang);
+    const dict = await getDictionary(locale);
 
     return (
         <div className="container px-4 md:px-6 py-16 flex flex-col md:flex-row gap-16 relative">
             <div className="absolute inset-0 bg-[#00F0FF]/[0.02] -z-10" />
 
-            <DocsSidebar dict={dict} lang={lang} />
+            <DocsSidebar dict={dict} lang={locale} />
 
             {/* Main Content */}
             <main className="flex-1 min-w-0 max-w-4xl prose prose-invert 

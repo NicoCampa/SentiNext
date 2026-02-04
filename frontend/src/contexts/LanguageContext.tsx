@@ -61,6 +61,7 @@ const translations: Record<Language, Record<string, string>> = {
     'filters.last30Days': 'Last 30 days',
     'filters.last90Days': 'Last 90 days',
     'filters.last12Months': 'Last 12 months',
+    'filters.customRange': 'Custom range',
     'filters.allHelpful': 'All helpful',
     'filters.helpfulVotes10': '10+ votes',
     'filters.helpfulVotes25': '25+ votes',
@@ -88,6 +89,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Dashboard
     'dashboard.title': 'Dashboard',
     'dashboard.analyze': 'Analyze',
+    'dashboard.update': 'Update',
     'dashboard.analyzing': 'Analyzing...',
     'dashboard.noGames': 'No games analyzed yet',
     'dashboard.recommendation': 'Recommendation',
@@ -307,6 +309,7 @@ const translations: Record<Language, Record<string, string>> = {
     'filters.last30Days': 'Ultimi 30 giorni',
     'filters.last90Days': 'Ultimi 90 giorni',
     'filters.last12Months': 'Ultimi 12 mesi',
+    'filters.customRange': 'Intervallo personalizzato',
     'filters.allHelpful': 'Tutte le valutazioni',
     'filters.helpfulVotes10': '10+ voti',
     'filters.helpfulVotes25': '25+ voti',
@@ -334,6 +337,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Dashboard
     'dashboard.title': 'Cruscotto',
     'dashboard.analyze': 'Analizza',
+    'dashboard.update': 'Aggiorna',
     'dashboard.analyzing': 'Analizzando...',
     'dashboard.noGames': 'Nessun gioco analizzato',
     'dashboard.recommendation': 'Raccomandazione',
@@ -553,6 +557,7 @@ const translations: Record<Language, Record<string, string>> = {
     'filters.last30Days': '30 derniers jours',
     'filters.last90Days': '90 derniers jours',
     'filters.last12Months': '12 derniers mois',
+    'filters.customRange': 'Plage personnalisée',
     'filters.allHelpful': 'Tous les votes utiles',
     'filters.helpfulVotes10': '10+ votes',
     'filters.helpfulVotes25': '25+ votes',
@@ -580,6 +585,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Dashboard
     'dashboard.title': 'Tableau de bord',
     'dashboard.analyze': 'Analyser',
+    'dashboard.update': 'Mettre à jour',
     'dashboard.analyzing': 'Analyse...',
     'dashboard.noGames': 'Aucun jeu analysé',
     'dashboard.recommendation': 'Recommandation',
@@ -799,6 +805,7 @@ const translations: Record<Language, Record<string, string>> = {
     'filters.last30Days': 'Letzte 30 Tage',
     'filters.last90Days': 'Letzte 90 Tage',
     'filters.last12Months': 'Letzte 12 Monate',
+    'filters.customRange': 'Benutzerdefinierter Bereich',
     'filters.allHelpful': 'Alle hilfreichen',
     'filters.helpfulVotes10': '10+ Stimmen',
     'filters.helpfulVotes25': '25+ Stimmen',
@@ -826,6 +833,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Dashboard
     'dashboard.title': 'Dashboard',
     'dashboard.analyze': 'Analysieren',
+    'dashboard.update': 'Aktualisieren',
     'dashboard.analyzing': 'Analysiere...',
     'dashboard.noGames': 'Noch keine Spiele analysiert',
     'dashboard.recommendation': 'Empfehlung',

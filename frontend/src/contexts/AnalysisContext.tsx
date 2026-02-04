@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef, useMemo } from 'react';
-import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress } from '@/lib/api';
+import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
@@ -253,7 +253,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     for (const [appId, task] of activeTasks) {
       try {
         const cleanup = subscribeToProgress(appId, {
-          onProgress: (processed, total, active) => {
+          onProgress: (processed, total, active, phase, fetchedCount) => {
             // Check if task is still analyzing
             const currentTask = tasksRef.current.get(appId);
             if (!currentTask || currentTask.status !== 'analyzing') return;
@@ -268,6 +268,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
                   total,
                   active,
                   updated_at: new Date().toISOString(),
+                  phase,
+                  fetched_count: fetchedCount,
                 };
                 newTasks.set(appId, {
                   ...existing,
@@ -391,7 +393,17 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     [tasks]
   );
 
-  const clearTask = useCallback((appId: number) => {
+  const clearTask = useCallback(async (appId: number) => {
+    // Check if task is still analyzing - if so, cancel it on the backend
+    const task = tasksRef.current.get(appId);
+    if (task && task.status === 'analyzing') {
+      try {
+        await cancelAnalysis(appId);
+      } catch (err) {
+        console.error('Failed to cancel analysis:', err);
+      }
+    }
+
     resetProgressStats(appId);
     setTasks((prev) => {
       const newTasks = new Map(prev);

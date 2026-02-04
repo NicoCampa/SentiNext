@@ -633,12 +633,12 @@ def resolve_follow_up_context(
         topic_mappings = {
             "performance": "technical/performance",
             "bugs": "technical/bugs",
-            "crashes": "technical/crashes",
+            "crashes": "technical/stability_crashes",
             "ai": "gameplay/ai",
             "difficulty": "gameplay/difficulty",
             "controls": "gameplay/controls",
             "story": "content_design/narrative_characters",
-            "price": "monetization_value/price",
+            "price": "monetization_value/pricing",
             "dlc": "monetization_value/dlc",
         }
         if search_term.lower() in topic_mappings:

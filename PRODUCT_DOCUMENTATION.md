@@ -727,51 +727,74 @@ export async function analyzeGame(payload: AnalyzeRequest): Promise<AnalyzeRespo
 Main Categories (10):
 ├── gameplay
 │   ├── mechanics
-│   ├── difficulty
-│   ├── balance
-│   ├── progression
 │   ├── controls
+│   ├── balance
+│   ├── difficulty
+│   ├── progression
 │   └── ai
 ├── technical
 │   ├── performance
 │   ├── bugs
-│   ├── crashes
+│   ├── stability_crashes
+│   ├── compatibility
 │   ├── networking
-│   └── optimization
+│   ├── installation
+│   └── save_data
 ├── content_design
+│   ├── amount_variety
 │   ├── level_design
-│   ├── narrative
+│   ├── quests_modes
+│   ├── narrative_characters
 │   ├── replayability
-│   ├── variety
-│   └── pacing
-├── ui_ux_accessibility
-│   ├── menus
-│   ├── quality_of_life
-│   ├── accessibility
+│   ├── pacing
 │   └── customization
-├── presentation
-│   ├── graphics
-│   ├── audio
-│   └── art_style
-├── online_community
-│   ├── multiplayer
-│   ├── matchmaking
-│   ├── community
-│   └── social_features
-├── monetization_value
-│   ├── price
-│   ├── dlc
-│   ├── microtransactions
-│   └── pay_to_win_grind
-├── developer_updates
-│   ├── patches
-│   ├── communication
-│   └── support
+├── ui_ux_accessibility
+│   ├── menus_hud
+│   ├── readability
+│   ├── quality_of_life
+│   ├── controller_support
+│   └── accessibility_options
 ├── onboarding
 │   ├── tutorial
-│   └── learning_curve
+│   ├── learning_curve
+│   ├── clarity
+│   └── tooltips
+├── presentation
+│   ├── visuals_art_style
+│   ├── animation
+│   ├── audio_music
+│   ├── voice_acting
+│   ├── atmosphere
+│   └── localization
+├── online_community
+│   ├── multiplayer_experience
+│   ├── matchmaking
+│   ├── social_features
+│   ├── toxicity_moderation
+│   ├── mods_ugc
+│   └── cheating_anti_cheat
+├── monetization_value
+│   ├── pricing
+│   ├── regional_pricing
+│   ├── dlc
+│   ├── microtransactions
+│   ├── battle_pass_fomo
+│   ├── pay_to_win_grind
+│   └── value_for_money
+├── developer_updates
+│   ├── patch_quality
+│   ├── update_frequency
+│   ├── roadmap_events
+│   ├── communication
+│   ├── customer_support
+│   └── response_time
 └── other
-    └── general
+    ├── general
+    ├── mixed
+    ├── meta
+    ├── unclear
+    ├── off_topic
+    └── meme
 ```
 
 **Prompt Engineering:**
@@ -1195,12 +1218,12 @@ Main Categories (10):
 
 2. **Scan for Issues**
    - Look for new spikes in Top Issues
-   - Notice "technical/crashes" jumped from 5% to 15% mentions
+   - Notice "technical/stability_crashes" jumped from 5% to 15% mentions
    - **Alert:** Potential breaking bug in yesterday's patch
 
 3. **Investigate**
    - Navigate to Database Explorer
-   - Filter: Last 24h + "technical/crashes"
+   - Filter: Last 24h + "technical/stability_crashes"
    - Sort by helpfulness
    - Read top 5 reviews: "Game crashes when opening inventory"
 

@@ -462,7 +462,7 @@ AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SentiNext. Anal
 - Request more reviews (limit=50-100) for thorough analysis on important topics
 
 ## Subcategory Format
-**Always use full paths**: "technical/performance", "gameplay/difficulty", "monetization_value/price"
+**Always use full paths**: "technical/performance", "gameplay/difficulty", "monetization_value/pricing"
 **Never use partial**: "technical", "performance" (incomplete)
 
 ## Handling Uncertainty

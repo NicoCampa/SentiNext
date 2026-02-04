@@ -17,14 +17,18 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 
-import { searchGames, summarizeSubcategory, SubcategorySummaryResponse } from "@/lib/api";
+import { searchGames, summarizeSubcategory, SubcategorySummaryResponse, translateText } from "@/lib/api";
 import { useCredits } from "@/contexts/CreditsContext";
 import type {
   AnalyzeResponse,
   AnalyzeEstimateResponse,
   CategoryRecommendationRate,
+  CrossSegmentAnalysis,
   PlayerSegments,
+  PlatformSegmentInsights,
+  LanguageSegmentInsights,
   ProgressStatus,
+  QualityWeightedInsights,
   TrendPoint,
   ReviewRow,
   SearchResult,
@@ -102,8 +106,40 @@ const CATEGORY_ACCENTS: Record<string, string> = {
   other: "#94a3b8",
 };
 
+// Map Steam language codes to our app language codes for translation
+const STEAM_TO_APP_LANGUAGE: Record<string, string> = {
+  english: 'en',
+  italian: 'it',
+  french: 'fr',
+  german: 'de',
+  spanish: 'es',
+  portuguese: 'pt',
+  brazilian: 'pt',
+  russian: 'ru',
+  japanese: 'ja',
+  koreana: 'ko',
+  schinese: 'zh',
+  tchinese: 'zh',
+  polish: 'pl',
+  turkish: 'tr',
+  dutch: 'nl',
+  swedish: 'sv',
+  norwegian: 'no',
+  danish: 'da',
+  finnish: 'fi',
+  czech: 'cs',
+  hungarian: 'hu',
+  romanian: 'ro',
+  ukrainian: 'uk',
+  thai: 'th',
+  vietnamese: 'vi',
+  arabic: 'ar',
+  indonesian: 'id',
+  greek: 'el',
+};
+
 type DashboardSentimentFilter = "all" | "positive" | "negative";
-type DashboardDateRangeFilter = "all" | "30d" | "90d" | "365d";
+type DashboardDateRangeFilter = "all" | "30d" | "90d" | "365d" | "custom";
 type DashboardHelpfulFilter = 0 | 10 | 25 | 50;
 type DashboardPlaytimeFilter = "all" | "lt2h" | "2to20h" | "20hplus";
 
@@ -113,6 +149,8 @@ interface DashboardFilters {
   minHelpful: DashboardHelpfulFilter;
   playtime: DashboardPlaytimeFilter;
   language: string;
+  customStartDate: string | null;
+  customEndDate: string | null;
 }
 
 const DEFAULT_DASHBOARD_FILTERS: DashboardFilters = {
@@ -121,6 +159,8 @@ const DEFAULT_DASHBOARD_FILTERS: DashboardFilters = {
   minHelpful: 0,
   playtime: "all",
   language: "all",
+  customStartDate: null,
+  customEndDate: null,
 };
 
 function maxDaysFromDateRange(range: DashboardDateRangeFilter): number | null {
@@ -152,6 +192,14 @@ function applyDashboardReviewFilters(reviews: ReviewRow[], filters: DashboardFil
   const maxDays = maxDaysFromDateRange(filters.dateRange);
   const lang = (filters.language || "all").trim().toLowerCase();
 
+  // Parse custom date range if set
+  const customStart = filters.customStartDate ? new Date(filters.customStartDate) : null;
+  const customEnd = filters.customEndDate ? new Date(filters.customEndDate) : null;
+  // Set customEnd to end of day
+  if (customEnd) {
+    customEnd.setHours(23, 59, 59, 999);
+  }
+
   return reviews.filter((review) => {
     if (filters.sentiment !== "all") {
       const isPositive = Boolean(review.voted_up);
@@ -164,7 +212,13 @@ function applyDashboardReviewFilters(reviews: ReviewRow[], filters: DashboardFil
       if (!Number.isFinite(helpful) || helpful < filters.minHelpful) return false;
     }
 
-    if (maxDays !== null) {
+    // Handle custom date range
+    if (filters.dateRange === "custom" && (customStart || customEnd)) {
+      const created = parseDate((review as { created_at?: unknown }).created_at);
+      if (!created) return false;
+      if (customStart && created < customStart) return false;
+      if (customEnd && created > customEnd) return false;
+    } else if (maxDays !== null) {
       const created = parseDate((review as { created_at?: unknown }).created_at);
       if (!created) return false;
       const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
@@ -190,9 +244,13 @@ function applyDashboardReviewFilters(reviews: ReviewRow[], filters: DashboardFil
 }
 
 function dashboardFiltersActive(filters: DashboardFilters): boolean {
+  const dateRangeActive =
+    filters.dateRange !== "all" &&
+    (filters.dateRange !== "custom" || !!filters.customStartDate || !!filters.customEndDate);
+
   return (
     filters.sentiment !== "all" ||
-    filters.dateRange !== "all" ||
+    dateRangeActive ||
     filters.minHelpful > 0 ||
     filters.playtime !== "all" ||
     (!!filters.language && filters.language !== "all")
@@ -327,6 +385,7 @@ function DashboardContent() {
 
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
   const reviewCount = 1000; // Fixed at 1000 latest reviews
   const fetchFilter = "recent"; // Fixed to recent (latest reviews)
   const { credits, refresh: refreshCredits } = useCredits();
@@ -406,16 +465,28 @@ function DashboardContent() {
 
   async function handleAnalyze(game: SearchResult) {
     setError(null);
+    const existingGame = games.find((entry) => entry.app_id === game.appid);
     setTemporaryGame(game);
 
     try {
+      const lastFetchedAt = existingGame?.metadata?.fetched_at;
+      const lastFetchDate = lastFetchedAt ? new Date(lastFetchedAt) : null;
+      const hasValidFetchDate = lastFetchDate instanceof Date && !Number.isNaN(lastFetchDate.getTime());
+      const daysSinceLastRun = hasValidFetchDate
+        ? Math.max(
+            Math.ceil((Date.now() - lastFetchDate.getTime()) / (1000 * 60 * 60 * 24)),
+            1,
+          )
+        : undefined;
+      const shouldRefresh = Boolean(existingGame && hasValidFetchDate);
+
       await startAnalysis(game, {
-        refresh: false,
+        refresh: shouldRefresh,
         review_count: reviewCount,
         language: "all", // Always analyze all languages
         languages: undefined,
         filter: fetchFilter,
-        refresh_days: undefined,
+        refresh_days: shouldRefresh ? daysSinceLastRun : undefined,
       });
     } catch (err) {
       setError((err as Error).message || "Failed to start analysis");
@@ -553,6 +624,7 @@ function DashboardContent() {
                         {searchResults.map((game) => {
                           const gameTask = getTask(game.appid);
                           const isAnalyzingGame = gameTask?.status === "analyzing";
+                          const isAlreadyAnalyzed = games.some((entry) => entry.app_id === game.appid);
                           return (
                             <div
                               key={game.appid}
@@ -571,11 +643,15 @@ function DashboardContent() {
                                 <Button
                                   onClick={() => handleAnalyze(game)}
                                   disabled={isAnalyzingGame}
-                                  variant="primary"
+                                  variant={isAlreadyAnalyzed ? "update" : "primary"}
                                   size="sm"
                                   className="mt-3"
                                 >
-                                  {isAnalyzingGame ? t('dashboard.analyzing') : t('dashboard.analyze')}
+                                  {isAnalyzingGame
+                                    ? t('dashboard.analyzing')
+                                    : isAlreadyAnalyzed
+                                      ? t('dashboard.update')
+                                      : t('dashboard.analyze')}
                                 </Button>
                               </div>
                             </div>
@@ -751,8 +827,14 @@ function DashboardContent() {
           <AnalysisResults
             analysis={analysis}
             selectedGame={selectedGame}
+            updateSuccess={updateSuccess}
+            error={error}
             onUpdate={async () => {
               if (!selectedGame || !analysis?.metadata?.fetched_at) return;
+
+              // Clear previous messages
+              setError(null);
+              setUpdateSuccess(null);
 
               // Calculate days since last analysis
               const lastFetchDate = new Date(analysis.metadata.fetched_at);
@@ -769,6 +851,11 @@ function DashboardContent() {
                   filter: fetchFilter,
                   refresh_days: daysSinceLastRun,
                 });
+
+                // Show success message
+                setUpdateSuccess("You are up to date");
+                // Auto-hide after 3 seconds
+                setTimeout(() => setUpdateSuccess(null), 3000);
               } catch (err) {
                 setError((err as Error).message || "Failed to update analysis");
               }
@@ -807,14 +894,42 @@ function DashboardFiltersBar({
 
         <select
           value={filters.dateRange}
-          onChange={(event) => onChange({ dateRange: event.target.value as DashboardDateRangeFilter })}
+          onChange={(event) => {
+            const value = event.target.value as DashboardDateRangeFilter;
+            if (value !== "custom") {
+              onChange({ dateRange: value, customStartDate: null, customEndDate: null });
+            } else {
+              onChange({ dateRange: value });
+            }
+          }}
           className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
         >
           <option value="all">{t("filters.allTime")}</option>
           <option value="30d">{t("filters.last30Days")}</option>
           <option value="90d">{t("filters.last90Days")}</option>
           <option value="365d">{t("filters.last12Months")}</option>
+          <option value="custom">{t("filters.customRange")}</option>
         </select>
+
+        {filters.dateRange === "custom" && (
+          <>
+            <input
+              type="date"
+              value={filters.customStartDate || ""}
+              onChange={(event) => onChange({ customStartDate: event.target.value || null })}
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+              placeholder="Start date"
+            />
+            <span className="text-xs text-slate-500">to</span>
+            <input
+              type="date"
+              value={filters.customEndDate || ""}
+              onChange={(event) => onChange({ customEndDate: event.target.value || null })}
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+              placeholder="End date"
+            />
+          </>
+        )}
 
         <select
           value={filters.minHelpful}
@@ -856,12 +971,16 @@ function AnalysisResults({
   analysis,
   selectedGame,
   onUpdate,
+  updateSuccess,
+  error,
 }: {
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
   onUpdate?: () => void;
+  updateSuccess?: string | null;
+  error?: string | null;
 }) {
-  const { t } = useLanguage();
+  const { t, language: userLanguage } = useLanguage();
   const router = useRouter();
   const insights = analysis.insights ?? null;
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
@@ -874,6 +993,8 @@ function AnalysisResults({
   const [subcategorySummary, setSubcategorySummary] = useState<SubcategorySummaryResponse | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  // Translation state: key is reviewKey, value is { text: string, loading: boolean, show: boolean }
+  const [translations, setTranslations] = useState<Map<string, { text: string | null; loading: boolean; show: boolean }>>(new Map());
 
   const categoryRates = insights?.category_recommendation_rates;
   const subcategoryInsights = insights?.subcategory_insights;
@@ -985,7 +1106,20 @@ function AnalysisResults({
   }, [activeSubcategoryInsights]);
 
   const playerSegments = useMemo(() => {
-    if (!filtersActive && insights?.player_segments) return insights.player_segments;
+    if (!filtersActive && insights?.player_segments) {
+      // Use backend data but supplement with client-side calculations for new segments
+      // that may be missing from older analyses
+      const backendSegments = insights.player_segments;
+      if (!backendSegments.platform || !backendSegments.language) {
+        const clientSegments = buildPlayerSegments(filteredReviewSample);
+        return {
+          ...backendSegments,
+          platform: backendSegments.platform || clientSegments.platform,
+          language: backendSegments.language || clientSegments.language,
+        };
+      }
+      return backendSegments;
+    }
     return buildPlayerSegments(filteredReviewSample);
   }, [filteredReviewSample, filtersActive, insights?.player_segments]);
 
@@ -1270,6 +1404,18 @@ function AnalysisResults({
               </p>
             </div>
           </div>
+
+        {updateSuccess && (
+          <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
+            <p className="text-sm text-green-400">{updateSuccess}</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
+            <p className="text-sm text-rose-400">{error}</p>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-end gap-3">
           {onUpdate && (
@@ -1598,221 +1744,283 @@ function AnalysisResults({
           {!playerSegments ? (
             <p className="mt-4 text-sm text-slate-500">Segmentation data is not available for this analysis.</p>
           ) : (
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                <h5 className="text-sm font-semibold text-white">Purchase pathways</h5>
-                {(() => {
-                  const rows = [
-                    { label: "Steam buyers", data: playerSegments.purchase_type?.steam_buyers },
-                    { label: "Key users", data: playerSegments.purchase_type?.key_users },
-                    { label: "Free users", data: playerSegments.purchase_type?.free_users },
-                  ];
-                  const total = rows.reduce((sum, row) => sum + Number(row.data?.count ?? 0), 0);
-                  return (
-                    <div className="mt-3 space-y-3 text-sm text-slate-200">
-                      {rows.map((row) => {
-                        const countValue = Number(row.data?.count ?? 0);
-                        const share = total > 0 ? Math.round((countValue / total) * 100) : 0;
-                        const rec = formatPercentOrDash(row.data?.recommendation_rate);
-                        const req = formatPercentOrDash(row.data?.feature_request_rate);
+            <div className="mt-5 space-y-6">
+              {/* Regional breakdown with top issues */}
+              {playerSegments.language && playerSegments.language.languages?.length > 0 && (
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Regional Breakdown</h5>
+                    <span className="text-xs text-slate-500">{playerSegments.language.total_languages} languages</span>
+                  </div>
+                  <div className="space-y-3">
+                    {(() => {
+                      const langs = playerSegments.language.languages.slice(0, 5);
+                      const maxCount = Math.max(...langs.map(l => l.count));
+                      return langs.map((lang) => {
+                        const barWidth = maxCount > 0 ? (lang.count / maxCount) * 100 : 0;
+                        const topIssue = lang.top_issues?.[0]?.category;
                         return (
-                          <div key={row.label} className="rounded-xl border border-white/5 bg-slate-950/30 p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm text-slate-200">{row.label}</p>
-                                <p className="text-xs text-slate-500">
-                                  {countValue.toLocaleString()} reviews · {share}% share
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span
-                                  className="rounded-full border border-white/10 px-2 py-0.5"
-                                  style={{ color: getRecommendationColor(row.data?.recommendation_rate) }}
-                                >
-                                  {rec} rec
-                                </span>
-                                <span className="rounded-full border border-white/10 px-2 py-0.5 text-slate-300">
-                                  {req} req
-                                </span>
-                              </div>
-                            </div>
-                            <div className="mt-2 h-1 rounded-full bg-white/10">
-                              <div className="h-1 rounded-full bg-sky-400/70" style={{ width: `${share}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                <h5 className="text-sm font-semibold text-white">Experience cohorts</h5>
-                {(() => {
-                  const rows = [
-                    { label: "Newcomers (<2h)", data: playerSegments.experience_level?.newcomers },
-                    { label: "Casual (2-20h)", data: playerSegments.experience_level?.casual },
-                    { label: "Experienced (20-100h)", data: playerSegments.experience_level?.experienced },
-                    { label: "Veterans (100h+)", data: playerSegments.experience_level?.veterans },
-                  ];
-                  const total = rows.reduce((sum, row) => sum + Number(row.data?.count ?? 0), 0);
-                  return (
-                    <div className="mt-3 space-y-3 text-sm text-slate-200">
-                      {rows.map((row) => {
-                        const countValue = Number(row.data?.count ?? 0);
-                        const share = total > 0 ? Math.round((countValue / total) * 100) : 0;
-                        const issueCount = Number(row.data?.issue_count ?? 0);
-                        const topIssueRaw = row.data?.top_issues?.[0]?.category;
-                        const topIssue = topIssueRaw ? toSubcategoryLabel(topIssueRaw) : "";
-                        return (
-                          <div key={row.label} className="rounded-xl border border-white/5 bg-slate-950/30 p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm text-slate-200">{row.label}</p>
-                                <p className="text-xs text-slate-500">
-                                  {countValue.toLocaleString()} reviews · {share}% share
-                                </p>
-                                {topIssue ? (
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-200">
-                                      Top issue: {topIssue}
-                                    </span>
-                                  </div>
-                                ) : null}
-                              </div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="rounded-full border border-rose-500/30 px-2 py-0.5 text-rose-300">
-                                  {issueCount.toLocaleString()} issues
-                                </span>
-                              </div>
-                            </div>
-                            <div className="mt-2 h-1 rounded-full bg-white/10">
-                              <div className="h-1 rounded-full bg-indigo-400/70" style={{ width: `${share}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                <h5 className="text-sm font-semibold text-white">Engagement topics</h5>
-                {(() => {
-                  const rows = [
-                    { label: "Highly engaged", data: playerSegments.engagement_topics?.highly_engaged },
-                    { label: "Moderately engaged", data: playerSegments.engagement_topics?.moderately_engaged },
-                    { label: "Low engagement", data: playerSegments.engagement_topics?.low_engagement },
-                  ];
-                  const total = rows.reduce((sum, row) => sum + Number(row.data?.count ?? 0), 0);
-                  return (
-                    <div className="mt-3 space-y-3 text-sm text-slate-200">
-                      {rows.map((row) => {
-                        const countValue = Number(row.data?.count ?? 0);
-                        const share = total > 0 ? Math.round((countValue / total) * 100) : 0;
-                        const topics = (row.data?.top_topics ?? [])
-                          .slice(0, 3)
-                          .map((topic) => formatMainCategoryLabel(topic.topic))
-                          .filter(Boolean);
-                        return (
-                          <div key={row.label} className="rounded-xl border border-white/5 bg-slate-950/30 p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm text-slate-200">{row.label}</p>
-                                <p className="text-xs text-slate-500">
-                                  {countValue.toLocaleString()} reviews · {share}% share
-                                </p>
-                                {topics.length ? (
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {topics.map((topic) => (
-                                      <span
-                                        key={`${row.label}-${topic}`}
-                                        className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-200"
-                                      >
-                                        {topic}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <span className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300">
-                                {countValue.toLocaleString()}
+                          <div key={lang.language} className="space-y-1">
+                            <div className="flex items-center gap-3">
+                              <span className="w-20 text-xs text-slate-300 truncate">
+                                {lang.language.charAt(0).toUpperCase() + lang.language.slice(1)}
                               </span>
+                              <div className="flex-1 h-6 bg-slate-950/50 rounded relative overflow-hidden">
+                                <div
+                                  className="h-full rounded transition-all bg-indigo-500/40"
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                                <div className="absolute inset-0 flex items-center justify-between px-2">
+                                  <span className="text-[10px] text-slate-400">{lang.count.toLocaleString()}</span>
+                                  <span
+                                    className="text-xs font-medium"
+                                    style={{ color: getRecommendationColor(lang.recommendation_rate) }}
+                                  >
+                                    {formatPercent(lang.recommendation_rate)}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                            <div className="mt-2 h-1 rounded-full bg-white/10">
-                              <div className="h-1 rounded-full bg-emerald-400/70" style={{ width: `${share}%` }} />
-                            </div>
+                            {topIssue && (
+                              <div className="ml-[5.5rem] text-[10px] text-slate-500">
+                                Top issue: <span className="text-rose-300">{toSubcategoryLabel(topIssue)}</span>
+                              </div>
+                            )}
                           </div>
                         );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
 
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-                <h5 className="text-sm font-semibold text-white">Activity status</h5>
-                {(() => {
-                  const rows = [
-                    { label: "Currently active", data: playerSegments.activity_status?.currently_active },
-                    { label: "Recently stopped", data: playerSegments.activity_status?.recently_stopped },
-                    { label: "Inactive", data: playerSegments.activity_status?.inactive },
-                  ];
-                  const total = rows.reduce((sum, row) => sum + Number(row.data?.count ?? 0), 0);
-                  return (
-                    <div className="mt-3 space-y-3 text-sm text-slate-200">
-                      {rows.map((row) => {
-                        const countValue = Number(row.data?.count ?? 0);
-                        const share = total > 0 ? Math.round((countValue / total) * 100) : 0;
-                        const rec = formatPercentOrDash(row.data?.recommendation_rate);
-                        const issueCount = Number(row.data?.issue_count ?? 0);
-                        return (
-                          <div key={row.label} className="rounded-xl border border-white/5 bg-slate-950/30 p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm text-slate-200">{row.label}</p>
-                                <p className="text-xs text-slate-500">
-                                  {countValue.toLocaleString()} reviews · {share}% share
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span
-                                  className="rounded-full border border-white/10 px-2 py-0.5"
-                                  style={{ color: getRecommendationColor(row.data?.recommendation_rate) }}
-                                >
-                                  {rec} rec
-                                </span>
-                                <span className="rounded-full border border-rose-500/30 px-2 py-0.5 text-rose-300">
-                                  {issueCount.toLocaleString()} issues
-                                </span>
-                              </div>
+              {/* Main segments grid - Compact cards */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {/* Experience Cohorts */}
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Experience</h5>
+                  <div className="space-y-2">
+                    {[
+                      { label: "New", subLabel: "<2h", data: playerSegments.experience_level?.newcomers },
+                      { label: "Casual", subLabel: "2-20h", data: playerSegments.experience_level?.casual },
+                      { label: "Regular", subLabel: "20-100h", data: playerSegments.experience_level?.experienced },
+                      { label: "Veteran", subLabel: "100h+", data: playerSegments.experience_level?.veterans },
+                    ].map((row) => {
+                      const count = row.data?.count ?? 0;
+                      const total = (playerSegments.experience_level?.newcomers?.count ?? 0) +
+                                   (playerSegments.experience_level?.casual?.count ?? 0) +
+                                   (playerSegments.experience_level?.experienced?.count ?? 0) +
+                                   (playerSegments.experience_level?.veterans?.count ?? 0);
+                      const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      return (
+                        <div key={row.label} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-500/70 rounded-full" style={{ width: `${share}%` }} />
                             </div>
-                            <div className="mt-2 h-1 rounded-full bg-white/10">
-                              <div className="h-1 rounded-full bg-cyan-400/70" style={{ width: `${share}%` }} />
-                            </div>
+                            <span className="text-xs text-slate-300">{row.label}</span>
+                            <span className="text-[10px] text-slate-500">{row.subLabel}</span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+                          <span className="text-xs text-slate-400">{share}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Purchase Type */}
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Purchase</h5>
+                  <div className="space-y-2">
+                    {[
+                      { label: "Steam", data: playerSegments.purchase_type?.steam_buyers },
+                      { label: "Key", data: playerSegments.purchase_type?.key_users },
+                      { label: "Free", data: playerSegments.purchase_type?.free_users },
+                    ].map((row) => {
+                      const count = row.data?.count ?? 0;
+                      const rec = row.data?.recommendation_rate ?? 0;
+                      const total = (playerSegments.purchase_type?.steam_buyers?.count ?? 0) +
+                                   (playerSegments.purchase_type?.key_users?.count ?? 0) +
+                                   (playerSegments.purchase_type?.free_users?.count ?? 0);
+                      const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      return (
+                        <div key={row.label} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-sky-500/70 rounded-full" style={{ width: `${share}%` }} />
+                            </div>
+                            <span className="text-xs text-slate-300">{row.label}</span>
+                          </div>
+                          <span
+                            className="text-xs"
+                            style={{ color: getRecommendationColor(rec) }}
+                          >
+                            {formatPercent(rec)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Activity Status */}
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Activity</h5>
+                  <div className="space-y-2">
+                    {[
+                      { label: "Active", data: playerSegments.activity_status?.currently_active, color: "bg-emerald-500/70" },
+                      { label: "Stopped", data: playerSegments.activity_status?.recently_stopped, color: "bg-amber-500/70" },
+                      { label: "Inactive", data: playerSegments.activity_status?.inactive, color: "bg-slate-500/70" },
+                    ].map((row) => {
+                      const count = row.data?.count ?? 0;
+                      const rec = row.data?.recommendation_rate ?? 0;
+                      const total = (playerSegments.activity_status?.currently_active?.count ?? 0) +
+                                   (playerSegments.activity_status?.recently_stopped?.count ?? 0) +
+                                   (playerSegments.activity_status?.inactive?.count ?? 0);
+                      const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      return (
+                        <div key={row.label} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${row.color}`} style={{ width: `${share}%` }} />
+                            </div>
+                            <span className="text-xs text-slate-300">{row.label}</span>
+                          </div>
+                          <span
+                            className="text-xs"
+                            style={{ color: getRecommendationColor(rec) }}
+                          >
+                            {formatPercent(rec)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Engagement Topics */}
+                <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Engagement</h5>
+                  <div className="space-y-2">
+                    {[
+                      { label: "High", data: playerSegments.engagement_topics?.highly_engaged },
+                      { label: "Medium", data: playerSegments.engagement_topics?.moderately_engaged },
+                      { label: "Low", data: playerSegments.engagement_topics?.low_engagement },
+                    ].map((row) => {
+                      const count = row.data?.count ?? 0;
+                      const total = (playerSegments.engagement_topics?.highly_engaged?.count ?? 0) +
+                                   (playerSegments.engagement_topics?.moderately_engaged?.count ?? 0) +
+                                   (playerSegments.engagement_topics?.low_engagement?.count ?? 0);
+                      const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const topTopic = row.data?.top_topics?.[0]?.topic;
+                      return (
+                        <div key={row.label} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-teal-500/70 rounded-full" style={{ width: `${share}%` }} />
+                            </div>
+                            <span className="text-xs text-slate-300">{row.label}</span>
+                          </div>
+                          {topTopic ? (
+                            <span className="text-[10px] text-slate-500 truncate max-w-[60px]">
+                              {formatMainCategoryLabel(topTopic)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">{share}%</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           )}
         </Card>
+
+        {/* Cross-segment insights card */}
+        {insights?.cross_segment && insights.cross_segment.notable_findings?.length > 0 && (
+          <Card variant="glass" className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-lg font-semibold text-white">Notable segment insights</h4>
+                <p className="mt-1 text-sm text-slate-400">Significant patterns across user segments</p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {insights.cross_segment.notable_findings.map((finding, index) => (
+                <div key={index} className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-amber-500/20 p-2">
+                      <svg className="h-4 w-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">{finding.segment}</p>
+                      <p className="mt-1 text-sm text-slate-300">{finding.finding}</p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Based on {finding.count.toLocaleString()} reviews
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Quality weighted insights card */}
+        {insights?.quality_weighted && insights.quality_weighted.high_quality_reviews > 0 && (
+          <Card variant="glass" className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-lg font-semibold text-white">Quality-weighted insights</h4>
+                <p className="mt-1 text-sm text-slate-400">
+                  Issues weighted by review helpfulness ({insights.quality_weighted.high_quality_reviews.toLocaleString()} highly-voted reviews)
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-500">Weighted rec rate</p>
+                <p
+                  className="text-lg font-semibold"
+                  style={{ color: getRecommendationColor(insights.quality_weighted.weighted_recommendation_rate) }}
+                >
+                  {formatPercent(insights.quality_weighted.weighted_recommendation_rate)}
+                </p>
+              </div>
+            </div>
+            {insights.quality_weighted.weighted_top_issues?.length > 0 && (
+              <div className="mt-5">
+                <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Top issues by helpfulness weight</p>
+                <div className="flex flex-wrap gap-2">
+                  {insights.quality_weighted.weighted_top_issues.slice(0, 8).map((issue, index) => (
+                    <span
+                      key={index}
+                      className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-sm text-rose-200"
+                    >
+                      {toSubcategoryLabel(issue.category)}
+                      <span className="ml-1 text-xs text-rose-400">({issue.weighted_count.toLocaleString()})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
       </div>
 
       {selectedSubcategory ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+          className="fixed top-0 left-0 right-0 bottom-0 z-[9999] bg-black/60 backdrop-blur-md overflow-y-auto"
           onClick={() => setSelectedSubcategory(null)}
+          style={{ WebkitBackdropFilter: 'blur(12px)' }}
         >
-          <div
-            className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/90 p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8"
+              onClick={(event) => event.stopPropagation()}
+            >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-white">{selectedSubcategoryLabel}</h3>
@@ -1910,6 +2118,53 @@ function AnalysisResults({
                     : "Date unknown";
                   const shouldClamp = text.length > 240 || text.split("\n").length > 3;
                   const isExpanded = expandedReviews.has(reviewKey);
+                  // Translation check
+                  const reviewLangCode = STEAM_TO_APP_LANGUAGE[review.language?.toLowerCase() || ''] || review.language?.toLowerCase();
+                  const needsTranslation = reviewLangCode !== userLanguage && review.language;
+                  const translationState = translations.get(reviewKey);
+                  const isTranslating = translationState?.loading ?? false;
+                  const translatedText = translationState?.text ?? null;
+                  const showTranslation = translationState?.show ?? false;
+
+                  const handleTranslate = async () => {
+                    if (translatedText) {
+                      // Toggle visibility if already translated
+                      setTranslations((prev) => {
+                        const next = new Map(prev);
+                        const current = next.get(reviewKey);
+                        if (current) {
+                          next.set(reviewKey, { ...current, show: !current.show });
+                        }
+                        return next;
+                      });
+                      return;
+                    }
+                    // Start translation
+                    setTranslations((prev) => {
+                      const next = new Map(prev);
+                      next.set(reviewKey, { text: null, loading: true, show: false });
+                      return next;
+                    });
+                    try {
+                      const result = await translateText({
+                        text,
+                        target_language: userLanguage,
+                      });
+                      setTranslations((prev) => {
+                        const next = new Map(prev);
+                        next.set(reviewKey, { text: result.translated_text, loading: false, show: true });
+                        return next;
+                      });
+                    } catch (error) {
+                      console.error('Translation failed:', error);
+                      setTranslations((prev) => {
+                        const next = new Map(prev);
+                        next.set(reviewKey, { text: null, loading: false, show: false });
+                        return next;
+                      });
+                    }
+                  };
+
                   return (
                     <div
                       key={reviewKey}
@@ -1927,6 +2182,52 @@ function AnalysisResults({
                           )}
                         </div>
                       </div>
+                      {/* Translation controls */}
+                      {needsTranslation && (
+                        <div className="mt-2 flex items-center justify-between border-b border-white/10 pb-2">
+                          <span className="text-[10px] text-slate-500">
+                            Original: {review.language}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleTranslate}
+                            disabled={isTranslating}
+                            className="flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
+                          >
+                            {isTranslating ? (
+                              <>
+                                <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Translating...
+                              </>
+                            ) : translatedText ? (
+                              <>
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                                </svg>
+                                {showTranslation ? 'Original' : 'Translated'}
+                              </>
+                            ) : (
+                              <>
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                                </svg>
+                                Translate
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                      {/* Translated text */}
+                      {showTranslation && translatedText && (
+                        <div className="mt-2 rounded-lg border border-sky-500/20 bg-sky-500/5 p-2">
+                          <p className="whitespace-pre-line text-sm text-slate-200">
+                            {translatedText}
+                          </p>
+                        </div>
+                      )}
                       <p
                         className="mt-2 whitespace-pre-line text-sm text-slate-100"
                         style={
@@ -1976,6 +2277,7 @@ function AnalysisResults({
                 })}
               </div>
             )}
+            </div>
           </div>
         </div>
       ) : null}
@@ -2177,7 +2479,53 @@ function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {
     },
   };
 
-  return { experience_level, purchase_type, engagement_topics, activity_status };
+  // Platform segmentation (Steam Deck vs Desktop)
+  const steamDeckReviews = reviews.filter((review) => review.primarily_steam_deck === true);
+  const desktopReviews = reviews.filter((review) => review.primarily_steam_deck !== true);
+
+  const platform: PlatformSegmentInsights = {
+    steam_deck: {
+      count: steamDeckReviews.length,
+      recommendation_rate: countRecommendationRate(steamDeckReviews),
+      top_issues: topIssueCategories(steamDeckReviews),
+      issue_count: countIssueReviews(steamDeckReviews),
+    },
+    desktop: {
+      count: desktopReviews.length,
+      recommendation_rate: countRecommendationRate(desktopReviews),
+      top_issues: topIssueCategories(desktopReviews),
+      issue_count: countIssueReviews(desktopReviews),
+    },
+  };
+
+  // Language segmentation
+  const languageMap = new Map<string, ReviewRow[]>();
+  reviews.forEach((review) => {
+    const lang = review.language;
+    if (lang) {
+      const existing = languageMap.get(lang) || [];
+      existing.push(review);
+      languageMap.set(lang, existing);
+    }
+  });
+
+  const languageStats = Array.from(languageMap.entries())
+    .map(([lang, langReviews]) => ({
+      language: lang,
+      count: langReviews.length,
+      recommendation_rate: countRecommendationRate(langReviews),
+      top_issues: topIssueCategories(langReviews),
+      issue_count: countIssueReviews(langReviews),
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 15);
+
+  const language: LanguageSegmentInsights = {
+    languages: languageStats,
+    total_languages: languageMap.size,
+  };
+
+  return { experience_level, purchase_type, engagement_topics, activity_status, platform, language };
 }
 
 function formatPercent(value: number): string {
@@ -2233,6 +2581,7 @@ function titleize(value: string): string {
       if (lower === "ugc") return "UGC";
       if (lower === "ai") return "AI";
       if (lower === "dlc") return "DLC";
+      if (lower === "fomo") return "FOMO";
       if (lower === "p2w") return "P2W";
       if (lower === "ctd") return "CTD";
       return word.charAt(0).toUpperCase() + word.slice(1);

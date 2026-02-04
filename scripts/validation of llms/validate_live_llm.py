@@ -41,9 +41,9 @@ VALID_LABELS = [
     "gameplay/mechanics", "gameplay/controls", "gameplay/balance",
     "gameplay/difficulty", "gameplay/progression", "gameplay/ai",
     # technical
-    "technical/performance", "technical/bugs", "technical/stability",
-    "technical/crashes", "technical/compatibility", "technical/networking",
-    "technical/installation",
+    "technical/performance", "technical/bugs", "technical/stability_crashes",
+    "technical/compatibility", "technical/networking", "technical/installation",
+    "technical/save_data",
     # content_design
     "content_design/amount_variety", "content_design/level_design",
     "content_design/quests_modes", "content_design/narrative_characters",
@@ -58,8 +58,8 @@ VALID_LABELS = [
     "onboarding/clarity", "onboarding/tooltips",
     # presentation
     "presentation/visuals_art_style", "presentation/animation",
-    "presentation/audio_music_voice", "presentation/atmosphere",
-    "presentation/localization",
+    "presentation/audio_music", "presentation/voice_acting",
+    "presentation/atmosphere", "presentation/localization",
     # online_community
     "online_community/multiplayer_experience", "online_community/matchmaking",
     "online_community/social_features", "online_community/toxicity_moderation",
@@ -67,13 +67,15 @@ VALID_LABELS = [
     # developer_updates
     "developer_updates/patch_quality", "developer_updates/update_frequency",
     "developer_updates/roadmap_events", "developer_updates/communication",
-    "developer_updates/customer_support",
+    "developer_updates/customer_support", "developer_updates/response_time",
     # monetization_value
-    "monetization_value/price", "monetization_value/regional_pricing",
+    "monetization_value/pricing", "monetization_value/regional_pricing",
     "monetization_value/dlc", "monetization_value/microtransactions",
-    "monetization_value/pay_to_win_grind", "monetization_value/value_for_money",
+    "monetization_value/battle_pass_fomo", "monetization_value/pay_to_win_grind",
+    "monetization_value/value_for_money",
     # other
     "other/general", "other/mixed", "other/meta", "other/unclear",
+    "other/off_topic", "other/meme",
 ]
 
 DEFAULT_WEIGHTS = {

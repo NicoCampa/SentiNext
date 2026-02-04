@@ -152,11 +152,71 @@ export interface ActivityBasedFeedback {
   inactive: ActivitySegment;
 }
 
+export interface PlatformSegment {
+  count: number;
+  recommendation_rate: number;
+  top_issues: IssueCategory[];
+  issue_count: number;
+}
+
+export interface PlatformSegmentInsights {
+  steam_deck: PlatformSegment;
+  desktop: PlatformSegment;
+}
+
+export interface LanguageSegment {
+  language: string;
+  count: number;
+  recommendation_rate: number;
+  top_issues: IssueCategory[];
+  issue_count: number;
+}
+
+export interface LanguageSegmentInsights {
+  languages: LanguageSegment[];
+  total_languages: number;
+}
+
+export interface WeightedIssue {
+  category: string;
+  weighted_count: number;
+}
+
+export interface QualityWeightedInsights {
+  high_quality_reviews: number;
+  avg_helpfulness: number;
+  weighted_top_issues: WeightedIssue[];
+  weighted_recommendation_rate: number;
+}
+
+export interface CrossSegmentData {
+  label: string;
+  segments: string[];
+  count: number;
+  recommendation_rate: number;
+  top_issues: IssueCategory[];
+}
+
+export interface NotableFinding {
+  segment: string;
+  finding: string;
+  count: number;
+  recommendation_rate: number;
+  overall_rate: number;
+}
+
+export interface CrossSegmentAnalysis {
+  cross_segments: CrossSegmentData[];
+  notable_findings: NotableFinding[];
+}
+
 export interface PlayerSegments {
   experience_level: ExperienceLevelIssues;
   purchase_type: PurchaseTypeInsights;
   engagement_topics: EngagementBasedTopics;
   activity_status: ActivityBasedFeedback;
+  platform?: PlatformSegmentInsights;
+  language?: LanguageSegmentInsights;
 }
 
 export interface SubcategoryInsight {
@@ -221,6 +281,8 @@ export interface InsightsResponse {
   audience: AudienceSegments;
   risk: RiskMetrics;
   player_segments?: PlayerSegments;
+  quality_weighted?: QualityWeightedInsights;
+  cross_segment?: CrossSegmentAnalysis;
   theme?: ThemeDefinition;
 }
 
@@ -240,6 +302,7 @@ export interface ReviewRow {
   created_at?: string;
   steam_purchase?: boolean;
   received_for_free?: boolean;
+  primarily_steam_deck?: boolean;
   // v7 LLM insights (hierarchical)
   llm_main_category?: string;
   llm_subcategory?: string;
@@ -326,6 +389,8 @@ export interface ProgressStatus {
   processed: number;
   updated_at: string | null;
   active: boolean;
+  phase?: 'fetching' | 'classifying' | 'idle';
+  fetched_count?: number;
 }
 
 export interface StarredGamePayload {

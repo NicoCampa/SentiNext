@@ -1,9 +1,9 @@
-import { getDictionary } from "@/lib/get-dictionary";
+import { normalizeLocale } from "@/lib/i18n";
 import { PrivacyClient } from "./PrivacyClient";
 
 export default async function PrivacyPage({ params }: { params: Promise<{ lang: string }> }) {
     const { lang } = await params;
-    const dict = await getDictionary(lang as any);
+    const locale = normalizeLocale(lang);
 
-    return <PrivacyClient dict={dict} lang={lang} />;
+    return <PrivacyClient lang={locale} />;
 }

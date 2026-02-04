@@ -3,9 +3,26 @@
 import Link from "next/link";
 import { Github, Mail, Info, Linkedin } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
+import type { SupportedLocale } from "@/lib/i18n";
 
-export function Footer({ lang }: { lang: string }) {
-    const labels: any = {
+type FooterLabels = {
+    product: string;
+    features: string;
+    process: string;
+    pricing: string;
+    resources: string;
+    docs: string;
+    faq: string;
+    taxonomy: string;
+    connect: string;
+    impressum: string;
+    privacy: string;
+    terms: string;
+    desc: string;
+    valve: string;
+};
+
+const labels: Record<SupportedLocale, FooterLabels> = {
         it: {
             product: "Prodotto",
             features: "Caratteristiche",
@@ -19,8 +36,8 @@ export function Footer({ lang }: { lang: string }) {
             impressum: "Impressum",
             privacy: "Privacy",
             terms: "Termini",
-            desc: "Sistema autonomo di classificazione dei feedback di nuova generazione.",
-            valve: "SentiNext è un protocollo autonomo di intelligence indipendente. Consumiamo la telemetria pubblica della Steam Community tramite API. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
+            desc: "Intelligence delle recensioni Steam per team di gioco.",
+            valve: "SentiNext è uno strumento indipendente che analizza recensioni Steam pubbliche tramite le API di Steam. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
         },
         fr: {
             product: "Produit",
@@ -35,8 +52,8 @@ export function Footer({ lang }: { lang: string }) {
             impressum: "Mentions Légales",
             privacy: "Confidentialité",
             terms: "Termes",
-            desc: "Système autonome de classification des feedbacks de nouvelle génération.",
-            valve: "SentiNext est un protocole d'intelligence autonome indépendant. Nous consommons la télémétrie publique de la communauté Steam via API. Nous ne sommes pas approuvés, affiliés ou soutenus par Valve Corporation. Steam et le logo Steam sont des marques de Valve Corporation."
+            desc: "Intelligence des avis Steam pour équipes de jeu.",
+            valve: "SentiNext est un outil indépendant qui analyse des avis Steam publics via les API de Steam. Nous ne sommes pas approuvés, affiliés ou soutenus par Valve Corporation. Steam et le logo Steam sont des marques de Valve Corporation."
         },
         de: {
             product: "Produkt",
@@ -51,8 +68,8 @@ export function Footer({ lang }: { lang: string }) {
             impressum: "Impressum",
             privacy: "Datenschutz",
             terms: "Bedingungen",
-            desc: "Autonomes Feedback-Klassifizierungssystem der nächsten Generation.",
-            valve: "SentiNext ist ein unabhängiges autonomes Intelligenzprotokoll. Wir nutzen öffentliche Steam Community-Telemetrie über API. Wir werden nicht von der Valve Corporation unterstützt, sind nicht mit ihr verbunden und werden nicht von ihr unterstützt. Steam und das Steam-Logo sind Marken der Valve Corporation."
+            desc: "Steam-Review-Intelligence für Game-Teams.",
+            valve: "SentiNext ist ein unabhängiges Tool, das öffentliche Steam-Reviews über Steam-APIs analysiert. Wir sind nicht von Valve Corporation unterstützt oder mit ihr verbunden. Steam und das Steam-Logo sind Marken der Valve Corporation."
         },
         en: {
             product: "Product",
@@ -67,12 +84,13 @@ export function Footer({ lang }: { lang: string }) {
             impressum: "Impressum",
             privacy: "Privacy",
             terms: "Terms",
-            desc: "Next-generation autonomous feedback classification system.",
-            valve: "SentiNext is an independent autonomous intelligence protocol. We consume public Steam Community telemetry via API. We are not endorsed by, affiliated with, or supported by Valve Corporation. Steam and the Steam logo are trademarks of Valve Corporation."
+            desc: "Steam review intelligence for game teams.",
+            valve: "SentiNext is an independent tool that analyzes public Steam reviews via Steam APIs. We are not endorsed by, affiliated with, or supported by Valve Corporation. Steam and the Steam logo are trademarks of Valve Corporation."
         }
-    };
+};
 
-    const l = labels[lang] || labels.en;
+export function Footer({ lang }: { lang: SupportedLocale }) {
+    const l = labels[lang];
 
     return (
         <footer className="border-t border-[#00F0FF]/10 bg-background py-20">
@@ -104,7 +122,7 @@ export function Footer({ lang }: { lang: string }) {
                     <div className="flex flex-col gap-4">
                         <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00F0FF]">{l.connect}</h4>
                         <div className="flex items-center gap-6 mt-2">
-                            <Link href="https://github.com" target="_blank" className="text-muted-foreground hover:text-[#00F0FF] transition-colors">
+                            <Link href="https://github.com/NicoCampa/SentiNext" target="_blank" className="text-muted-foreground hover:text-[#00F0FF] transition-colors">
                                 <Github className="h-5 w-5" />
                                 <span className="sr-only">GitHub</span>
                             </Link>
@@ -133,7 +151,7 @@ export function Footer({ lang }: { lang: string }) {
 
                 <div className="mt-16 border-t border-[#00F0FF]/10 pt-10 flex flex-col md:flex-row justify-between items-center gap-6">
                     <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground opacity-50">
-                        © {new Date().getFullYear()} SentiNext. Autonomous Review Intelligence. Based in Berlin, EU.
+                        © {new Date().getFullYear()} SentiNext. Steam Review Intelligence. Based in Berlin, EU.
                     </p>
                     <div className="flex gap-8">
                         <Link href={`/${lang}/impressum`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF]">{l.impressum}</Link>

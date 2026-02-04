@@ -1,7 +1,7 @@
 {
     "common": {
         "login": "Dashboard Login",
-        "initialize": "Agent Bereitstellen",
+        "initialize": "Dashboard öffnen",
         "product": "Produkt",
         "howItWorks": "Prozess",
         "pricing": "Preise",
@@ -11,32 +11,32 @@
         "terms": "Bedingungen",
         "impressum": "Impressum",
         "back": "Zurück",
-        "footerDesc": "Autonomes Feedback-Klassifizierungssystem der nächsten Generation.",
-        "valveDisclaimer": "SentiNext ist ein unabhängiges autonomes Intelligenzprotokoll. Wir nutzen öffentliche Steam Community-Telemetrie über API. Wir werden nicht von der Valve Corporation unterstützt, sind nicht mit ihr verbunden und werden nicht von ihr unterstützt. Steam und das Steam-Logo sind Marken der Valve Corporation."
+        "footerDesc": "Steam-Review-Intelligence für Game-Teams.",
+        "valveDisclaimer": "SentiNext ist ein unabhängiges Tool, das öffentliche Steam-Reviews über Steam-APIs analysiert. Wir sind nicht von Valve Corporation unterstützt oder mit ihr verbunden. Steam und das Steam-Logo sind Marken der Valve Corporation."
     },
     "hero": {
-        "badge": "Öffentliche Beta Live",
+        "badge": "KI-Agent für Steam-Reviews",
         "title1": "Review",
         "title2": "Intelligence",
-        "subtitle": "Verwandeln Sie 2.000 Steam-Bewertungen in wenigen Minuten in ein prioritisiertes Bug-Backlog. Quantifizieren Sie die Spieler-Stimmung und identifizieren Sie Ausschläge mit Präzision.",
-        "bullet1": "Top-Probleme nach Häufigkeit + Auswirkung",
-        "bullet2": "Beweiszitate pro Cluster",
-        "bullet3": "Filter: Spielzeit, Sprache, Datum"
+        "subtitle": "Ein KI-Agent, der Steam-Reviews in ein priorisiertes Backlog verwandelt – Probleme, Feature-Wünsche und Pain Points, mit Belegzitaten.",
+        "bullet1": "Probleme & Wünsche, priorisiert",
+        "bullet2": "Belegzitate zum Verifizieren",
+        "bullet3": "Frag den Agenten: Trends, Vergleiche, Drill-down"
     },
     "docs": {
         "title": "Dokumentation",
-        "subtitle": "Autonome Intelligenzprotokolle für Spieleentwickler. Gehen Sie über einfache Metriken hinaus zu strukturierter Spieler-Telemetrie.",
+        "subtitle": "Guides zur Steam-Review-Analyse mit SentiNext.",
         "quickStart": {
             "title": "Schnellstart",
-            "description": "Initialisieren Sie Ihren Cluster und analysieren Sie Ihr erstes Spiel."
+            "description": "Analysieren Sie Ihr erstes Spiel und erkunden Sie Insights."
         },
         "dataIngestion": {
             "title": "Daten-Ingestion",
-            "description": "Protokolle zum Abrufen und Bereinigen von Steam Community-Daten."
+            "description": "Wie SentiNext Steam-Reviews abruft und speichert."
         },
         "aiTaxonomy": {
             "title": "KI-Taxonomie",
-            "description": "Klassifizierungsmodell für Probleme, Anfragen und Stimmung."
+            "description": "Wie Reviews gelabelt und belegt werden."
         },
         "sidebar": {
             "overview": "Übersicht",

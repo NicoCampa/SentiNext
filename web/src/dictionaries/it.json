@@ -1,7 +1,7 @@
 {
     "common": {
         "login": "Accedi alla Dashboard",
-        "initialize": "Distribuisci Agente",
+        "initialize": "Apri Dashboard",
         "product": "Prodotto",
         "howItWorks": "Processo",
         "pricing": "Prezzi",
@@ -11,32 +11,32 @@
         "terms": "Termini",
         "impressum": "Impressum",
         "back": "Indietro",
-        "footerDesc": "Sistema autonomo di classificazione dei feedback di nuova generazione.",
-        "valveDisclaimer": "SentiNext è un protocollo autonomo di intelligence indipendente. Consumiamo la telemetria pubblica della Steam Community tramite API. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
+        "footerDesc": "Intelligence delle recensioni Steam per team di gioco.",
+        "valveDisclaimer": "SentiNext è uno strumento indipendente che analizza recensioni Steam pubbliche tramite le API di Steam. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
     },
     "hero": {
-        "badge": "Beta Pubblica Attiva",
+        "badge": "Agente AI per Steam Reviews",
         "title1": "Review",
         "title2": "Intelligence",
-        "subtitle": "Trasforma 2.000 recensioni Steam in un backlog di bug prioritizzato in pochi minuti. Quantifica il sentiment dei giocatori e identifica i picchi con precisione.",
-        "bullet1": "Problemi principali classificati per frequenza + impatto",
-        "bullet2": "Citazioni di evidenza per ogni cluster",
-        "bullet3": "Filtri: Tempo di gioco, Lingua, Data"
+        "subtitle": "Un agente AI che trasforma le recensioni Steam in un backlog priorizzato di problemi, richieste di feature e pain point—con citazioni di evidenza.",
+        "bullet1": "Problemi e richieste, prioritizzati",
+        "bullet2": "Citazioni di evidenza verificabili",
+        "bullet3": "Chiedi all’agente: trend, confronti, drill-down"
     },
     "docs": {
         "title": "Documentazione",
-        "subtitle": "Protocolli di intelligence autonoma per sviluppatori di giochi. Vai oltre le semplici metriche verso una telemetria strutturata.",
+        "subtitle": "Guide per analizzare recensioni Steam con SentiNext.",
         "quickStart": {
             "title": "Guida Rapida",
-            "description": "Inizializza il tuo cluster e analizza il tuo primo gioco."
+            "description": "Analizza il tuo primo gioco ed esplora gli insight."
         },
         "dataIngestion": {
             "title": "Ingestione Dati",
-            "description": "Protocolli per il recupero e la pulizia dei dati della Steam Community."
+            "description": "Come SentiNext recupera e salva le recensioni Steam."
         },
         "aiTaxonomy": {
             "title": "Tassonomia AI",
-            "description": "Modello di classificazione per problemi, richieste e sentiment."
+            "description": "Come le recensioni vengono etichettate e citate."
         },
         "sidebar": {
             "overview": "Panoramica",

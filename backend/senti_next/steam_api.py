@@ -193,6 +193,7 @@ def fetch_reviews(
     filter_type: str = "recent",
     day_range: Optional[int] = None,
     include_review_bombs: bool = False,
+    progress_callback: Optional[callable] = None,
 ) -> List[dict]:
     """Fetch up to ``count`` reviews for the given Steam application.
 
@@ -208,6 +209,7 @@ def fetch_reviews(
         day_range: For filter="all", range from now to n days ago (max 365)
         include_review_bombs: If True, includes reviews flagged as off-topic activity (review bombs).
                               Default False filters them out.
+        progress_callback: Optional callback(fetched_count) called after each batch
     """
     reviews: List[dict] = []
     cursor = "*"
@@ -239,6 +241,14 @@ def fetch_reviews(
             break
 
         reviews.extend(batch)
+
+        # Report progress after each batch
+        if progress_callback is not None:
+            try:
+                progress_callback(len(reviews))
+            except Exception:
+                pass  # Don't let progress callback errors stop fetching
+
         cursor = data.get("cursor", cursor)
         if not data.get("success"):
             break
@@ -341,6 +351,7 @@ def fetch_reviews_multi_language(
     filter_type: str = "recent",
     day_range: Optional[int] = None,
     include_review_bombs: bool = False,
+    progress_callback: Optional[callable] = None,
 ) -> List[dict]:
     """Fetch reviews across multiple languages in parallel.
 
@@ -356,28 +367,54 @@ def fetch_reviews_multi_language(
         filter_type: "recent" or "all"
         day_range: Optional day range filter
         include_review_bombs: If True, includes reviews flagged as off-topic activity
+        progress_callback: Optional callback(fetched_count) called to report total fetched
 
     Returns:
         List of review dicts, deduplicated and sorted by timestamp
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
 
     if not languages:
         # Default to "all" which Steam API interprets as all languages
-        return fetch_reviews(app_id, count, "all", filter_type, day_range, include_review_bombs)
+        return fetch_reviews(app_id, count, "all", filter_type, day_range, include_review_bombs, progress_callback)
 
     if len(languages) == 1:
-        return fetch_reviews(app_id, count, languages[0], filter_type, day_range, include_review_bombs)
+        return fetch_reviews(app_id, count, languages[0], filter_type, day_range, include_review_bombs, progress_callback)
 
     # Distribute count across languages
     per_language = max(1, count // len(languages))
     # First language gets any remainder
     first_language_count = count - (per_language * (len(languages) - 1))
 
+    # Thread-safe counter for progress tracking across parallel fetches
+    total_fetched = [0]  # Use list for mutability in nested function
+    progress_lock = threading.Lock()
+
+    def report_progress(batch_count: int) -> None:
+        """Thread-safe progress reporter that aggregates counts from all languages."""
+        if progress_callback is None:
+            return
+        with progress_lock:
+            total_fetched[0] += batch_count
+            try:
+                progress_callback(total_fetched[0])
+            except Exception:
+                pass
+
     def fetch_single_language(lang: str, lang_count: int) -> Tuple[str, List[dict]]:
         """Fetch reviews for a single language."""
+        last_reported = [0]
+
+        def lang_progress(fetched: int) -> None:
+            """Report incremental progress for this language."""
+            increment = fetched - last_reported[0]
+            if increment > 0:
+                last_reported[0] = fetched
+                report_progress(increment)
+
         try:
-            reviews = fetch_reviews(app_id, lang_count, lang, filter_type, day_range, include_review_bombs)
+            reviews = fetch_reviews(app_id, lang_count, lang, filter_type, day_range, include_review_bombs, lang_progress)
             return (lang, reviews)
         except SteamAPIError as e:
             logger.warning(f"Failed to fetch {lang} reviews for app {app_id}: {e}")

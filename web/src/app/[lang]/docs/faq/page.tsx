@@ -1,35 +1,41 @@
-import { getDictionary } from "@/lib/get-dictionary";
 import { HelpCircle } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import { normalizeLocale } from "@/lib/i18n";
 
 export default async function FaqPage({ params }: { params: Promise<{ lang: string }> }) {
     const { lang } = await params;
-    const dict = await getDictionary(lang as any);
+    const locale = normalizeLocale(lang);
 
     const questions = [
         {
             q: lang === 'it' ? "SentiNext è affiliato con Valve/Steam?" : "Is SentiNext affiliated with Valve/Steam?",
             a: lang === 'it'
-                ? "No. SentiNext è uno strumento autonomo indipendente che consuma la telemetria pubblica della Steam Community. Operiamo come un livello di analisi ad alta precisione per gli sviluppatori, non come una filiale di Valve Corporation. Non siamo approvati o affiliati a Valve."
-                : "No. SentiNext is an independent autonomous tool that consumes the public Steam Community telemetry. We operate as a high-precision analysis layer for developers, not as a branch of Valve Corporation. We are not endorsed by or affiliated with Valve."
+                ? "No. SentiNext è uno strumento indipendente che analizza recensioni Steam pubbliche. Non siamo approvati o affiliati a Valve Corporation."
+                : "No. SentiNext is an independent tool that analyzes public Steam reviews. We are not endorsed by or affiliated with Valve Corporation."
         },
         {
-            q: lang === 'it' ? "Posso analizzare la telemetria della concorrenza?" : "Can I analyze competitive telemetry?",
+            q: lang === 'it' ? "Devo collegare un account Steam?" : "Do I need to connect a Steam account?",
             a: lang === 'it'
-                ? "Sì. Il sistema può inizializzare agenti per qualsiasi AppID Steam valido. Questo è un protocollo standard per il benchmarking competitivo e l'identificazione dei punti di attrito del mercato in software simili."
-                : "Yes. The system can initialize agents for any valid Steam AppID. This is a standard protocol for competitive benchmarking and identifying market friction points in similar software."
+                ? "No. SentiNext usa endpoint pubblici di Steam per recuperare recensioni. Ti basta cercare un gioco o inserire un App ID."
+                : "No. SentiNext uses Steam’s public endpoints to fetch reviews. You just search for a game or paste an App ID."
         },
         {
-            q: lang === 'it' ? "Perché il lavoro di analisi è in coda?" : "Why is the analysis job in queue?",
+            q: lang === 'it' ? "Posso analizzare giochi che non possiedo (anche concorrenti)?" : "Can I analyze games I don't own (including competitors)?",
             a: lang === 'it'
-                ? "L'elaborazione neurale è scalata orizzontalmente. A seconda del volume, un lavoro può richiedere 30-60 minuti per completare l'estrazione di oltre 50.000 nodi di dati. Il sistema invierà un'e-mail una volta che l'analisi è stata confermata nel database."
-                : "Neural processing is horizontally scaled. Depending on volume, a job may take 30-60 minutes to complete extraction of 50,000+ data nodes. The system will dispatch an email once the analysis is committed to the database."
+                ? "Sì, se le recensioni sono pubbliche su Steam. Si applicano i limiti del piano (es. il Free è limitato a 2 giochi) e i crediti."
+                : "Yes, as long as the reviews are public on Steam. Plan limits apply (e.g., Free is limited to 2 games) and credits are required."
         },
         {
-            q: lang === 'it' ? "Quando verrà abilitata la fatturazione?" : "When will billing be enabled?",
+            q: lang === 'it' ? "Perché l'analisi gira in background?" : "Why does analysis run in the background?",
             a: lang === 'it'
-                ? "Attualmente siamo in Beta Pubblica. Tutti i piani sono gratuiti durante questo periodo. Prevediamo di abilitare modelli di fatturazione basati su crediti a fine 2026. Gli utenti Beta riceveranno sconti legacy."
-                : "We are currently in Public Beta. All plans are free during this period. We expect to enable credit-based billing models in Late 2026. Beta users will receive legacy discounts."
+                ? "L'analisi etichetta molte recensioni e salva risultati e citazioni. Il job gira in background e la dashboard mostra il progresso; la durata dipende dal volume e dalla coda."
+                : "Analysis labels many reviews and saves results and evidence quotes. It runs in the background and the dashboard shows progress; duration depends on volume and queue."
+        },
+        {
+            q: lang === 'it' ? "Come funzionano i crediti?" : "How do credits work?",
+            a: lang === 'it'
+                ? "I crediti vengono usati per etichettare nuove recensioni e per funzioni AI come chat e confronti. Le etichette già in cache possono costare meno. Vedi la pagina Pricing per i limiti mensili."
+                : "Credits are used to label new reviews and for AI features like chat and comparisons. Cached labels can cost less. See the Pricing page for monthly limits."
         }
     ];
 
@@ -37,12 +43,12 @@ export default async function FaqPage({ params }: { params: Promise<{ lang: stri
         <div className="space-y-12 pb-20">
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">
-                    {lang === 'it' ? 'FAQ Protocollo' : 'Protocol FAQ'}
+                    FAQ
                 </h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    {lang === 'it'
-                        ? 'Domande frequenti riguardanti la distribuzione degli agenti e la classificazione della telemetria.'
-                        : 'Frequent queries regarding agent deployment and telemetry classification.'}
+                    {locale === 'it'
+                        ? 'Domande frequenti su dati, crediti e utilizzo di SentiNext.'
+                        : 'Common questions about data sources, credits, and using SentiNext.'}
                 </p>
             </section>
 
@@ -59,7 +65,12 @@ export default async function FaqPage({ params }: { params: Promise<{ lang: stri
     );
 }
 
-function FaqItem({ question, answer }: any) {
+type FaqItemProps = {
+    question: string;
+    answer: string;
+};
+
+function FaqItem({ question, answer }: FaqItemProps) {
     return (
         <div className="group relative p-8 border border-[#00F0FF]/10 bg-[#00F0FF]/5 hover:bg-[#00F0FF]/10 transition-all rounded-sm overflow-hidden">
             <CornerMarkers className="opacity-0 group-hover:opacity-100 transition-opacity" />

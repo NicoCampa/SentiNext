@@ -1,9 +1,11 @@
 import { getDictionary } from "@/lib/get-dictionary";
+import { normalizeLocale } from "@/lib/i18n";
 import PricingClient from "./PricingClient";
 
-export default async function Pricing({ params }: { params: Promise<{ lang: 'en' | 'it' | 'fr' | 'de' }> }) {
+export default async function Pricing({ params }: { params: Promise<{ lang: string }> }) {
     const { lang } = await params;
-    const dict = await getDictionary(lang);
+    const locale = normalizeLocale(lang);
+    const dict = await getDictionary(locale);
 
-    return <PricingClient dict={dict} lang={lang} />;
+    return <PricingClient dict={dict} lang={locale} />;
 }

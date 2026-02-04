@@ -33,6 +33,7 @@ function titleize(value: string): string {
       if (lower === "ugc") return "UGC";
       if (lower === "ai") return "AI";
       if (lower === "dlc") return "DLC";
+      if (lower === "fomo") return "FOMO";
       if (lower === "p2w") return "P2W";
       if (lower === "ctd") return "CTD";
       return word.charAt(0).toUpperCase() + word.slice(1);

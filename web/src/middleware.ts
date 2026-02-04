@@ -14,7 +14,7 @@ function getLocale(request: NextRequest): string {
 
     try {
         return matchLocale(languages, locales, defaultLocale);
-    } catch (e) {
+    } catch {
         return defaultLocale;
     }
 }

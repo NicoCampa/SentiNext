@@ -2,8 +2,9 @@
 
 import { motion } from "framer-motion";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import type { SupportedLocale } from "@/lib/i18n";
 
-export function ImpressumClient({ dict, lang }: { dict: any, lang: string }) {
+export function ImpressumClient({ lang }: { lang: SupportedLocale }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10 w-full">
