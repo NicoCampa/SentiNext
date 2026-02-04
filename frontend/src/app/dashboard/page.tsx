@@ -365,7 +365,8 @@ function buildTrendSeriesFromReviews(reviews: ReviewRow[]): TrendSeriesPoint[] {
 
   const series: TrendSeriesPoint[] = [];
   const cursor = new Date(minDate);
-  while (cursor <= maxDate) {
+  const maxTime = maxDate.getTime();
+  while (cursor.getTime() <= maxTime) {
     const key = cursor.toISOString().slice(0, 10);
     const bucket = buckets.get(key);
     const total = bucket?.total ?? 0;
@@ -416,7 +417,8 @@ function normalizeTrendSeries(trend: TrendPoint[] | undefined): TrendSeriesPoint
 
   const series: TrendSeriesPoint[] = [];
   const cursor = new Date(start);
-  while (cursor <= end) {
+  const endTime = end.getTime();
+  while (cursor.getTime() <= endTime) {
     const key = cursor.toISOString().slice(0, 10);
     const point = byDate.get(key);
     series.push({
