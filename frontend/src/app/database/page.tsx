@@ -453,7 +453,6 @@ export default function DatabasePage() {
         value: 'All users',
         onRemove: () => {
           setScope('me');
-          setDraftScope('me');
           setOffset(0);
         },
       });
