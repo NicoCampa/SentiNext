@@ -296,7 +296,14 @@ export default function AdminPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "positive" | "negative">("all");
-  const [activePanel, setActivePanel] = useState<"chat" | "support">("chat");
+  const [activePanel, setActivePanel] = useState<"chat" | "support">(() => {
+    // Initialize from URL if available (client-side only)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("tab") === "inbox" ? "support" : "chat";
+    }
+    return "chat";
+  });
 
   const [supportThreads, setSupportThreads] = useState<SupportThreadSummary[]>([]);
   const [supportThreadsLoading, setSupportThreadsLoading] = useState(false);
