@@ -88,7 +88,7 @@ export function Button({
       {...props}
     >
       {loading && (
-        <div className="w-4 h-4 border border-current border-t-transparent animate-spin" />
+        <div className="w-4 h-4 spinner-blue-sm animate-spin" />
       )}
       {!loading && icon && <div className="text-current">{icon}</div>}
       {children}

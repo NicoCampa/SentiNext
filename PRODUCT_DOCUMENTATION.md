@@ -835,115 +835,7 @@ Main Categories (10):
 
 ## Pricing & Monetization
 
-### Credit System
-
-**Unit:** 1 Credit = 1 LLM API call (approximately)
-
-**Credit Costs:**
-| Operation | Credits | Notes |
-|-----------|---------|-------|
-| Classify 3 reviews | 1 | Batch processing |
-| Chat message | 3 | Includes tool calls + response generation |
-| AI comparison (2 games) | 2 | Analyzes 30 reviews total |
-| PDF report generation | 0 | Uses cached data, no LLM calls |
-
-**Estimation:**
-- Analyzing 1,000 reviews ≈ 334 credits
-- Analyzing 10,000 reviews ≈ 3,334 credits
-- 30-minute chat session (~20 messages) ≈ 60 credits
-
-### Subscription Tiers
-
-#### Free Tier
-**Price:** $0/month
-**Credits:** 100 credits/month
-**Use Case:** Trial, small indie developers
-**Limits:**
-- Analyze ~300 reviews/month
-- 30-40 chat messages
-- 3 games max in library
-- Basic features only
-
-#### Starter Tier
-**Price:** $29/month
-**Credits:** 1,000 credits/month
-**Use Case:** Indie developers with 1-2 games
-**Includes:**
-- Analyze ~3,000 reviews/month
-- 300+ chat messages
-- 10 games in library
-- PDF reports
-- Email support
-
-#### Professional Tier
-**Price:** $99/month
-**Credits:** 5,000 credits/month
-**Use Case:** Small studios, multiple titles
-**Includes:**
-- Analyze ~15,000 reviews/month
-- 1,600+ chat messages
-- Unlimited games
-- Priority support
-- API access (future)
-- Custom reports
-
-#### Enterprise Tier
-**Price:** Custom
-**Credits:** Custom pool
-**Use Case:** Publishers, large studios
-**Includes:**
-- Dedicated instance
-- White-label options
-- SSO integration
-- SLA guarantees
-- Premium support
-- Custom taxonomy
-- Bulk operations
-
-### Revenue Model
-
-**Primary Revenue:** Monthly recurring subscriptions
-
-**Secondary Revenue:**
-- One-time credit packs (e.g., 1,000 credits for $25)
-- Annual subscriptions (20% discount)
-- Enterprise contracts
-
-**Conversion Funnel:**
-1. Free tier onboarding (100 credits)
-2. Email nurture (analysis insights, tips)
-3. Usage alerts ("80% credits used")
-4. Upgrade prompts at credit exhaustion
-5. Feature gating (comparison, advanced filters)
-
-**Retention Strategy:**
-- Auto-renew subscriptions
-- Credit rollover (up to 50% of monthly allowance)
-- Usage analytics dashboard
-- Success stories & case studies
-
-**Churn Prevention:**
-- Downgrade options before cancellation
-- Pause subscription (retain data)
-- Win-back campaigns (special offers)
-
-### Payment Processing
-
-**Provider:** Stripe
-**Supported Methods:**
-- Credit cards (Visa, Mastercard, Amex)
-- ACH (US customers)
-- SEPA (EU customers)
-
-**Billing Cycle:**
-- Monthly on signup anniversary
-- Annual (paid upfront, 20% discount)
-- Failed payment retries (3 attempts over 7 days)
-
-**Tax Handling:**
-- VAT for EU customers
-- Sales tax for US states (Stripe Tax)
-- Invoice generation
+*Pricing structure TBD - to be defined based on market research.*
 
 ---
 
@@ -971,7 +863,7 @@ Main Categories (10):
 - Update impact measurement (validate dev effort)
 - Competitive benchmarking (punch above weight)
 
-**Willingness to Pay:** $29-99/month
+**Willingness to Pay:** TBD
 **Decision Criteria:** ROI on time saved, ease of use
 **Acquisition Channels:** Steam developer forums, indie game subreddits, GameDev.tv
 
@@ -995,7 +887,7 @@ Main Categories (10):
 - Trend analysis (quarter-over-quarter)
 - Stakeholder alignment (shared data source)
 
-**Willingness to Pay:** $99-499/month
+**Willingness to Pay:** TBD
 **Decision Criteria:** Professional presentation, integration with workflow
 **Acquisition Channels:** GDC, LinkedIn, gaming industry newsletters
 
@@ -1018,7 +910,7 @@ Main Categories (10):
 - Data-backed responses ("Only 2% mention this")
 - Community pulse check (daily sentiment monitoring)
 
-**Willingness to Pay:** $29-99/month
+**Willingness to Pay:** TBD
 **Decision Criteria:** Real-time alerts, mobile access
 **Acquisition Channels:** Community management Discord servers, CMX events
 
@@ -1041,7 +933,7 @@ Main Categories (10):
 - Investment prioritization (identify high-potential titles)
 - Risk assessment (detect failing games early)
 
-**Willingness to Pay:** $499-2,000/month (enterprise)
+**Willingness to Pay:** TBD (enterprise)
 **Decision Criteria:** Multi-game support, API access, white-labeling
 **Acquisition Channels:** Direct sales, publishing conferences
 
@@ -1064,7 +956,7 @@ Main Categories (10):
 - Export capabilities (integrate into client reports)
 - Historical trend analysis (sentiment evolution)
 
-**Willingness to Pay:** $199-999/month
+**Willingness to Pay:** TBD
 **Decision Criteria:** Bulk export, API access, white-label reports
 **Acquisition Channels:** Market research conferences, industry analyst networks
 
@@ -1080,22 +972,15 @@ Main Categories (10):
 **TAM (Total Addressable Market):**
 - 50,000+ games on Steam
 - ~10,000 new games released per year
-- If every developer paid $50/month → $30M/month = $360M/year
 
 **SAM (Serviceable Addressable Market):**
 - Games with 1,000+ reviews (meaningful analysis)
 - Estimate: 5,000 games
-- Average customer pays $100/month → $500K/month = $6M/year
 
 **SOM (Serviceable Obtainable Market - Year 1):**
 - 5% market penetration of SAM
-- 250 paying customers × $100/month = $25K/month = $300K/year
 
-**Growth Projections:**
-- Year 1: 250 customers, $300K revenue
-- Year 2: 750 customers, $900K revenue (3x growth)
-- Year 3: 2,000 customers, $2.4M revenue (2.7x growth)
-- Year 5: 5,000 customers, $6M revenue (saturate SAM)
+**Growth Projections:** TBD
 
 ---
 
@@ -1693,230 +1578,7 @@ month_reviews = reviews where:
 
 ## Business Model
 
-### Revenue Streams
-
-#### 1. SaaS Subscriptions (Primary - 80%)
-**Monthly Recurring Revenue (MRR):**
-- Free tier: $0 (acquisition channel)
-- Starter: $29/month
-- Professional: $99/month
-- Enterprise: $499+/month (custom)
-
-**Target Distribution:**
-- 60% Starter tier (volume)
-- 30% Professional tier (value)
-- 10% Enterprise tier (revenue concentration)
-
-**Customer Lifetime Value (LTV):**
-- Starter: $29/month × 18 months avg = $522
-- Professional: $99/month × 24 months avg = $2,376
-- Enterprise: $499/month × 36 months avg = $17,964
-
-**Churn Rate Target:** <5% monthly (industry standard: 3-7%)
-
-#### 2. Credit Top-Ups (Secondary - 15%)
-**One-Time Purchases:**
-- 500 credits: $15 (10% bulk discount)
-- 1,000 credits: $25 (17% bulk discount)
-- 5,000 credits: $100 (33% bulk discount)
-
-**Use Cases:**
-- Seasonal spikes (before major updates)
-- One-off deep dives (analyzing backlog)
-- Trial users testing before subscribing
-
-**Conversion Strategy:**
-- Offer top-up when credits exhausted
-- "Buy once" → "Save with subscription" messaging
-
-#### 3. Enterprise Contracts (Tertiary - 5%)
-**Custom Deals:**
-- White-label instances ($10,000+/year)
-- Dedicated support ($5,000/year add-on)
-- Custom taxonomy development ($15,000 one-time)
-- API overage fees ($0.01/call above quota)
-
-**Target Customers:**
-- Publishers with 10+ game portfolio
-- Market research agencies
-- Large studios (500+ employees)
-
-### Cost Structure
-
-#### Variable Costs (Scale with Usage)
-
-**LLM API Costs:**
-- Google Gemini Flash Lite: ~$0.0001/review
-- 1,000 reviews analyzed = $0.10 LLM cost
-- Average customer analyzes 3,000 reviews/month = $0.30/month
-- **Margin:** 99% (customer pays $29-99, cost is $0.30)
-
-**Payment Processing:**
-- Stripe: 2.9% + $0.30 per transaction
-- $29 subscription → $1.14 fee = 3.9% of revenue
-- $99 subscription → $3.17 fee = 3.2% of revenue
-
-**Hosting (Cloud Deployment):**
-- AWS/GCP compute: $100/month (scales with users)
-- Database (RDS): $50/month for 50GB (grows with data)
-- CDN (CloudFront): $20/month for static assets
-- Total: ~$170/month for first 100 customers
-
-#### Fixed Costs (Monthly)
-
-**Engineering:**
-- 2 full-time engineers @ $120k/year = $20k/month
-- 1 part-time designer @ $60k/year = $5k/month
-
-**Operations:**
-- Customer support (contract): $2k/month
-- Marketing tools (Mailchimp, SEO): $500/month
-- Business software (Slack, Notion, etc.): $300/month
-
-**Total Fixed:** ~$28k/month
-
-### Unit Economics
-
-**Starter Tier:**
-- Revenue: $29/month
-- LLM cost: $0.30/month (1,000 credits = 3,000 reviews)
-- Stripe fee: $1.14/month
-- Gross profit: $27.56/month
-- **Gross margin:** 95%
-
-**Professional Tier:**
-- Revenue: $99/month
-- LLM cost: $1.50/month (5,000 credits = 15,000 reviews)
-- Stripe fee: $3.17/month
-- Gross profit: $94.33/month
-- **Gross margin:** 95%
-
-**Break-Even Analysis:**
-- Fixed costs: $28,000/month
-- Average revenue per customer: $60/month (blended)
-- **Break-even customers:** 467
-
-### Growth Projections
-
-**Year 1:**
-- Q1: 50 customers, $3k MRR
-- Q2: 150 customers, $9k MRR
-- Q3: 300 customers, $18k MRR
-- Q4: 500 customers, $30k MRR
-- **Year 1 Total:** $360k ARR
-
-**Year 2:**
-- Grow to 1,500 customers (3x)
-- Average $75/month (tier migration)
-- **Year 2 Total:** $1.35M ARR
-
-**Year 3:**
-- Grow to 3,000 customers (2x)
-- Average $90/month (more Pro users)
-- **Year 3 Total:** $3.24M ARR
-
-**Profitability:**
-- Year 1: -$100k (R&D investment)
-- Year 2: +$200k (30% net margin)
-- Year 3: +$800k (35% net margin)
-
-### Go-to-Market Strategy
-
-#### Phase 1: Indie Developer Acquisition (Months 1-6)
-
-**Channels:**
-- **Reddit:** r/gamedev, r/indiedev, genre-specific subs
-- **Twitter:** #gamedev, #indiedev hashtags
-- **Discord:** GameDev.tv, Brackeys, Unity/Unreal servers
-- **Forums:** Steam developer forums, TIGSource
-
-**Tactics:**
-- Case studies (before/after sentiment analysis)
-- Free tier → frictionless trial
-- Content marketing (blog posts on "How to analyze Steam reviews")
-- Twitter threads showing real examples
-
-**Budget:** $2k/month (mostly content creation)
-
-**Target:** 50 customers by Month 6
-
-#### Phase 2: Studio Expansion (Months 6-12)
-
-**Channels:**
-- **LinkedIn:** Target product managers, community managers
-- **GDC:** Booth, swag, demos
-- **Industry newsletters:** GameDiscoverCo, Game Developer Magazine
-- **Webinars:** "Data-Driven Game Development" (lead gen)
-
-**Tactics:**
-- Free professional tier for GDC attendees (30-day trial)
-- Partnership with analytics platforms (GameAnalytics, Unity Analytics)
-- PR push (TechCrunch, VentureBeat coverage)
-
-**Budget:** $10k/month (events, partnerships, PR)
-
-**Target:** 500 customers by Month 12
-
-#### Phase 3: Enterprise Sales (Year 2+)
-
-**Channels:**
-- **Direct sales:** Hire 2 BDRs (business development reps)
-- **Publisher conferences:** Gamescom, E3 successor events
-- **Industry associations:** IGDA, ESA
-
-**Tactics:**
-- Account-based marketing (target top 50 publishers)
-- Custom demos for enterprise prospects
-- RFP responses
-- Case studies with tier-1 studios (under NDA)
-
-**Budget:** $50k/month (salaries + events)
-
-**Target:** 10 enterprise deals by Year 2 ($5k/month avg)
-
-### Customer Acquisition Cost (CAC)
-
-**Blended CAC Target:** $150/customer
-
-**Calculation:**
-- Year 1 marketing spend: $72k ($6k/month avg)
-- Year 1 customers acquired: 500
-- CAC: $72k / 500 = $144
-
-**CAC by Channel:**
-- Organic (SEO, word-of-mouth): $0
-- Reddit/forums: $50 (time cost)
-- LinkedIn ads: $200/customer
-- GDC booth: $300/customer (amortized over leads)
-- Direct sales (enterprise): $1,000/customer (justified by LTV)
-
-**CAC Payback Period:**
-- Starter tier: 5 months ($29 × 5 = $145)
-- Professional tier: 2 months ($99 × 2 = $198)
-- Enterprise tier: 2 months ($499 × 2 = $998)
-
-**LTV:CAC Ratio Target:** 3:1
-- Starter: $522 / $150 = 3.5:1 ✓
-- Professional: $2,376 / $200 = 11.9:1 ✓✓
-- Enterprise: $17,964 / $1,000 = 18:1 ✓✓✓
-
-### Retention & Expansion
-
-**Churn Reduction:**
-- Onboarding emails (drip campaign)
-- Success milestones (first analysis, first export)
-- Proactive support (reach out at 50% credit usage)
-- Feature announcements (keep product top-of-mind)
-
-**Expansion Revenue:**
-- Tier upgrades (Starter → Pro when hitting credit limits)
-- Annual plan conversion (20% discount incentive)
-- Credit top-up sales (upsell at exhaustion)
-
-**Net Revenue Retention Target:** 110%
-- 95% gross retention (5% churn)
-- 15% expansion (tier upgrades + top-ups)
-- NRR = 95% + 15% = 110%
+*Business model details TBD - to be defined based on market research and pricing strategy.*
 
 ---
 
@@ -2169,14 +1831,13 @@ SentiNext is a comprehensive, AI-powered sentiment analysis platform purpose-bui
 
 **Market Opportunity:**
 - 5,000+ games with 1,000+ reviews (serviceable market)
-- $6M annual revenue potential at market saturation
-- Low customer acquisition cost ($150) vs. high lifetime value ($500-18,000)
+- Revenue projections TBD based on pricing strategy
 
 **Product Maturity:**
 - v1.0 complete with all core features
 - Proven technical stack (FastAPI, Next.js, Google Gemini)
 - Multiple deployment modes (desktop, local web, cloud SaaS)
-- Credit-based monetization with tiered subscriptions
+- Game-limit based monetization with tiered subscriptions
 
 **Next Steps:**
 - Scale user acquisition via indie developer communities

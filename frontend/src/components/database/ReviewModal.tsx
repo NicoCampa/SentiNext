@@ -7,6 +7,7 @@ import { formatTaxonomyLabel } from '@/lib/taxonomyLabels';
 import { translateText } from '@/lib/api';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useCredits } from '@/contexts/CreditsContext';
+import { Portal } from '@/components/Portal';
 import type { DatabaseReviewItem } from '@/types';
 
 // Map Steam language codes to our app language codes
@@ -255,26 +256,27 @@ export function ReviewModal({
   }, [onClose, onPrevious, onNext]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 py-8">
-      {/* Toast notification */}
-      {copyToast && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-top-2 fade-in">
-          <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">
-            {copyToast}
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 py-8">
+        {/* Toast notification */}
+        {copyToast && (
+          <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-top-2 fade-in">
+            <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">
+              {copyToast}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div
-        className="absolute inset-0"
-        onClick={onClose}
-        role="button"
-        tabIndex={-1}
-      />
-      <Card
-        variant="glass"
-        className="relative z-10 w-full max-w-3xl max-h-[85vh] overflow-auto p-6"
-      >
+        <div
+          className="absolute inset-0"
+          onClick={onClose}
+          role="button"
+          tabIndex={-1}
+        />
+        <Card
+          variant="glass"
+          className="relative z-10 w-full max-w-3xl max-h-[85vh] overflow-auto p-6"
+        >
         {/* Navigation header */}
         <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
@@ -505,7 +507,8 @@ export function ReviewModal({
             {t('common.close')}
           </Button>
         </div>
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </Portal>
   );
 }

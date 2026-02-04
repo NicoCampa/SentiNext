@@ -49,7 +49,7 @@ def main() -> None:
     url = f"http://127.0.0.1:{port}"
 
     window = webview.create_window(
-        "SentiNext",
+        "SENTINEXT",
         url,
         width=1280,
         height=860,

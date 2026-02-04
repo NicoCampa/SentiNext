@@ -5,8 +5,12 @@ import "./globals.css";
 import { RootProviders } from "@/components/RootProviders";
 
 export const metadata: Metadata = {
-  title: "SentiNext - Review Intelligence",
+  title: "SENTINEXT - Review Intelligence",
   description: "Modern Steam review analytics and insights platform",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/apple-icon.svg",
+  },
 };
 
 const spaceGrotesk = Space_Grotesk({

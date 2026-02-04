@@ -17,7 +17,7 @@ export default function InsightsAndTaxonomyPage() {
             <div className="space-y-16 mt-16">
                 <TaxonomySection
                     title="Label Structure"
-                    description="How SentiNext represents feedback in a consistent, queryable format."
+                    description="How SENTINEXT represents feedback in a consistent, queryable format."
                 >
                     <div className="grid gap-8">
                         <TaxonomyItem
@@ -68,7 +68,7 @@ export default function InsightsAndTaxonomyPage() {
 
                     <div className="space-y-6">
                         <p className="font-light text-foreground/70 leading-relaxed max-w-2xl">
-                            Labels are only useful if you can verify them. SentiNext attaches short, verbatim quotes to every tag so you can trace an insight back to the original wording.
+                            Labels are only useful if you can verify them. SENTINEXT attaches short, verbatim quotes to every tag so you can trace an insight back to the original wording.
                         </p>
 
                         <div className="relative p-10 bg-black/40 border border-[#00F0FF]/10 rounded-sm italic font-mono text-[#00F0FF]/80">

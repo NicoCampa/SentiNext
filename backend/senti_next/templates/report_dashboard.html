@@ -51,15 +51,15 @@
       justify-content: space-between;
       align-items: flex-start;
       padding-bottom: 8px;
-      border-bottom: 2px solid var(--primary);
+      border-bottom: 1px solid var(--border);
     }
 
     .brand {
-      font-size: 12px;
+      font-size: 10px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.15em;
-      color: var(--primary);
+      letter-spacing: 0.18em;
+      color: var(--text-muted);
     }
 
     .game-title {
@@ -70,9 +70,45 @@
     }
 
     .report-period {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-muted);
       text-align: right;
+    }
+
+    .summary-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .summary-title {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .summary-text {
+      font-size: 10px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .summary-actions {
+      list-style: none;
+      display: grid;
+      gap: 4px;
+      font-size: 9px;
+      color: var(--text);
+      padding-left: 0;
+    }
+
+    .summary-actions li::before {
+      content: "•";
+      color: var(--text-muted);
+      margin-right: 6px;
     }
 
     /* Metrics Row */
@@ -88,10 +124,6 @@
       border-radius: 6px;
       padding: 10px;
       text-align: center;
-    }
-
-    .metric-card.highlight {
-      border-top: 3px solid var(--primary);
     }
 
     .metric-label {
@@ -114,12 +146,6 @@
 
     .metric-value.negative {
       color: var(--danger);
-    }
-
-    .metric-subtext {
-      font-size: 8px;
-      color: var(--text-muted);
-      margin-top: 2px;
     }
 
     /* Progress bar in metric */
@@ -167,40 +193,14 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.12em;
       margin-bottom: 8px;
       padding-bottom: 6px;
       border-bottom: 1px solid var(--border);
-    }
-
-    .section-header.issues {
-      color: var(--danger);
-    }
-
-    .section-header.requests {
-      color: var(--success);
-    }
-
-    .section-icon {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 8px;
-      color: white;
-    }
-
-    .section-icon.issues {
-      background: var(--danger);
-    }
-
-    .section-icon.requests {
-      background: var(--success);
+      color: var(--text-muted);
     }
 
     /* List Items */
@@ -280,7 +280,7 @@
     .segment-bar {
       height: 100%;
       border-radius: 6px;
-      background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
+      background: var(--primary);
     }
 
     .segment-value {
@@ -377,25 +377,37 @@
     <!-- Header -->
     <header class="header">
       <div>
-        <div class="brand">SentiNext</div>
+        <div class="brand">SENTINEXT</div>
         <h1 class="game-title">{{ game_name }}</h1>
       </div>
       <div class="report-period">
-        <div style="font-weight: 600;">Executive Summary</div>
-        <div>{{ period }}</div>
+        <div style="font-weight: 600;">{{ period }}</div>
       </div>
     </header>
 
+    {% if data.llm_summary %}
+    <div class="summary-card">
+      <div class="summary-title">Summary</div>
+      <p class="summary-text">{{ data.llm_summary.summary }}</p>
+      {% if data.llm_summary.actions %}
+      <ul class="summary-actions">
+        {% for action in data.llm_summary.actions[:3] %}
+        <li>{{ action }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <!-- Key Metrics -->
     <div class="metrics-row">
-      <div class="metric-card highlight">
-        <div class="metric-label">Total Reviews</div>
+      <div class="metric-card">
+        <div class="metric-label">Reviews</div>
         <div class="metric-value">{{ "{:,}".format(data.total_reviews) }}</div>
-        <div class="metric-subtext">this month</div>
       </div>
 
-      <div class="metric-card highlight">
-        <div class="metric-label">Recommendation Rate</div>
+      <div class="metric-card">
+        <div class="metric-label">Recommend</div>
         <div class="metric-value {% if data.recommendation_rate >= 0.7 %}positive{% elif data.recommendation_rate < 0.5 %}negative{% endif %}">
           {{ "%.1f"|format(data.recommendation_rate * 100) }}%
         </div>
@@ -405,18 +417,16 @@
         </div>
       </div>
 
-      <div class="metric-card highlight">
-        <div class="metric-label">Avg Sentiment</div>
+      <div class="metric-card">
+        <div class="metric-label">Sentiment</div>
         <div class="metric-value {% if data.sentiment.average_compound >= 0.2 %}positive{% elif data.sentiment.average_compound < 0 %}negative{% endif %}">
           {{ "%+.2f"|format(data.sentiment.average_compound) }}
         </div>
-        <div class="metric-subtext">compound score</div>
       </div>
 
-      <div class="metric-card highlight">
-        <div class="metric-label">Median Playtime</div>
+      <div class="metric-card">
+        <div class="metric-label">Playtime</div>
         <div class="metric-value">{{ "%.1f"|format(data.playtime.median_playtime_hours) }}h</div>
-        <div class="metric-subtext">at review</div>
       </div>
     </div>
 
@@ -424,9 +434,8 @@
     <div class="two-column">
       <!-- Top Issues -->
       <div class="section-card">
-        <div class="section-header issues">
-          <div class="section-icon issues">!</div>
-          Top Issues
+        <div class="section-header">
+          Issues
         </div>
         {% if data.top_issues %}
         <ul class="item-list">
@@ -445,9 +454,8 @@
 
       <!-- Top Requests -->
       <div class="section-card">
-        <div class="section-header requests">
-          <div class="section-icon requests">+</div>
-          Top Requests
+        <div class="section-header">
+          Requests
         </div>
         {% if data.top_requests %}
         <ul class="item-list">
@@ -467,8 +475,8 @@
 
     <!-- Player Segments -->
     <div class="segments-section">
-      <div class="section-header" style="color: var(--primary);">
-        Player Segments by Experience
+      <div class="section-header">
+        Segments
       </div>
       {% if data.player_segments %}
       {% for segment in data.player_segments %}
@@ -489,12 +497,12 @@
     <div class="risk-section">
       <div class="risk-card">
         <div class="risk-indicator {% if data.refund_risk < 0.3 %}low{% elif data.refund_risk < 0.5 %}moderate{% else %}high{% endif %}"></div>
-        <span class="risk-label">Refund Risk Index</span>
+        <span class="risk-label">Refund risk</span>
         <span class="risk-value">{{ "%.2f"|format(data.refund_risk) }}</span>
       </div>
       <div class="risk-card">
         <div class="risk-indicator {% if data.core_fan_disappointment < 0.2 %}low{% elif data.core_fan_disappointment < 0.4 %}moderate{% else %}high{% endif %}"></div>
-        <span class="risk-label">Core Fan Disappointment</span>
+        <span class="risk-label">Core fan dip</span>
         <span class="risk-value">{{ "%.2f"|format(data.core_fan_disappointment) }}</span>
       </div>
     </div>
@@ -502,7 +510,7 @@
     <!-- Footer -->
     <footer class="footer">
       <div class="footer-brand">
-        Generated by <span class="footer-link">SentiNext</span> &bull; sentinext.com
+        Generated by <span class="footer-link">SENTINEXT</span> &bull; sentinext.com
       </div>
       <div class="footer-date">
         {{ generated_at }}

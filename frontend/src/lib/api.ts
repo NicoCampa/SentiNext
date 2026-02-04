@@ -931,6 +931,25 @@ export async function sendAdminSupportReply(userId: string, message: string): Pr
   return handleResponse<SupportMessage>(response);
 }
 
+export interface UnreadCountResponse {
+  unread_count: number;
+}
+
+export async function fetchSupportUnreadCount(): Promise<UnreadCountResponse> {
+  const response = await authFetch(apiUrl("/support/unread"), {
+    cache: "no-store",
+  });
+  return handleResponse<UnreadCountResponse>(response);
+}
+
+export async function fetchAdminSupportUnreadCount(): Promise<UnreadCountResponse> {
+  const response = await authFetch(apiUrl("/admin/support/unread"), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<UnreadCountResponse>(response);
+}
+
 export interface AdminDashboardTierCount {
   tier: string | null;
   count: number;

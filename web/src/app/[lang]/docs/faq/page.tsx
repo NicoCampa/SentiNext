@@ -8,16 +8,16 @@ export default async function FaqPage({ params }: { params: Promise<{ lang: stri
 
     const questions = [
         {
-            q: lang === 'it' ? "SentiNext è affiliato con Valve/Steam?" : "Is SentiNext affiliated with Valve/Steam?",
+            q: lang === 'it' ? "SENTINEXT è affiliato con Valve/Steam?" : "Is SENTINEXT affiliated with Valve/Steam?",
             a: lang === 'it'
-                ? "No. SentiNext è uno strumento indipendente che analizza recensioni Steam pubbliche. Non siamo approvati o affiliati a Valve Corporation."
-                : "No. SentiNext is an independent tool that analyzes public Steam reviews. We are not endorsed by or affiliated with Valve Corporation."
+                ? "No. SENTINEXT è uno strumento indipendente che analizza recensioni Steam pubbliche. Non siamo approvati o affiliati a Valve Corporation."
+                : "No. SENTINEXT is an independent tool that analyzes public Steam reviews. We are not endorsed by or affiliated with Valve Corporation."
         },
         {
             q: lang === 'it' ? "Devo collegare un account Steam?" : "Do I need to connect a Steam account?",
             a: lang === 'it'
-                ? "No. SentiNext usa endpoint pubblici di Steam per recuperare recensioni. Ti basta cercare un gioco o inserire un App ID."
-                : "No. SentiNext uses Steam’s public endpoints to fetch reviews. You just search for a game or paste an App ID."
+                ? "No. SENTINEXT usa endpoint pubblici di Steam per recuperare recensioni. Ti basta cercare un gioco o inserire un App ID."
+                : "No. SENTINEXT uses Steam’s public endpoints to fetch reviews. You just search for a game or paste an App ID."
         },
         {
             q: lang === 'it' ? "Posso analizzare giochi che non possiedo (anche concorrenti)?" : "Can I analyze games I don't own (including competitors)?",
@@ -47,8 +47,8 @@ export default async function FaqPage({ params }: { params: Promise<{ lang: stri
                 </h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
                     {locale === 'it'
-                        ? 'Domande frequenti su dati, crediti e utilizzo di SentiNext.'
-                        : 'Common questions about data sources, credits, and using SentiNext.'}
+                        ? 'Domande frequenti su dati, crediti e utilizzo di SENTINEXT.'
+                        : 'Common questions about data sources, credits, and using SENTINEXT.'}
                 </p>
             </section>
 

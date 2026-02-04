@@ -19,7 +19,7 @@ def _resolve_ui_dir() -> Path:
 
 UI_DIR = _resolve_ui_dir()
 
-app = FastAPI(title="SentiNext (Local)")
+app = FastAPI(title="SENTINEXT (Local)")
 app.mount("/api", api_app)
 
 
@@ -64,9 +64,9 @@ else:
         return HTMLResponse(
             f"""
             <html>
-              <head><title>SentiNext (Local)</title></head>
+              <head><title>SENTINEXT (Local)</title></head>
               <body style="font-family: Arial, sans-serif; padding: 24px;">
-                <h1>SentiNext UI not built</h1>
+                <h1>SENTINEXT UI not built</h1>
                 <p>Expected static UI at: <code>{UI_DIR}</code></p>
                 <p>Build it with:</p>
                 <pre><code>cd frontend

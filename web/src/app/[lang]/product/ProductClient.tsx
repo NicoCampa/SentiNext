@@ -42,8 +42,8 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                 icon={<Search className="h-7 w-7 text-[#00F0FF]" />}
                 title={lang === 'it' ? "1. Ricerca e Ingestione" : "1. Search & Ingest"}
                 description={lang === 'it'
-                    ? "Cerca un gioco (nome o App ID) e avvia un'analisi. SentiNext recupera recensioni Steam recenti e salva i risultati sul tuo account."
-                    : "Search a game (name or App ID) and run an analysis. SentiNext fetches recent Steam reviews and saves results to your account."}
+                    ? "Cerca un gioco (nome o App ID) e avvia un'analisi. SENTINEXT recupera recensioni Steam recenti e salva i risultati sul tuo account."
+                    : "Search a game (name or App ID) and run an analysis. SENTINEXT fetches recent Steam reviews and saves results to your account."}
                 details={lang === 'it' ? [
                     "Cerca per nome o incolla un App ID.",
                     "Recupera recensioni recenti da Steam (endpoint pubblico; nessun login Steam).",

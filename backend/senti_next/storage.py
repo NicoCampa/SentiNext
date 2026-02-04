@@ -1896,6 +1896,38 @@ def list_support_threads(limit: int = 100) -> List[Dict[str, Any]]:
     return threads
 
 
+def get_user_unread_support_count(user_id: str) -> int:
+    """Get count of unread admin messages for a user."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        row = conn.execute(
+            text("""
+            SELECT COUNT(*) AS unread_count
+            FROM support_messages
+            WHERE user_id = :user_id
+              AND sender_role = 'admin'
+              AND read_by_user = FALSE
+            """),
+            {"user_id": user_id},
+        ).mappings().fetchone()
+    return int(row["unread_count"]) if row else 0
+
+
+def get_admin_total_unread_support_count() -> int:
+    """Get total count of unread user messages across all threads (for admin)."""
+    from . import db as db_module
+    with db_module.get_connection() as conn:
+        row = conn.execute(
+            text("""
+            SELECT COUNT(*) AS unread_count
+            FROM support_messages
+            WHERE sender_role = 'user'
+              AND read_by_admin = FALSE
+            """),
+        ).mappings().fetchone()
+    return int(row["unread_count"]) if row else 0
+
+
 def _parse_date_filter(date_filter: str) -> Optional[int]:
     """Convert date filter string to days. Returns None for 'all'."""
     if not date_filter or date_filter == "all":

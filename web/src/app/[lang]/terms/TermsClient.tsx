@@ -19,7 +19,7 @@ export function TermsClient({ lang }: { lang: SupportedLocale }) {
                         {lang === 'it' ? 'Termini' : 'Usage'} <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{lang === 'it' ? 'Servizio.' : 'Terms.'}</span>
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        {lang === 'it' ? 'Termini di utilizzo dei servizi SentiNext.' : 'Terms for using SentiNext services.'}
+                        {lang === 'it' ? 'Termini di utilizzo dei servizi SENTINEXT.' : 'Terms for using SENTINEXT services.'}
                     </p>
                 </div>
             </section>
@@ -32,8 +32,8 @@ export function TermsClient({ lang }: { lang: SupportedLocale }) {
                         <div>
                             <h2 className="text-[#00F0FF] text-xl font-bold mb-4">{lang === 'it' ? '1. Servizio' : '1. Service'}</h2>
                             <p>{lang === 'it'
-                                ? 'SentiNext è fornito "così com\'è" senza SLA garantiti. Possiamo modificare funzionalità e limiti operativi per mantenere il servizio stabile e sicuro.'
-                                : 'SentiNext is provided "as is" with no guaranteed uptime SLA. We may change features and operational limits to keep the service stable and secure.'}</p>
+                                ? 'SENTINEXT è fornito "così com\'è" senza SLA garantiti. Possiamo modificare funzionalità e limiti operativi per mantenere il servizio stabile e sicuro.'
+                                : 'SENTINEXT is provided "as is" with no guaranteed uptime SLA. We may change features and operational limits to keep the service stable and secure.'}</p>
                         </div>
 
                         <div>
@@ -60,8 +60,8 @@ export function TermsClient({ lang }: { lang: SupportedLocale }) {
                         <div>
                             <h2 className="text-[#00F0FF] text-xl font-bold mb-4">{lang === 'it' ? '5. Limitazioni dell’AI e Responsabilità' : '5. AI Limitations & Liability'}</h2>
                             <p>{lang === 'it'
-                                ? 'L\'AI può sbagliare. Verifica sempre le citazioni di evidenza prima di prendere decisioni. SentiNext non è responsabile per decisioni aziendali basate esclusivamente su output AI.'
-                                : 'AI can be wrong. Always verify evidence quotes before making decisions. SentiNext is not responsible for business decisions made solely based on AI output.'}</p>
+                                ? 'L\'AI può sbagliare. Verifica sempre le citazioni di evidenza prima di prendere decisioni. SENTINEXT non è responsabile per decisioni aziendali basate esclusivamente su output AI.'
+                                : 'AI can be wrong. Always verify evidence quotes before making decisions. SENTINEXT is not responsible for business decisions made solely based on AI output.'}</p>
                         </div>
                     </div>
                 </div>

@@ -412,7 +412,7 @@ class AgentResult:
     error: Optional[str] = None
 
 
-AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SentiNext. Analyze player feedback to provide actionable insights.
+AGENT_SYSTEM_PROMPT = """You are a Steam game review analyst for SENTINEXT. Analyze player feedback to provide actionable insights.
 
 ## CORE RULE
 **ALWAYS end with final_answer** - Every response must call final_answer to complete.
@@ -668,16 +668,48 @@ async def run_agent(
             # This shouldn't happen if the LLM follows instructions, but handle it
             logger.warning("LLM responded without calling final_answer tool")
 
-            suggested = generate_follow_up_questions(
-                response.content or "",
-                all_tool_calls,
-                context,
-            )
+            # If we have content, use it
+            if response.content:
+                suggested = generate_follow_up_questions(
+                    response.content,
+                    all_tool_calls,
+                    context,
+                )
+                return AgentResult(
+                    response=response.content,
+                    tool_calls_made=all_tool_calls,
+                    suggested_questions=suggested,
+                )
 
+            # No content - try to build a response from tool results
+            if all_tool_calls:
+                # Check if any tool returned useful data
+                last_tool = all_tool_calls[-1] if all_tool_calls else None
+                if last_tool:
+                    result = last_tool.get("result", {})
+                    if result.get("error"):
+                        # Tool failed - return the error message
+                        error_msg = result.get("error", "An error occurred while processing your request.")
+                        return AgentResult(
+                            response=error_msg,
+                            error="tool_error",
+                            tool_calls_made=all_tool_calls,
+                        )
+                    elif result.get("data"):
+                        # Tool returned data but LLM didn't summarize it
+                        # This is a fallback - ideally shouldn't happen
+                        logger.warning("LLM returned empty response after successful tool call")
+                        return AgentResult(
+                            response="I found the data but encountered an issue formatting the response. Please try rephrasing your question.",
+                            error="empty_response",
+                            tool_calls_made=all_tool_calls,
+                        )
+
+            # No tool calls and no content - generic error
             return AgentResult(
-                response=response.content or "I couldn't generate a response.",
+                response="I couldn't generate a response. Please try rephrasing your question.",
+                error="empty_response",
                 tool_calls_made=all_tool_calls,
-                suggested_questions=suggested,
             )
 
     # Max iterations reached without final_answer

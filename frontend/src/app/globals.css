@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================
-   SLEEK MODERN THEME - SentiNext
+   SLEEK MODERN THEME - SENTINEXT
    ============================================ */
 
 :root {
@@ -43,6 +43,11 @@
 
   --border-color: var(--slate-800);
   --border-hover: var(--slate-700);
+}
+
+/* Prevent layout shift when scrollbar appears/disappears */
+html {
+  scrollbar-gutter: stable;
 }
 
 /* Base Body */
@@ -327,4 +332,49 @@ a:hover {
 .animate-scale-in {
   animation: scaleIn 0.3s ease-out forwards;
   opacity: 0;
+}
+
+/* Modal overlay animation */
+@keyframes modalOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-modal-overlay {
+  animation: modalOverlayIn 0.2s ease-out forwards;
+}
+
+/* Modal content animation */
+@keyframes modalContentIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modal-content {
+  animation: modalContentIn 0.25s ease-out forwards;
+}
+
+/* Spinning loader - solid blue square with corner glow */
+.spinner-blue {
+  border: 2px solid rgb(56, 189, 248);
+  box-shadow:
+    2px 2px 0 0 rgba(56, 189, 248, 0.8),
+    -1px -1px 0 0 rgba(56, 189, 248, 0.3);
+}
+
+.spinner-blue-sm {
+  border: 1.5px solid rgb(56, 189, 248);
+  box-shadow:
+    1px 1px 0 0 rgba(56, 189, 248, 0.8),
+    -1px -1px 0 0 rgba(56, 189, 248, 0.3);
 }

@@ -30,7 +30,7 @@ export function RootProviders({ children }: { children: ReactNode }) {
         elements: {
           rootBox: 'mx-auto',
           card: 'bg-[rgb(5,5,15)] border border-[rgb(0,255,255)]/20 shadow-xl shadow-[rgb(0,255,255)]/5',
-          headerTitle: 'text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 font-semibold',
+          headerTitle: 'text-white font-semibold',
           headerSubtitle: 'text-[rgb(150,150,170)] text-xs uppercase tracking-[0.2em]',
           socialButtonsBlockButton: 'border-[rgb(0,255,255)]/20 hover:border-[rgb(0,255,255)]/50 bg-[rgb(10,10,25)] hover:bg-[rgb(15,15,30)] text-[rgb(200,200,210)]',
           socialButtonsBlockButtonText: 'text-[rgb(200,200,210)] font-normal',

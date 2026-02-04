@@ -10,7 +10,7 @@ export default function AuthenticationPage() {
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Authentication</h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    SentiNext uses Clerk for sign-in. Authentication is required to save analyses, manage credits, and keep data separated per user.
+                    SENTINEXT uses Clerk for sign-in. Authentication is required to save analyses, manage credits, and keep data separated per user.
                 </p>
             </section>
 
@@ -18,7 +18,7 @@ export default function AuthenticationPage() {
                 <DocsAuthStep
                     title="Sign In With Clerk"
                     icon={<UserCheck className="h-6 w-6" />}
-                    description="Clerk handles sessions and account management for SentiNext."
+                    description="Clerk handles sessions and account management for SENTINEXT."
                 >
                     <p>
                         You authenticate via <Link href="https://clerk.com" target="_blank" className="text-[#00F0FF] underline decoration-[#00F0FF]/30">Clerk</Link>. Your analysis history, saved games, and credit usage are tied to your account.

@@ -15,11 +15,13 @@ import {
   Filler,
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
-import { fetchStarredGames, removeStarredGame, generateComparisonSummary } from "@/lib/api";
+import { removeStarredGame, generateComparisonSummary } from "@/lib/api";
+import { useStarredGames } from "@/contexts/StarredGamesContext";
 import { StarredGameDTO, SubcategoryInsight, GameComparisonData, ReviewRow, TrendPoint } from "@/types";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Portal } from "@/components/Portal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { buildCategoryRates, buildSubcategoryInsights } from "@/lib/derivedInsights";
@@ -29,6 +31,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { OverviewComparisonCard } from "@/components/compare/OverviewComparisonCard";
 import { ComparisonSummaryDisplay } from "@/components/compare/ComparisonSummaryDisplay";
 import { PageTransition } from "@/components/PageTransition";
+import { LANGUAGE_OPTIONS } from "@/lib/languageOptions";
 
 const MAX_SELECTION = 2;
 
@@ -226,29 +229,129 @@ function normalizeTrendSeries(trend: TrendPoint[] | undefined): TrendSeriesPoint
   return series;
 }
 
+// Filter types for comparison dashboard
+type CompareFilters = {
+  sentiment: "all" | "positive" | "negative";
+  dateRange: "all" | "30d" | "90d" | "365d" | "custom";
+  minHelpful: 0 | 10 | 25 | 50;
+  playtime: "all" | "lt2h" | "2to20h" | "20hplus";
+  language: string;
+  customStartDate: string | null;
+  customEndDate: string | null;
+};
+
+const DEFAULT_COMPARE_FILTERS: CompareFilters = {
+  sentiment: "all",
+  dateRange: "all",
+  minHelpful: 0,
+  playtime: "all",
+  language: "all",
+  customStartDate: null,
+  customEndDate: null,
+};
+
+function maxDaysFromDateRange(range: CompareFilters["dateRange"]): number | null {
+  if (range === "30d") return 30;
+  if (range === "90d") return 90;
+  if (range === "365d") return 365;
+  return null;
+}
+
+function matchesPlaytime(minutes: number, filter: CompareFilters["playtime"]): boolean {
+  if (filter === "all") return true;
+  if (filter === "lt2h") return minutes < 120;
+  if (filter === "2to20h") return minutes >= 120 && minutes < 1200;
+  if (filter === "20hplus") return minutes >= 1200;
+  return true;
+}
+
+function applyCompareFilters(reviews: ReviewRow[], filters: CompareFilters): ReviewRow[] {
+  if (!reviews.length) return [];
+
+  const now = new Date();
+  const maxDays = maxDaysFromDateRange(filters.dateRange);
+  const lang = (filters.language || "all").trim().toLowerCase();
+
+  // Parse custom date range if set
+  const customStart = filters.customStartDate ? new Date(filters.customStartDate) : null;
+  const customEnd = filters.customEndDate ? new Date(filters.customEndDate) : null;
+  // Set customEnd to end of day
+  if (customEnd) {
+    customEnd.setHours(23, 59, 59, 999);
+  }
+
+  return reviews.filter((review) => {
+    if (filters.sentiment !== "all") {
+      const positive = isRecommended(review.voted_up);
+      if (filters.sentiment === "positive" && !positive) return false;
+      if (filters.sentiment === "negative" && positive) return false;
+    }
+
+    if (filters.minHelpful > 0) {
+      const helpful = Number(review.votes_up ?? 0);
+      if (!Number.isFinite(helpful) || helpful < filters.minHelpful) return false;
+    }
+
+    // Handle custom date range
+    if (filters.dateRange === "custom" && (customStart || customEnd)) {
+      const created = extractReviewDate(review);
+      if (!created) return false;
+      if (customStart && created < customStart) return false;
+      if (customEnd && created > customEnd) return false;
+    } else if (maxDays !== null) {
+      const created = extractReviewDate(review);
+      if (!created) return false;
+      const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays > maxDays) return false;
+    }
+
+    if (filters.playtime !== "all") {
+      const minutes = Number(review.author_playtime_forever ?? 0);
+      if (!Number.isFinite(minutes)) return false;
+      if (!matchesPlaytime(minutes, filters.playtime)) return false;
+    }
+
+    if (lang && lang !== "all") {
+      const reviewLang = String((review as { language?: unknown }).language ?? "")
+        .trim()
+        .toLowerCase();
+      if (!reviewLang) return false;
+      if (reviewLang !== lang) return false;
+    }
+
+    return true;
+  });
+}
+
+function compareFiltersActive(filters: CompareFilters): boolean {
+  const dateRangeActive =
+    filters.dateRange !== "all" &&
+    (filters.dateRange !== "custom" || !!filters.customStartDate || !!filters.customEndDate);
+
+  return (
+    filters.sentiment !== "all" ||
+    dateRangeActive ||
+    filters.minHelpful > 0 ||
+    filters.playtime !== "all" ||
+    (!!filters.language && filters.language !== "all")
+  );
+}
+
 export default function ComparePage() {
   const { t } = useLanguage();
-  const [analyzedGames, setAnalyzedGames] = useState<StarredGameDTO[]>([]);
+  const { games: analyzedGames, loading, removeGame } = useStarredGames();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialSelectionDone, setInitialSelectionDone] = useState(false);
   const [swapCandidateId, setSwapCandidateId] = useState<number | null>(null);
 
+  // Set initial selection when games load
   useEffect(() => {
-    async function load() {
-      try {
-        const games = await fetchStarredGames();
-        setAnalyzedGames(games);
-        // Select 2 games by default
-        const initialSelection = games.slice(0, Math.min(2, games.length)).map(g => g.app_id);
-        setSelectedIds(initialSelection);
-      } catch (err) {
-        console.error("Failed to load analyzed games:", err);
-      } finally {
-        setLoading(false);
-      }
+    if (!loading && analyzedGames.length > 0 && !initialSelectionDone) {
+      const initialSelection = analyzedGames.slice(0, Math.min(2, analyzedGames.length)).map(g => g.app_id);
+      setSelectedIds(initialSelection);
+      setInitialSelectionDone(true);
     }
-    load();
-  }, []);
+  }, [loading, analyzedGames, initialSelectionDone]);
 
   const selectedGames = useMemo(() => {
     return analyzedGames.filter((g) => selectedIds.includes(g.app_id));
@@ -286,7 +389,7 @@ export default function ComparePage() {
     if (!confirm("Remove this game from your analyzed games?")) return;
     try {
       await removeStarredGame(appId);
-      setAnalyzedGames((prev) => prev.filter((g) => g.app_id !== appId));
+      removeGame(appId); // Update context cache
       setSelectedIds((prev) => prev.filter((id) => id !== appId));
       setSwapCandidateId((prev) => (prev === appId ? null : prev));
     } catch (err) {
@@ -301,7 +404,7 @@ export default function ComparePage() {
         <div className="mx-auto max-w-7xl px-4 py-10">
           <Card variant="glass" className="p-8">
             <div className="flex items-center justify-center gap-4">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
+              <div className="h-8 w-8 animate-spin spinner-blue" />
               <p className="text-lg text-slate-300">Loading games...</p>
             </div>
           </Card>
@@ -336,7 +439,7 @@ export default function ComparePage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 className="text-3xl font-bold">
-                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                <span className="text-white">
                   Game Comparison
                 </span>
               </h1>
@@ -403,25 +506,6 @@ export default function ComparePage() {
                       className="h-full w-full object-cover"
                       imageUrl={game.metadata.header_image}
                     />
-                    {isSelected && (
-                      <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
-                        <div className="bg-sky-500 text-white rounded-full p-2">
-                          <svg
-                            className="w-6 h-6"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={3}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <div className="p-3 bg-slate-900/90">
                     <p className="text-sm font-medium text-white truncate">{game.name}</p>
@@ -473,11 +557,24 @@ function ComparisonDashboard({
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const modalOverlayRef = useRef<HTMLDivElement>(null);
+  const [filters, setFilters] = useState<CompareFilters>(() => ({ ...DEFAULT_COMPARE_FILTERS }));
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // Lock body scroll and scroll to top when modal is open
+  const updateFilters = (patch: Partial<CompareFilters>) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
+  };
+
+  const resetFilters = () => {
+    setFilters({ ...DEFAULT_COMPARE_FILTERS });
+    setSearchQuery("");
+  };
+
+  const filtersActive = compareFiltersActive(filters) || searchQuery.trim().length > 0;
+
+  // Lock body scroll when modal is open
   useEffect(() => {
     if (reviewsModal) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -490,7 +587,16 @@ function ComparisonDashboard({
   const gameData = useMemo(() => {
     return games.map((game) => {
       const sample = game.sample ?? [];
-      const filteredSample = sample;
+      let filteredSample = applyCompareFilters(sample, filters);
+
+      // Apply text search filter
+      const query = searchQuery.trim().toLowerCase();
+      if (query) {
+        filteredSample = filteredSample.filter((review) => {
+          const text = (review.review ?? "").toLowerCase();
+          return text.includes(query);
+        });
+      }
       const subcategoryInsights = buildSubcategoryInsights(filteredSample) as SubcategoryInsight[];
       const subcategoriesByMain = new Map<string, SubcategoryInsight[]>();
       subcategoryInsights.forEach((entry) => {
@@ -517,10 +623,10 @@ function ComparisonDashboard({
         subcategoriesByMain,
         sampleCount: sample.length,
         filteredCount: filteredSample.length,
-        sample: sample,
+        sample: filteredSample,
       };
     });
-  }, [games]);
+  }, [games, filters, searchQuery]);
 
   const categories = useMemo(() => {
     let cats = CATEGORY_KEYS.map((key) => {
@@ -615,9 +721,22 @@ function ComparisonDashboard({
     : "grid-cols-[minmax(0,1fr)_88px]";
 
   const trendSeriesByGame = useMemo(() => {
-    return games.map((game, idx) => {
-      const fromInsights = normalizeTrendSeries(game.insights?.trend);
-      const fromReviews = buildTrendSeriesFromReviews(game.sample ?? []);
+    return gameData.map((game, idx) => {
+      // When filters are active, build trend from filtered sample
+      // Otherwise use insights trend if available
+      let filteredSample = applyCompareFilters(games[idx]?.sample ?? [], filters);
+
+      // Apply text search filter
+      const query = searchQuery.trim().toLowerCase();
+      if (query) {
+        filteredSample = filteredSample.filter((review) => {
+          const text = (review.review ?? "").toLowerCase();
+          return text.includes(query);
+        });
+      }
+
+      const fromInsights = filtersActive ? [] : normalizeTrendSeries(games[idx]?.insights?.trend);
+      const fromReviews = buildTrendSeriesFromReviews(filteredSample);
       const series = fromInsights.length ? fromInsights : fromReviews;
       const byKey = new Map<string, TrendSeriesPoint>();
       series.forEach((point) => {
@@ -631,7 +750,7 @@ function ComparisonDashboard({
         color: TREND_COLORS[idx % TREND_COLORS.length],
       };
     });
-  }, [games]);
+  }, [gameData, games, filters, filtersActive, searchQuery]);
 
   const trendKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -750,6 +869,129 @@ function ComparisonDashboard({
   // Radar chart data
   return (
     <div className="space-y-8">
+      {/* Filters Toggle */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => setFiltersOpen((prev) => !prev)}
+          className="text-xs text-slate-400 hover:text-white transition-colors"
+        >
+          {filtersOpen ? t("dashboard.hideFilters") : t("dashboard.showFilters")} {filtersOpen ? "↑" : "→"}
+        </button>
+
+        {filtersActive && (
+          <button
+            onClick={resetFilters}
+            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {t("common.clearFilters")}
+          </button>
+        )}
+
+        {filtersActive && (
+          <span className="text-xs text-slate-500">
+            ({gameData.reduce((sum, g) => sum + g.filteredCount, 0).toLocaleString()} of {gameData.reduce((sum, g) => sum + g.sampleCount, 0).toLocaleString()} reviews)
+          </span>
+        )}
+      </div>
+
+      {filtersOpen && (
+        <div className="rounded-lg border border-white/10 bg-slate-900/40 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase tracking-wider text-slate-500">{t("common.filters")}:</span>
+
+            <select
+              value={filters.sentiment}
+              onChange={(e) => updateFilters({ sentiment: e.target.value as CompareFilters["sentiment"] })}
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+            >
+              <option value="all">{t("filters.allSentiment")}</option>
+              <option value="positive">{t("common.recommended")}</option>
+              <option value="negative">{t("common.notRecommended")}</option>
+            </select>
+
+            <select
+              value={filters.dateRange}
+              onChange={(e) => {
+                const value = e.target.value as CompareFilters["dateRange"];
+                if (value !== "custom") {
+                  updateFilters({ dateRange: value, customStartDate: null, customEndDate: null });
+                } else {
+                  updateFilters({ dateRange: value });
+                }
+              }}
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+            >
+              <option value="all">{t("filters.allTime")}</option>
+              <option value="30d">{t("filters.last30Days")}</option>
+              <option value="90d">{t("filters.last90Days")}</option>
+              <option value="365d">{t("filters.last12Months")}</option>
+              <option value="custom">{t("filters.customRange")}</option>
+            </select>
+
+            {filters.dateRange === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={filters.customStartDate || ""}
+                  onChange={(e) => updateFilters({ customStartDate: e.target.value || null })}
+                  className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+                  placeholder="Start date"
+                />
+                <span className="text-xs text-slate-500">to</span>
+                <input
+                  type="date"
+                  value={filters.customEndDate || ""}
+                  onChange={(e) => updateFilters({ customEndDate: e.target.value || null })}
+                  className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+                  placeholder="End date"
+                />
+              </>
+            )}
+
+            <select
+              value={filters.minHelpful}
+              onChange={(e) => updateFilters({ minHelpful: Number(e.target.value) as CompareFilters["minHelpful"] })}
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+            >
+              <option value={0}>{t("filters.allHelpful")}</option>
+              <option value={10}>{t("filters.helpfulVotes10")}</option>
+              <option value={25}>{t("filters.helpfulVotes25")}</option>
+              <option value={50}>{t("filters.helpfulVotes50")}</option>
+            </select>
+
+            <select
+              value={filters.playtime}
+              onChange={(e) => updateFilters({ playtime: e.target.value as CompareFilters["playtime"] })}
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+            >
+              <option value="all">{t("filters.allPlaytime")}</option>
+              <option value="lt2h">{t("filters.playtimeLt2h")}</option>
+              <option value="2to20h">{t("filters.playtime2to20h")}</option>
+              <option value="20hplus">{t("filters.playtime20hplus")}</option>
+            </select>
+
+            <select
+              value={filters.language || "all"}
+              onChange={(e) => updateFilters({ language: e.target.value })}
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+            >
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('database.searchPlaceholder')}
+              className="flex-1 min-w-[200px] rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
+            />
+          </div>
+        </div>
+      )}
+
       <Card variant="glass" className="p-6">
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-white">Category Comparison</h3>
@@ -885,20 +1127,21 @@ function ComparisonDashboard({
 
       {/* Sample Reviews Modal */}
       {reviewsModal && (
-        <div
-          ref={modalOverlayRef}
-          className="fixed top-0 left-0 right-0 bottom-0 z-[9999] bg-black/60 backdrop-blur-md flex items-start justify-center p-4 pt-12 overflow-y-auto"
-          onClick={() => {
-            setReviewsModal(null);
-            setSubcategorySummary(null);
-            setSummaryError(null);
-          }}
-          style={{ WebkitBackdropFilter: 'blur(12px)' }}
-        >
-            <div
-              className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl mb-8"
-              onClick={(e) => e.stopPropagation()}
-            >
+        <Portal>
+          <div
+            ref={modalOverlayRef}
+            className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-md flex items-start justify-center p-4 pt-12 overflow-y-auto animate-modal-overlay"
+            onClick={() => {
+              setReviewsModal(null);
+              setSubcategorySummary(null);
+              setSummaryError(null);
+            }}
+            style={{ WebkitBackdropFilter: 'blur(12px)' }}
+          >
+              <div
+                className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl mb-8 animate-modal-content"
+                onClick={(e) => e.stopPropagation()}
+              >
             {/* Fixed Header */}
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div>
@@ -971,7 +1214,7 @@ function ComparisonDashboard({
                 >
                   {summaryLoading ? (
                     <>
-                      <div className="w-4 h-4 border border-current border-t-transparent animate-spin" />
+                      <div className="w-4 h-4 spinner-blue-sm animate-spin" />
                       <span>Summarizing...</span>
                     </>
                   ) : (
@@ -1044,8 +1287,9 @@ function ComparisonDashboard({
               })}
             </div>
             </div>
-            </div>
-        </div>
+              </div>
+          </div>
+        </Portal>
       )}
     </div>
   );

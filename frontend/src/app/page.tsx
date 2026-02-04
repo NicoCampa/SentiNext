@@ -93,13 +93,13 @@ export default function RootPage() {
               <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-[rgb(255,0,128)]" />
               <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-[rgb(255,0,128)]" />
 
-              <span className="text-4xl font-bold text-blue-500">SN</span>
+              <span className="text-4xl font-bold text-white">SN</span>
             </div>
           </div>
 
           {/* Title */}
           <h1 className="text-5xl font-bold tracking-[0.3em] mb-4">
-            <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+            <span className="text-white">
               SENTINEXT
             </span>
           </h1>

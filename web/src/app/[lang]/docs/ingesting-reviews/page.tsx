@@ -10,7 +10,7 @@ export default function IngestingReviewsPage() {
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Review Ingestion</h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    SentiNext fetches public Steam reviews for a given <code>AppID</code> and stores them so you can analyze, search, and export them later.
+                    SENTINEXT fetches public Steam reviews for a given <code>AppID</code> and stores them so you can analyze, search, and export them later.
                 </p>
             </section>
 

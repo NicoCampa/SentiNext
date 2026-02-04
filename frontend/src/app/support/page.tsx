@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
+import { useSupportNotification } from "@/contexts/SupportNotificationContext";
 import { fetchSupportThread, sendSupportMessage, SupportMessage } from "@/lib/api";
 
 function formatTimestamp(value?: string | null) {
@@ -21,6 +22,7 @@ export default function SupportPage() {
   const { t } = useLanguage();
   const router = useRouter();
   const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
+  const { refresh: refreshNotification } = useSupportNotification();
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -34,6 +36,8 @@ export default function SupportPage() {
     try {
       const data = await fetchSupportThread();
       setMessages(data);
+      // Refresh notification count since viewing marks messages as read
+      void refreshNotification();
     } catch (err) {
       console.error("Failed to load support thread", err);
       setError((err as Error).message || "Failed to load support messages.");
@@ -90,7 +94,7 @@ export default function SupportPage() {
         <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-4 px-4 py-6 sm:px-6 lg:px-6">
           <div>
             <h1 className="text-xl font-bold">
-              <span className="bg-gradient-to-r from-sky-300 via-cyan-200 to-emerald-200 bg-clip-text text-transparent">
+              <span className="text-white">
                 Support
               </span>
             </h1>
@@ -115,20 +119,22 @@ export default function SupportPage() {
               </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
               {loading ? (
-                <div className="text-center py-8">
-                  <div className="w-8 h-8 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center animate-spin">
-                    <div className="w-4 h-4 bg-[rgb(0,255,255)] rounded-full" />
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-8 h-8 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center animate-spin">
+                      <div className="w-4 h-4 bg-[rgb(0,255,255)] rounded-full" />
+                    </div>
+                    <p className="text-sm text-slate-400 mt-2">{t('common.loading')}</p>
                   </div>
-                  <p className="text-sm text-slate-400 mt-2">{t('common.loading')}</p>
                 </div>
               ) : error ? (
-                <div className="text-center py-8">
+                <div className="flex-1 flex items-center justify-center">
                   <p className="text-sm text-red-400">{error}</p>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="text-center py-8">
+                <div className="flex-1 flex items-center justify-center">
                   <p className="text-sm text-slate-400">No messages yet. Start the conversation below.</p>
                 </div>
               ) : (

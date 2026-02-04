@@ -9,6 +9,7 @@ import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 import { useCredits } from "@/contexts/CreditsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
+import { useSupportNotification } from "@/contexts/SupportNotificationContext";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 
 interface AppLayoutProps {
@@ -33,6 +34,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { user } = useUser();
   const { isAdmin } = useAdminStatus();
   const { credits } = useCredits();
+  const { userUnreadCount, adminUnreadCount } = useSupportNotification();
   const compact = density === "compact";
   const tierLabel = credits?.tier ? credits.tier.charAt(0).toUpperCase() + credits.tier.slice(1) : null;
   const tierBadgeClass = credits?.tier === "max"
@@ -41,8 +43,11 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     ? "border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)]"
     : "border-sky-500/30 bg-sky-500/10 text-sky-400";
 
+  // Get notification count for support/inbox
+  const supportNotificationCount = isAdmin ? adminUnreadCount : userUnreadCount;
+
   const navItems = useMemo(() => {
-    const items = [
+    const items: Array<{ href: string; label: string; code: string; hasNotification?: boolean }> = [
       { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
       { href: "/chat", label: t('nav.chat'), code: "02" },
       { href: "/compare", label: t('nav.compare'), code: "03" },
@@ -50,9 +55,9 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     ];
 
     if (isAdmin) {
-      items.push({ href: "/admin?tab=inbox", label: t('nav.inbox'), code: "0S" });
+      items.push({ href: "/admin?tab=inbox", label: t('nav.inbox'), code: "0S", hasNotification: true });
     } else {
-      items.push({ href: "/support", label: t('nav.support'), code: "0S" });
+      items.push({ href: "/support", label: t('nav.support'), code: "0S", hasNotification: true });
     }
 
     if (isAdmin) {
@@ -73,7 +78,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   };
 
   return (
-    <div className="flex min-h-screen w-full overflow-x-hidden">
+    <div className="min-h-screen w-full">
       {/* Sidebar */}
       {showSidebar && (
         <aside className="hidden w-72 flex-shrink-0 border-r border-[rgb(0,255,255)]/10 bg-[rgb(5,5,15)]/95 backdrop-blur-xl lg:block fixed left-0 top-0 h-screen overflow-y-auto z-30">
@@ -81,12 +86,17 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
             {/* Logo Section */}
             <div className="mb-8">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center">
-                  <span className="text-[rgb(0,255,255)] text-xl font-bold">SN</span>
+                <div className="w-10 h-10 border border-[rgb(0,255,255)] flex items-center justify-center relative">
+                  {/* Corner decorations */}
+                  <div className="absolute -top-[2px] -left-[2px] w-2 h-2 border-t border-l border-[rgb(0,255,255)]" />
+                  <div className="absolute -top-[2px] -right-[2px] w-2 h-2 border-t border-r border-[rgb(0,255,255)]" />
+                  <div className="absolute -bottom-[2px] -left-[2px] w-2 h-2 border-b border-l border-[rgb(255,0,128)]" />
+                  <div className="absolute -bottom-[2px] -right-[2px] w-2 h-2 border-b border-r border-[rgb(255,0,128)]" />
+                  <span className="text-white text-xl font-bold">SN</span>
                 </div>
                 <div>
                   <h1 className="text-xl font-bold tracking-wider">
-                    <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                    <span className="text-white">
                       SENTINEXT
                     </span>
                   </h1>
@@ -104,6 +114,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                 {sidebarNavItems.map((item) => {
                   const restricted = !!("restricted" in item && item.restricted);
                   const active = isActiveRoute(item.href);
+                  const showNotification = item.hasNotification && supportNotificationCount > 0;
                   const activeClasses = restricted
                     ? "bg-orange-500/15 border-l-2 border-orange-400 text-orange-300"
                     : "bg-[rgb(0,255,255)]/10 border-l-2 border-[rgb(0,255,255)] text-[rgb(0,255,255)]";
@@ -127,7 +138,12 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                       {item.code}
                     </span>
                     <span className="text-xs uppercase tracking-[0.2em]">{item.label}</span>
-                    {active && (
+                    {showNotification && (
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[rgb(255,0,128)] px-1.5 text-[10px] font-medium text-white">
+                        {supportNotificationCount > 99 ? "99+" : supportNotificationCount}
+                      </span>
+                    )}
+                    {active && !showNotification && (
                       <span className={clsx("ml-auto w-1.5 h-1.5 rounded-full", restricted ? "bg-orange-400" : "bg-sky-500")} />
                     )}
                   </Link>
@@ -213,10 +229,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       )}
 
       {/* Main Content */}
-      <main className="min-w-0 flex-1 pb-24 lg:pb-0 lg:pl-72 relative">
-        {/* Top accent line */}
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[rgb(0,255,255)]/30 to-transparent z-0" />
-
+      <main className="w-full pb-24 lg:pb-0 lg:pl-72">
         {children}
       </main>
 
@@ -233,6 +246,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
           <div className="mx-auto flex max-w-md items-center justify-between gap-1 px-2 pt-2">
             {navItems.map((item) => {
               const active = isActiveRoute(item.href);
+              const showNotification = item.hasNotification && supportNotificationCount > 0;
               return (
                 <Link
                   key={item.href}
@@ -247,6 +261,11 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                 >
                   {active && (
                     <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-sky-500" />
+                  )}
+                  {showNotification && (
+                    <span className="absolute -top-0.5 right-1/4 flex h-4 min-w-4 items-center justify-center rounded-full bg-[rgb(255,0,128)] px-1 text-[8px] font-medium text-white">
+                      {supportNotificationCount > 9 ? "9+" : supportNotificationCount}
+                    </span>
                   )}
                   <span className="text-[8px] uppercase tracking-[0.15em]">{item.label}</span>
                 </Link>

@@ -51,7 +51,7 @@ export default function AdminAndDataPage() {
 
                     <div className="pl-16 space-y-8">
                         <p className="font-light text-foreground/70 leading-relaxed max-w-2xl">
-                            SentiNext stores raw Steam reviews, AI labels (including evidence quotes), and analysis results in PostgreSQL. You can search and export your dataset from the in-app Database view.
+                            SENTINEXT stores raw Steam reviews, AI labels (including evidence quotes), and analysis results in PostgreSQL. You can search and export your dataset from the in-app Database view.
                         </p>
                         <div className="grid md:grid-cols-2 gap-8">
                             <div className="p-8 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm relative">

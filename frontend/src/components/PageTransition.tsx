@@ -15,8 +15,8 @@ export function PageTransition({ children }: PageTransitionProps) {
 
   return (
     <div
-      className={`transition-all duration-300 ${
-        mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      className={`transition-opacity duration-300 ${
+        mounted ? 'opacity-100' : 'opacity-0'
       }`}
     >
       {children}

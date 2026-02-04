@@ -238,7 +238,7 @@ function ReviewsContent() {
         <div className="mx-auto max-w-7xl px-4 py-10">
           <Card variant="glass" className="p-8">
             <div className="flex items-center justify-center gap-4">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
+              <div className="h-8 w-8 animate-spin spinner-blue" />
               <p className="text-lg text-slate-300">Loading reviews...</p>
             </div>
           </Card>
@@ -259,7 +259,7 @@ function ReviewsContent() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-3xl font-bold">
-                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                <span className="text-white">
                   {game.name}
                 </span>
               </h1>

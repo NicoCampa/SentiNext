@@ -10,7 +10,7 @@ export default function DocsPage() {
         Quickstart + product notes
       </h1>
       <p className="lead">
-        SentiNext is a local-first desktop app. This page explains the basic workflow, what “chat with sources” means,
+        SENTINEXT is a local-first desktop app. This page explains the basic workflow, what “chat with sources” means,
         and how to keep cost and speed predictable.
       </p>
 
@@ -27,7 +27,7 @@ export default function DocsPage() {
 
         <div className="steps">
           {[
-            "Install and launch SentiNext.",
+            "Install and launch SENTINEXT.",
             "Open Settings → choose OpenAI or Ollama, set model + key/host.",
             "Analyze a game (use Estimate to preview LLM calls).",
             "Use the dashboard + chat to create top actions and export what you need.",

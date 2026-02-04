@@ -47,6 +47,7 @@ import {
   UserSubscriptionInfo,
 } from "@/lib/api";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
+import { useSupportNotification } from "@/contexts/SupportNotificationContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -288,6 +289,7 @@ function buildChartOptions(spec: ChartSpec) {
 
 export default function AdminPage() {
   const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
+  const { refresh: refreshNotification } = useSupportNotification();
   const searchParams = useSearchParams();
   const [sessions, setSessions] = useState<AdminChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<AdminChatSession | null>(null);
@@ -443,6 +445,8 @@ export default function AdminPage() {
           item.user_id === thread.user_id ? { ...item, unread_count: 0 } : item
         )
       );
+      // Refresh notification count since viewing marks messages as read
+      void refreshNotification();
     } catch (err) {
       console.error("Failed to load support thread:", err);
       setSupportMessages([]);
@@ -626,7 +630,7 @@ export default function AdminPage() {
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-xl font-bold">
-              <span className="bg-gradient-to-r from-amber-300 via-orange-200 to-red-300 bg-clip-text text-transparent">
+              <span className="text-white">
                 {isInboxMode ? "Support Inbox" : "Admin Dashboard"}
               </span>
             </h1>

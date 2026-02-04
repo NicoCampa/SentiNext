@@ -25,7 +25,6 @@ export default function SettingsPage() {
   const { credits, loading: creditsLoading, refresh: refreshCredits } = useCredits();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
-  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -88,7 +87,7 @@ export default function SettingsPage() {
         tier,
         `${baseUrl}/settings?upgrade=success`,
         `${baseUrl}/settings?upgrade=cancelled`,
-        billingPeriod
+        "monthly"
       );
       if (result.checkout_url) {
         window.location.href = result.checkout_url;
@@ -151,7 +150,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold tracking-wider">
-                  <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                  <span className="text-white">
                     {t('settings.title').toUpperCase()}
                   </span>
                 </h1>
@@ -379,35 +378,9 @@ export default function SettingsPage() {
                   {/* Upgrade Options */}
                   {credits.tier !== "max" && (
                     <div className="space-y-3 mb-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
-                          Upgrade Your Plan
-                        </p>
-                        {/* Billing Period Toggle */}
-                        <div className="flex items-center gap-1 p-0.5 bg-[rgb(10,10,25)] border border-[rgb(0,255,255)]/20 rounded">
-                          <button
-                            onClick={() => setBillingPeriod("monthly")}
-                            className={`px-2 py-1 text-[10px] uppercase tracking-wider transition-all rounded-sm ${
-                              billingPeriod === "monthly"
-                                ? "bg-[rgb(0,255,255)]/20 text-[rgb(0,255,255)]"
-                                : "text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]"
-                            }`}
-                          >
-                            Monthly
-                          </button>
-                          <button
-                            onClick={() => setBillingPeriod("annual")}
-                            className={`px-2 py-1 text-[10px] uppercase tracking-wider transition-all rounded-sm ${
-                              billingPeriod === "annual"
-                                ? "bg-[rgb(0,255,136)]/20 text-[rgb(0,255,136)]"
-                                : "text-[rgb(150,150,170)] hover:text-[rgb(200,200,210)]"
-                            }`}
-                          >
-                            Annual
-                            <span className="ml-1 text-[rgb(0,255,136)]">-20%</span>
-                          </button>
-                        </div>
-                      </div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
+                        Upgrade Your Plan
+                      </p>
                       <div className="grid grid-cols-2 gap-3">
                         {credits.tier === "free" && (
                           <button
@@ -416,14 +389,6 @@ export default function SettingsPage() {
                             className="p-3 border border-sky-500/30 bg-[rgb(10,10,25)] hover:bg-sky-500/10 hover:border-sky-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <p className="text-sm font-bold text-sky-400">Pro</p>
-                            {billingPeriod === "monthly" ? (
-                              <p className="text-xs text-[rgb(150,150,170)]">$19/mo</p>
-                            ) : (
-                              <div>
-                                <p className="text-xs text-[rgb(0,255,136)]">$15/mo</p>
-                                <p className="text-[10px] text-[rgb(150,150,170)] line-through">$19/mo</p>
-                              </div>
-                            )}
                             <p className="text-xs text-sky-400/50 mt-1">25 games</p>
                           </button>
                         )}
@@ -433,22 +398,9 @@ export default function SettingsPage() {
                           className="p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <p className="text-sm font-bold text-purple-400">Max</p>
-                          {billingPeriod === "monthly" ? (
-                            <p className="text-xs text-[rgb(150,150,170)]">$49/mo</p>
-                          ) : (
-                            <div>
-                              <p className="text-xs text-[rgb(0,255,136)]">$39/mo</p>
-                              <p className="text-[10px] text-[rgb(150,150,170)] line-through">$49/mo</p>
-                            </div>
-                          )}
                           <p className="text-xs text-purple-400/50 mt-1">100 games</p>
                         </button>
                       </div>
-                      {billingPeriod === "annual" && (
-                        <p className="text-[10px] text-[rgb(0,255,136)] text-center">
-                          Billed annually. Save 20% compared to monthly billing.
-                        </p>
-                      )}
                     </div>
                   )}
 

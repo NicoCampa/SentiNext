@@ -1,7 +1,8 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { fetchStarredGames, toggleFavorite as apiToggleFavorite } from "@/lib/api";
+import { toggleFavorite as apiToggleFavorite } from "@/lib/api";
+import { useStarredGames } from "@/contexts/StarredGamesContext";
 import type { SearchResult, StarredGameDTO } from "@/types";
 
 export type GameContextGame = {
@@ -46,29 +47,10 @@ function persistGameId(value: number | null): void {
 }
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
-  const [games, setGames] = useState<StarredGameDTO[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use the shared StarredGamesContext for games data
+  const { games, loading, error, refresh: refreshGames, updateGame } = useStarredGames();
   const [selectedGameId, setSelectedGameId] = useState<number | null>(() => parseStoredGameId());
   const [temporaryGame, setTemporaryGame] = useState<SearchResult | null>(null);
-
-  const refreshGames = useCallback(async () => {
-    try {
-      setLoading(true);
-      const entries = await fetchStarredGames();
-      setGames(entries);
-      setError(null);
-    } catch (err) {
-      console.error("Failed to load starred games", err);
-      setError("Failed to load saved games.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshGames();
-  }, [refreshGames]);
 
   useEffect(() => {
     if (!selectedGameId) return;
@@ -120,17 +102,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const toggleFavorite = useCallback(async (appId: number, isFavorite: boolean) => {
     try {
       await apiToggleFavorite(appId, isFavorite);
-      // Update local state immediately for optimistic UI
-      setGames(prevGames =>
-        prevGames.map(game =>
-          game.app_id === appId ? { ...game, is_favorite: isFavorite } : game
-        )
-      );
+      // Update shared context state immediately for optimistic UI
+      updateGame(appId, (game) => ({ ...game, is_favorite: isFavorite }));
     } catch (err) {
       console.error("Failed to toggle favorite status", err);
       throw err;
     }
-  }, []);
+  }, [updateGame]);
 
   const value = useMemo<GameContextValue>(
     () => ({

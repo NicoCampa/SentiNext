@@ -674,7 +674,7 @@ export default function DatabasePage() {
                       </svg>
                     </button>
                     <h1 className="text-3xl font-semibold tracking-tight">
-                      <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                      <span className="text-white">
                         {t('database.title')}
                       </span>
                     </h1>

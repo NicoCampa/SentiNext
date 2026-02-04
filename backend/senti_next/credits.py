@@ -16,12 +16,6 @@ TIER_GAME_LIMITS = {
     "max": 100,      # 100 games max
 }
 
-TIER_PRICES = {
-    "free": 0,
-    "pro": 19,
-    "max": 49,
-}
-
 # Legacy credit limits (kept for backwards compatibility during migration)
 TIER_LIMITS = {
     "free": 500,
@@ -613,7 +607,6 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> Optional[str]:
 __all__ = [
     "TIER_LIMITS",
     "TIER_GAME_LIMITS",
-    "TIER_PRICES",
     "CREDIT_COSTS",
     "calculate_hard_limit",
     "get_user_subscription",

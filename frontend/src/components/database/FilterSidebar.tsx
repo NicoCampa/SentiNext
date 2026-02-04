@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Portal } from '@/components/Portal';
 import { LANGUAGE_OPTIONS } from '@/lib/languageOptions';
 import type { DatabaseGameOption } from '@/types';
 
@@ -60,10 +61,12 @@ export function FilterSidebar({
     <>
       {/* Mobile overlay */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          onClick={onClose}
-        />
+        <Portal>
+          <div
+            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            onClick={onClose}
+          />
+        </Portal>
       )}
 
       {/* Sidebar */}

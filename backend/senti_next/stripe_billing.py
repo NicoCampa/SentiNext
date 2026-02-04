@@ -12,7 +12,7 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_MAX = os.getenv("STRIPE_PRICE_MAX")
-# Annual pricing (20% discount)
+# Annual pricing
 STRIPE_PRICE_PRO_ANNUAL = os.getenv("STRIPE_PRICE_PRO_ANNUAL")
 STRIPE_PRICE_MAX_ANNUAL = os.getenv("STRIPE_PRICE_MAX_ANNUAL")
 
@@ -60,7 +60,7 @@ def create_checkout_session(
         success_url: URL to redirect to on success
         cancel_url: URL to redirect to on cancel
         user_email: Optional email to prefill
-        billing_period: 'monthly' or 'annual' (annual gets 20% discount)
+        billing_period: 'monthly' or 'annual'
 
     Returns:
         Checkout session URL to redirect user to

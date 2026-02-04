@@ -12,7 +12,7 @@
         "impressum": "Impressum",
         "back": "Indietro",
         "footerDesc": "Intelligence delle recensioni Steam per team di gioco.",
-        "valveDisclaimer": "SentiNext è uno strumento indipendente che analizza recensioni Steam pubbliche tramite le API di Steam. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
+        "valveDisclaimer": "SENTINEXT è uno strumento indipendente che analizza recensioni Steam pubbliche tramite le API di Steam. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
     },
     "hero": {
         "badge": "Agente AI per Steam Reviews",
@@ -25,14 +25,14 @@
     },
     "docs": {
         "title": "Documentazione",
-        "subtitle": "Guide per analizzare recensioni Steam con SentiNext.",
+        "subtitle": "Guide per analizzare recensioni Steam con SENTINEXT.",
         "quickStart": {
             "title": "Guida Rapida",
             "description": "Analizza il tuo primo gioco ed esplora gli insight."
         },
         "dataIngestion": {
             "title": "Ingestione Dati",
-            "description": "Come SentiNext recupera e salva le recensioni Steam."
+            "description": "Come SENTINEXT recupera e salva le recensioni Steam."
         },
         "aiTaxonomy": {
             "title": "Tassonomia AI",

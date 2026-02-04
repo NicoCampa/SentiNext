@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { StarredGameDTO, GameComparisonData, ComparisonSummary } from '@/types';
 import { generateComparisonSummary } from '@/lib/api';
 import { ComparisonSummaryDisplay } from './ComparisonSummaryDisplay';
+import { Portal } from '@/components/Portal';
 
 interface OverviewComparisonCardProps {
   selectedGames: StarredGameDTO[];
@@ -69,14 +70,15 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
 
       {/* Modal Dialog */}
       {isModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={handleClose}
-        >
+        <Portal>
           <div
-            className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-700 rounded-xl shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={handleClose}
           >
+            <div
+              className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-700 rounded-xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
             {/* Header */}
             <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700 px-6 py-4">
               <div className="flex items-center justify-between">
@@ -97,7 +99,7 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
             <div className="px-6 py-4">
               {loading && (
                 <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-600 border-t-blue-500" />
+                  <div className="h-12 w-12 animate-spin spinner-blue" />
                   <p className="text-sm text-gray-400">Analyzing games with AI...</p>
                 </div>
               )}
@@ -115,8 +117,9 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
                 />
               )}
             </div>
+            </div>
           </div>
-        </div>
+        </Portal>
       )}
     </>
   );

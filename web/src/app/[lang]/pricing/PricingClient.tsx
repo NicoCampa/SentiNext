@@ -46,7 +46,7 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             name="Free"
                             price="$0"
                             period="/ month"
-                            description={lang === 'it' ? 'Per provare SentiNext con un limite di crediti.' : 'Try SentiNext with a limited monthly credit allowance.'}
+                            description={lang === 'it' ? 'Per provare SENTINEXT con un limite di crediti.' : 'Try SENTINEXT with a limited monthly credit allowance.'}
                             features={[
                                 lang === 'it' ? "500 crediti / mese" : "500 credits / month",
                                 lang === 'it' ? "Fino a 2 giochi analizzati" : "Up to 2 analyzed games",

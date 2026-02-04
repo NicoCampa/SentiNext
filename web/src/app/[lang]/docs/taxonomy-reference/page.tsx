@@ -53,7 +53,7 @@ export default function TaxonomyReferencePage() {
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Taxonomy Reference</h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    This is the taxonomy currently used by the SentiNext classifier. Tags are formatted as <code>{"<main>/<sub>"}</code>, e.g. <code>technical/performance</code>.
+                    This is the taxonomy currently used by the SENTINEXT classifier. Tags are formatted as <code>{"<main>/<sub>"}</code>, e.g. <code>technical/performance</code>.
                 </p>
             </section>
 

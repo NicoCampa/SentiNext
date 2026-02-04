@@ -2306,6 +2306,141 @@ _SUMMARIZE_PROMPT_TEMPLATE = Template(
     )
 )
 
+_REPORT_SUMMARY_PROMPT = Template(
+    dedent(
+        """You are a product insights analyst. Summarize the monthly Steam review data into a concise executive brief.
+
+GAME: $game_name
+PERIOD: $period
+
+CORE METRICS:
+- Total reviews: $total_reviews
+- Recommendation rate: $recommendation_rate
+- Average sentiment (compound): $average_sentiment
+- Refund risk index: $refund_risk
+- Core fan disappointment: $core_fan_disappointment
+
+TOP ISSUES:
+$top_issues
+
+TOP REQUESTS:
+$top_requests
+
+PLAYER SEGMENTS (experience level):
+$segments
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-3 sentence executive summary of the month>",
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Keep the summary short and concrete (2-3 sentences).
+- Actions should be specific and actionable (not generic).
+- Use the data provided; do not invent facts.
+- If data is insufficient, return an honest summary and an empty actions list.
+- JSON MUST be valid: double quotes only, no trailing commas.
+"""
+    )
+)
+
+
+def summarize_monthly_report(
+    *,
+    game_name: str,
+    period: str,
+    insights: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Generate a concise executive summary for a monthly report.
+
+    Returns dict with 'summary' and 'actions' keys.
+    """
+    if not insights:
+        return {
+            "summary": "Not enough data to summarize this period.",
+            "actions": [],
+        }
+
+    def _format_label(value: Any) -> str:
+        text = str(value or "").replace("_", " ").replace("/", " / ").strip()
+        return text.title() if text else "Unknown"
+
+    def _format_issue_list(items: Any, limit: int = 3) -> str:
+        if not isinstance(items, list) or not items:
+            return "No clear issues identified."
+        lines = []
+        for item in items[:limit]:
+            name = _format_label(item.get("subcategory"))
+            count = int(item.get("count") or 0)
+            rec_rate = item.get("recommendation_rate")
+            rec_text = f"{rec_rate:.1%} rec" if isinstance(rec_rate, (int, float)) else "rec n/a"
+            snippet = ""
+            snippets = item.get("snippets") or []
+            if isinstance(snippets, list) and snippets:
+                snippet_text = str(snippets[0]).replace("\n", " ").strip()
+                if snippet_text:
+                    snippet = f" Example: \"{snippet_text[:120]}\""
+            lines.append(f"- {name}: {count} mentions ({rec_text}).{snippet}")
+        return "\n".join(lines)
+
+    def _format_segments(items: Any, limit: int = 4) -> str:
+        if not isinstance(items, list) or not items:
+            return "No segment data."
+        sorted_items = sorted(
+            items,
+            key=lambda entry: int(entry.get("count") or 0),
+            reverse=True,
+        )
+        lines = []
+        for item in sorted_items[:limit]:
+            name = _format_label(item.get("segment"))
+            count = int(item.get("count") or 0)
+            rec_rate = item.get("recommendation_rate")
+            rec_text = f"{rec_rate:.1%}" if isinstance(rec_rate, (int, float)) else "n/a"
+            lines.append(f"- {name}: {count} reviews, {rec_text} recommend")
+        return "\n".join(lines)
+
+    total_reviews = int(insights.get("total_reviews") or 0)
+    recommendation_rate = float(insights.get("recommendation_rate") or 0.0)
+    sentiment = insights.get("sentiment") or {}
+    refund_risk = float(insights.get("refund_risk") or 0.0)
+    core_fan_disappointment = float(insights.get("core_fan_disappointment") or 0.0)
+
+    prompt = _REPORT_SUMMARY_PROMPT.substitute(
+        game_name=game_name or "Unknown",
+        period=period or "Unknown",
+        total_reviews=f"{total_reviews:,}",
+        recommendation_rate=f"{recommendation_rate:.1%}",
+        average_sentiment=f"{float(sentiment.get('average_compound', 0.0)):+.2f}",
+        refund_risk=f"{refund_risk:.2f}",
+        core_fan_disappointment=f"{core_fan_disappointment:.2f}",
+        top_issues=_format_issue_list(insights.get("top_issues")),
+        top_requests=_format_issue_list(insights.get("top_requests")),
+        segments=_format_segments(insights.get("player_segments")),
+    )
+
+    try:
+        raw, _model_used = _run_llm(prompt)
+        payload = _load_json_mapping(raw)
+        summary = str(payload.get("summary", "")).strip()
+        actions = payload.get("actions", [])
+        if not isinstance(actions, list):
+            actions = []
+        actions = [str(item).strip() for item in actions if item][:3]
+        if not summary:
+            summary = "Unable to generate summary."
+        return {
+            "summary": summary,
+            "actions": actions,
+        }
+    except Exception as exc:
+        logger.error("Failed to generate monthly report summary: %s", exc)
+        return {
+            "summary": "Unable to generate summary.",
+            "actions": [],
+        }
+
 
 def summarize_subcategory_reviews(
     reviews: Sequence[Mapping[str, Any]],
@@ -2829,4 +2964,5 @@ __all__ = [
     "llm_usage_context",
     "run_chat_completion",
     "summarize_subcategory_reviews",
+    "summarize_monthly_report",
 ]

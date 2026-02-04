@@ -42,6 +42,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { PageTransition } from "@/components/PageTransition";
+import { Portal } from "@/components/Portal";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -602,7 +603,7 @@ function DashboardContent() {
           <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6">
             <Card variant="glass" className="p-5">
               <div className="flex items-center justify-center gap-4">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
+                <div className="h-8 w-8 animate-spin spinner-blue" />
                 <p className="text-lg text-slate-300">{t('common.loading')}</p>
               </div>
             </Card>
@@ -647,7 +648,7 @@ function DashboardContent() {
                   <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">{t('dashboard.welcome')}</p>
                   <div>
                   <h1 className="text-2xl font-semibold">
-                    <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                    <span className="text-white">
                       {t('dashboard.welcomeTo')}
                     </span>
                   </h1>
@@ -889,7 +890,7 @@ function DashboardContent() {
         {analysis && !analysis.insights && !isAnalyzing && (
           <div className="flex items-center justify-center py-12">
             <div className="text-center space-y-4">
-              <div className="animate-spin h-8 w-8 border-2 border-sky-500 border-t-transparent rounded-full mx-auto" />
+              <div className="animate-spin h-8 w-8 spinner-blue mx-auto" />
               <p className="text-slate-400">Loading analysis results...</p>
             </div>
           </div>
@@ -1059,6 +1060,7 @@ function AnalysisResults({
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [selectedSubcategoryType, setSelectedSubcategoryType] = useState<'issue' | 'request' | 'general'>('general');
+  const [selectedSubcategoryLanguage, setSelectedSubcategoryLanguage] = useState<{ key: string; label: string } | null>(null);
   const [selectedTrendWeek, setSelectedTrendWeek] = useState<TrendWeekSelection | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<{
     type: 'experience' | 'purchase' | 'activity' | 'engagement' | 'language';
@@ -1106,6 +1108,32 @@ function AnalysisResults({
   const updateFilters = useCallback((patch: Partial<DashboardFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
   }, []);
+  const clearSelectedSubcategory = useCallback(() => {
+    setSelectedSubcategory(null);
+    setSelectedSubcategoryLanguage(null);
+  }, []);
+  const openSubcategory = useCallback(
+    (subcategory: string, type: 'issue' | 'request' | 'general', language?: { key: string; label?: string }) => {
+      const languageKey = language?.key?.toLowerCase() ?? null;
+      const currentLanguageKey = selectedSubcategoryLanguage?.key?.toLowerCase() ?? null;
+      const isSameSelection = selectedSubcategory === subcategory && currentLanguageKey === languageKey;
+      if (isSameSelection) {
+        clearSelectedSubcategory();
+        return;
+      }
+      setSelectedSubcategory(subcategory);
+      setSelectedSubcategoryType(type);
+      if (languageKey) {
+        setSelectedSubcategoryLanguage({
+          key: languageKey,
+          label: language?.label ?? toTitleCase(languageKey),
+        });
+      } else {
+        setSelectedSubcategoryLanguage(null);
+      }
+    },
+    [clearSelectedSubcategory, selectedSubcategory, selectedSubcategoryLanguage],
+  );
 
   const trendSeries = useMemo(() => {
     if (filtersActive) {
@@ -1227,10 +1255,16 @@ function AnalysisResults({
     return filteredReviewSample
       .filter((review) => {
         const subcats = review.llm_subcategories ?? [];
-        return Array.isArray(subcats) && subcats.includes(selectedSubcategory);
+        const matchesSubcategory = Array.isArray(subcats) && subcats.includes(selectedSubcategory);
+        if (!matchesSubcategory) return false;
+        if (selectedSubcategoryLanguage?.key) {
+          const reviewLang = (review.language || '').toLowerCase();
+          return reviewLang === selectedSubcategoryLanguage.key.toLowerCase();
+        }
+        return true;
       })
       .sort((a, b) => Number(b.votes_up ?? 0) - Number(a.votes_up ?? 0));
-  }, [filteredReviewSample, selectedSubcategory]);
+  }, [filteredReviewSample, selectedSubcategory, selectedSubcategoryLanguage]);
 
   const selectedSegmentReviews = useMemo(() => {
     if (!selectedSegment) return [];
@@ -1382,6 +1416,7 @@ function AnalysisResults({
   const selectedMainLabel = selectedSubcategory
     ? MAIN_CATEGORY_LABELS[selectedSubcategory.split("/", 1)[0]?.toLowerCase() ?? ""] ?? toTitleCase(selectedSubcategory)
     : "";
+  const selectedSubcategoryLanguageLabel = selectedSubcategoryLanguage?.label ?? "";
   const summaryTotal = filteredReviewSample.length;
   const summaryRecommendationRate =
     summaryTotal > 0
@@ -1447,10 +1482,10 @@ function AnalysisResults({
       end.setDate(end.getDate() + 7);
       const key = start.toISOString().slice(0, 10);
       const label = formatWeekRangeLabel(start);
-      setSelectedSubcategory(null);
+      clearSelectedSubcategory();
       setSelectedTrendWeek((prev) => (prev?.key === key ? null : { key, start, end, label }));
     },
-    [trendSeries],
+    [clearSelectedSubcategory, trendSeries],
   );
 
   const recommendationTrendOptions = {
@@ -1528,7 +1563,7 @@ function AnalysisResults({
           return;
         }
         if (selectedSubcategory) {
-          setSelectedSubcategory(null);
+          clearSelectedSubcategory();
         }
       }
     };
@@ -1536,7 +1571,7 @@ function AnalysisResults({
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [hasOverlay, selectedTrendWeek, selectedSubcategory, selectedSegment]);
+  }, [hasOverlay, selectedTrendWeek, selectedSubcategory, selectedSegment, clearSelectedSubcategory]);
 
   useEffect(() => {
     setExpandedReviews(new Set());
@@ -1550,10 +1585,9 @@ function AnalysisResults({
     setExpandedReviews(new Set());
   }, [selectedTrendWeek]);
 
-  // Lock body scroll and scroll to top when modal is open
+  // Lock body scroll when modal is open
   useEffect(() => {
     if (hasOverlay) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -1731,8 +1765,7 @@ function AnalysisResults({
                           key={sub.subcategory}
                           type="button"
                           onClick={() => {
-                            setSelectedSubcategory((prev) => (prev === sub.subcategory ? null : sub.subcategory));
-                            setSelectedSubcategoryType('general');
+                            openSubcategory(sub.subcategory, 'general');
                           }}
                           className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left ${
                             selectedSubcategory === sub.subcategory
@@ -1789,8 +1822,7 @@ function AnalysisResults({
                       key={subcategoryKey}
                       type="button"
                       onClick={() => {
-                        setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey));
-                        setSelectedSubcategoryType('issue');
+                        openSubcategory(subcategoryKey, 'issue');
                       }}
                       className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
                         selectedSubcategory === subcategoryKey
@@ -1846,8 +1878,7 @@ function AnalysisResults({
                       key={subcategoryKey}
                       type="button"
                       onClick={() => {
-                        setSelectedSubcategory((prev) => (prev === subcategoryKey ? null : subcategoryKey));
-                        setSelectedSubcategoryType('request');
+                        openSubcategory(subcategoryKey, 'request');
                       }}
                       className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
                         selectedSubcategory === subcategoryKey
@@ -2018,18 +2049,18 @@ function AnalysisResults({
                               </div>
                             </button>
                             {topIssues.length > 0 && (
-                              <div className="ml-[5.5rem] flex flex-wrap gap-1.5">
+                              <div className="ml-[5.5rem] flex flex-wrap items-center gap-1.5">
+                                <span className="text-[9px] text-slate-500 uppercase tracking-wide mr-1">Top issues:</span>
                                 {topIssues.map((issue) => (
                                   <button
                                     key={issue.category}
                                     type="button"
                                     onClick={() => {
-                                      setSelectedSubcategory((prev) => (prev === issue.category ? null : issue.category));
-                                      setSelectedSubcategoryType('issue');
+                                      openSubcategory(issue.category, 'issue', { key: langKey, label: langLabel });
                                     }}
                                     className={clsx(
                                       "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border transition-colors",
-                                      selectedSubcategory === issue.category
+                                      selectedSubcategory === issue.category && selectedSubcategoryLanguage?.key === langKey
                                         ? "bg-rose-500/20 border-rose-500/30"
                                         : "bg-slate-800/50 border-white/5 hover:bg-slate-700/50 hover:border-white/10"
                                     )}
@@ -2059,10 +2090,10 @@ function AnalysisResults({
                   <p className="text-[10px] text-slate-500 mb-3">Steam library size</p>
                   <div className="space-y-2">
                     {[
-                      { label: "New", subLabel: "<50 games", key: "newcomers", data: playerSegments.experience_level?.newcomers },
-                      { label: "Casual", subLabel: "50-200", key: "casual", data: playerSegments.experience_level?.casual },
-                      { label: "Regular", subLabel: "200-500", key: "experienced", data: playerSegments.experience_level?.experienced },
-                      { label: "Veteran", subLabel: "500+", key: "veterans", data: playerSegments.experience_level?.veterans },
+                      { label: "New", subLabel: "<10 games", key: "newcomers", data: playerSegments.experience_level?.newcomers },
+                      { label: "Casual", subLabel: "10-50", key: "casual", data: playerSegments.experience_level?.casual },
+                      { label: "Regular", subLabel: "50-150", key: "experienced", data: playerSegments.experience_level?.experienced },
+                      { label: "Veteran", subLabel: "150+", key: "veterans", data: playerSegments.experience_level?.veterans },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
                       const rec = row.data?.recommendation_rate ?? 0;
@@ -2254,22 +2285,24 @@ function AnalysisResults({
       </div>
 
       {selectedSubcategory ? (
-        <div
-          className="fixed top-0 left-0 right-0 bottom-0 z-[9999] bg-black/60 backdrop-blur-md overflow-y-auto"
-          onClick={() => setSelectedSubcategory(null)}
-          style={{ WebkitBackdropFilter: 'blur(12px)' }}
-        >
-          <div className="min-h-screen flex items-center justify-center p-4">
-            <div
-              className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8"
-              onClick={(event) => event.stopPropagation()}
-            >
+        <Portal>
+          <div
+            className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
+            onClick={clearSelectedSubcategory}
+            style={{ WebkitBackdropFilter: 'blur(12px)' }}
+          >
+            <div className="min-h-screen flex items-center justify-center p-4">
+              <div
+                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                onClick={(event) => event.stopPropagation()}
+              >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-white">{selectedSubcategoryLabel}</h3>
                 <p className="mt-1 text-sm text-slate-400">
-                  {selectedMainLabel} -{selectedReviews.length.toLocaleString()} reviews
-                  {filtersActive ? " - filters applied" : ""}
+                  {selectedMainLabel} · {selectedReviews.length.toLocaleString()} reviews
+                  {selectedSubcategoryLanguageLabel ? ` · ${selectedSubcategoryLanguageLabel} only` : ""}
+                  {filtersActive ? " · filters applied" : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2280,7 +2313,7 @@ function AnalysisResults({
                 >
                   {summaryLoading ? "Summarizing..." : subcategorySummary ? "Refresh Summary" : "Summarize"}
                 </Button>
-                <Button variant="secondary" onClick={() => setSelectedSubcategory(null)}>
+                <Button variant="secondary" onClick={clearSelectedSubcategory}>
                   Close
                 </Button>
               </div>
@@ -2510,10 +2543,10 @@ function AnalysisResults({
                                 return next;
                               })
                             }
-                            className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
-                            aria-label={isExpanded ? "Collapse review" : "Expand review"}
+                            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white/80 hover:border-white/20 hover:bg-white/10"
+                            aria-label={isExpanded ? "Read less" : "Read more"}
                           >
-                            {isExpanded ? "−" : "+"}
+                            {isExpanded ? "Read less" : "Read more"}
                           </button>
                         ) : null}
                       </div>
@@ -2522,22 +2555,24 @@ function AnalysisResults({
                 })}
               </div>
             )}
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       ) : null}
 
       {selectedTrendWeek ? (
-        <div
-          className="fixed top-0 left-0 right-0 bottom-0 z-[9998] bg-black/60 backdrop-blur-md overflow-y-auto"
-          onClick={() => setSelectedTrendWeek(null)}
-          style={{ WebkitBackdropFilter: 'blur(12px)' }}
-        >
-          <div className="min-h-screen flex items-center justify-center p-4">
-            <div
-              className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8"
-              onClick={(event) => event.stopPropagation()}
-            >
+        <Portal>
+          <div
+            className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
+            onClick={() => setSelectedTrendWeek(null)}
+            style={{ WebkitBackdropFilter: 'blur(12px)' }}
+          >
+            <div className="min-h-screen flex items-center justify-center p-4">
+              <div
+                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                onClick={(event) => event.stopPropagation()}
+              >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-white">Week of {formatTrendLabel(selectedTrendWeek.start)}</h3>
@@ -2702,10 +2737,10 @@ function AnalysisResults({
                                   return next;
                                 })
                               }
-                              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
-                              aria-label={isExpanded ? "Collapse review" : "Expand review"}
+                              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white/80 hover:border-white/20 hover:bg-white/10"
+                              aria-label={isExpanded ? "Read less" : "Read more"}
                             >
-                              {isExpanded ? "−" : "+"}
+                              {isExpanded ? "Read less" : "Read more"}
                             </button>
                           ) : null}
                         </div>
@@ -2714,22 +2749,24 @@ function AnalysisResults({
                   })}
                 </div>
               )}
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       ) : null}
 
       {selectedSegment ? (
-        <div
-          className="fixed top-0 left-0 right-0 bottom-0 z-[9997] bg-black/60 backdrop-blur-md overflow-y-auto"
-          onClick={() => setSelectedSegment(null)}
-          style={{ WebkitBackdropFilter: 'blur(12px)' }}
-        >
-          <div className="min-h-screen flex items-center justify-center p-4">
-            <div
-              className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8"
-              onClick={(event) => event.stopPropagation()}
-            >
+        <Portal>
+          <div
+            className="fixed inset-0 z-[9997] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
+            onClick={() => setSelectedSegment(null)}
+            style={{ WebkitBackdropFilter: 'blur(12px)' }}
+          >
+            <div className="min-h-screen flex items-center justify-center p-4">
+              <div
+                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                onClick={(event) => event.stopPropagation()}
+              >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-white">
@@ -2898,10 +2935,10 @@ function AnalysisResults({
                                   return next;
                                 })
                               }
-                              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
-                              aria-label={isExpanded ? "Collapse review" : "Expand review"}
+                              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white/80 hover:border-white/20 hover:bg-white/10"
+                              aria-label={isExpanded ? "Read less" : "Read more"}
                             >
-                              {isExpanded ? "−" : "+"}
+                              {isExpanded ? "Read less" : "Read more"}
                             </button>
                           ) : null}
                         </div>
@@ -2910,9 +2947,10 @@ function AnalysisResults({
                   })}
                 </div>
               )}
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       ) : null}
     </div>
   );
@@ -2990,13 +3028,20 @@ function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {
     return withRequest / segment.length;
   };
 
-  const minutesFor = (review: ReviewRow) => Number(review.author_playtime_forever ?? 0);
+  const minutesFor = (review: ReviewRow) => {
+    const value = review.author_playtime_forever;
+    if (typeof value === "number") return value;
+    if (typeof value === "string") return parseFloat(value) || 0;
+    return 0;
+  };
   const recentMinutesFor = (review: ReviewRow) => Number(review.author_playtime_last_two_weeks ?? 0);
+  const gamesOwnedFor = (review: ReviewRow) => Number(review.author_num_games_owned ?? 0);
 
-  const newcomers = reviews.filter((review) => minutesFor(review) < 120);
-  const casual = reviews.filter((review) => minutesFor(review) >= 120 && minutesFor(review) < 1200);
-  const experienced = reviews.filter((review) => minutesFor(review) >= 1200 && minutesFor(review) < 6000);
-  const veterans = reviews.filter((review) => minutesFor(review) >= 6000);
+  // Experience level based on Steam library size
+  const newcomers = reviews.filter((review) => gamesOwnedFor(review) < 10);
+  const casual = reviews.filter((review) => gamesOwnedFor(review) >= 10 && gamesOwnedFor(review) < 50);
+  const experienced = reviews.filter((review) => gamesOwnedFor(review) >= 50 && gamesOwnedFor(review) < 150);
+  const veterans = reviews.filter((review) => gamesOwnedFor(review) >= 150);
 
   const experience_level = {
     newcomers: {

@@ -7,10 +7,10 @@ export default function DownloadPage() {
     <div className="container">
       <span className="eyebrow">Download</span>
       <h1 className="title" style={{ fontSize: "clamp(34px, 4.1vw, 54px)" }}>
-        Get the SentiNext desktop app
+        Get the SENTINEXT desktop app
       </h1>
       <p className="lead">
-        Install SentiNext locally and bring your own model provider (OpenAI or Ollama). Your insights database stays on
+        Install SENTINEXT locally and bring your own model provider (OpenAI or Ollama). Your insights database stays on
         your machine.
       </p>
 

@@ -30,7 +30,7 @@ const FEATURE_CARDS: Array<{ title: string; text: string }> = [
 const FAQ: Array<{ q: string; a: string }> = [
   {
     q: "Do you store my API key?",
-    a: "The desktop app stores your settings locally. OpenAI keys are stored in the OS keychain; nothing is sent to SentiNext servers.",
+    a: "The desktop app stores your settings locally. OpenAI keys are stored in the OS keychain; nothing is sent to SENTINEXT servers.",
   },
   {
     q: "Can I use it offline?",
@@ -57,7 +57,7 @@ export default function HomePage() {
             <span className="gradientText">decisions you can ship</span>.
           </h1>
           <p className="lead">
-            SentiNext is a local-first Steam review intelligence app. It classifies reviews into a consistent taxonomy,
+            SENTINEXT is a local-first Steam review intelligence app. It classifies reviews into a consistent taxonomy,
             surfaces issues and feature requests, and lets you chat with insights — with clickable sources.
           </p>
 
@@ -82,7 +82,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="heroMock" aria-label="SentiNext dashboard preview">
+        <div className="heroMock" aria-label="SENTINEXT dashboard preview">
           <div className="mockHeader">
             <div className="mockTitle">Dashboard · Cyberpunk 2077</div>
             <div className="mockPills" aria-label="Filters preview">
@@ -190,7 +190,7 @@ export default function HomePage() {
           <div>
             <h2 className="sectionTitle">Privacy and control</h2>
             <p className="sectionLead">
-              You own your data and your costs. SentiNext is built to run locally and stay predictable.
+              You own your data and your costs. SENTINEXT is built to run locally and stay predictable.
             </p>
           </div>
         </div>
@@ -216,7 +216,7 @@ export default function HomePage() {
         <div className="sectionHeader">
           <div>
             <h2 className="sectionTitle">FAQ</h2>
-            <p className="sectionLead">The most common questions from teams evaluating SentiNext.</p>
+            <p className="sectionLead">The most common questions from teams evaluating SENTINEXT.</p>
           </div>
         </div>
 

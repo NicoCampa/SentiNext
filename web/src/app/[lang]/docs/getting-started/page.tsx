@@ -49,7 +49,7 @@ export default async function GettingStartedPage({ params }: { params: Promise<{
                     <p>
                         {locale === 'it' ? 'Naviga verso la ' : 'Navigate to the '}
                         <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank" className="font-bold underline decoration-[#00F0FF]/30 hover:decoration-[#00F0FF]">
-                            SentiNext App Dashboard
+                            SENTINEXT App Dashboard
                         </Link>.
                     </p>
                 </StepSection>
@@ -61,8 +61,8 @@ export default async function GettingStartedPage({ params }: { params: Promise<{
                 >
                     <p>
                         {locale === 'it'
-                            ? "SentiNext usa l'autenticazione gestita da Clerk per la sessione e la separazione dei dati tra utenti."
-                            : "SentiNext uses Clerk-managed authentication for sessions and per-user data separation."}
+                            ? "SENTINEXT usa l'autenticazione gestita da Clerk per la sessione e la separazione dei dati tra utenti."
+                            : "SENTINEXT uses Clerk-managed authentication for sessions and per-user data separation."}
                     </p>
                 </StepSection>
 

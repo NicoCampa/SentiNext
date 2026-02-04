@@ -24,11 +24,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="shell">
           <header className="siteHeader">
             <div className="container headerInner">
-              <Link href="/" className="brand" aria-label="SentiNext home">
+              <Link href="/" className="brand" aria-label="SENTINEXT home">
                 <span className="brandMark" aria-hidden="true">
                   <span className="brandMarkInner" />
                 </span>
-                <span className="brandName">SentiNext</span>
+                <span className="brandName">SENTINEXT</span>
               </Link>
 
               <nav className="nav" aria-label="Primary">
@@ -53,7 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <footer className="siteFooter">
             <div className="container footerInner">
               <div className="footerMeta">
-                <p className="footerTitle">SentiNext</p>
+                <p className="footerTitle">SENTINEXT</p>
                 <p className="footerText">
                   Local-first Steam review intelligence for game teams. Data stays on your machine.
                 </p>
@@ -76,8 +76,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
             <div className="container footerFineprint">
-              SentiNext analyzes public Steam reviews. Not affiliated with Valve.{" "}
-              <span className="footerMuted">{"//"} {new Date().getFullYear()} SentiNext</span>
+              SENTINEXT analyzes public Steam reviews. Not affiliated with Valve.{" "}
+              <span className="footerMuted">{"//"} {new Date().getFullYear()} SENTINEXT</span>
             </div>
           </footer>
         </div>

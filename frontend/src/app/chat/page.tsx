@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, type ComponentPropsWithoutRef } from "react";
+import { useState, useRef, useEffect, useMemo, type ComponentPropsWithoutRef } from "react";
 import Link from "next/link";
 import {
   Chart as ChartJS,
@@ -34,12 +34,12 @@ import {
   authFetch,
   sendEnhancedChat,
   subscribeToChatStream,
-  fetchStarredGames,
   submitCitationFeedback,
   downloadChatSession,
   ChatCitationItem,
   EnhancedChatResponse,
 } from "@/lib/api";
+import { useStarredGames } from "@/contexts/StarredGamesContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
@@ -209,19 +209,21 @@ const CHART_BORDER_COLORS = [
 ];
 
 const SUGGESTED_PROMPTS = [
-  "What is the review count and recommendation rate?",
-  "What are the top issues by subcategory (with example reviews)?",
-  "Which feature requests show up most often?",
-  "What are the top praises players mention?",
+  "Give me the review count and recommendation rate overview.",
+  "Show the top issues by subcategory (with example reviews).",
+  "Show the top praises by subcategory.",
+  "What feature requests show up most often?",
   "Which review topics/subcategories are available?",
-  "How has sentiment changed over time?",
-  "Show a few reviews about performance or bugs.",
-  "How do the last 30 days compare to the previous 30 days by topic?",
+  "Show the recommendation rate trend over time.",
+  "Show stats for the subcategory technical/bugs.",
+  "Show example reviews about technical/performance.",
+  "Compare the last 30 days vs the previous 30 days for key topics.",
 ];
 
 const COMPARE_SUGGESTED_PROMPTS = [
-  "How do the two games compare on recommendation rate and key issues?",
-  "How do sentiment trends compare between the selected games?",
+  "Compare the two games on recommendation rate and key issues.",
+  "Compare recommendation rate trends between the two games.",
+  "Compare top issues between the two games.",
 ];
 
 function normalizeChartData(spec: ChartSpec): ChartSpec["data"] {
@@ -449,6 +451,7 @@ type StarredGame = {
 export default function ChatPage() {
   const { language, t } = useLanguage();
   const { silentRefresh: refreshCredits } = useCredits();
+  const { games: allStarredGames, loading: loadingGames } = useStarredGames();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -458,13 +461,24 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Game context state (Chat with Your Data)
-  const [starredGames, setStarredGames] = useState<StarredGame[]>([]);
+  // Filter to only games with analysis (insights not null)
+  const starredGames = useMemo(() => {
+    return allStarredGames
+      .filter((g) => g.insights !== null)
+      .map((g) => ({
+        app_id: g.app_id,
+        name: g.name,
+        metadata: g.metadata,
+        hasAnalysis: true,
+      }));
+  }, [allStarredGames]);
   const [selectedGames, setSelectedGames] = useState<number[]>([]);
   const [chatStatus, setChatStatus] = useState<string | null>(null);
-  const [loadingGames, setLoadingGames] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [promptNotice, setPromptNotice] = useState<string | null>(null);
+  const suggestedQueriesRef = useRef<HTMLDivElement>(null);
+  const prevSelectedCountRef = useRef(0);
 
   // Message feedback state: tracks which message indices user has voted on
   const [messageFeedback, setMessageFeedback] = useState<Record<number, boolean>>({});
@@ -497,30 +511,15 @@ export default function ChatPage() {
     }
   }, [selectedGames]);
 
-  // Load starred games on mount - only show games that have been analyzed
   useEffect(() => {
-    async function loadGames() {
-      setLoadingGames(true);
-      try {
-        const games = await fetchStarredGames();
-        // Filter to only games with analysis (insights not null)
-        const analyzedGames = games
-          .filter((g) => g.insights !== null)
-          .map((g) => ({
-            app_id: g.app_id,
-            name: g.name,
-            metadata: g.metadata,
-            hasAnalysis: true,
-          }));
-        setStarredGames(analyzedGames);
-      } catch (error) {
-        console.error("Failed to load starred games:", error);
-      } finally {
-        setLoadingGames(false);
-      }
+    const prevCount = prevSelectedCountRef.current;
+    if (selectedGames.length > prevCount && messages.length === 0) {
+      requestAnimationFrame(() => {
+        suggestedQueriesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
     }
-    loadGames();
-  }, []);
+    prevSelectedCountRef.current = selectedGames.length;
+  }, [selectedGames.length, messages.length]);
 
   // Load chat sessions on mount (start with a fresh chat view)
   useEffect(() => {
@@ -798,7 +797,7 @@ export default function ChatPage() {
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold">
-                <span className="bg-gradient-to-r from-sky-300 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+                <span className="text-white">
                   {t('chat.title')}
                 </span>
               </h1>
@@ -933,11 +932,6 @@ export default function ChatPage() {
                 <div className="w-full max-w-3xl space-y-6">
                   {/* Header */}
                   <div className="text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
-                      <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                      </svg>
-                    </div>
                     <h2 className="text-lg font-semibold text-white mb-1">
                       Select Games to Chat About
                     </h2>
@@ -951,7 +945,7 @@ export default function ChatPage() {
                   {/* Game Grid */}
                   {loadingGames ? (
                     <div className="flex items-center justify-center py-8">
-                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
+                      <div className="h-8 w-8 animate-spin spinner-blue" />
                     </div>
                   ) : starredGames.length === 0 ? (
                     <div className="text-center py-8">
@@ -1019,25 +1013,23 @@ export default function ChatPage() {
 
                   {/* Suggested Prompts */}
                   {selectedGames.length > 0 && (
-                    <div className="border-t border-white/10 pt-4">
+                    <div ref={suggestedQueriesRef} className="border-t border-white/10 pt-4">
                       <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3 text-center">
                         Suggested Questions
                       </p>
-                      <div className="max-h-28 overflow-y-auto pr-1 scrollbar-hide">
-                        <div className="flex flex-wrap justify-center gap-2">
-                          {(selectedGames.length > 1
-                            ? [...SUGGESTED_PROMPTS, ...COMPARE_SUGGESTED_PROMPTS]
-                            : SUGGESTED_PROMPTS
-                          ).map((prompt) => (
-                            <button
-                              key={prompt}
-                              onClick={() => sendMessage(prompt)}
-                              className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
-                            >
-                              {prompt}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {(selectedGames.length > 1
+                          ? [...SUGGESTED_PROMPTS, ...COMPARE_SUGGESTED_PROMPTS]
+                          : SUGGESTED_PROMPTS
+                        ).map((prompt) => (
+                          <button
+                            key={prompt}
+                            onClick={() => sendMessage(prompt)}
+                            className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
                       </div>
                       <p className="text-xs text-slate-500 mt-3 text-center">
                         Pick one to start, or type your own question below.

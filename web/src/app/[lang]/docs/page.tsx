@@ -47,8 +47,8 @@ export default async function DocsIndex({ params }: { params: Promise<{ lang: st
                 <div className="prose prose-invert max-w-none space-y-6">
                     <p>
                         {lang === 'it'
-                            ? "SentiNext analizza le recensioni Steam pubbliche del tuo gioco e le trasforma in insight strutturati: tassonomia coerente, citazioni di evidenza e metriche utili per decidere cosa fare dopo."
-                            : "SentiNext analyzes public Steam reviews for your game and turns them into structured insights: a consistent taxonomy, evidence quotes, and metrics to decide what to do next."}
+                            ? "SENTINEXT analizza le recensioni Steam pubbliche del tuo gioco e le trasforma in insight strutturati: tassonomia coerente, citazioni di evidenza e metriche utili per decidere cosa fare dopo."
+                            : "SENTINEXT analyzes public Steam reviews for your game and turns them into structured insights: a consistent taxonomy, evidence quotes, and metrics to decide what to do next."}
                     </p>
                     <p>
                         {lang === 'it'

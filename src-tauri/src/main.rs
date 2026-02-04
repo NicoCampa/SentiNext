@@ -259,7 +259,7 @@ fn main() {
             );
 
             let window = WindowBuilder::new(app, "main", WindowUrl::App("index.html".into()))
-                .title("SentiNext")
+                .title("SENTINEXT")
                 .inner_size(1280.0, 860.0)
                 .min_inner_size(1024.0, 700.0)
                 .visible(false)

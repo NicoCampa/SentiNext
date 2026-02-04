@@ -1936,8 +1936,10 @@ def _execute_compare_sentiment_trend(params: Dict[str, Any], context: "AgentCont
                 app_id=app_id_2
             )
 
-        trend_1 = (result_1.get("insights", {}).get("sentiment_trend") or [])[:weeks]
-        trend_2 = (result_2.get("insights", {}).get("sentiment_trend") or [])[:weeks]
+        # The trend data is stored under "trend" (not "sentiment_trend")
+        # with fields: period, recommendation_rate, avg_compound, reviews
+        trend_1 = (result_1.get("insights", {}).get("trend") or [])[:weeks]
+        trend_2 = (result_2.get("insights", {}).get("trend") or [])[:weeks]
 
         if not trend_1 or not trend_2:
             return _make_error(
@@ -1946,9 +1948,9 @@ def _execute_compare_sentiment_trend(params: Dict[str, Any], context: "AgentCont
                 retryable=False
             )
 
-        # Map by week label for alignment
-        map_1 = {t.get("week"): t for t in trend_1 if t.get("week")}
-        map_2 = {t.get("week"): t for t in trend_2 if t.get("week")}
+        # Map by period label for alignment
+        map_1 = {t.get("period"): t for t in trend_1 if t.get("period")}
+        map_2 = {t.get("period"): t for t in trend_2 if t.get("period")}
         weeks_aligned = [w for w in map_1.keys() if w in map_2]
         weeks_aligned = weeks_aligned[:weeks]
 
@@ -1968,8 +1970,8 @@ def _execute_compare_sentiment_trend(params: Dict[str, Any], context: "AgentCont
                 "week": week,
                 "game_1_rate": rate_1,
                 "game_2_rate": rate_2,
-                "game_1_count": t1.get("count", 0),
-                "game_2_count": t2.get("count", 0),
+                "game_1_count": t1.get("reviews", 0),
+                "game_2_count": t2.get("reviews", 0),
             })
 
         avg_rate_1 = (sum_rate_1 / count) if count else 0.0
@@ -2012,11 +2014,13 @@ def _execute_get_sentiment_trend(params: Dict[str, Any], context: "AgentContext"
         )
 
     weeks = params.get("weeks", 12)
+    logger.info(f"get_sentiment_trend: app_id={app_id}, weeks={weeks}")
 
     try:
         # Load analysis result for sentiment trend
         result = storage.load_analysis_result(context.user_id, int(app_id))
         if not result or not result.get("insights"):
+            logger.warning(f"get_sentiment_trend: No analysis for app_id={app_id}")
             return _make_error(
                 ToolErrorCode.NO_ANALYSIS,
                 "No analysis available for this game. Run an analysis first.",
@@ -2025,9 +2029,13 @@ def _execute_get_sentiment_trend(params: Dict[str, Any], context: "AgentContext"
             )
 
         insights = result.get("insights", {})
-        sentiment_trend = insights.get("sentiment_trend", [])
+        # The trend data is stored under "trend" (not "sentiment_trend")
+        # with fields: period, recommendation_rate, avg_compound, reviews
+        sentiment_trend = insights.get("trend", [])
+        logger.info(f"get_sentiment_trend: Found {len(sentiment_trend)} trend entries")
 
         if not sentiment_trend:
+            logger.warning(f"get_sentiment_trend: No trend data for app_id={app_id}")
             return _make_error(
                 ToolErrorCode.DATA_NOT_FOUND,
                 "No sentiment trend data available. The game may not have enough reviews over time.",
@@ -2041,9 +2049,9 @@ def _execute_get_sentiment_trend(params: Dict[str, Any], context: "AgentContext"
         return ToolResult(data={
             "trend": [
                 {
-                    "week": entry.get("week"),
+                    "week": entry.get("period"),
                     "recommendation_rate": entry.get("recommendation_rate", 0),
-                    "count": entry.get("count", 0),
+                    "count": entry.get("reviews", 0),
                 }
                 for entry in trend_data
             ]

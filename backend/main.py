@@ -169,7 +169,7 @@ def _configure_file_logging() -> None:
 
 _configure_file_logging()
 
-app = FastAPI(title="SentiNext API", version="0.1.0")
+app = FastAPI(title="SENTINEXT API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -2266,6 +2266,37 @@ def send_admin_support_reply(
         raise HTTPException(status_code=500, detail="Failed to send support reply.") from exc
 
 
+class UnreadCountResponse(BaseModel):
+    """Response for unread message count."""
+    unread_count: int
+
+
+@app.get("/support/unread", response_model=UnreadCountResponse)
+def get_support_unread_count(
+    user_id: str = Depends(require_user_id),
+) -> UnreadCountResponse:
+    """Get count of unread admin replies for the current user."""
+    try:
+        count = storage.get_user_unread_support_count(user_id)
+        return UnreadCountResponse(unread_count=count)
+    except Exception as exc:
+        logger.exception("Failed to get unread count: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to get unread count.") from exc
+
+
+@app.get("/admin/support/unread", response_model=UnreadCountResponse)
+def get_admin_support_unread_count(
+    _: None = Depends(require_admin),
+) -> UnreadCountResponse:
+    """Get total count of unread user messages across all threads (admin only)."""
+    try:
+        count = storage.get_admin_total_unread_support_count()
+        return UnreadCountResponse(unread_count=count)
+    except Exception as exc:
+        logger.exception("Failed to get admin unread count: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to get unread count.") from exc
+
+
 @app.get("/admin/chat-sessions", response_model=List[AdminChatSession])
 def get_admin_chat_sessions(
     limit: int = 100,
@@ -2789,6 +2820,7 @@ def generate_executive_summary(
     year: int,
     month: int,
     format: str = "pdf",
+    include_llm_summary: bool = True,
     user_id: str = Depends(require_user_id),
 ):
     """Generate executive summary report for a game in a specific month.
@@ -2797,6 +2829,7 @@ def generate_executive_summary(
     - year: 2024
     - month: 1 (January)
     - format: "pdf" (default) or "html" (preview)
+    - include_llm_summary: true/false (default true)
 
     Returns: StreamingResponse with PDF
     """
@@ -2848,8 +2881,28 @@ def generate_executive_summary(
         logger.error(f"Failed to calculate insights: {e}")
         raise HTTPException(status_code=500, detail="Failed to calculate insights") from e
 
-    # Generate report
     period = datetime(year, month, 1).strftime("%B %Y")
+
+    # Optional LLM executive summary (generated on report download)
+    if include_llm_summary and format in {"pdf", "html"}:
+        try:
+            summarize_cost = credits.CREDIT_COSTS["summarize"]
+            can_proceed, credit_message, _credit_status = credits.check_credits_available(user_id, summarize_cost)
+            if can_proceed:
+                with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="report_summary"):
+                    llm_summary = llm.summarize_monthly_report(
+                        game_name=game_name,
+                        period=period,
+                        insights=insights,
+                    )
+                llm_summary["generated_at"] = datetime.utcnow().isoformat() + "Z"
+                insights = {**insights, "llm_summary": llm_summary}
+            else:
+                logger.info("Skipping report summary (credits unavailable): %s", credit_message)
+        except Exception as exc:
+            logger.exception("Failed to generate report summary: %s", exc)
+
+    # Generate report
 
     # Format filename for downloads
     safe_game_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in game_name)

@@ -11,7 +11,7 @@ export function Logo({ className, textClassName }: { className?: string, textCla
                 <div className="absolute -bottom-1 -right-1 w-2 h-2 border-b border-r border-[#00F0FF]" />
             </div>
             <span className={cn("font-bold tracking-widest text-xl uppercase text-foreground group-hover:text-[#00F0FF] transition-colors", textClassName)}>
-                SentiNext
+                SENTINEXT
             </span>
         </div>
     );

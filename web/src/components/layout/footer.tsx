@@ -37,7 +37,7 @@ const labels: Record<SupportedLocale, FooterLabels> = {
             privacy: "Privacy",
             terms: "Termini",
             desc: "Intelligence delle recensioni Steam per team di gioco.",
-            valve: "SentiNext è uno strumento indipendente che analizza recensioni Steam pubbliche tramite le API di Steam. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
+            valve: "SENTINEXT è uno strumento indipendente che analizza recensioni Steam pubbliche tramite le API di Steam. Non siamo approvati, affiliati o supportati da Valve Corporation. Steam e il logo Steam sono marchi di Valve Corporation."
         },
         fr: {
             product: "Produit",
@@ -53,7 +53,7 @@ const labels: Record<SupportedLocale, FooterLabels> = {
             privacy: "Confidentialité",
             terms: "Termes",
             desc: "Intelligence des avis Steam pour équipes de jeu.",
-            valve: "SentiNext est un outil indépendant qui analyse des avis Steam publics via les API de Steam. Nous ne sommes pas approuvés, affiliés ou soutenus par Valve Corporation. Steam et le logo Steam sont des marques de Valve Corporation."
+            valve: "SENTINEXT est un outil indépendant qui analyse des avis Steam publics via les API de Steam. Nous ne sommes pas approuvés, affiliés ou soutenus par Valve Corporation. Steam et le logo Steam sont des marques de Valve Corporation."
         },
         de: {
             product: "Produkt",
@@ -69,7 +69,7 @@ const labels: Record<SupportedLocale, FooterLabels> = {
             privacy: "Datenschutz",
             terms: "Bedingungen",
             desc: "Steam-Review-Intelligence für Game-Teams.",
-            valve: "SentiNext ist ein unabhängiges Tool, das öffentliche Steam-Reviews über Steam-APIs analysiert. Wir sind nicht von Valve Corporation unterstützt oder mit ihr verbunden. Steam und das Steam-Logo sind Marken der Valve Corporation."
+            valve: "SENTINEXT ist ein unabhängiges Tool, das öffentliche Steam-Reviews über Steam-APIs analysiert. Wir sind nicht von Valve Corporation unterstützt oder mit ihr verbunden. Steam und das Steam-Logo sind Marken der Valve Corporation."
         },
         en: {
             product: "Product",
@@ -85,7 +85,7 @@ const labels: Record<SupportedLocale, FooterLabels> = {
             privacy: "Privacy",
             terms: "Terms",
             desc: "Steam review intelligence for game teams.",
-            valve: "SentiNext is an independent tool that analyzes public Steam reviews via Steam APIs. We are not endorsed by, affiliated with, or supported by Valve Corporation. Steam and the Steam logo are trademarks of Valve Corporation."
+            valve: "SENTINEXT is an independent tool that analyzes public Steam reviews via Steam APIs. We are not endorsed by, affiliated with, or supported by Valve Corporation. Steam and the Steam logo are trademarks of Valve Corporation."
         }
 };
 
@@ -151,7 +151,7 @@ export function Footer({ lang }: { lang: SupportedLocale }) {
 
                 <div className="mt-16 border-t border-[#00F0FF]/10 pt-10 flex flex-col md:flex-row justify-between items-center gap-6">
                     <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground opacity-50">
-                        © {new Date().getFullYear()} SentiNext. Steam Review Intelligence. Based in Berlin, EU.
+                        © {new Date().getFullYear()} SENTINEXT. Steam Review Intelligence. Based in Berlin, EU.
                     </p>
                     <div className="flex gap-8">
                         <Link href={`/${lang}/impressum`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF]">{l.impressum}</Link>

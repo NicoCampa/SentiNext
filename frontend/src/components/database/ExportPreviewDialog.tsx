@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import type { DatabaseExportCount } from '@/lib/api';
+import { Portal } from '@/components/Portal';
 
 interface ExportPreviewDialogProps {
   isOpen: boolean;
@@ -49,14 +50,15 @@ export function ExportPreviewDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div
-        className="absolute inset-0"
-        onClick={onClose}
-        role="button"
-        tabIndex={-1}
-      />
-      <Card variant="glass" className="relative z-10 w-full max-w-lg p-6">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+        <div
+          className="absolute inset-0"
+          onClick={onClose}
+          role="button"
+          tabIndex={-1}
+        />
+        <Card variant="glass" className="relative z-10 w-full max-w-lg p-6">
         <div className="flex items-start justify-between border-b border-white/10 pb-4">
           <div>
             <h2 className="text-lg font-semibold text-white">Export Preview</h2>
@@ -75,7 +77,7 @@ export function ExportPreviewDialog({
 
         {loading ? (
           <div className="py-8 text-center">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-700 border-t-sky-400"></div>
+            <div className="inline-block h-8 w-8 animate-spin spinner-blue"></div>
             <p className="mt-3 text-sm text-slate-400">Loading preview...</p>
           </div>
         ) : previewData ? (
@@ -156,7 +158,7 @@ export function ExportPreviewDialog({
             {exporting ? (
               <div className="mt-6 rounded-xl border border-sky-500/50 bg-sky-500/10 p-4">
                 <div className="flex items-center gap-3">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-sky-300 border-t-transparent"></div>
+                  <div className="h-5 w-5 animate-spin spinner-blue-sm"></div>
                   <div>
                     <p className="text-sm font-medium text-sky-200">Preparing export...</p>
                     <p className="text-xs text-sky-300/70">This may take a moment for large datasets</p>
@@ -188,7 +190,8 @@ export function ExportPreviewDialog({
             <p className="text-sm text-rose-400">Failed to load export preview</p>
           </div>
         )}
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </Portal>
   );
 }
