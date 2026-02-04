@@ -176,7 +176,7 @@ ACCEPTED_PROMPT_VERSIONS = {ACTIVE_PROMPT_VERSION, PROMPT_VERSION_V1}
 
 # Batch size configuration (lower = faster individual responses, higher = fewer API calls)
 # Gemini works well with 3-5 reviews per batch
-BATCH_SIZE = int(os.getenv("SENTINEXT_BATCH_SIZE", "3"))
+BATCH_SIZE = int(os.getenv("SENTINEXT_BATCH_SIZE", "5"))
 
 MAX_REVIEW_CHARS = 3000
 MIN_REVIEW_WORDS = 2
@@ -1952,25 +1952,36 @@ def ensure_review_labels(
                 batch = future_to_batch[future]
                 try:
                     batch_labels, model_used = future.result()
+                    batch_label_items = []  # Collect for bulk write
+
                     for item in batch:
                         review_id = str(item["review_id"])
                         review_hash = str(item["review_hash"])
                         payload = batch_labels[review_id]
                         payload["_label_source"] = "llm"
                         payload["_label_model"] = model_used
-                        if cache_enabled:
-                            storage.upsert_review_label(
-                                app_id,
-                                review_id,
-                                review_hash,
-                                payload,
-                                model_used,
-                                ACTIVE_PROMPT_VERSION,
-                            )
+
+                        # Collect for bulk write instead of individual writes
+                        batch_label_items.append({
+                            "app_id": app_id,
+                            "review_id": review_id,
+                            "review_hash": review_hash,
+                            "payload": payload,
+                            "model": model_used,
+                            "prompt_version": ACTIVE_PROMPT_VERSION,
+                        })
+
                         results[review_id] = payload
                         processed_count += 1
-                        if progress_callback is not None:
-                            progress_callback(processed_count, total_reviews)
+
+                    # Bulk write all labels for this batch (single transaction)
+                    if cache_enabled and batch_label_items:
+                        storage.bulk_upsert_review_labels(batch_label_items)
+
+                    # Update progress ONCE per batch (not per review)
+                    if progress_callback is not None:
+                        progress_callback(processed_count, total_reviews)
+
                 except Exception as exc:
                     logger.error(f"Batch processing failed: {exc}")
                     raise

@@ -37,6 +37,10 @@ function getApiBase(): string {
   if (process.env.NEXT_PUBLIC_API_BASE_URL) {
     return normalizeBase(process.env.NEXT_PUBLIC_API_BASE_URL);
   }
+  // Dev mode fallback: when running on port 3000 (Next.js dev), use backend on 8000
+  if (typeof window !== "undefined" && window.location.port === "3000") {
+    return "http://localhost:8000";
+  }
   // Local app default: UI served by backend, API mounted under /api.
   return "/api";
 }
@@ -156,12 +160,12 @@ export interface ProgressStreamEvent {
   active?: boolean;
   status?: string;
   error?: string;
-  phase?: "fetching" | "classifying" | "idle";
+  phase?: "fetching" | "classifying" | "building_insights" | "idle";
   fetched_count?: number;
 }
 
 export interface ProgressStreamCallbacks {
-  onProgress?: (processed: number, total: number, active: boolean, phase?: "fetching" | "classifying" | "idle", fetchedCount?: number) => void;
+  onProgress?: (processed: number, total: number, active: boolean, phase?: "fetching" | "classifying" | "building_insights" | "idle", fetchedCount?: number) => void;
   onCompleted?: () => void;
   onError?: (error: string) => void;
   onTimeout?: () => void;

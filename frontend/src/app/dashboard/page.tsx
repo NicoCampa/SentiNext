@@ -981,6 +981,7 @@ function AnalysisResults({
   error?: string | null;
 }) {
   const { t, language: userLanguage } = useLanguage();
+  const { silentRefresh: refreshCredits } = useCredits();
   const router = useRouter();
   const insights = analysis.insights ?? null;
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
@@ -1369,6 +1370,8 @@ function AnalysisResults({
         })),
       });
       setSubcategorySummary(result);
+      // Refresh credits after consuming them
+      refreshCredits();
     } catch (err) {
       setSummaryError((err as Error).message || "Failed to generate summary");
     } finally {
@@ -2155,6 +2158,8 @@ function AnalysisResults({
                         next.set(reviewKey, { text: result.translated_text, loading: false, show: true });
                         return next;
                       });
+                      // Refresh credits after translation
+                      refreshCredits();
                     } catch (error) {
                       console.error('Translation failed:', error);
                       setTranslations((prev) => {

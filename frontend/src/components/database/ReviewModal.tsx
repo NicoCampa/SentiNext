@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { formatTaxonomyLabel } from '@/lib/taxonomyLabels';
 import { translateText } from '@/lib/api';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useCredits } from '@/contexts/CreditsContext';
 import type { DatabaseReviewItem } from '@/types';
 
 // Map Steam language codes to our app language codes
@@ -155,6 +156,7 @@ export function ReviewModal({
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
   const { language: userLanguage } = useLanguage();
+  const { silentRefresh: refreshCredits } = useCredits();
 
   // Check if the review is in a different language than the user's preference
   const reviewLangCode = STEAM_TO_APP_LANGUAGE[review.language?.toLowerCase() || ''] || review.language?.toLowerCase();
@@ -188,6 +190,8 @@ export function ReviewModal({
       });
       setTranslatedText(result.translated_text);
       setShowTranslation(true);
+      // Refresh credits after translation
+      refreshCredits();
     } catch (error) {
       console.error('Translation failed:', error);
       setCopyToast('Translation failed. Please try again.');

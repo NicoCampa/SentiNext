@@ -43,6 +43,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCredits } from "@/contexts/CreditsContext";
 import { SourceReviewsWidget } from "@/components/chat/SourceReviewsWidget";
 
 const markdownComponents = {
@@ -437,6 +438,7 @@ type StarredGame = {
 
 export default function ChatPage() {
   const { language, t } = useLanguage();
+  const { silentRefresh: refreshCredits } = useCredits();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -730,6 +732,9 @@ export default function ChatPage() {
           setSelectedGames(prev => [...prev, game.app_id].slice(-2));
         }
       }
+
+      // Refresh credits after chat (chat consumes credits)
+      refreshCredits();
 
       // Reload sessions to update sidebar
       reloadSessions();

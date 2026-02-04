@@ -1119,6 +1119,9 @@ def _run_analysis_job(
             storage.save_analysis_result(user_id, app_id, metadata.dict(), None, [], status="completed", run_id=run_id, snapshot_hash=snapshot_hash, context_hash=context_hash)
             return
 
+        # Update phase to building_insights so frontend shows appropriate status
+        storage.update_progress_phase(user_id, app_id, "building_insights")
+
         insights = prepare_insights(df)
 
         export_columns = [col for col in REVIEW_EXPORT_COLUMNS if col in df.columns]

@@ -9,6 +9,18 @@ const nextConfig = {
   },
 };
 
+// In dev mode, proxy /api/* requests to the backend
+if (isDev) {
+  nextConfig.rewrites = async () => {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://localhost:8000/:path*",
+      },
+    ];
+  };
+}
+
 if (!isDev && ["1", "true", "yes"].includes(shouldExport)) {
   // Export static assets so Tauri can bundle them for desktop builds.
   nextConfig.output = "export";

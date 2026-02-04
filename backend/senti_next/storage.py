@@ -556,6 +556,48 @@ def upsert_review_label(
         conn.commit()
 
 
+def bulk_upsert_review_labels(items: List[Dict[str, Any]]) -> None:
+    """Bulk insert or update review labels in a single transaction.
+
+    Args:
+        items: List of dicts with keys: app_id, review_id, review_hash,
+               payload, model, prompt_version
+    """
+    if not items:
+        return
+
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        for item in items:
+            serialized = json.dumps(item["payload"], separators=(",", ":"))
+            conn.execute(
+                text("""
+                    INSERT INTO review_labels (review_id, app_id, model, prompt_version, review_hash, payload, updated_at)
+                    VALUES (:review_id, :app_id, :model, :prompt_version, :review_hash, :payload, :updated_at)
+                    ON CONFLICT(app_id, review_id) DO UPDATE SET
+                        model = EXCLUDED.model,
+                        prompt_version = EXCLUDED.prompt_version,
+                        review_hash = EXCLUDED.review_hash,
+                        payload = EXCLUDED.payload,
+                        updated_at = EXCLUDED.updated_at
+                """),
+                {
+                    "review_id": item["review_id"],
+                    "app_id": item["app_id"],
+                    "model": item["model"],
+                    "prompt_version": item["prompt_version"],
+                    "review_hash": item["review_hash"],
+                    "payload": serialized,
+                    "updated_at": timestamp,
+                },
+            )
+        # Single commit for all items in the batch
+        conn.commit()
+
+
 def load_review_labels(app_id: int) -> Dict[str, Dict]:
     """Load all review labels for an app."""
     from . import db as db_module
@@ -675,6 +717,27 @@ def clear_progress(user_id: str, app_id: int) -> None:
         conn.execute(
             text("DELETE FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
             {"user_id": user_id, "app_id": app_id},
+        )
+        conn.commit()
+
+
+def update_progress_phase(user_id: str, app_id: int, phase: str) -> None:
+    """Update only the phase of progress tracking.
+
+    Used to signal phase transitions like 'building_insights' without changing
+    the processed/total counters.
+    """
+    from . import db as db_module
+
+    timestamp = datetime.now(timezone.utc)
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                UPDATE progress
+                SET phase = :phase, updated_at = :updated_at
+                WHERE user_id = :user_id AND app_id = :app_id
+            """),
+            {"phase": phase, "updated_at": timestamp, "user_id": user_id, "app_id": app_id},
         )
         conn.commit()
 

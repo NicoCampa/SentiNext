@@ -108,10 +108,11 @@ export function AnalysisWidget() {
                                 ? `Fetching reviews from Steam... (${fetchedCount})`
                                 : 'Fetching reviews from Steam...';
                             }
+                            if (phase === 'building_insights') {
+                              return 'Building insights...';
+                            }
                             if (phase === 'classifying') {
-                              return processed >= total && total > 0
-                                ? 'Building insights...'
-                                : 'Classifying reviews with AI...';
+                              return 'Classifying reviews with AI...';
                             }
                             // When phase is 'idle' or undefined with no meaningful data,
                             // show finalizing to avoid confusion (completion event is imminent)

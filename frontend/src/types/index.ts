@@ -389,7 +389,7 @@ export interface ProgressStatus {
   processed: number;
   updated_at: string | null;
   active: boolean;
-  phase?: 'fetching' | 'classifying' | 'idle';
+  phase?: 'fetching' | 'classifying' | 'building_insights' | 'idle';
   fetched_count?: number;
 }
 
