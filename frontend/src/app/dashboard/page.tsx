@@ -346,14 +346,15 @@ function formatWeekRangeLabel(start: Date): string {
 
 function buildTrendSeriesFromReviews(reviews: ReviewRow[]): TrendSeriesPoint[] {
   const buckets = new Map<string, { date: Date; total: number; recommended: number }>();
-  let minDate: Date | null = null;
-  let maxDate: Date | null = null;
+  let minTime: number | null = null;
+  let maxTime: number | null = null;
   reviews.forEach((review) => {
     const created = extractReviewDate(review);
     if (!created) return;
     const weekStart = startOfWeek(created);
-    if (!minDate || weekStart < minDate) minDate = weekStart;
-    if (!maxDate || weekStart > maxDate) maxDate = weekStart;
+    const weekTime = weekStart.getTime();
+    if (minTime === null || weekTime < minTime) minTime = weekTime;
+    if (maxTime === null || weekTime > maxTime) maxTime = weekTime;
     const key = weekStart.toISOString().slice(0, 10);
     const bucket = buckets.get(key) || { date: weekStart, total: 0, recommended: 0 };
     bucket.total += 1;
@@ -361,11 +362,10 @@ function buildTrendSeriesFromReviews(reviews: ReviewRow[]): TrendSeriesPoint[] {
     buckets.set(key, bucket);
   });
 
-  if (!minDate || !maxDate) return [];
+  if (minTime === null || maxTime === null) return [];
 
   const series: TrendSeriesPoint[] = [];
-  const cursor = new Date(minDate);
-  const maxTime = maxDate.getTime();
+  const cursor = new Date(minTime);
   while (cursor.getTime() <= maxTime) {
     const key = cursor.toISOString().slice(0, 10);
     const bucket = buckets.get(key);
@@ -401,8 +401,8 @@ function normalizeTrendSeries(trend: TrendPoint[] | undefined): TrendSeriesPoint
   if (parsedPoints.length === 0) return [];
 
   parsedPoints.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const start = startOfWeek(parsedPoints[0].date as Date);
-  const end = startOfWeek(parsedPoints[parsedPoints.length - 1].date as Date);
+  const startTime = startOfWeek(parsedPoints[0].date as Date).getTime();
+  const endTime = startOfWeek(parsedPoints[parsedPoints.length - 1].date as Date).getTime();
   const byDate = new Map<string, Omit<TrendSeriesPoint, "label"> & { label?: string }>();
   parsedPoints.forEach((point) => {
     const date = startOfWeek(point.date as Date);
@@ -416,8 +416,7 @@ function normalizeTrendSeries(trend: TrendPoint[] | undefined): TrendSeriesPoint
   });
 
   const series: TrendSeriesPoint[] = [];
-  const cursor = new Date(start);
-  const endTime = end.getTime();
+  const cursor = new Date(startTime);
   while (cursor.getTime() <= endTime) {
     const key = cursor.toISOString().slice(0, 10);
     const point = byDate.get(key);

@@ -326,84 +326,127 @@
       color: var(--slate-400);
     }
 
-    /* Category Visualization */
-    .taxonomy-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1.5rem;
-      margin-top: 3rem;
-    }
-
-    .category-section {
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(0, 255, 255, 0.2);
-      border-radius: 12px;
-      padding: 1.5rem;
-      backdrop-filter: blur(10px);
+    /* Category Visualization - Crowded Style */
+    .taxonomy-container {
+      margin-top: 2rem;
       opacity: 0;
       animation: fade-slide-up 0.6s ease forwards;
-      transition: all 0.3s ease;
+      animation-delay: 0.2s;
     }
 
-    .category-section:hover {
-      border-color: var(--cyan);
-      box-shadow: 0 8px 24px rgba(0, 255, 255, 0.15);
-      transform: translateY(-2px);
+    .category-legend {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
     }
 
-    .category-section:nth-child(1) { animation-delay: 0.1s; }
-    .category-section:nth-child(2) { animation-delay: 0.2s; }
-    .category-section:nth-child(3) { animation-delay: 0.3s; }
-    .category-section:nth-child(4) { animation-delay: 0.4s; }
-    .category-section:nth-child(5) { animation-delay: 0.5s; }
-    .category-section:nth-child(6) { animation-delay: 0.6s; }
-
-    .category-header {
+    .legend-item {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 1rem;
-      padding-bottom: 0.75rem;
-      border-bottom: 1px solid rgba(0, 255, 255, 0.1);
-    }
-
-    .category-icon {
-      font-size: 1.5rem;
-    }
-
-    .category-title {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--cyan);
+      gap: 0.5rem;
+      font-size: 0.7rem;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin: 0;
+      letter-spacing: 0.05em;
     }
 
-    .subcategories {
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .subcategories-cloud {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
+      justify-content: center;
+      gap: 0.35rem;
+      line-height: 1.4;
     }
 
     .subcategory-tag {
       display: inline-block;
-      padding: 0.35rem 0.75rem;
-      background: rgba(0, 255, 255, 0.05);
-      border: 1px solid rgba(0, 255, 255, 0.2);
-      border-radius: 4px;
-      font-size: 0.7rem;
-      color: var(--slate-300);
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      font-size: 0.65rem;
+      font-weight: 500;
       text-transform: lowercase;
       transition: all 0.2s ease;
       cursor: default;
+      border: 1px solid;
     }
 
     .subcategory-tag:hover {
-      background: rgba(0, 255, 255, 0.15);
-      border-color: var(--cyan);
-      color: white;
-      transform: translateY(-1px);
+      transform: scale(1.08);
+      filter: brightness(1.3);
+      z-index: 10;
+    }
+
+    /* Technical - Cyan */
+    .cat-technical {
+      background: rgba(0, 255, 255, 0.1);
+      border-color: rgba(0, 255, 255, 0.4);
+      color: rgb(0, 255, 255);
+    }
+    .cat-technical:hover {
+      background: rgba(0, 255, 255, 0.2);
+      box-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
+    }
+
+    /* Gameplay - Purple */
+    .cat-gameplay {
+      background: rgba(168, 85, 247, 0.1);
+      border-color: rgba(168, 85, 247, 0.4);
+      color: rgb(168, 85, 247);
+    }
+    .cat-gameplay:hover {
+      background: rgba(168, 85, 247, 0.2);
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+    }
+
+    /* Content - Pink */
+    .cat-content {
+      background: rgba(255, 0, 128, 0.1);
+      border-color: rgba(255, 0, 128, 0.4);
+      color: rgb(255, 0, 128);
+    }
+    .cat-content:hover {
+      background: rgba(255, 0, 128, 0.2);
+      box-shadow: 0 0 12px rgba(255, 0, 128, 0.4);
+    }
+
+    /* UI/UX - Green */
+    .cat-uiux {
+      background: rgba(0, 255, 136, 0.1);
+      border-color: rgba(0, 255, 136, 0.4);
+      color: rgb(0, 255, 136);
+    }
+    .cat-uiux:hover {
+      background: rgba(0, 255, 136, 0.2);
+      box-shadow: 0 0 12px rgba(0, 255, 136, 0.4);
+    }
+
+    /* Monetization - Orange */
+    .cat-monetization {
+      background: rgba(251, 146, 60, 0.1);
+      border-color: rgba(251, 146, 60, 0.4);
+      color: rgb(251, 146, 60);
+    }
+    .cat-monetization:hover {
+      background: rgba(251, 146, 60, 0.2);
+      box-shadow: 0 0 12px rgba(251, 146, 60, 0.4);
+    }
+
+    /* Risk - Red */
+    .cat-risk {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: rgb(239, 68, 68);
+    }
+    .cat-risk:hover {
+      background: rgba(239, 68, 68, 0.2);
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
     }
 
     /* Bullet List */
@@ -569,6 +612,9 @@
       .cards-grid { grid-template-columns: 1fr !important; }
       .flow-diagram { flex-direction: column; gap: 1rem; }
       .flow-arrow { transform: rotate(90deg); }
+      .subcategory-tag { font-size: 0.6rem; padding: 0.2rem 0.4rem; }
+      .category-legend { gap: 0.75rem; }
+      .legend-item { font-size: 0.65rem; }
     }
 
     @media (min-width: 769px) and (max-width: 1200px) {
@@ -688,36 +734,120 @@
           </div>
         </div>
 
-        <div class="cards-grid" style="margin-top: 3rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
-          <div class="card">
-            <div class="card-icon">🔧</div>
-            <h3>Tecnico</h3>
-            <p>Bug, prestazioni, crash, compatibilità</p>
+        <div class="taxonomy-container">
+          <!-- Legend -->
+          <div class="category-legend">
+            <div class="legend-item">
+              <span class="legend-dot" style="background: rgb(0, 255, 255);"></span>
+              <span style="color: rgb(0, 255, 255);">Tecnico</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: rgb(168, 85, 247);"></span>
+              <span style="color: rgb(168, 85, 247);">Gameplay</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: rgb(255, 0, 128);"></span>
+              <span style="color: rgb(255, 0, 128);">Contenuti</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: rgb(0, 255, 136);"></span>
+              <span style="color: rgb(0, 255, 136);">UI/UX</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: rgb(251, 146, 60);"></span>
+              <span style="color: rgb(251, 146, 60);">Monetizzazione</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: rgb(239, 68, 68);"></span>
+              <span style="color: rgb(239, 68, 68);">Rischi</span>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-icon">🎮</div>
-            <h3>Gameplay</h3>
-            <p>Meccaniche, controlli, difficoltà, bilanciamento</p>
-          </div>
-          <div class="card">
-            <div class="card-icon">🎨</div>
-            <h3>Contenuti</h3>
-            <p>Design dei livelli, narrativa, rigiocabilità</p>
-          </div>
-          <div class="card">
-            <div class="card-icon">💎</div>
-            <h3>UI/UX</h3>
-            <p>Menu, accessibilità, qualità della vita</p>
-          </div>
-          <div class="card">
-            <div class="card-icon">💰</div>
-            <h3>Monetizzazione</h3>
-            <p>Prezzi, DLC, microtransazioni</p>
-          </div>
-          <div class="card">
-            <div class="card-icon">⚠️</div>
-            <h3>Rilevamento Rischi</h3>
-            <p>Rischio rimborsi, abbandono, segnali di delusione</p>
+
+          <!-- All Subcategories Cloud -->
+          <div class="subcategories-cloud">
+            <!-- Technical -->
+            <span class="subcategory-tag cat-technical">prestazioni</span>
+            <span class="subcategory-tag cat-technical">bug</span>
+            <span class="subcategory-tag cat-technical">crash</span>
+            <span class="subcategory-tag cat-technical">compatibilità</span>
+            <span class="subcategory-tag cat-technical">rete</span>
+            <span class="subcategory-tag cat-technical">installazione</span>
+            <span class="subcategory-tag cat-technical">salvataggi</span>
+            <span class="subcategory-tag cat-technical">caricamento</span>
+            <span class="subcategory-tag cat-technical">ottimizzazione</span>
+            <span class="subcategory-tag cat-technical">grafica</span>
+            <span class="subcategory-tag cat-technical">frame_rate</span>
+            <span class="subcategory-tag cat-technical">risoluzione</span>
+            <span class="subcategory-tag cat-technical">driver</span>
+            <span class="subcategory-tag cat-technical">requisiti</span>
+            <span class="subcategory-tag cat-technical">memoria</span>
+
+            <!-- Gameplay -->
+            <span class="subcategory-tag cat-gameplay">meccaniche</span>
+            <span class="subcategory-tag cat-gameplay">controlli</span>
+            <span class="subcategory-tag cat-gameplay">difficoltà</span>
+            <span class="subcategory-tag cat-gameplay">bilanciamento</span>
+            <span class="subcategory-tag cat-gameplay">progressione</span>
+            <span class="subcategory-tag cat-gameplay">combattimento</span>
+            <span class="subcategory-tag cat-gameplay">esplorazione</span>
+            <span class="subcategory-tag cat-gameplay">enigmi</span>
+            <span class="subcategory-tag cat-gameplay">furtività</span>
+            <span class="subcategory-tag cat-gameplay">ai</span>
+            <span class="subcategory-tag cat-gameplay">ritmo</span>
+            <span class="subcategory-tag cat-gameplay">tutorial</span>
+            <span class="subcategory-tag cat-gameplay">checkpoint</span>
+            <span class="subcategory-tag cat-gameplay">multigiocatore</span>
+            <span class="subcategory-tag cat-gameplay">achievement</span>
+
+            <!-- Content Design -->
+            <span class="subcategory-tag cat-content">design_livelli</span>
+            <span class="subcategory-tag cat-content">narrativa</span>
+            <span class="subcategory-tag cat-content">rigiocabilità</span>
+            <span class="subcategory-tag cat-content">storia</span>
+            <span class="subcategory-tag cat-content">personaggi</span>
+            <span class="subcategory-tag cat-content">dialoghi</span>
+            <span class="subcategory-tag cat-content">world_building</span>
+            <span class="subcategory-tag cat-content">varietà</span>
+            <span class="subcategory-tag cat-content">durata</span>
+            <span class="subcategory-tag cat-content">contenuti_extra</span>
+            <span class="subcategory-tag cat-content">finali</span>
+            <span class="subcategory-tag cat-content">lore</span>
+            <span class="subcategory-tag cat-content">ambientazione</span>
+            <span class="subcategory-tag cat-content">missioni</span>
+
+            <!-- UI/UX/Accessibility -->
+            <span class="subcategory-tag cat-uiux">menu</span>
+            <span class="subcategory-tag cat-uiux">qualità_vita</span>
+            <span class="subcategory-tag cat-uiux">hud</span>
+            <span class="subcategory-tag cat-uiux">impostazioni</span>
+            <span class="subcategory-tag cat-uiux">personalizzazione</span>
+            <span class="subcategory-tag cat-uiux">navigazione</span>
+            <span class="subcategory-tag cat-uiux">suggerimenti</span>
+            <span class="subcategory-tag cat-uiux">daltonici</span>
+            <span class="subcategory-tag cat-uiux">sottotitoli</span>
+            <span class="subcategory-tag cat-uiux">controller</span>
+            <span class="subcategory-tag cat-uiux">tastiera</span>
+            <span class="subcategory-tag cat-uiux">interfaccia</span>
+
+            <!-- Monetization -->
+            <span class="subcategory-tag cat-monetization">prezzi</span>
+            <span class="subcategory-tag cat-monetization">prezzi_regionali</span>
+            <span class="subcategory-tag cat-monetization">dlc</span>
+            <span class="subcategory-tag cat-monetization">microtransazioni</span>
+            <span class="subcategory-tag cat-monetization">battle_pass</span>
+            <span class="subcategory-tag cat-monetization">season_pass</span>
+            <span class="subcategory-tag cat-monetization">cosmetici</span>
+            <span class="subcategory-tag cat-monetization">pay_to_win</span>
+            <span class="subcategory-tag cat-monetization">valore</span>
+
+            <!-- Risk Detection -->
+            <span class="subcategory-tag cat-risk">rischio_rimborsi</span>
+            <span class="subcategory-tag cat-risk">abbandono</span>
+            <span class="subcategory-tag cat-risk">delusione</span>
+            <span class="subcategory-tag cat-risk">frustrazione</span>
+            <span class="subcategory-tag cat-risk">recensioni_negative</span>
+            <span class="subcategory-tag cat-risk">problemi_critici</span>
+            <span class="subcategory-tag cat-risk">perdita_interesse</span>
           </div>
         </div>
       </div>
@@ -782,7 +912,11 @@
           </div>
         </div>
 
-        <a href="#contact" class="cta-button">Inizia ad Analizzare il Tuo Gioco Oggi</a>
+        <a href="https://sentinext.nicolocampagnoli.com" target="_blank" class="cta-button">Inizia ad Analizzare il Tuo Gioco Oggi</a>
+
+        <p style="margin-top: 1.5rem; font-size: 0.875rem; color: var(--cyan); font-family: monospace;">
+          sentinext.nicolocampagnoli.com
+        </p>
       </div>
     </section>
   </div>
