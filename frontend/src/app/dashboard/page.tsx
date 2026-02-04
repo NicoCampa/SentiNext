@@ -745,7 +745,6 @@ function DashboardContent() {
                       <span className="text-amber-400">★</span>
                       Favorite Games
                     </h2>
-                    <p className="text-xs text-slate-400">Auto-refreshed daily with new reviews</p>
                   </div>
                   <span className="text-xs text-slate-500">{favoriteGames.length} game{favoriteGames.length !== 1 ? 's' : ''}</span>
                 </div>
@@ -1354,7 +1353,7 @@ function AnalysisResults({
           const key = point.date ? startOfWeek(point.date).toISOString().slice(0, 10) : point.label;
           return selectedTrendKey && key === selectedTrendKey ? volumeBarHighlight : volumeBarColor;
         }),
-        borderRadius: 6,
+        borderRadius: 0,
         maxBarThickness: 28,
       },
     ],
@@ -1592,23 +1591,23 @@ function AnalysisResults({
           </Card>
         )}
 
-        <div className="mt-5 grid gap-4 sm:gap-3 sm:grid-cols-3">
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-scale-in animation-delay-100' : 'opacity-0'}`}>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.recommendation')}</p>
+        <div className="mt-5 grid gap-3 sm:gap-2 sm:grid-cols-3">
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-3 ${mounted ? 'animate-scale-in animation-delay-100' : 'opacity-0'}`}>
+            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{t('dashboard.recommendation')}</p>
             <p
-              className="mt-2 text-2xl font-semibold"
+              className="mt-1.5 text-xl font-semibold"
               style={{ color: getRecommendationColor(summaryRecommendationRate ?? 0) }}
             >
               {formatPercentOrDash(summaryRecommendationRate)}
             </p>
           </div>
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-scale-in animation-delay-200' : 'opacity-0'}`}>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.issueRate')}</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-3 ${mounted ? 'animate-scale-in animation-delay-200' : 'opacity-0'}`}>
+            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{t('dashboard.issueRate')}</p>
+            <p className="mt-1.5 text-xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
           </div>
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-scale-in animation-delay-300' : 'opacity-0'}`}>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.requestRate')}</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-3 ${mounted ? 'animate-scale-in animation-delay-300' : 'opacity-0'}`}>
+            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{t('dashboard.requestRate')}</p>
+            <p className="mt-1.5 text-xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
           </div>
         </div>
       </Card>
@@ -1948,17 +1947,22 @@ function AnalysisResults({
 
               {/* Main segments grid - Compact cards */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {/* Experience Cohorts */}
+                {/* Experience Cohorts - Based on total games owned */}
                 <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Experience</h5>
+                  <div className="flex items-center justify-between mb-1">
+                    <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Experience</h5>
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wide">Rec%</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mb-3">Steam library size</p>
                   <div className="space-y-2">
                     {[
-                      { label: "New", subLabel: "<2h", data: playerSegments.experience_level?.newcomers },
-                      { label: "Casual", subLabel: "2-20h", data: playerSegments.experience_level?.casual },
-                      { label: "Regular", subLabel: "20-100h", data: playerSegments.experience_level?.experienced },
-                      { label: "Veteran", subLabel: "100h+", data: playerSegments.experience_level?.veterans },
+                      { label: "New", subLabel: "<50 games", data: playerSegments.experience_level?.newcomers },
+                      { label: "Casual", subLabel: "50-200", data: playerSegments.experience_level?.casual },
+                      { label: "Regular", subLabel: "200-500", data: playerSegments.experience_level?.experienced },
+                      { label: "Veteran", subLabel: "500+", data: playerSegments.experience_level?.veterans },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
+                      const rec = row.data?.recommendation_rate ?? 0;
                       const total = (playerSegments.experience_level?.newcomers?.count ?? 0) +
                                    (playerSegments.experience_level?.casual?.count ?? 0) +
                                    (playerSegments.experience_level?.experienced?.count ?? 0) +
@@ -1973,7 +1977,12 @@ function AnalysisResults({
                             <span className="text-xs text-slate-300">{row.label}</span>
                             <span className="text-[10px] text-slate-500">{row.subLabel}</span>
                           </div>
-                          <span className="text-xs text-slate-400">{share}%</span>
+                          <span
+                            className="text-xs"
+                            style={{ color: getRecommendationColor(rec) }}
+                          >
+                            {formatPercent(rec)}
+                          </span>
                         </div>
                       );
                     })}
@@ -1982,7 +1991,11 @@ function AnalysisResults({
 
                 {/* Purchase Type */}
                 <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Purchase</h5>
+                  <div className="flex items-center justify-between mb-1">
+                    <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Purchase</h5>
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wide">Rec%</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mb-3">How they got the game</p>
                   <div className="space-y-2">
                     {[
                       { label: "Steam", data: playerSegments.purchase_type?.steam_buyers },
@@ -2016,14 +2029,18 @@ function AnalysisResults({
                   </div>
                 </div>
 
-                {/* Activity Status */}
+                {/* Activity Status - Based on recent play activity */}
                 <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Activity</h5>
+                  <div className="flex items-center justify-between mb-1">
+                    <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Activity</h5>
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wide">Rec%</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mb-3">Played in last 2 weeks</p>
                   <div className="space-y-2">
                     {[
-                      { label: "Active", data: playerSegments.activity_status?.currently_active, color: "bg-emerald-500/70" },
-                      { label: "Stopped", data: playerSegments.activity_status?.recently_stopped, color: "bg-amber-500/70" },
-                      { label: "Inactive", data: playerSegments.activity_status?.inactive, color: "bg-slate-500/70" },
+                      { label: "Active", subLabel: "recent", data: playerSegments.activity_status?.currently_active, color: "bg-emerald-500/70" },
+                      { label: "Stopped", subLabel: "not recent", data: playerSegments.activity_status?.recently_stopped, color: "bg-amber-500/70" },
+                      { label: "Inactive", subLabel: "never", data: playerSegments.activity_status?.inactive, color: "bg-slate-500/70" },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
                       const rec = row.data?.recommendation_rate ?? 0;
@@ -2052,21 +2069,25 @@ function AnalysisResults({
                   </div>
                 </div>
 
-                {/* Engagement Topics */}
+                {/* Engagement - Based on playtime for this game */}
                 <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
-                  <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Engagement</h5>
+                  <div className="flex items-center justify-between mb-1">
+                    <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Engagement</h5>
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wide">Rec%</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mb-3">Playtime in this game</p>
                   <div className="space-y-2">
                     {[
-                      { label: "High", data: playerSegments.engagement_topics?.highly_engaged },
-                      { label: "Medium", data: playerSegments.engagement_topics?.moderately_engaged },
-                      { label: "Low", data: playerSegments.engagement_topics?.low_engagement },
+                      { label: "High", subLabel: "20h+", data: playerSegments.engagement_topics?.highly_engaged },
+                      { label: "Medium", subLabel: "2-20h", data: playerSegments.engagement_topics?.moderately_engaged },
+                      { label: "Low", subLabel: "<2h", data: playerSegments.engagement_topics?.low_engagement },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
+                      const rec = row.data?.recommendation_rate ?? 0;
                       const total = (playerSegments.engagement_topics?.highly_engaged?.count ?? 0) +
                                    (playerSegments.engagement_topics?.moderately_engaged?.count ?? 0) +
                                    (playerSegments.engagement_topics?.low_engagement?.count ?? 0);
                       const share = total > 0 ? Math.round((count / total) * 100) : 0;
-                      const topTopic = row.data?.top_topics?.[0]?.topic;
                       return (
                         <div key={row.label} className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -2074,13 +2095,14 @@ function AnalysisResults({
                               <div className="h-full bg-teal-500/70 rounded-full" style={{ width: `${share}%` }} />
                             </div>
                             <span className="text-xs text-slate-300">{row.label}</span>
-                            <span className="text-[10px] text-slate-500">{share}%</span>
+                            <span className="text-[10px] text-slate-500">{row.subLabel}</span>
                           </div>
-                          {topTopic && (
-                            <span className="text-[10px] text-teal-400 truncate max-w-[60px]" title={topTopic}>
-                              {formatMainCategoryLabel(topTopic)}
-                            </span>
-                          )}
+                          <span
+                            className="text-xs"
+                            style={{ color: getRecommendationColor(rec) }}
+                          >
+                            {formatPercent(rec)}
+                          </span>
                         </div>
                       );
                     })}
@@ -2090,45 +2112,6 @@ function AnalysisResults({
             </div>
           )}
         </Card>
-
-        {/* Quality weighted insights card */}
-        {insights?.quality_weighted && insights.quality_weighted.high_quality_reviews > 0 && (
-          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-700' : 'opacity-0'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-lg font-semibold text-white">Quality-weighted insights</h4>
-                <p className="mt-1 text-sm text-slate-400">
-                  Issues weighted by review helpfulness ({insights.quality_weighted.high_quality_reviews.toLocaleString()} highly-voted reviews)
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-500">Weighted rec rate</p>
-                <p
-                  className="text-lg font-semibold"
-                  style={{ color: getRecommendationColor(insights.quality_weighted.weighted_recommendation_rate) }}
-                >
-                  {formatPercent(insights.quality_weighted.weighted_recommendation_rate)}
-                </p>
-              </div>
-            </div>
-            {insights.quality_weighted.weighted_top_issues?.length > 0 && (
-              <div className="mt-5">
-                <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">Top issues by helpfulness weight</p>
-                <div className="flex flex-wrap gap-2">
-                  {insights.quality_weighted.weighted_top_issues.slice(0, 8).map((issue, index) => (
-                    <span
-                      key={index}
-                      className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-sm text-rose-200"
-                    >
-                      {toSubcategoryLabel(issue.category)}
-                      <span className="ml-1 text-xs text-rose-400">({issue.weighted_count.toLocaleString()})</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </Card>
-        )}
       </div>
 
       {selectedSubcategory ? (
@@ -2610,10 +2593,10 @@ function listifyStrings(value: unknown): string[] {
 function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {
   const emptySegments: PlayerSegments = {
     experience_level: {
-      newcomers: { count: 0, top_issues: [], issue_count: 0 },
-      casual: { count: 0, top_issues: [], issue_count: 0 },
-      experienced: { count: 0, top_issues: [], issue_count: 0 },
-      veterans: { count: 0, top_issues: [], issue_count: 0 },
+      newcomers: { count: 0, recommendation_rate: 0 },
+      casual: { count: 0, recommendation_rate: 0 },
+      experienced: { count: 0, recommendation_rate: 0 },
+      veterans: { count: 0, recommendation_rate: 0 },
     },
     purchase_type: {
       steam_buyers: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
@@ -2621,9 +2604,9 @@ function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {
       free_users: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
     },
     engagement_topics: {
-      highly_engaged: { count: 0, top_topics: [] },
-      moderately_engaged: { count: 0, top_topics: [] },
-      low_engagement: { count: 0, top_topics: [] },
+      highly_engaged: { count: 0, recommendation_rate: 0 },
+      moderately_engaged: { count: 0, recommendation_rate: 0 },
+      low_engagement: { count: 0, recommendation_rate: 0 },
     },
     activity_status: {
       currently_active: { count: 0, recommendation_rate: 0, issue_count: 0 },
@@ -2683,23 +2666,19 @@ function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {
   const experience_level = {
     newcomers: {
       count: newcomers.length,
-      top_issues: topIssueCategories(newcomers),
-      issue_count: countIssueReviews(newcomers),
+      recommendation_rate: countRecommendationRate(newcomers),
     },
     casual: {
       count: casual.length,
-      top_issues: topIssueCategories(casual),
-      issue_count: countIssueReviews(casual),
+      recommendation_rate: countRecommendationRate(casual),
     },
     experienced: {
       count: experienced.length,
-      top_issues: topIssueCategories(experienced),
-      issue_count: countIssueReviews(experienced),
+      recommendation_rate: countRecommendationRate(experienced),
     },
     veterans: {
       count: veterans.length,
-      top_issues: topIssueCategories(veterans),
-      issue_count: countIssueReviews(veterans),
+      recommendation_rate: countRecommendationRate(veterans),
     },
   };
 
@@ -2758,15 +2737,15 @@ function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {
   const engagement_topics = {
     highly_engaged: {
       count: highly_engaged.length,
-      top_topics: topTopics(highly_engaged),
+      recommendation_rate: countRecommendationRate(highly_engaged),
     },
     moderately_engaged: {
       count: moderately_engaged.length,
-      top_topics: topTopics(moderately_engaged),
+      recommendation_rate: countRecommendationRate(moderately_engaged),
     },
     low_engagement: {
       count: low_engagement.length,
-      top_topics: topTopics(low_engagement),
+      recommendation_rate: countRecommendationRate(low_engagement),
     },
   };
 

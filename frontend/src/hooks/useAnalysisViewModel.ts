@@ -185,10 +185,10 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
         audience: {
           risk: { refund_risk: 0, core_fan_disappointment: 0, churn_window_default: 0, churn_rate: 0 },
           experienceLevel: {
-            newcomers: { count: 0, issue_count: 0, top_issues: [] },
-            casual: { count: 0, issue_count: 0, top_issues: [] },
-            experienced: { count: 0, issue_count: 0, top_issues: [] },
-            veterans: { count: 0, issue_count: 0, top_issues: [] },
+            newcomers: { count: 0, recommendation_rate: 0 },
+            casual: { count: 0, recommendation_rate: 0 },
+            experienced: { count: 0, recommendation_rate: 0 },
+            veterans: { count: 0, recommendation_rate: 0 },
           },
           purchaseType: {
             steam_buyers: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
@@ -196,9 +196,9 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
             free_users: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
           },
           engagementTopics: {
-            highly_engaged: { count: 0, top_topics: [] },
-            moderately_engaged: { count: 0, top_topics: [] },
-            low_engagement: { count: 0, top_topics: [] },
+            highly_engaged: { count: 0, recommendation_rate: 0 },
+            moderately_engaged: { count: 0, recommendation_rate: 0 },
+            low_engagement: { count: 0, recommendation_rate: 0 },
           },
           activityStatus: {
             currently_active: { count: 0, issue_count: 0, recommendation_rate: 0 },
@@ -297,10 +297,10 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
     const audience: AudienceView = {
       risk: insights.risk ?? { refund_risk: 0, core_fan_disappointment: 0, churn_window_default: 0, churn_rate: 0 },
       experienceLevel: insights.player_segments?.experience_level ?? {
-        newcomers: { count: 0, issue_count: 0, top_issues: [] },
-        casual: { count: 0, issue_count: 0, top_issues: [] },
-        experienced: { count: 0, issue_count: 0, top_issues: [] },
-        veterans: { count: 0, issue_count: 0, top_issues: [] },
+        newcomers: { count: 0, recommendation_rate: 0 },
+        casual: { count: 0, recommendation_rate: 0 },
+        experienced: { count: 0, recommendation_rate: 0 },
+        veterans: { count: 0, recommendation_rate: 0 },
       },
       purchaseType: insights.player_segments?.purchase_type ?? {
         steam_buyers: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
@@ -308,9 +308,9 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
         free_users: { count: 0, feature_request_rate: 0, recommendation_rate: 0 },
       },
       engagementTopics: insights.player_segments?.engagement_topics ?? {
-        highly_engaged: { count: 0, top_topics: [] },
-        moderately_engaged: { count: 0, top_topics: [] },
-        low_engagement: { count: 0, top_topics: [] },
+        highly_engaged: { count: 0, recommendation_rate: 0 },
+        moderately_engaged: { count: 0, recommendation_rate: 0 },
+        low_engagement: { count: 0, recommendation_rate: 0 },
       },
       activityStatus: insights.player_segments?.activity_status ?? {
         currently_active: { count: 0, issue_count: 0, recommendation_rate: 0 },

@@ -14,7 +14,6 @@ import { getRecommendationColor } from "@/utils/colors";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { OverviewComparisonCard } from "@/components/compare/OverviewComparisonCard";
 import { ComparisonSummaryDisplay } from "@/components/compare/ComparisonSummaryDisplay";
-import { BackButton } from "@/components/BackButton";
 import { PageTransition } from "@/components/PageTransition";
 
 const MAX_SELECTION = 2;
@@ -141,8 +140,6 @@ export default function ComparePage() {
     <AppLayout>
       <PageTransition>
         <div className="mx-auto max-w-7xl px-4 py-10 space-y-10 sm:space-y-8">
-          <BackButton />
-
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 className="text-3xl font-bold">
@@ -420,6 +417,9 @@ function ComparisonDashboard({
   }, [gameData]);
 
   const gridCols = games.length === 2 ? "grid-cols-2" : "grid-cols-1";
+  const rowGridCols = games.length === 2
+    ? "grid-cols-[minmax(0,1fr)_176px]"
+    : "grid-cols-[minmax(0,1fr)_88px]";
 
   // Radar chart data
   return (
@@ -479,17 +479,19 @@ function ComparisonDashboard({
                     <button
                       key={row.key}
                       onClick={() => setReviewsModal({ subcategory: row.key, label: row.label })}
-                      className="w-full flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 p-2.5 transition-colors text-left"
+                      className={`w-full grid ${rowGridCols} items-center gap-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 p-2.5 transition-colors text-left`}
                     >
-                      <p className="text-xs text-slate-300 truncate">{row.label}</p>
-                      <div className={`grid gap-2 ${gridCols} shrink-0`}>
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-300 truncate">{row.label}</p>
+                      </div>
+                      <div className={`grid gap-2 ${gridCols} w-full`}>
                         {row.perGameMetrics.map((metric, idx) => {
                           const rates = row.perGameMetrics.map(m => m.rate ?? 0).filter(r => r > 0);
                           const maxRate = rates.length > 0 ? Math.max(...rates) : 0;
                           const isHighest = (metric.rate ?? 0) === maxRate && maxRate > 0;
 
                           return (
-                          <div key={`${row.key}-${idx}`} className={`px-1.5 py-0.5 rounded ${isHighest ? 'ring-1 ring-blue-400/50 bg-blue-500/10' : ''}`}>
+                          <div key={`${row.key}-${idx}`} className={`w-full px-1.5 py-0.5 text-center ${isHighest ? 'ring-1 ring-blue-400/50 bg-blue-500/10' : ''}`}>
                             <p
                               className="text-xs font-semibold"
                               style={{ color: getRecommendationColor(metric.rate) }}

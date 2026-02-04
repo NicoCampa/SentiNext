@@ -6,9 +6,9 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
+import { useCredits } from "@/contexts/CreditsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
-import { GameLimitBar } from "@/components/GameLimitBar";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 
 interface AppLayoutProps {
@@ -32,7 +32,14 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { openUserProfile } = useClerk();
   const { user } = useUser();
   const { isAdmin } = useAdminStatus();
+  const { credits } = useCredits();
   const compact = density === "compact";
+  const tierLabel = credits?.tier ? credits.tier.charAt(0).toUpperCase() + credits.tier.slice(1) : null;
+  const tierBadgeClass = credits?.tier === "max"
+    ? "border-purple-500/30 bg-purple-500/10 text-purple-400"
+    : credits?.tier === "pro"
+    ? "border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)]"
+    : "border-sky-500/30 bg-sky-500/10 text-sky-400";
 
   const navItems = useMemo(() => {
     const items = [
@@ -138,9 +145,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Bottom section */}
             <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
-              {/* Game Limit Bar (for Free/Pro tiers) */}
-              <GameLimitBar />
-
               {/* Combined User Profile + Settings */}
               <SignedIn>
                 <div className="border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)]/50 overflow-hidden">
@@ -175,6 +179,14 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                         Account
                       </p>
                     </div>
+                    {tierLabel && (
+                      <span className={clsx(
+                        "rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.2em]",
+                        tierBadgeClass
+                      )}>
+                        {tierLabel}
+                      </span>
+                    )}
                   </button>
 
                   {/* Settings Link */}

@@ -303,25 +303,6 @@ def init_postgresql_schema() -> None:
             ON starred_games(is_favorite) WHERE is_favorite = TRUE
         """))
 
-        # Auto-refresh log table for tracking daily favorites refresh
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS auto_refresh_log (
-                id SERIAL PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                app_id INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                reviews_fetched INTEGER DEFAULT 0,
-                credits_used INTEGER DEFAULT 0,
-                error TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP
-            )
-        """))
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_auto_refresh_log_user
-            ON auto_refresh_log(user_id, created_at DESC)
-        """))
-
         # Job registry table
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS job_registry (

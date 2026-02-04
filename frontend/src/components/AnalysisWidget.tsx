@@ -100,11 +100,16 @@ export function AnalysisWidget() {
                         const total = task.progress?.total ?? 0;
                         const processed = task.progress?.processed ?? 0;
                         const fetchedCount = task.progress?.fetched_count ?? 0;
+                        const labelEstimate = task.result?.label_estimate;
+                        const cachedReviews = labelEstimate?.cached_reviews ?? 0;
+                        const llmReviews = labelEstimate?.llm_reviews ?? 0;
+                        const estimatedTotal = labelEstimate?.total_reviews ?? 0;
 
                         // Determine current step and label
                         let stepNumber = 1;
                         let stepLabel = '';
                         let stepDetail = '';
+                        let cacheDetail = '';
                         let showProgress = false;
 
                         if (phase === 'fetching' || (!phase && total === 0 && !task.progress)) {
@@ -116,6 +121,16 @@ export function AnalysisWidget() {
                           stepLabel = 'Classifying reviews with AI';
                           stepDetail = total > 0 ? `${processed} of ${total} reviews analyzed` : 'Preparing classification...';
                           showProgress = total > 0;
+
+                          if (labelEstimate && estimatedTotal > 0) {
+                            if (llmReviews === 0 && cachedReviews > 0) {
+                              cacheDetail = `All ${cachedReviews.toLocaleString()} reviews already labeled (cached).`;
+                            } else if (cachedReviews > 0 && llmReviews > 0) {
+                              cacheDetail = `Using cached labels for ${cachedReviews.toLocaleString()} reviews; ${llmReviews.toLocaleString()} need new labels.`;
+                            } else if (llmReviews > 0) {
+                              cacheDetail = `All ${llmReviews.toLocaleString()} reviews need new labels.`;
+                            }
+                          }
                         } else if (phase === 'building_insights') {
                           stepNumber = 3;
                           stepLabel = 'Building insights';
@@ -144,6 +159,11 @@ export function AnalysisWidget() {
                             <p className="text-[11px] text-slate-400">
                               {stepDetail}
                             </p>
+                            {cacheDetail && (
+                              <p className="text-[11px] text-emerald-300/80">
+                                {cacheDetail}
+                              </p>
+                            )}
 
                             {/* Progress bar for classification phase */}
                             {showProgress && (

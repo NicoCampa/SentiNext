@@ -24,7 +24,7 @@ export function RootProviders({ children }: { children: ReactNode }) {
           colorDanger: 'rgb(239, 68, 68)',
           colorSuccess: 'rgb(34, 197, 94)',
           colorWarning: 'rgb(251, 146, 60)',
-          borderRadius: '0.5rem',
+          borderRadius: '0px',
           fontFamily: 'system-ui, -apple-system, sans-serif',
         },
         elements: {

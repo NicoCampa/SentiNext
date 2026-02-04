@@ -79,11 +79,6 @@ def run_analysis_job(
         storage.clear_progress(user_id, app_id)
 
     try:
-        # Get breakdown of cached vs new reviews before processing
-        review_estimate = llm.estimate_review_labeling(app_id, all_reviews)
-        llm_review_count = int(review_estimate.get("llm_reviews", 0) or 0)
-        cached_review_count = int(review_estimate.get("cached_reviews", 0) or 0)
-
         with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
             llm_labels = llm.ensure_review_labels(
                 app_id,

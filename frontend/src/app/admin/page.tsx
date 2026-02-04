@@ -257,7 +257,7 @@ function buildChartOptions(spec: ChartSpec) {
         borderColor: "rgba(148, 163, 184, 0.3)",
         borderWidth: 1,
         padding: 12,
-        cornerRadius: 8,
+        cornerRadius: 0,
       },
     },
     scales: {

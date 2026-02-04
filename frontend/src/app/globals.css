@@ -98,7 +98,7 @@ code, pre {
 .card {
   background: rgb(var(--bg-secondary));
   border: 1px solid rgb(var(--border-color));
-  border-radius: 12px;
+  border-radius: 0;
   padding: 1.5rem;
   transition: all 0.2s ease;
 }
@@ -112,7 +112,7 @@ code, pre {
 /* Buttons */
 .btn {
   padding: 0.625rem 1.25rem;
-  border-radius: 8px;
+  border-radius: 0;
   font-weight: 500;
   font-size: 0.875rem;
   transition: all 0.15s ease;
@@ -146,7 +146,7 @@ code, pre {
 input, textarea, select {
   background: rgb(var(--bg-secondary));
   border: 1px solid rgb(var(--border-color));
-  border-radius: 8px;
+  border-radius: 0;
   padding: 0.625rem 1rem;
   color: rgb(var(--text-primary));
   font-family: inherit;
@@ -186,7 +186,7 @@ a:hover {
 
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--slate-700));
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {

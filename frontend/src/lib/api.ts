@@ -439,24 +439,6 @@ export async function fetchFavoriteGames(): Promise<StarredGameDTO[]> {
   return handleResponse<StarredGameDTO[]>(response);
 }
 
-export interface AutoRefreshLogEntry {
-  id: number;
-  app_id: number;
-  status: string;
-  reviews_fetched: number;
-  credits_used: number;
-  error: string | null;
-  created_at: string;
-  completed_at: string | null;
-}
-
-export async function fetchAutoRefreshHistory(limit: number = 50): Promise<AutoRefreshLogEntry[]> {
-  const url = new URL(apiUrl("/auto-refresh/history"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  url.searchParams.set("limit", String(limit));
-  const response = await authFetch(url.toString(), { cache: "no-store" });
-  return handleResponse<AutoRefreshLogEntry[]>(response);
-}
-
 export async function generateComparisonSummary(
   request: ComparisonSummarizeRequest
 ): Promise<ComparisonSummary> {

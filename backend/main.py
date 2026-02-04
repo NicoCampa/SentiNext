@@ -329,10 +329,21 @@ class AnalyzeMetadata(BaseModel):
     header_image: Optional[str] = None
 
 
+class LabelReuseEstimate(BaseModel):
+    total_reviews: int
+    cached_reviews: int
+    llm_reviews: int
+    needs_refresh_reviews: int
+    empty_reviews: int
+    short_reviews: int
+    reasons: Dict[str, int] = Field(default_factory=dict)
+
+
 class AnalyzeResponse(BaseModel):
     metadata: AnalyzeMetadata
     insights: Optional[dict]
     reviews: List[dict]
+    label_estimate: Optional[LabelReuseEstimate] = None
 
 class AnalyzeEstimateResponse(BaseModel):
     app_id: int
@@ -1111,11 +1122,6 @@ def _run_analysis_job(
         storage.clear_progress(user_id, app_id)
 
     try:
-        # Get breakdown of cached vs new reviews before processing
-        review_estimate = llm.estimate_review_labeling(app_id, all_reviews)
-        llm_review_count = int(review_estimate.get("llm_reviews", 0) or 0)
-        cached_review_count = int(review_estimate.get("cached_reviews", 0) or 0)
-
         with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
             llm_labels = llm.ensure_review_labels(
                 app_id,
@@ -1285,6 +1291,21 @@ def analyze(
     # (groups same-language reviews together for batching, newest first within each language)
     all_reviews.sort(key=lambda r: (r.get("language", "english"), -(r.get("timestamp_created") or 0)))
 
+    label_estimate = None
+    try:
+        estimate = llm.estimate_review_labeling(request.app_id, all_reviews)
+        label_estimate = LabelReuseEstimate(
+            total_reviews=int(estimate.get("total_reviews", len(all_reviews)) or 0),
+            cached_reviews=int(estimate.get("cached_reviews", 0) or 0),
+            llm_reviews=int(estimate.get("llm_reviews", 0) or 0),
+            needs_refresh_reviews=int(estimate.get("needs_refresh_reviews", 0) or 0),
+            empty_reviews=int(estimate.get("empty_reviews", 0) or 0),
+            short_reviews=int(estimate.get("short_reviews", 0) or 0),
+            reasons={str(key): int(value) for key, value in (estimate.get("reasons") or {}).items() if key},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to estimate cached labels for app %s: %s", request.app_id, exc)
+
     # Check game limit for all tiers
     is_new_game = not storage.user_has_game(user_id, request.app_id)
     if is_new_game:
@@ -1378,7 +1399,7 @@ def analyze(
             game_context,
         )
 
-    return AnalyzeResponse(metadata=metadata, insights=None, reviews=[])
+    return AnalyzeResponse(metadata=metadata, insights=None, reviews=[], label_estimate=label_estimate)
 
 @app.post("/analyze/estimate", response_model=AnalyzeEstimateResponse, dependencies=[Depends(require_license)])
 def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
@@ -3163,43 +3184,6 @@ def list_favorite_games(
                 sample=item.get("sample", []),
                 updated_at=updated_at,
                 is_favorite=True,
-            )
-        )
-    return response
-
-
-class AutoRefreshLogEntry(BaseModel):
-    id: int
-    app_id: int
-    status: str
-    reviews_fetched: int
-    credits_used: int
-    error: Optional[str]
-    created_at: str
-    completed_at: Optional[str]
-
-
-@app.get("/auto-refresh/history", response_model=List[AutoRefreshLogEntry], dependencies=[Depends(require_license)])
-def get_auto_refresh_history(
-    limit: int = 50,
-    user_id: str = Depends(require_user_id),
-) -> List[AutoRefreshLogEntry]:
-    """Get auto-refresh history for the current user."""
-    entries = storage.load_auto_refresh_history(user_id, limit=limit)
-    response: List[AutoRefreshLogEntry] = []
-    for item in entries:
-        created_at = datetime.utcfromtimestamp(item["created_at"]).isoformat() + "Z" if item.get("created_at") else ""
-        completed_at = datetime.utcfromtimestamp(item["completed_at"]).isoformat() + "Z" if item.get("completed_at") else None
-        response.append(
-            AutoRefreshLogEntry(
-                id=item["id"],
-                app_id=item["app_id"],
-                status=item["status"],
-                reviews_fetched=item.get("reviews_fetched", 0),
-                credits_used=item.get("credits_used", 0),
-                error=item.get("error"),
-                created_at=created_at,
-                completed_at=completed_at,
             )
         )
     return response

@@ -101,8 +101,7 @@ export interface IssueCategory {
 
 export interface ExperienceLevelSegment {
   count: number;
-  top_issues: IssueCategory[];
-  issue_count: number;
+  recommendation_rate: number;
 }
 
 export interface ExperienceLevelIssues {
@@ -131,7 +130,7 @@ export interface TopicWithCount {
 
 export interface EngagementSegment {
   count: number;
-  top_topics: TopicWithCount[];
+  recommendation_rate: number;
 }
 
 export interface EngagementBasedTopics {
@@ -322,6 +321,7 @@ export interface AnalyzeResponse {
   metadata: AnalyzeMetadata;
   insights: InsightsResponse | null;
   reviews: ReviewRow[];
+  label_estimate?: LabelReuseEstimate | null;
 }
 
 export interface AnalyzeEstimateResponse {
@@ -339,6 +339,16 @@ export interface AnalyzeEstimateResponse {
   prompt_version: string;
   model_id: string;
   labeling_strategy: string;
+  reasons: Record<string, number>;
+}
+
+export interface LabelReuseEstimate {
+  total_reviews: number;
+  cached_reviews: number;
+  llm_reviews: number;
+  needs_refresh_reviews: number;
+  empty_reviews: number;
+  short_reviews: number;
   reasons: Record<string, number>;
 }
 

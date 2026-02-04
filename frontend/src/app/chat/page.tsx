@@ -208,21 +208,20 @@ const CHART_BORDER_COLORS = [
   'rgba(134, 239, 212, 1)',
 ];
 
-const NO_GAME_PROMPTS = [
-  "Summarize the top issues players mention this month",
-  "What are the most requested features?",
-  "Show the biggest sentiment risks",
-  "Compare two games by recommendation rate",
-  "Which subcategories drive negative reviews?",
-  "Highlight common onboarding complaints",
+const SUGGESTED_PROMPTS = [
+  "What is the review count and recommendation rate?",
+  "What are the top issues by subcategory (with example reviews)?",
+  "Which feature requests show up most often?",
+  "What are the top praises players mention?",
+  "Which review topics/subcategories are available?",
+  "How has sentiment changed over time?",
+  "Show a few reviews about performance or bugs.",
+  "How do the last 30 days compare to the previous 30 days by topic?",
 ];
 
-const SUGGESTED_PROMPTS = [
-  "What are the top issues players mention?",
-  "What features are most requested?",
-  "Show sentiment breakdown by category",
-  "Compare positive vs negative reviews",
-  "What do new players struggle with?",
+const COMPARE_SUGGESTED_PROMPTS = [
+  "How do the two games compare on recommendation rate and key issues?",
+  "How do sentiment trends compare between the selected games?",
 ];
 
 function normalizeChartData(spec: ChartSpec): ChartSpec["data"] {
@@ -350,7 +349,7 @@ function buildChartOptions(spec: ChartSpec) {
         borderColor: "rgba(148, 163, 184, 0.3)",
         borderWidth: 1,
         padding: 12,
-        cornerRadius: 8,
+        cornerRadius: 0,
         titleFont: {
           size: 13,
           weight: '600' as const,
@@ -466,11 +465,11 @@ export default function ChatPage() {
   const [showSources, setShowSources] = useState(false);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [promptNotice, setPromptNotice] = useState<string | null>(null);
-  const [hasStartedChat, setHasStartedChat] = useState(false);
 
   // Message feedback state: tracks which message indices user has voted on
   const [messageFeedback, setMessageFeedback] = useState<Record<number, boolean>>({});
   const [feedbackSubmitting, setFeedbackSubmitting] = useState<number | null>(null);
+  const chatLocked = selectedGames.length === 0 && messages.length === 0;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -546,11 +545,13 @@ export default function ChatPage() {
     // Ensure the chat view starts fresh by default.
     setCurrentSessionId(null);
     setMessages([]);
-    setHasStartedChat(false);
     loadSessions();
   }, []);
 
   async function handleSend() {
+    if (chatLocked) {
+      return;
+    }
     await sendMessage(input);
   }
 
@@ -659,7 +660,7 @@ export default function ChatPage() {
   // Extract the core send logic to be reusable
   async function sendMessage(messageText: string) {
     const message = messageText.trim();
-    if (!message || loading) return;
+    if (!message || loading || chatLocked) return;
 
     const userMessage: Message = {
       role: "user",
@@ -746,7 +747,6 @@ export default function ChatPage() {
     setCurrentSessionId(null);
     setMessages([]);
     setSelectedGames([]);
-    setHasStartedChat(false);
     console.log("Started new conversation");
   }
 
@@ -927,7 +927,7 @@ export default function ChatPage() {
                   <p className="text-sm text-slate-400">{t("chat.loadingConversation")}</p>
                 </div>
               </div>
-            ) : messages.length === 0 && !hasStartedChat ? (
+            ) : messages.length === 0 ? (
               /* Game Selection Screen */
               <div className="h-full flex flex-col items-center justify-center p-4">
                 <div className="w-full max-w-3xl space-y-6">
@@ -942,7 +942,9 @@ export default function ChatPage() {
                       Select Games to Chat About
                     </h2>
                     <p className="text-sm text-slate-400">
-                      Choose up to 2 games to analyze
+                      {selectedGames.length === 0
+                        ? "Choose up to 2 games to unlock chat"
+                        : `${selectedGames.length} selected. Ask a question below or pick a suggested one.`}
                     </p>
                   </div>
 
@@ -1015,76 +1017,33 @@ export default function ChatPage() {
                     </div>
                   )}
 
-                  {/* Start Chatting Button */}
-                  {starredGames.length > 0 && (
-                    <div className="text-center">
-                      <Button
-                        variant="primary"
-                        size="lg"
-                        onClick={() => setHasStartedChat(true)}
-                        disabled={selectedGames.length === 0}
-                        className="px-8"
-                      >
-                        Start Chatting
-                        {selectedGames.length > 0 && ` (${selectedGames.length} selected)`}
-                      </Button>
-                    </div>
-                  )}
-
                   {/* Suggested Prompts */}
                   {selectedGames.length > 0 && (
                     <div className="border-t border-white/10 pt-4">
                       <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3 text-center">
-                        Suggested Analysis
+                        Suggested Questions
                       </p>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        {SUGGESTED_PROMPTS.map((prompt) => (
-                          <button
-                            key={prompt}
-                            onClick={() => {
-                              setHasStartedChat(true);
-                              sendMessage(prompt);
-                            }}
-                            className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
-                          >
-                            {prompt}
-                          </button>
-                        ))}
+                      <div className="max-h-28 overflow-y-auto pr-1 scrollbar-hide">
+                        <div className="flex flex-wrap justify-center gap-2">
+                          {(selectedGames.length > 1
+                            ? [...SUGGESTED_PROMPTS, ...COMPARE_SUGGESTED_PROMPTS]
+                            : SUGGESTED_PROMPTS
+                          ).map((prompt) => (
+                            <button
+                              key={prompt}
+                              onClick={() => sendMessage(prompt)}
+                              className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                            >
+                              {prompt}
+                            </button>
+                          ))}
+                        </div>
                       </div>
+                      <p className="text-xs text-slate-500 mt-3 text-center">
+                        Pick one to start, or type your own question below.
+                      </p>
                     </div>
                   )}
-                </div>
-              </div>
-            ) : messages.length === 0 ? (
-              /* Ready to chat prompt */
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center space-y-4 max-w-lg">
-                  <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-300">{t('chat.startConversation')}</p>
-                    <p className="text-xs text-slate-500 mt-1">{t('chat.askAnything')}</p>
-                  </div>
-                  {/* Suggested Prompts */}
-                  <div className="border-t border-white/10 pt-4 mt-4">
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3">
-                      Suggested Analysis
-                    </p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {SUGGESTED_PROMPTS.map((prompt) => (
-                        <button
-                          key={prompt}
-                          onClick={() => sendMessage(prompt)}
-                          className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
-                        >
-                          {prompt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </div>
             ) : (
@@ -1349,15 +1308,15 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={t('chat.placeholder')}
+                placeholder={chatLocked ? "Select at least one game to start chatting" : t('chat.placeholder')}
                 rows={2}
-                disabled={loading}
+                disabled={loading || chatLocked}
                 className="flex-1 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-[rgb(0,255,255)] focus:outline-none resize-none disabled:opacity-50"
               />
               <Button
                 variant="primary"
                 onClick={handleSend}
-                disabled={loading || !input.trim() || selectedGames.length === 0}
+                disabled={loading || !input.trim() || chatLocked}
                 className="self-end"
               >
                 {loading ? (
@@ -1373,10 +1332,10 @@ export default function ChatPage() {
               </Button>
             </div>
             <p className="text-xs text-slate-600 mt-2">
-              {selectedGames.length > 0 ? (
+              {!chatLocked ? (
                 <>Press Enter to search reviews and get insights</>
               ) : (
-                <>Select at least one game from the left to start chatting</>
+                <>Select at least one game above to start chatting</>
               )}
             </p>
           </div>
