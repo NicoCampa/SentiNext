@@ -315,12 +315,13 @@ export default function AdminPage() {
   const [supportSending, setSupportSending] = useState(false);
   const supportBottomRef = useRef<HTMLDivElement | null>(null);
 
+  const isInboxMode = searchParams?.get("tab") === "inbox";
+
   useEffect(() => {
-    const tab = searchParams?.get("tab");
-    if (tab === "inbox") {
+    if (isInboxMode) {
       setActivePanel("support");
     }
-  }, [searchParams]);
+  }, [isInboxMode]);
   const [adminDashboard, setAdminDashboard] = useState<AdminDashboardSummary | null>(null);
   const [adminDashboardLoading, setAdminDashboardLoading] = useState(false);
   const [adminDashboardError, setAdminDashboardError] = useState<string | null>(null);
@@ -626,15 +627,17 @@ export default function AdminPage() {
           <div className="mb-6">
             <h1 className="text-xl font-bold">
               <span className="bg-gradient-to-r from-amber-300 via-orange-200 to-red-300 bg-clip-text text-transparent">
-                Admin Dashboard
+                {isInboxMode ? "Support Inbox" : "Admin Dashboard"}
               </span>
             </h1>
             <p className="text-xs text-slate-400">
-              Manage credits and view user chat sessions
+              {isInboxMode ? "View and respond to user support messages" : "Manage credits and view user chat sessions"}
             </p>
           </div>
 
-        <Card variant="glass" className="mb-4 p-6">
+        {!isInboxMode && (
+          <>
+          <Card variant="glass" className="mb-4 p-6">
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-base">🧠</span>
@@ -961,7 +964,9 @@ export default function AdminPage() {
               ))}
             </div>
           )}
-        </Card>
+          </Card>
+          </>
+        )}
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col gap-3 overflow-hidden">

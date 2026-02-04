@@ -27,6 +27,15 @@
   --color-card-foreground: var(--card-foreground);
 
   --color-border: var(--border);
+
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-full: 0px;
 }
 
 :root {
@@ -66,6 +75,20 @@ body {
     linear-gradient(rgba(71, 85, 105, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(71, 85, 105, 0.03) 1px, transparent 1px);
   background-size: 40px 40px;
+}
+
+@layer utilities {
+  .rounded-none,
+  .rounded,
+  .rounded-sm,
+  .rounded-md,
+  .rounded-lg,
+  .rounded-xl,
+  .rounded-2xl,
+  .rounded-3xl,
+  .rounded-full {
+    border-radius: 0 !important;
+  }
 }
 
 /* Force Space Grotesk Everywhere */

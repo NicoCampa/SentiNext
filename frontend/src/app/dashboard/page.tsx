@@ -2,6 +2,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import clsx from "clsx";
 import {
   Chart as ChartJS,
   BarController,
@@ -1059,6 +1060,12 @@ function AnalysisResults({
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [selectedSubcategoryType, setSelectedSubcategoryType] = useState<'issue' | 'request' | 'general'>('general');
   const [selectedTrendWeek, setSelectedTrendWeek] = useState<TrendWeekSelection | null>(null);
+  const [selectedSegment, setSelectedSegment] = useState<{
+    type: 'experience' | 'purchase' | 'activity' | 'engagement' | 'language';
+    key: string;
+    label: string;
+    description: string;
+  } | null>(null);
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set());
   const [filters, setFilters] = useState<DashboardFilters>(() => ({ ...DEFAULT_DASHBOARD_FILTERS }));
   const [reviewQuery, setReviewQuery] = useState("");
@@ -1224,6 +1231,78 @@ function AnalysisResults({
       })
       .sort((a, b) => Number(b.votes_up ?? 0) - Number(a.votes_up ?? 0));
   }, [filteredReviewSample, selectedSubcategory]);
+
+  const selectedSegmentReviews = useMemo(() => {
+    if (!selectedSegment) return [];
+    const minutesFor = (review: ReviewRow) => {
+      const val = review.author_playtime_forever;
+      if (typeof val === "number") return val;
+      if (typeof val === "string") return parseFloat(val) || 0;
+      return 0;
+    };
+    const recentMinutesFor = (review: ReviewRow) => {
+      const val = review.author_playtime_last_two_weeks;
+      if (typeof val === "number") return val;
+      if (typeof val === "string") return parseFloat(val) || 0;
+      return 0;
+    };
+    const gamesOwned = (review: ReviewRow) => {
+      const val = review.author_num_games_owned;
+      if (typeof val === "number") return val;
+      if (typeof val === "string") return parseInt(val, 10) || 0;
+      return 0;
+    };
+
+    return filteredReviewSample
+      .filter((review) => {
+        switch (selectedSegment.type) {
+          case 'experience': {
+            const games = gamesOwned(review);
+            switch (selectedSegment.key) {
+              case 'newcomers': return games < 50;
+              case 'casual': return games >= 50 && games < 200;
+              case 'experienced': return games >= 200 && games < 500;
+              case 'veterans': return games >= 500;
+              default: return false;
+            }
+          }
+          case 'purchase': {
+            switch (selectedSegment.key) {
+              case 'steam_buyers': return review.steam_purchase === true;
+              case 'key_users': return review.steam_purchase === false && review.received_for_free === false;
+              case 'free_users': return review.received_for_free === true;
+              default: return false;
+            }
+          }
+          case 'activity': {
+            const recent = recentMinutesFor(review);
+            const total = minutesFor(review);
+            switch (selectedSegment.key) {
+              case 'currently_active': return recent > 0;
+              case 'recently_stopped': return recent === 0 && total > 0;
+              case 'inactive': return total === 0;
+              default: return false;
+            }
+          }
+          case 'engagement': {
+            const minutes = minutesFor(review);
+            switch (selectedSegment.key) {
+              case 'highly_engaged': return minutes >= 1200; // 20h+
+              case 'moderately_engaged': return minutes >= 120 && minutes < 1200; // 2-20h
+              case 'low_engagement': return minutes < 120; // <2h
+              default: return false;
+            }
+          }
+          case 'language': {
+            const reviewLang = (review.language || '').toLowerCase();
+            return reviewLang === selectedSegment.key.toLowerCase();
+          }
+          default:
+            return false;
+        }
+      })
+      .sort((a, b) => Number(b.votes_up ?? 0) - Number(a.votes_up ?? 0));
+  }, [filteredReviewSample, selectedSegment]);
 
   const highlightEvidence = (text: string, evidence: string[]): React.ReactNode => {
     if (!evidence || evidence.length === 0) return text;
@@ -1434,12 +1513,16 @@ function AnalysisResults({
     },
   };
 
-  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek);
+  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek || selectedSegment);
 
   useEffect(() => {
     if (!hasOverlay) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (selectedSegment) {
+          setSelectedSegment(null);
+          return;
+        }
         if (selectedTrendWeek) {
           setSelectedTrendWeek(null);
           return;
@@ -1453,7 +1536,7 @@ function AnalysisResults({
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [hasOverlay, selectedTrendWeek, selectedSubcategory]);
+  }, [hasOverlay, selectedTrendWeek, selectedSubcategory, selectedSegment]);
 
   useEffect(() => {
     setExpandedReviews(new Set());
@@ -1900,11 +1983,21 @@ function AnalysisResults({
                         // Bar width as percentage of total reviews (not relative to max)
                         const barWidth = totalReviews > 0 ? (lang.count / totalReviews) * 100 : 0;
                         const topIssues = lang.top_issues?.slice(0, 5) ?? [];
+                        const langKey = lang.language.toLowerCase();
+                        const langLabel = lang.language.charAt(0).toUpperCase() + lang.language.slice(1);
+                        const isSelected = selectedSegment?.type === 'language' && selectedSegment?.key === langKey;
                         return (
                           <div key={lang.language} className="space-y-2">
-                            <div className="flex items-center gap-3">
-                              <span className="w-20 text-xs text-slate-300 truncate">
-                                {lang.language.charAt(0).toUpperCase() + lang.language.slice(1)}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSegment(isSelected ? null : { type: 'language', key: langKey, label: langLabel, description: `${lang.count.toLocaleString()} reviews` })}
+                              className={clsx(
+                                "w-full flex items-center gap-3 py-1 px-1 -mx-1 rounded transition-colors",
+                                isSelected ? "bg-indigo-500/20" : "hover:bg-white/5"
+                              )}
+                            >
+                              <span className="w-20 text-xs text-slate-300 truncate text-left">
+                                {langLabel}
                               </span>
                               <div className="flex-1 h-6 bg-slate-950/50 rounded relative overflow-hidden">
                                 <div
@@ -1923,17 +2016,27 @@ function AnalysisResults({
                                   </span>
                                 </div>
                               </div>
-                            </div>
+                            </button>
                             {topIssues.length > 0 && (
                               <div className="ml-[5.5rem] flex flex-wrap gap-1.5">
-                                {topIssues.map((issue, idx) => (
-                                  <span
+                                {topIssues.map((issue) => (
+                                  <button
                                     key={issue.category}
-                                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-slate-800/50 border border-white/5"
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedSubcategory((prev) => (prev === issue.category ? null : issue.category));
+                                      setSelectedSubcategoryType('issue');
+                                    }}
+                                    className={clsx(
+                                      "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                                      selectedSubcategory === issue.category
+                                        ? "bg-rose-500/20 border-rose-500/30"
+                                        : "bg-slate-800/50 border-white/5 hover:bg-slate-700/50 hover:border-white/10"
+                                    )}
                                   >
                                     <span className="text-rose-300">{toSubcategoryLabel(issue.category)}</span>
                                     <span className="text-slate-500">({issue.count})</span>
-                                  </span>
+                                  </button>
                                 ))}
                               </div>
                             )}
@@ -1956,10 +2059,10 @@ function AnalysisResults({
                   <p className="text-[10px] text-slate-500 mb-3">Steam library size</p>
                   <div className="space-y-2">
                     {[
-                      { label: "New", subLabel: "<50 games", data: playerSegments.experience_level?.newcomers },
-                      { label: "Casual", subLabel: "50-200", data: playerSegments.experience_level?.casual },
-                      { label: "Regular", subLabel: "200-500", data: playerSegments.experience_level?.experienced },
-                      { label: "Veteran", subLabel: "500+", data: playerSegments.experience_level?.veterans },
+                      { label: "New", subLabel: "<50 games", key: "newcomers", data: playerSegments.experience_level?.newcomers },
+                      { label: "Casual", subLabel: "50-200", key: "casual", data: playerSegments.experience_level?.casual },
+                      { label: "Regular", subLabel: "200-500", key: "experienced", data: playerSegments.experience_level?.experienced },
+                      { label: "Veteran", subLabel: "500+", key: "veterans", data: playerSegments.experience_level?.veterans },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
                       const rec = row.data?.recommendation_rate ?? 0;
@@ -1968,8 +2071,17 @@ function AnalysisResults({
                                    (playerSegments.experience_level?.experienced?.count ?? 0) +
                                    (playerSegments.experience_level?.veterans?.count ?? 0);
                       const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const isSelected = selectedSegment?.type === 'experience' && selectedSegment?.key === row.key;
                       return (
-                        <div key={row.label} className="flex items-center justify-between">
+                        <button
+                          key={row.label}
+                          type="button"
+                          onClick={() => setSelectedSegment(isSelected ? null : { type: 'experience', key: row.key, label: row.label, description: row.subLabel })}
+                          className={clsx(
+                            "w-full flex items-center justify-between py-1 px-1 -mx-1 rounded transition-colors",
+                            isSelected ? "bg-indigo-500/20" : "hover:bg-white/5"
+                          )}
+                        >
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div className="h-full bg-indigo-500/70 rounded-full" style={{ width: `${share}%` }} />
@@ -1983,7 +2095,7 @@ function AnalysisResults({
                           >
                             {formatPercent(rec)}
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -1998,9 +2110,9 @@ function AnalysisResults({
                   <p className="text-[10px] text-slate-500 mb-3">How they got the game</p>
                   <div className="space-y-2">
                     {[
-                      { label: "Steam", data: playerSegments.purchase_type?.steam_buyers },
-                      { label: "Key", data: playerSegments.purchase_type?.key_users },
-                      { label: "Free", data: playerSegments.purchase_type?.free_users },
+                      { label: "Steam", key: "steam_buyers", desc: "Steam purchase", data: playerSegments.purchase_type?.steam_buyers },
+                      { label: "Key", key: "key_users", desc: "Activated key", data: playerSegments.purchase_type?.key_users },
+                      { label: "Free", key: "free_users", desc: "Received free", data: playerSegments.purchase_type?.free_users },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
                       const rec = row.data?.recommendation_rate ?? 0;
@@ -2008,8 +2120,17 @@ function AnalysisResults({
                                    (playerSegments.purchase_type?.key_users?.count ?? 0) +
                                    (playerSegments.purchase_type?.free_users?.count ?? 0);
                       const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const isSelected = selectedSegment?.type === 'purchase' && selectedSegment?.key === row.key;
                       return (
-                        <div key={row.label} className="flex items-center justify-between">
+                        <button
+                          key={row.label}
+                          type="button"
+                          onClick={() => setSelectedSegment(isSelected ? null : { type: 'purchase', key: row.key, label: row.label, description: row.desc })}
+                          className={clsx(
+                            "w-full flex items-center justify-between py-1 px-1 -mx-1 rounded transition-colors",
+                            isSelected ? "bg-sky-500/20" : "hover:bg-white/5"
+                          )}
+                        >
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div className="h-full bg-sky-500/70 rounded-full" style={{ width: `${share}%` }} />
@@ -2023,7 +2144,7 @@ function AnalysisResults({
                           >
                             {formatPercent(rec)}
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -2038,9 +2159,9 @@ function AnalysisResults({
                   <p className="text-[10px] text-slate-500 mb-3">Played in last 2 weeks</p>
                   <div className="space-y-2">
                     {[
-                      { label: "Active", subLabel: "recent", data: playerSegments.activity_status?.currently_active, color: "bg-emerald-500/70" },
-                      { label: "Stopped", subLabel: "not recent", data: playerSegments.activity_status?.recently_stopped, color: "bg-amber-500/70" },
-                      { label: "Inactive", subLabel: "never", data: playerSegments.activity_status?.inactive, color: "bg-slate-500/70" },
+                      { label: "Active", subLabel: "recent", key: "currently_active", desc: "Played recently", data: playerSegments.activity_status?.currently_active, color: "bg-emerald-500/70", selectedColor: "bg-emerald-500/20" },
+                      { label: "Stopped", subLabel: "not recent", key: "recently_stopped", desc: "Stopped playing", data: playerSegments.activity_status?.recently_stopped, color: "bg-amber-500/70", selectedColor: "bg-amber-500/20" },
+                      { label: "Inactive", subLabel: "never", key: "inactive", desc: "Never played", data: playerSegments.activity_status?.inactive, color: "bg-slate-500/70", selectedColor: "bg-slate-500/20" },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
                       const rec = row.data?.recommendation_rate ?? 0;
@@ -2048,8 +2169,17 @@ function AnalysisResults({
                                    (playerSegments.activity_status?.recently_stopped?.count ?? 0) +
                                    (playerSegments.activity_status?.inactive?.count ?? 0);
                       const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const isSelected = selectedSegment?.type === 'activity' && selectedSegment?.key === row.key;
                       return (
-                        <div key={row.label} className="flex items-center justify-between">
+                        <button
+                          key={row.label}
+                          type="button"
+                          onClick={() => setSelectedSegment(isSelected ? null : { type: 'activity', key: row.key, label: row.label, description: row.desc })}
+                          className={clsx(
+                            "w-full flex items-center justify-between py-1 px-1 -mx-1 rounded transition-colors",
+                            isSelected ? row.selectedColor : "hover:bg-white/5"
+                          )}
+                        >
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full ${row.color}`} style={{ width: `${share}%` }} />
@@ -2063,7 +2193,7 @@ function AnalysisResults({
                           >
                             {formatPercent(rec)}
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -2078,9 +2208,9 @@ function AnalysisResults({
                   <p className="text-[10px] text-slate-500 mb-3">Playtime in this game</p>
                   <div className="space-y-2">
                     {[
-                      { label: "High", subLabel: "20h+", data: playerSegments.engagement_topics?.highly_engaged },
-                      { label: "Medium", subLabel: "2-20h", data: playerSegments.engagement_topics?.moderately_engaged },
-                      { label: "Low", subLabel: "<2h", data: playerSegments.engagement_topics?.low_engagement },
+                      { label: "High", subLabel: "20h+", key: "highly_engaged", desc: "20+ hours played", data: playerSegments.engagement_topics?.highly_engaged },
+                      { label: "Medium", subLabel: "2-20h", key: "moderately_engaged", desc: "2-20 hours played", data: playerSegments.engagement_topics?.moderately_engaged },
+                      { label: "Low", subLabel: "<2h", key: "low_engagement", desc: "Under 2 hours played", data: playerSegments.engagement_topics?.low_engagement },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
                       const rec = row.data?.recommendation_rate ?? 0;
@@ -2088,8 +2218,17 @@ function AnalysisResults({
                                    (playerSegments.engagement_topics?.moderately_engaged?.count ?? 0) +
                                    (playerSegments.engagement_topics?.low_engagement?.count ?? 0);
                       const share = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const isSelected = selectedSegment?.type === 'engagement' && selectedSegment?.key === row.key;
                       return (
-                        <div key={row.label} className="flex items-center justify-between">
+                        <button
+                          key={row.label}
+                          type="button"
+                          onClick={() => setSelectedSegment(isSelected ? null : { type: 'engagement', key: row.key, label: row.label, description: row.desc })}
+                          className={clsx(
+                            "w-full flex items-center justify-between py-1 px-1 -mx-1 rounded transition-colors",
+                            isSelected ? "bg-teal-500/20" : "hover:bg-white/5"
+                          )}
+                        >
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div className="h-full bg-teal-500/70 rounded-full" style={{ width: `${share}%` }} />
@@ -2103,7 +2242,7 @@ function AnalysisResults({
                           >
                             {formatPercent(rec)}
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -2202,7 +2341,7 @@ function AnalysisResults({
                 </div>
 
                 <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
-                  Based on {Math.min(selectedReviews.length, 50)} reviews -2 credits used
+                  Based on {Math.min(selectedReviews.length, 50)} reviews
                 </p>
               </div>
             )}
@@ -2526,6 +2665,202 @@ function AnalysisResults({
                           </div>
                         )}
 
+                        <p
+                          className="mt-2 whitespace-pre-line text-sm text-slate-100"
+                          style={
+                            !isExpanded && shouldClamp
+                              ? {
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 3,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden",
+                                }
+                              : undefined
+                          }
+                        >
+                          {text}
+                        </p>
+                        <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                          <span
+                            className={`rounded-full px-2 py-1 ${
+                              isRecommended(review.voted_up) ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
+                            }`}
+                          >
+                            {isRecommended(review.voted_up) ? "Recommended" : "Not recommended"}
+                          </span>
+                          {shouldClamp ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedReviews((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(reviewKey)) {
+                                    next.delete(reviewKey);
+                                  } else {
+                                    next.add(reviewKey);
+                                  }
+                                  return next;
+                                })
+                              }
+                              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
+                              aria-label={isExpanded ? "Collapse review" : "Expand review"}
+                            >
+                              {isExpanded ? "−" : "+"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedSegment ? (
+        <div
+          className="fixed top-0 left-0 right-0 bottom-0 z-[9997] bg-black/60 backdrop-blur-md overflow-y-auto"
+          onClick={() => setSelectedSegment(null)}
+          style={{ WebkitBackdropFilter: 'blur(12px)' }}
+        >
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    {selectedSegment.label} {selectedSegment.type === 'experience' ? 'Players' : selectedSegment.type === 'purchase' ? 'Users' : selectedSegment.type === 'activity' ? 'Players' : 'Players'}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {selectedSegment.description} - {selectedSegmentReviews.length.toLocaleString()} reviews
+                    {filtersActive ? " - filters applied" : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => setSelectedSegment(null)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+
+              {selectedSegmentReviews.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No reviews found for this segment.</p>
+              ) : (
+                <div className="mt-4 max-h-[32rem] space-y-3 overflow-auto pr-2">
+                  {selectedSegmentReviews.map((review, idx) => {
+                    const reviewKey = `seg-${String(review.review_id ?? idx)}`;
+                    const text = review.review ?? "";
+                    const createdAt = review.created_at ? new Date(review.created_at) : null;
+                    const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
+                      ? createdAt.toLocaleDateString()
+                      : "Date unknown";
+                    const shouldClamp = text.length > 240 || text.split("\n").length > 3;
+                    const isExpanded = expandedReviews.has(reviewKey);
+                    const reviewLangCode = STEAM_TO_APP_LANGUAGE[review.language?.toLowerCase() || ''] || review.language?.toLowerCase();
+                    const needsTranslation = reviewLangCode !== userLanguage && review.language;
+                    const translationState = translations.get(reviewKey);
+                    const isTranslating = translationState?.loading ?? false;
+                    const translatedText = translationState?.text ?? null;
+                    const showTranslation = translationState?.show ?? false;
+
+                    const handleTranslate = async () => {
+                      if (translatedText) {
+                        setTranslations((prev) => {
+                          const next = new Map(prev);
+                          const current = next.get(reviewKey);
+                          if (current) {
+                            next.set(reviewKey, { ...current, show: !current.show });
+                          }
+                          return next;
+                        });
+                        return;
+                      }
+                      setTranslations((prev) => {
+                        const next = new Map(prev);
+                        next.set(reviewKey, { text: null, loading: true, show: false });
+                        return next;
+                      });
+                      try {
+                        const result = await translateText({
+                          text,
+                          target_language: userLanguage,
+                        });
+                        setTranslations((prev) => {
+                          const next = new Map(prev);
+                          next.set(reviewKey, { text: result.translated_text, loading: false, show: true });
+                          return next;
+                        });
+                        refreshCredits();
+                      } catch (error) {
+                        console.error('Translation failed:', error);
+                        setTranslations((prev) => {
+                          const next = new Map(prev);
+                          next.set(reviewKey, { text: null, loading: false, show: false });
+                          return next;
+                        });
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={reviewKey}
+                        className="rounded-xl border border-white/10 bg-white/5 p-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                          <span>Review ID {review.review_id ?? "—"}</span>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span>{createdLabel}</span>
+                            <span>{review.votes_up ?? 0} helpful</span>
+                          </div>
+                        </div>
+                        {needsTranslation && (
+                          <div className="mt-2 flex items-center justify-between border-b border-white/10 pb-2">
+                            <span className="text-[10px] text-slate-500">
+                              Original: {review.language}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleTranslate}
+                              disabled={isTranslating}
+                              className="flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
+                            >
+                              {isTranslating ? (
+                                <>
+                                  <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                  </svg>
+                                  Translating...
+                                </>
+                              ) : translatedText ? (
+                                <>
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                                  </svg>
+                                  {showTranslation ? 'Original' : 'Translated'}
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                                  </svg>
+                                  Translate
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                        {showTranslation && translatedText && (
+                          <div className="mt-2 rounded-lg border border-sky-500/20 bg-sky-500/5 p-2">
+                            <p className="whitespace-pre-line text-sm text-slate-200">
+                              {translatedText}
+                            </p>
+                          </div>
+                        )}
                         <p
                           className="mt-2 whitespace-pre-line text-sm text-slate-100"
                           style={

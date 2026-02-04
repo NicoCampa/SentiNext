@@ -89,14 +89,6 @@ export function ComparisonSummaryDisplay({
         </div>
       )}
 
-      {/* Cache indicator */}
-      <div className="pt-2 border-t border-gray-700/50">
-        {summary.cached ? (
-          <p className="text-xs text-gray-500">✓ Cached result (0 credits)</p>
-        ) : (
-          <p className="text-xs text-gray-500">Credits used: {summary.credits_charged}</p>
-        )}
-      </div>
     </div>
   );
 }

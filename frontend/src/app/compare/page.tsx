@@ -1,8 +1,22 @@
 'use client';
 
 import { useEffect, useMemo, useState, useRef } from "react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  LineController,
+  BarElement,
+  BarController,
+  Tooltip,
+  Legend,
+  Filler,
+} from "chart.js";
+import { Chart } from "react-chartjs-2";
 import { fetchStarredGames, removeStarredGame, generateComparisonSummary } from "@/lib/api";
-import { StarredGameDTO, SubcategoryInsight, GameComparisonData } from "@/types";
+import { StarredGameDTO, SubcategoryInsight, GameComparisonData, ReviewRow, TrendPoint } from "@/types";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +46,185 @@ const MAIN_CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_KEYS = Object.keys(MAIN_CATEGORY_LABELS).filter((key) => key !== "other");
+const TREND_COLORS = [
+  { line: "rgba(56,189,248,1)", fill: "rgba(56,189,248,0.18)", bar: "rgba(56,189,248,0.55)" },
+  { line: "rgba(167,139,250,1)", fill: "rgba(167,139,250,0.18)", bar: "rgba(167,139,250,0.55)" },
+  { line: "rgba(34,197,94,1)", fill: "rgba(34,197,94,0.18)", bar: "rgba(34,197,94,0.55)" },
+];
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  LineController,
+  BarElement,
+  BarController,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+type TrendSeriesPoint = {
+  label: string;
+  date: Date | null;
+  recommendation_rate: number;
+  reviews: number;
+};
+
+function parseReviewDate(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      const ms = numeric < 1e12 ? numeric * 1000 : numeric;
+      const date = new Date(ms);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+function isRecommended(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value > 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (
+      ["true", "1", "yes", "positive", "recommended", "recommend", "thumbs_up", "thumbsup", "up"].includes(normalized)
+    ) {
+      return true;
+    }
+    if (
+      ["false", "0", "no", "negative", "not recommended", "not_recommended", "thumbs_down", "thumbsdown", "down"].includes(
+        normalized
+      )
+    ) {
+      return false;
+    }
+  }
+  return false;
+}
+
+function extractReviewDate(review: ReviewRow): Date | null {
+  const fallback = (review as unknown as { [key: string]: unknown }) || {};
+  return (
+    parseReviewDate(review.created_at) ||
+    parseReviewDate(fallback.timestamp_created) ||
+    parseReviewDate(fallback.created_utc) ||
+    parseReviewDate(fallback.timestamp) ||
+    parseReviewDate(fallback.createdAt)
+  );
+}
+
+function formatTrendLabel(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function startOfWeek(date: Date): Date {
+  const copy = new Date(date);
+  const day = copy.getDay();
+  const diff = (day + 6) % 7;
+  copy.setDate(copy.getDate() - diff);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function buildTrendSeriesFromReviews(reviews: ReviewRow[]): TrendSeriesPoint[] {
+  const buckets = new Map<string, { date: Date; total: number; recommended: number }>();
+  let minTime: number | null = null;
+  let maxTime: number | null = null;
+  reviews.forEach((review) => {
+    const created = extractReviewDate(review);
+    if (!created) return;
+    const weekStart = startOfWeek(created);
+    const weekTime = weekStart.getTime();
+    if (minTime === null || weekTime < minTime) minTime = weekTime;
+    if (maxTime === null || weekTime > maxTime) maxTime = weekTime;
+    const key = weekStart.toISOString().slice(0, 10);
+    const bucket = buckets.get(key) || { date: weekStart, total: 0, recommended: 0 };
+    bucket.total += 1;
+    if (isRecommended(review.voted_up)) bucket.recommended += 1;
+    buckets.set(key, bucket);
+  });
+
+  if (minTime === null || maxTime === null) return [];
+
+  const series: TrendSeriesPoint[] = [];
+  const cursor = new Date(minTime);
+  while (cursor.getTime() <= maxTime) {
+    const key = cursor.toISOString().slice(0, 10);
+    const bucket = buckets.get(key);
+    const total = bucket?.total ?? 0;
+    const recommended = bucket?.recommended ?? 0;
+    series.push({
+      label: formatTrendLabel(cursor),
+      date: new Date(cursor),
+      recommendation_rate: total > 0 ? recommended / total : 0,
+      reviews: total,
+    });
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  return series;
+}
+
+function normalizeTrendSeries(trend: TrendPoint[] | undefined): TrendSeriesPoint[] {
+  if (!trend || trend.length === 0) return [];
+  const parsedPoints = trend
+    .map((point, index) => {
+      const parsed = parseReviewDate(point.period);
+      const labelDate = parsed ? startOfWeek(parsed) : null;
+      return {
+        label: labelDate ? formatTrendLabel(labelDate) : point.period,
+        date: parsed,
+        recommendation_rate: Number(point.recommendation_rate ?? 0),
+        reviews: Number(point.reviews ?? 0),
+        order: parsed ? parsed.getTime() : index,
+      };
+    })
+    .filter((point) => point.date);
+
+  if (parsedPoints.length === 0) return [];
+
+  parsedPoints.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const startTime = startOfWeek(parsedPoints[0].date as Date).getTime();
+  const endTime = startOfWeek(parsedPoints[parsedPoints.length - 1].date as Date).getTime();
+  const byDate = new Map<string, Omit<TrendSeriesPoint, "label"> & { label?: string }>();
+  parsedPoints.forEach((point) => {
+    const date = startOfWeek(point.date as Date);
+    const key = date.toISOString().slice(0, 10);
+    byDate.set(key, {
+      date,
+      recommendation_rate: point.recommendation_rate,
+      reviews: point.reviews,
+      label: point.label,
+    });
+  });
+
+  const series: TrendSeriesPoint[] = [];
+  const cursor = new Date(startTime);
+  while (cursor.getTime() <= endTime) {
+    const key = cursor.toISOString().slice(0, 10);
+    const point = byDate.get(key);
+    series.push({
+      label: point?.label ?? formatTrendLabel(cursor),
+      date: new Date(cursor),
+      recommendation_rate: point?.recommendation_rate ?? 0,
+      reviews: point?.reviews ?? 0,
+    });
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  return series;
+}
 
 export default function ComparePage() {
   const { t } = useLanguage();
@@ -421,6 +614,139 @@ function ComparisonDashboard({
     ? "grid-cols-[minmax(0,1fr)_176px]"
     : "grid-cols-[minmax(0,1fr)_88px]";
 
+  const trendSeriesByGame = useMemo(() => {
+    return games.map((game, idx) => {
+      const fromInsights = normalizeTrendSeries(game.insights?.trend);
+      const fromReviews = buildTrendSeriesFromReviews(game.sample ?? []);
+      const series = fromInsights.length ? fromInsights : fromReviews;
+      const byKey = new Map<string, TrendSeriesPoint>();
+      series.forEach((point) => {
+        if (!point.date) return;
+        byKey.set(point.date.toISOString().slice(0, 10), point);
+      });
+      return {
+        name: game.name,
+        series,
+        byKey,
+        color: TREND_COLORS[idx % TREND_COLORS.length],
+      };
+    });
+  }, [games]);
+
+  const trendKeys = useMemo(() => {
+    const keys = new Set<string>();
+    trendSeriesByGame.forEach((entry) => {
+      entry.series.forEach((point) => {
+        if (!point.date) return;
+        keys.add(point.date.toISOString().slice(0, 10));
+      });
+    });
+    return Array.from(keys).sort();
+  }, [trendSeriesByGame]);
+
+  const trendLabels = useMemo(
+    () => trendKeys.map((key) => formatTrendLabel(new Date(key))),
+    [trendKeys]
+  );
+  const trendRangeLabel =
+    trendKeys.length > 1
+      ? `${formatTrendLabel(new Date(trendKeys[0]))} → ${formatTrendLabel(new Date(trendKeys[trendKeys.length - 1]))}`
+      : "";
+
+  const recommendationTrendData = useMemo(
+    () => ({
+      labels: trendLabels,
+      datasets: trendSeriesByGame.map((entry) => ({
+        label: entry.name,
+        data: trendKeys.map((key) => {
+          const point = entry.byKey.get(key);
+          return point ? Math.round(point.recommendation_rate * 100) : null;
+        }),
+        borderColor: entry.color.line,
+        backgroundColor: entry.color.fill,
+        fill: false,
+        tension: 0.35,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        borderWidth: 2,
+        spanGaps: false,
+      })),
+    }),
+    [trendLabels, trendSeriesByGame, trendKeys]
+  );
+
+  const volumeTrendData = useMemo(
+    () => ({
+      labels: trendLabels,
+      datasets: trendSeriesByGame.map((entry) => ({
+        label: entry.name,
+        data: trendKeys.map((key) => entry.byKey.get(key)?.reviews ?? 0),
+        backgroundColor: entry.color.bar,
+        borderColor: entry.color.line,
+        borderWidth: 1,
+      })),
+    }),
+    [trendLabels, trendSeriesByGame, trendKeys]
+  );
+
+  const trendGridColor = "rgba(148,163,184,0.12)";
+  const trendAxisColor = "rgba(148,163,184,0.7)";
+  const recommendationTrendOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        labels: { color: "#cbd5f5", font: { size: 11 } },
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => `${context.dataset.label}: ${context.parsed.y}% rec`,
+        },
+      },
+    },
+    scales: {
+      x: { grid: { color: trendGridColor }, ticks: { color: trendAxisColor, font: { size: 10 } } },
+      y: {
+        min: 0,
+        max: 100,
+        grid: { color: trendGridColor },
+        ticks: {
+          color: trendAxisColor,
+          font: { size: 10 },
+          callback: (value: any) => `${value}%`,
+        },
+      },
+    },
+  };
+
+  const volumeTrendOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        labels: { color: "#cbd5f5", font: { size: 11 } },
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => `${context.dataset.label}: ${context.parsed.y.toLocaleString()} reviews`,
+        },
+      },
+    },
+    scales: {
+      x: { grid: { color: trendGridColor }, ticks: { color: trendAxisColor, font: { size: 10 } } },
+      y: {
+        grid: { color: trendGridColor },
+        ticks: {
+          color: trendAxisColor,
+          font: { size: 10 },
+          callback: (value: any) => value.toLocaleString(),
+        },
+      },
+    },
+  };
+
   // Radar chart data
   return (
     <div className="space-y-8">
@@ -511,6 +837,50 @@ function ComparisonDashboard({
             </div>
           )})}
         </div>
+      </Card>
+
+      <Card variant="glass" className="p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Trends</h3>
+            <p className="mt-1 text-sm text-slate-400">Recommendation rate and review volume over time</p>
+          </div>
+          {trendRangeLabel && (
+            <span className="text-xs text-slate-500">{trendRangeLabel}</span>
+          )}
+        </div>
+
+        {trendKeys.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">
+            Trend data is not available for these games yet. Re-run analysis to include timestamps.
+          </p>
+        ) : (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="border border-white/10 bg-slate-900/30 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-white">Recommendation rate</p>
+                {trendRangeLabel && (
+                  <span className="text-xs text-slate-500">{trendRangeLabel}</span>
+                )}
+              </div>
+              <div className="mt-3 h-40">
+                <Chart type="line" data={recommendationTrendData} options={recommendationTrendOptions as any} />
+              </div>
+            </div>
+
+            <div className="border border-white/10 bg-slate-900/30 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-white">Review volume</p>
+                {trendRangeLabel && (
+                  <span className="text-xs text-slate-500">{trendRangeLabel}</span>
+                )}
+              </div>
+              <div className="mt-3 h-40">
+                <Chart type="bar" data={volumeTrendData} options={volumeTrendOptions as any} />
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Sample Reviews Modal */}
