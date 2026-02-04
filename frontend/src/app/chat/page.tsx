@@ -445,6 +445,7 @@ type StarredGame = {
   metadata: {
     header_image?: string | null;
   };
+  hasAnalysis: boolean;
 };
 
 
@@ -499,15 +500,22 @@ export default function ChatPage() {
     }
   }, [selectedGames]);
 
-  // Load starred games on mount
+  // Load starred games on mount - only show games that have been analyzed
   useEffect(() => {
     async function loadGames() {
       setLoadingGames(true);
       try {
         const games = await fetchStarredGames();
-        setStarredGames(
-          games.map((g) => ({ app_id: g.app_id, name: g.name, metadata: g.metadata }))
-        );
+        // Filter to only games with analysis (insights not null)
+        const analyzedGames = games
+          .filter((g) => g.insights !== null)
+          .map((g) => ({
+            app_id: g.app_id,
+            name: g.name,
+            metadata: g.metadata,
+            hasAnalysis: true,
+          }));
+        setStarredGames(analyzedGames);
       } catch (error) {
         console.error("Failed to load starred games:", error);
       } finally {
@@ -772,6 +780,8 @@ export default function ChatPage() {
     // The backend will create a new session ID on the next message
     setCurrentSessionId(null);
     setMessages([]);
+    setSelectedGames([]);
+    setHasStartedChat(false);
     console.log("Started new conversation");
   }
 
@@ -978,9 +988,10 @@ export default function ChatPage() {
                     </div>
                   ) : starredGames.length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-sm text-slate-500">{t('chat.noStarredGames')}</p>
-                      <a href="/" className="text-sm text-[rgb(0,255,255)] hover:underline mt-2 inline-block">
-                        Analyze games first
+                      <p className="text-sm text-slate-400 mb-2">No analyzed games found</p>
+                      <p className="text-xs text-slate-500 mb-4">You need to analyze a game before you can chat about it.</p>
+                      <a href="/" className="text-sm text-[rgb(0,255,255)] hover:underline inline-block">
+                        Go to Dashboard to analyze games
                       </a>
                     </div>
                   ) : (
