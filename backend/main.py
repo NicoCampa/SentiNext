@@ -41,6 +41,7 @@ from .senti_next import (
 from .senti_next import ingest
 from .senti_next.steam_api import fetch_app_details
 from .senti_next.insights import prepare_insights
+from .senti_next.analysis import recommended_share_over_time
 from .senti_next import storage
 from .senti_next import llm
 from .senti_next import license as license_guard
@@ -1492,6 +1493,144 @@ def get_analysis_result(
         stale=bool(result.get("stale")),
         stale_reason=stale_reason,
     )
+
+
+@app.post("/analysis/{app_id}/rebuild-insights", dependencies=[Depends(require_license)])
+def rebuild_insights(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+) -> dict:
+    """Rebuild insights from existing reviews and labels without re-fetching or re-classifying.
+
+    This is useful when the insights computation logic has been updated and you want
+    to regenerate insights without incurring LLM costs.
+    """
+    # Load existing analysis result
+    result = storage.load_analysis_result(user_id, app_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="No analysis result found for this app.")
+
+    # Load stored reviews
+    stored_reviews = storage.load_reviews(app_id)
+    if not stored_reviews:
+        raise HTTPException(status_code=404, detail="No stored reviews found for this app.")
+
+    # Build DataFrame from reviews
+    df = build_reviews_dataframe(stored_reviews)
+    if df is None or df.empty:
+        raise HTTPException(status_code=400, detail="Could not build DataFrame from stored reviews.")
+
+    # Load and apply existing labels
+    llm_labels = storage.load_review_labels(app_id)
+    df = llm.apply_review_labels(df, llm_labels)
+
+    # Rebuild insights with current logic
+    insights = prepare_insights(df)
+
+    # Get existing metadata
+    metadata = result.get("metadata", {})
+
+    # Export reviews sample
+    export_columns = [col for col in REVIEW_EXPORT_COLUMNS if col in df.columns]
+    if export_columns:
+        sample_limit = min(SAMPLE_LIMIT, df.shape[0])
+        reviews_payload = json.loads(
+            df[export_columns]
+            .head(sample_limit)
+            .to_json(orient="records", date_format="iso", date_unit="s")
+        )
+    else:
+        reviews_payload = []
+
+    # Save updated result
+    storage.save_analysis_result(
+        user_id=user_id,
+        app_id=app_id,
+        metadata=metadata,
+        insights=insights,
+        reviews=reviews_payload,
+        status="completed",
+        run_id=result.get("run_id"),
+        snapshot_hash=result.get("snapshot_hash"),
+        context_hash=result.get("context_hash"),
+    )
+
+    # Keep starred cache in sync for the dashboard list
+    starred_games = storage.load_starred_games(user_id)
+    starred = next((entry for entry in starred_games if entry.get("app_id") == app_id), None)
+    if starred:
+        storage.save_starred_game(
+            user_id=user_id,
+            app_id=app_id,
+            name=starred.get("name") or str(app_id),
+            metadata=starred.get("metadata") or {},
+            insights=insights,
+            sample=starred.get("sample") or [],
+            genres=starred.get("genres") or [],
+            categories=starred.get("categories") or [],
+        )
+
+    return {"status": "ok", "message": "Insights rebuilt successfully", "app_id": app_id}
+
+
+@app.post("/analysis/{app_id}/rebuild-trends", dependencies=[Depends(require_license)])
+def rebuild_trends(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+) -> dict:
+    """Rebuild only trend data from existing reviews without re-fetching or re-classifying."""
+    result = storage.load_analysis_result(user_id, app_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="No analysis result found for this app.")
+
+    stored_reviews = storage.load_reviews(app_id)
+    if not stored_reviews:
+        raise HTTPException(status_code=404, detail="No stored reviews found for this app.")
+
+    df = build_reviews_dataframe(stored_reviews)
+    if df is None or df.empty:
+        raise HTTPException(status_code=400, detail="Could not build DataFrame from stored reviews.")
+
+    trend_df = recommended_share_over_time(df, freq="W-SUN", fill_missing=True)
+    trend_payload = (
+        json.loads(trend_df.to_json(orient="records", date_format="iso", date_unit="s"))
+        if trend_df is not None and not trend_df.empty
+        else []
+    )
+
+    insights = result.get("insights") or {}
+    insights["trend"] = trend_payload
+
+    storage.save_analysis_result(
+        user_id=user_id,
+        app_id=app_id,
+        metadata=result.get("metadata", {}),
+        insights=insights,
+        reviews=result.get("reviews") or [],
+        status="completed",
+        run_id=result.get("run_id"),
+        snapshot_hash=result.get("snapshot_hash"),
+        context_hash=result.get("context_hash"),
+        stale=result.get("stale", False),
+        stale_reason=result.get("stale_reason"),
+    )
+
+    # Keep starred cache in sync for the dashboard list
+    starred_games = storage.load_starred_games(user_id)
+    starred = next((entry for entry in starred_games if entry.get("app_id") == app_id), None)
+    if starred:
+        storage.save_starred_game(
+            user_id=user_id,
+            app_id=app_id,
+            name=starred.get("name") or str(app_id),
+            metadata=starred.get("metadata") or {},
+            insights=insights,
+            sample=starred.get("sample") or [],
+            genres=starred.get("genres") or [],
+            categories=starred.get("categories") or [],
+        )
+
+    return {"status": "ok", "message": "Trends rebuilt successfully", "app_id": app_id}
 
 
 class SummarizeSubcategoryRequest(BaseModel):

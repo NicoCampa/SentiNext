@@ -203,7 +203,7 @@ def version_based_insights(df: pd.DataFrame) -> Dict[str, Any]:
     return results
 
 
-def category_trend_over_time(df: pd.DataFrame, freq: str = "W") -> Dict[str, list]:
+def category_trend_over_time(df: pd.DataFrame, freq: str = "auto") -> Dict[str, list]:
     """Calculate time series of issue-tagged reviews by main category."""
     if df is None or df.empty or "created_at" not in df.columns or "llm_main_category" not in df.columns:
         return {}
@@ -226,6 +226,18 @@ def category_trend_over_time(df: pd.DataFrame, freq: str = "W") -> Dict[str, lis
     # Get date range from first to last review
     min_date = ts_df["created_at"].min()
     max_date = ts_df["created_at"].max()
+
+    # Auto-select frequency based on date range
+    if freq == "auto":
+        date_span = (max_date - min_date).days
+        if date_span <= 14:
+            freq = "D"  # Daily for 2 weeks or less
+        elif date_span <= 60:
+            freq = "W"  # Weekly for 2 months or less
+        elif date_span <= 365:
+            freq = "2W"  # Bi-weekly for 1 year or less
+        else:
+            freq = "ME"  # Monthly for more than 1 year
 
     # Create complete date range
     date_range = pd.date_range(start=min_date, end=max_date, freq=freq)
@@ -367,7 +379,7 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
         {"sentiment": "negative", "count": int((~df["voted_up"]).sum())},
     ])
 
-    trend_df = recommended_share_over_time(df)
+    trend_df = recommended_share_over_time(df, freq="W-SUN", fill_missing=True)
 
 
     llm_summary = {

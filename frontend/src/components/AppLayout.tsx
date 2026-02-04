@@ -17,6 +17,14 @@ interface AppLayoutProps {
   sidebarContent?: ReactNode;
 }
 
+const LOCK_ICON = (
+  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <rect x="5" y="10" width="14" height="10" rx="3" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10V8a4 4 0 118 0v2" />
+    <circle cx="12" cy="15" r="1.2" />
+  </svg>
+);
+
 export function AppLayout({ children, showSidebar = true, sidebarContent }: AppLayoutProps) {
   const pathname = usePathname();
   const { density } = useUiPreferences();
@@ -31,13 +39,14 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
       { href: "/chat", label: t('nav.chat'), code: "02" },
       { href: "/compare", label: t('nav.compare'), code: "03" },
-      { href: "/reports", label: t('nav.reports'), code: "04" },
-      { href: "/database", label: t('nav.database'), code: "05" },
+      { href: "/reports", label: t('nav.reports'), code: "04", restricted: true, icon: LOCK_ICON },
+      { href: "/database", label: t('nav.database'), code: "05", restricted: true, icon: LOCK_ICON },
     ];
-    // Add admin item after reports if user is admin
+
     if (isAdmin) {
       items.push({ href: "/admin", label: "Admin", code: "0A" });
     }
+
     items.push({ href: "/settings", label: t('nav.settings'), code: "06" });
     return items;
   }, [t, isAdmin]);
@@ -79,27 +88,43 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                 Navigation
               </p>
               <nav className="space-y-1">
-                {sidebarNavItems.map((item) => (
+                {sidebarNavItems.map((item) => {
+                  const restricted = !!("restricted" in item && item.restricted);
+                  const active = isActiveRoute(item.href);
+                  const activeClasses = restricted
+                    ? "bg-orange-500/15 border-l-2 border-orange-400 text-orange-300"
+                    : "bg-[rgb(0,255,255)]/10 border-l-2 border-[rgb(0,255,255)] text-[rgb(0,255,255)]";
+                  const inactiveClasses = restricted
+                    ? "border-l-2 border-transparent text-orange-300/80 hover:text-orange-200 hover:bg-orange-500/10 hover:border-orange-400/60"
+                    : "border-l-2 border-transparent text-[rgb(150,150,170)] hover:text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/5 hover:border-[rgb(0,255,255)]/50";
+                  const codeClasses = restricted
+                    ? "text-orange-400/70 group-hover:text-orange-300"
+                    : "text-[rgb(0,255,255)]/40 group-hover:text-[rgb(0,255,255)]/60";
+                  return (
                   <Link
                     key={item.href}
                     href={item.href}
                     className={clsx(
                       "group flex items-center gap-3 px-4 py-3 transition-all duration-200 relative",
                       compact ? "py-2" : "py-3",
-                      isActiveRoute(item.href)
-                        ? "bg-[rgb(0,255,255)]/10 border-l-2 border-[rgb(0,255,255)] text-[rgb(0,255,255)]"
-                        : "border-l-2 border-transparent text-[rgb(150,150,170)] hover:text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/5 hover:border-[rgb(0,255,255)]/50"
+                      active ? activeClasses : inactiveClasses
                     )}
                   >
-                    <span className="text-[10px] font-mono text-[rgb(0,255,255)]/40 group-hover:text-[rgb(0,255,255)]/60">
+                    <span className={clsx("text-[10px] font-mono", codeClasses)}>
                       {item.code}
                     </span>
+                    {item.icon ? (
+                      <span className={clsx(restricted ? "text-orange-300/80" : "text-slate-400")}>
+                        {item.icon}
+                      </span>
+                    ) : null}
                     <span className="text-xs uppercase tracking-[0.2em]">{item.label}</span>
-                    {isActiveRoute(item.href) && (
-                      <span className="ml-auto w-1.5 h-1.5 bg-sky-500 rounded-full" />
+                    {active && (
+                      <span className={clsx("ml-auto w-1.5 h-1.5 rounded-full", restricted ? "bg-orange-400" : "bg-sky-500")} />
                     )}
                   </Link>
-                ))}
+                  );
+                })}
               </nav>
             </div>
 

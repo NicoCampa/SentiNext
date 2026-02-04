@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { fetchStarredGames, removeStarredGame, generateComparisonSummary } from "@/lib/api";
 import { StarredGameDTO, SubcategoryInsight, GameComparisonData } from "@/types";
 import { AppLayout } from "@/components/AppLayout";
@@ -282,6 +282,20 @@ function ComparisonDashboard({
   const [subcategorySummary, setSubcategorySummary] = useState<any | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const modalOverlayRef = useRef<HTMLDivElement>(null);
+
+  // Lock body scroll and scroll to top when modal is open
+  useEffect(() => {
+    if (reviewsModal) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [reviewsModal]);
 
   const gameData = useMemo(() => {
     return games.map((game) => {
@@ -500,18 +514,21 @@ function ComparisonDashboard({
       {/* Sample Reviews Modal */}
       {reviewsModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          ref={modalOverlayRef}
+          className="fixed top-0 left-0 right-0 bottom-0 z-[9999] bg-black/60 backdrop-blur-md flex items-start justify-center p-4 pt-12 overflow-y-auto"
           onClick={() => {
             setReviewsModal(null);
             setSubcategorySummary(null);
             setSummaryError(null);
           }}
+          style={{ WebkitBackdropFilter: 'blur(12px)' }}
         >
-          <div
-            className="max-h-[85vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
+            <div
+              className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl mb-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div>
                 <h3 className="text-lg font-semibold text-white">{reviewsModal.label}</h3>
                 <p className="text-sm text-slate-400 mt-1">Compare how each game performs in this subcategory</p>
@@ -528,6 +545,8 @@ function ComparisonDashboard({
               </button>
             </div>
 
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto min-h-0 pr-2 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800 hover:scrollbar-thumb-slate-500" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
             {/* AI Comparison Button */}
             <div className="mb-6">
               {!subcategorySummary && (
@@ -538,10 +557,13 @@ function ComparisonDashboard({
                     try {
                       const gamesData: GameComparisonData[] = gameData.map(game => {
                         const filteredSample = game.sample ?? [];
-                        const subcatReviews = filteredSample.filter((review: any) => {
-                          const subcats = review.llm_subcategories || [];
-                          return subcats.some((s: string) => normalizeSubcategoryKey({ subcategory: s } as any) === reviewsModal.subcategory);
-                        }).slice(0, 15);
+                        const subcatReviews = filteredSample
+                          .filter((review: any) => {
+                            const subcats = review.llm_subcategories || [];
+                            return subcats.some((s: string) => normalizeSubcategoryKey({ subcategory: s } as any) === reviewsModal.subcategory);
+                          })
+                          .sort((a: any, b: any) => (b.votes_up ?? 0) - (a.votes_up ?? 0))
+                          .slice(0, 30);
 
                         return {
                           app_id: game.appId,
@@ -573,26 +595,22 @@ function ComparisonDashboard({
                     }
                   }}
                   disabled={summaryLoading}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-all"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-medium uppercase tracking-wider border border-sky-500/50 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 hover:border-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   {summaryLoading ? (
                     <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      <span>Analyzing...</span>
+                      <div className="w-4 h-4 border border-current border-t-transparent animate-spin" />
+                      <span>Summarizing...</span>
                     </>
                   ) : (
-                    <>
-                      <span className="text-base">✨</span>
-                      <span>AI Comparison</span>
-                      <span className="text-xs opacity-80">(2 credits)</span>
-                    </>
+                    <span>Summarize</span>
                   )}
                 </button>
               )}
 
               {summaryError && (
                 <div className="p-3 bg-red-900/20 border border-red-700/50 rounded-lg text-sm text-red-400">
-                  ⚠️ {summaryError}
+                  {summaryError}
                 </div>
               )}
 
@@ -606,7 +624,7 @@ function ComparisonDashboard({
               )}
             </div>
 
-            <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               {gameData.map((game) => {
                 const filteredSample = game.sample ?? [];
                 const exampleReviews = filteredSample
@@ -614,40 +632,47 @@ function ComparisonDashboard({
                     const subcats = review.llm_subcategories || [];
                     return subcats.some((s: string) => normalizeSubcategoryKey({ subcategory: s } as any) === reviewsModal.subcategory);
                   })
-                  .slice(0, 3); // Show up to 3 examples per game
-
-                if (exampleReviews.length === 0) return null;
+                  .sort((a: any, b: any) => (b.votes_up ?? 0) - (a.votes_up ?? 0))
+                  .slice(0, 3); // Show top 3 by helpfulness
 
                 return (
                   <div key={game.appId} className="rounded-xl border border-white/10 bg-slate-900/50 p-4">
                     <h4 className="text-sm font-semibold text-sky-300 mb-3">{game.name}</h4>
-                    <div className="space-y-3">
-                      {exampleReviews.map((review: any, idx: number) => (
-                        <div key={idx} className="rounded-lg bg-white/5 p-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className={`text-xs font-semibold ${review.voted_up ? 'text-green-400' : 'text-red-400'}`}>
-                              {review.voted_up ? '👍 Positive' : '👎 Negative'}
-                            </span>
-                            <span className="text-xs text-slate-500">
-                              • {review.author?.playtime_forever ? `${Math.floor((review.author.playtime_forever || 0) / 60)}h played` : 'No playtime data'}
-                            </span>
-                            {review.votes_up > 0 && (
-                              <span className="text-xs text-slate-500">
-                                • {review.votes_up} helpful
+                    {exampleReviews.length === 0 ? (
+                      <p className="text-xs text-slate-500">No reviews tagged with this subcategory</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {exampleReviews.map((review: any, idx: number) => (
+                          <div key={idx} className="rounded-lg bg-white/5 p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span
+                                className="text-xs font-semibold"
+                                style={{ color: getRecommendationColor(review.voted_up ? 1 : 0) }}
+                              >
+                                {review.voted_up ? 'Recommended' : 'Not Recommended'}
                               </span>
-                            )}
+                              <span className="text-xs text-slate-500">
+                                {review.author?.playtime_forever ? `${Math.floor((review.author.playtime_forever || 0) / 60)}h played` : 'No playtime data'}
+                              </span>
+                              {review.votes_up > 0 && (
+                                <span className="text-xs text-slate-500">
+                                  {review.votes_up} helpful
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-slate-200 line-clamp-4">
+                              {review.review || 'No review text'}
+                            </p>
                           </div>
-                          <p className="text-sm text-slate-200 line-clamp-4">
-                            {review.review || 'No review text'}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-          </div>
+            </div>
+            </div>
         </div>
       )}
     </div>

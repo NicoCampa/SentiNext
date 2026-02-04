@@ -22,6 +22,28 @@ function normalizeSnippets(value: unknown): string[] {
   return cleaned;
 }
 
+function coerceVotedUp(value: unknown, defaultValue = true): boolean {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value > 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (
+      ["true", "1", "yes", "positive", "recommended", "recommend", "thumbs_up", "thumbsup", "up"].includes(normalized)
+    ) {
+      return true;
+    }
+    if (
+      ["false", "0", "no", "negative", "not recommended", "not_recommended", "thumbs_down", "thumbsdown", "down"].includes(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+  }
+  return defaultValue;
+}
+
 export function buildSubcategoryInsights(reviews: ReviewRow[], maxSnippets = 6): SubcategoryInsight[] {
   const results = new Map<
     string,
@@ -43,8 +65,7 @@ export function buildSubcategoryInsights(reviews: ReviewRow[], maxSnippets = 6):
       evidenceRaw && typeof evidenceRaw === "object" && !Array.isArray(evidenceRaw)
         ? (evidenceRaw as Record<string, unknown>)
         : {};
-    const votedUp = review.voted_up;
-    const isPositive = votedUp === undefined || votedUp === null ? true : Boolean(votedUp);
+    const isPositive = coerceVotedUp(review.voted_up, true);
 
     subcats.forEach((subcat) => {
       const key = subcat.trim();
@@ -139,8 +160,7 @@ export function buildCategoryRates(reviews: ReviewRow[]): Record<string, Categor
       mainSet.add(main.toLowerCase());
     });
     if (mainSet.size === 0) return;
-    const votedUp = review.voted_up;
-    const isPositive = votedUp === undefined || votedUp === null ? true : Boolean(votedUp);
+    const isPositive = coerceVotedUp(review.voted_up, true);
 
     mainSet.forEach((main) => {
       const entry = buckets.get(main) ?? { count: 0, recommended: 0, not_recommended: 0 };
@@ -165,4 +185,3 @@ export function buildCategoryRates(reviews: ReviewRow[]): Record<string, Categor
   });
   return result;
 }
-

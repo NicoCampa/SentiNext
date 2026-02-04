@@ -93,67 +93,101 @@ export function AnalysisWidget() {
 
                   {/* Status */}
                   {task.status === 'analyzing' && (
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span>
-                          {(() => {
-                            const phase = task.progress?.phase;
-                            const total = task.progress?.total ?? 0;
-                            const processed = task.progress?.processed ?? 0;
-                            const fetchedCount = task.progress?.fetched_count ?? 0;
+                    <div className="space-y-1.5">
+                      {/* Phase indicator with step number */}
+                      {(() => {
+                        const phase = task.progress?.phase;
+                        const total = task.progress?.total ?? 0;
+                        const processed = task.progress?.processed ?? 0;
+                        const fetchedCount = task.progress?.fetched_count ?? 0;
 
-                            // Use phase if available (more reliable)
-                            if (phase === 'fetching') {
-                              return fetchedCount > 0
-                                ? `Fetching reviews from Steam... (${fetchedCount})`
-                                : 'Fetching reviews from Steam...';
-                            }
-                            if (phase === 'building_insights') {
-                              return 'Building insights...';
-                            }
-                            if (phase === 'classifying') {
-                              return 'Classifying reviews with AI...';
-                            }
-                            // When phase is 'idle' or undefined with no meaningful data,
-                            // show finalizing to avoid confusion (completion event is imminent)
-                            if (phase === 'idle') {
-                              return 'Finalizing...';
-                            }
+                        // Determine current step and label
+                        let stepNumber = 1;
+                        let stepLabel = '';
+                        let stepDetail = '';
+                        let showProgress = false;
 
-                            // Fallback for backwards compatibility (no phase data)
-                            if (!task.progress || total === 0) {
-                              return 'Fetching reviews from Steam...';
-                            }
-                            if (processed < total) {
-                              return 'Classifying reviews with AI...';
-                            }
-                            return 'Building insights...';
-                          })()}
-                        </span>
-                        {task.progress && task.progress.total > 0 && (
-                          <span>
-                            {task.progress.processed} / {task.progress.total}
-                          </span>
-                        )}
-                      </div>
-                      {task.progress && task.progress.total > 0 && (
-                        <>
-                          <div className="h-1.5 overflow-hidden rounded-full bg-slate-700">
-                            <div
-                              className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all duration-300"
-                              style={{
-                                width: `${(task.progress.processed / task.progress.total) * 100}%`,
-                              }}
-                            />
-                          </div>
-                          {remainingLabel && (
-                            <p className="text-[11px] tracking-wide text-slate-400">
-                              Est. time remaining:{' '}
-                              <span className="font-mono text-slate-200">{remainingLabel}</span>
+                        if (phase === 'fetching' || (!phase && total === 0 && !task.progress)) {
+                          stepNumber = 1;
+                          stepLabel = 'Fetching reviews from Steam';
+                          stepDetail = fetchedCount > 0 ? `${fetchedCount} reviews fetched` : 'Connecting to Steam API...';
+                        } else if (phase === 'classifying' || (!phase && processed < total)) {
+                          stepNumber = 2;
+                          stepLabel = 'Classifying reviews with AI';
+                          stepDetail = total > 0 ? `${processed} of ${total} reviews analyzed` : 'Preparing classification...';
+                          showProgress = total > 0;
+                        } else if (phase === 'building_insights') {
+                          stepNumber = 3;
+                          stepLabel = 'Building insights';
+                          stepDetail = 'Aggregating categories, trends & segments...';
+                        } else if (phase === 'idle') {
+                          stepNumber = 4;
+                          stepLabel = 'Finalizing';
+                          stepDetail = 'Saving results...';
+                        } else {
+                          // Fallback
+                          stepNumber = 2;
+                          stepLabel = 'Processing';
+                          stepDetail = 'Please wait...';
+                        }
+
+                        return (
+                          <>
+                            {/* Step indicator */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-slate-200">
+                                {stepLabel}
+                              </span>
+                            </div>
+
+                            {/* Detail text */}
+                            <p className="text-[11px] text-slate-400">
+                              {stepDetail}
                             </p>
-                          )}
-                        </>
-                      )}
+
+                            {/* Progress bar for classification phase */}
+                            {showProgress && (
+                              <div className="h-1.5 overflow-hidden rounded-full bg-slate-700">
+                                <div
+                                  className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all duration-300"
+                                  style={{
+                                    width: `${(processed / total) * 100}%`,
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {/* Time estimate */}
+                            {remainingLabel && showProgress && (
+                              <p className="text-[11px] tracking-wide text-slate-400">
+                                Est. remaining:{' '}
+                                <span className="font-mono text-slate-200">{remainingLabel}</span>
+                              </p>
+                            )}
+
+                            {/* Pipeline steps overview */}
+                            <div className="flex items-center gap-1 pt-1">
+                              {[1, 2, 3, 4].map((step) => (
+                                <div
+                                  key={step}
+                                  className={clsx(
+                                    'h-1 flex-1 rounded-full transition-colors',
+                                    step < stepNumber && 'bg-sky-500',
+                                    step === stepNumber && 'bg-sky-500 animate-pulse',
+                                    step > stepNumber && 'bg-slate-700'
+                                  )}
+                                />
+                              ))}
+                            </div>
+                            <div className="flex justify-between text-[9px] text-slate-500">
+                              <span>Fetch</span>
+                              <span>Classify</span>
+                              <span>Insights</span>
+                              <span>Save</span>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
 

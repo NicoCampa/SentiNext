@@ -29,6 +29,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
+import { SteamImage } from "@/components/SteamImage";
 import {
   authFetch,
   sendEnhancedChat,
@@ -214,6 +215,14 @@ const NO_GAME_PROMPTS = [
   "Compare two games by recommendation rate",
   "Which subcategories drive negative reviews?",
   "Highlight common onboarding complaints",
+];
+
+const SUGGESTED_PROMPTS = [
+  "What are the top issues players mention?",
+  "What features are most requested?",
+  "Show sentiment breakdown by category",
+  "Compare positive vs negative reviews",
+  "What do new players struggle with?",
 ];
 
 function normalizeChartData(spec: ChartSpec): ChartSpec["data"] {
@@ -433,6 +442,9 @@ type ChatSession = {
 type StarredGame = {
   app_id: number;
   name: string;
+  metadata: {
+    header_image?: string | null;
+  };
 };
 
 
@@ -452,9 +464,10 @@ export default function ChatPage() {
   const [selectedGames, setSelectedGames] = useState<number[]>([]);
   const [chatStatus, setChatStatus] = useState<string | null>(null);
   const [loadingGames, setLoadingGames] = useState(false);
-  const [showSources, setShowSources] = useState(true);
+  const [showSources, setShowSources] = useState(false);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [promptNotice, setPromptNotice] = useState<string | null>(null);
+  const [hasStartedChat, setHasStartedChat] = useState(false);
 
   // Message feedback state: tracks which message indices user has voted on
   const [messageFeedback, setMessageFeedback] = useState<Record<number, boolean>>({});
@@ -493,7 +506,7 @@ export default function ChatPage() {
       try {
         const games = await fetchStarredGames();
         setStarredGames(
-          games.map((g) => ({ app_id: g.app_id, name: g.name }))
+          games.map((g) => ({ app_id: g.app_id, name: g.name, metadata: g.metadata }))
         );
       } catch (error) {
         console.error("Failed to load starred games:", error);
@@ -848,68 +861,9 @@ export default function ChatPage() {
 
         {/* Main Content Area */}
         <div className="flex-1 flex gap-4 overflow-hidden">
-          {/* Left Sidebar: Game Context (Always Visible) */}
+          {/* Left Sidebar: Chat History */}
           <Card variant="glass" className="w-72 flex-shrink-0 p-4 overflow-hidden flex flex-col gap-4">
-            {/* Game Selector */}
-            <div>
-              <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                </svg>
-                {t('chat.chatWithData')}
-              </h2>
-              {loadingGames ? (
-                <p className="text-xs text-slate-500 text-center py-2">{t('chat.loadingGames')}</p>
-              ) : starredGames.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-2">{t('chat.noStarredGames')}</p>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-xs text-slate-500 mb-2">{t('chat.selectGames')}</p>
-                  <div className="max-h-32 overflow-y-auto space-y-1 scrollbar-hide">
-                    {starredGames.map((game) => (
-                      <button
-                        key={game.app_id}
-                        onClick={() => toggleGameSelection(game.app_id)}
-                        className={`w-full p-2 rounded-lg border text-left text-xs transition ${
-                          selectedGames.includes(game.app_id)
-                            ? "bg-[rgb(0,255,255)]/10 border-[rgb(0,255,255)]/30 text-white"
-                            : "bg-slate-900/40 border-white/5 hover:border-white/20 text-slate-400"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-3 h-3 rounded border flex items-center justify-center ${
-                              selectedGames.includes(game.app_id)
-                                ? "bg-[rgb(0,255,255)] border-[rgb(0,255,255)]"
-                                : "border-slate-600"
-                            }`}
-                          >
-                            {selectedGames.includes(game.app_id) && (
-                              <svg className="w-2 h-2 text-slate-900" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </div>
-                          <span className="truncate">{game.name}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  {selectedGames.length > 0 && (
-                    <button
-                      onClick={() => setSelectedGames([])}
-                      className="text-xs text-slate-500 hover:text-slate-300 mt-1"
-                    >
-                      {t('chat.clearSelection')}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-white/10"></div>
-
-            {/* Chat History (Always Visible) */}
+            {/* Chat History */}
             <div className="flex-1 flex flex-col min-h-0">
               <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -971,17 +925,18 @@ export default function ChatPage() {
             )}
             {/* Messages */}
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 scrollbar-hide">
-            {messages.length > 0 && (
+            {messages.length > 0 && selectedGames.length > 0 && (
               <div className="sticky top-0 z-10 -mx-6 mb-3 border-b border-white/10 bg-slate-900/90 px-6 py-2 backdrop-blur">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>{t("chat.sourcesUsed")}</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowSources((prev) => !prev)}
-                    className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-slate-200 hover:border-slate-400"
-                  >
-                    {showSources ? t("chat.hideSources") : t("chat.showSources")}
-                  </button>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <span>Chatting with:</span>
+                  {selectedGames.map((appId) => {
+                    const game = starredGames.find(g => g.app_id === appId);
+                    return game ? (
+                      <span key={appId} className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[11px]">
+                        {game.name}
+                      </span>
+                    ) : null;
+                  })}
                 </div>
               </div>
             )}
@@ -997,49 +952,162 @@ export default function ChatPage() {
                   <p className="text-sm text-slate-400">{t("chat.loadingConversation")}</p>
                 </div>
               </div>
-            ) : messages.length === 0 ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center space-y-4">
-                  <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
-                    {selectedGames.length === 0 ? (
+            ) : messages.length === 0 && !hasStartedChat ? (
+              /* Game Selection Screen */
+              <div className="h-full flex flex-col items-center justify-center p-4">
+                <div className="w-full max-w-3xl space-y-6">
+                  {/* Header */}
+                  <div className="text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
                       <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
                       </svg>
-                    ) : (
-                      <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                      </svg>
-                    )}
+                    </div>
+                    <h2 className="text-lg font-semibold text-white mb-1">
+                      Select Games to Chat About
+                    </h2>
+                    <p className="text-sm text-slate-400">
+                      Choose up to 2 games to analyze
+                    </p>
+                  </div>
+
+                  {/* Game Grid */}
+                  {loadingGames ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-sky-500" />
+                    </div>
+                  ) : starredGames.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-sm text-slate-500">{t('chat.noStarredGames')}</p>
+                      <a href="/" className="text-sm text-[rgb(0,255,255)] hover:underline mt-2 inline-block">
+                        Analyze games first
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {starredGames.map((game) => {
+                        const isSelected = selectedGames.includes(game.app_id);
+                        return (
+                          <button
+                            key={game.app_id}
+                            onClick={() => toggleGameSelection(game.app_id)}
+                            className={`relative overflow-hidden rounded-lg border transition-all ${
+                              isSelected
+                                ? "border-sky-500 ring-2 ring-sky-500/50"
+                                : "border-white/10 hover:border-white/20"
+                            }`}
+                          >
+                            <div className="aspect-[460/215] relative">
+                              <SteamImage
+                                appId={game.app_id}
+                                variant="header"
+                                alt={game.name}
+                                className="h-full w-full object-cover"
+                                imageUrl={game.metadata.header_image}
+                              />
+                              {isSelected && (
+                                <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
+                                  <div className="bg-sky-500 text-white rounded-full p-2">
+                                    <svg
+                                      className="w-6 h-6"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={3}
+                                        d="M5 13l4 4L19 7"
+                                      />
+                                    </svg>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="p-3 bg-slate-900/90">
+                              <p className="text-sm font-medium text-white truncate">{game.name}</p>
+                            </div>
+                            {isSelected && (
+                              <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white z-10">
+                                Selected
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Start Chatting Button */}
+                  {starredGames.length > 0 && (
+                    <div className="text-center">
+                      <Button
+                        variant="primary"
+                        size="lg"
+                        onClick={() => setHasStartedChat(true)}
+                        disabled={selectedGames.length === 0}
+                        className="px-8"
+                      >
+                        Start Chatting
+                        {selectedGames.length > 0 && ` (${selectedGames.length} selected)`}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Suggested Prompts */}
+                  {selectedGames.length > 0 && (
+                    <div className="border-t border-white/10 pt-4">
+                      <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3 text-center">
+                        Suggested Analysis
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {SUGGESTED_PROMPTS.map((prompt) => (
+                          <button
+                            key={prompt}
+                            onClick={() => {
+                              setHasStartedChat(true);
+                              sendMessage(prompt);
+                            }}
+                            className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
+              /* Ready to chat prompt */
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center space-y-4 max-w-lg">
+                  <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
                   </div>
                   <div>
-                    {selectedGames.length === 0 ? (
-                      <>
-                        <p className="text-sm text-slate-300">Select a game to start chatting</p>
-                        <p className="text-xs text-slate-500 mt-1">Choose games from the sidebar to analyze reviews and get insights</p>
-                        <div className="mt-4 rounded-xl border border-white/10 bg-slate-900/40 p-4 text-left">
-                          <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-2">{t("chat.promptPresets")}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {NO_GAME_PROMPTS.map((prompt) => (
-                              <button
-                                key={prompt}
-                                onClick={() => handlePresetPrompt(prompt)}
-                                className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
-                              >
-                                {prompt}
-                              </button>
-                            ))}
-                          </div>
-                          {promptNotice && (
-                            <p className="mt-2 text-[11px] text-amber-300">{promptNotice}</p>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm text-slate-300">{t('chat.startConversation')}</p>
-                        <p className="text-xs text-slate-500 mt-1">{t('chat.askAnything')}</p>
-                      </>
-                    )}
+                    <p className="text-sm text-slate-300">{t('chat.startConversation')}</p>
+                    <p className="text-xs text-slate-500 mt-1">{t('chat.askAnything')}</p>
+                  </div>
+                  {/* Suggested Prompts */}
+                  <div className="border-t border-white/10 pt-4 mt-4">
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3">
+                      Suggested Analysis
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {SUGGESTED_PROMPTS.map((prompt) => (
+                        <button
+                          key={prompt}
+                          onClick={() => sendMessage(prompt)}
+                          className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

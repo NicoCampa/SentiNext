@@ -176,7 +176,7 @@ ACCEPTED_PROMPT_VERSIONS = {ACTIVE_PROMPT_VERSION, PROMPT_VERSION_V1}
 
 # Batch size configuration (lower = faster individual responses, higher = fewer API calls)
 # Gemini works well with 3-5 reviews per batch
-BATCH_SIZE = int(os.getenv("SENTINEXT_BATCH_SIZE", "5"))
+BATCH_SIZE = int(os.getenv("SENTINEXT_BATCH_SIZE", "3"))
 
 MAX_REVIEW_CHARS = 3000
 MIN_REVIEW_WORDS = 2

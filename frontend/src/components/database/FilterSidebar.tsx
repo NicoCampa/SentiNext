@@ -16,24 +16,16 @@ interface FilterSidebarProps {
   selectedAppId: number | null;
   setSelectedAppId: (value: number | null) => void;
   games: DatabaseGameOption[];
-  scope: 'me' | 'all';
-  setScope: (value: 'me' | 'all') => void;
-  isAdmin: boolean;
   selectedCategory: string;
   setSelectedCategory: (value: string) => void;
   selectedSubcategory: string;
   setSelectedSubcategory: (value: string) => void;
   categoryOptions: { value: string; label: string }[];
   subcategoryOptions: { value: string; label: string; main?: string }[];
-  quickSentiment: 'all' | 'positive' | 'negative';
-  setQuickSentiment: (value: 'all' | 'positive' | 'negative') => void;
-  quickType: 'all' | 'issue' | 'request';
-  setQuickType: (value: 'all' | 'issue' | 'request') => void;
   onClearAll: () => void;
   activeFilterCount: number;
   hasPendingChanges: boolean;
-  onExportPreview: () => void;
-  downloadBusy: boolean;
+  hasAppliedFilters: boolean;
   t: (key: string) => string;
 }
 
@@ -48,31 +40,21 @@ export function FilterSidebar({
   selectedAppId,
   setSelectedAppId,
   games,
-  scope,
-  setScope,
-  isAdmin,
   selectedCategory,
   setSelectedCategory,
   selectedSubcategory,
   setSelectedSubcategory,
   categoryOptions,
   subcategoryOptions,
-  quickSentiment,
-  setQuickSentiment,
-  quickType,
-  setQuickType,
   onClearAll,
   activeFilterCount,
   hasPendingChanges,
-  onExportPreview,
-  downloadBusy,
+  hasAppliedFilters,
   t,
 }: FilterSidebarProps) {
   const [searchExpanded, setSearchExpanded] = useState(true);
   const [gameExpanded, setGameExpanded] = useState(true);
-  const [categoryExpanded, setCategoryExpanded] = useState(true);
-  const [metadataExpanded, setMetadataExpanded] = useState(true);
-  const [exportExpanded, setExportExpanded] = useState(true);
+  const [advancedExpanded, setAdvancedExpanded] = useState(false);
 
   return (
     <>
@@ -148,7 +130,12 @@ export function FilterSidebar({
                         placeholder={t('database.searchPlaceholder')}
                         className="flex-1 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none"
                       />
-                      <Button variant="secondary" size="sm" onClick={onApplyFilters} disabled={!hasPendingChanges}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={onApplyFilters}
+                        disabled={!hasPendingChanges && hasAppliedFilters}
+                      >
                         {t('common.apply')}
                       </Button>
                     </div>
@@ -205,49 +192,20 @@ export function FilterSidebar({
                       ))}
                     </select>
                   </div>
-                  {isAdmin && (
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-400">{t('database.scope')}</label>
-                      <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/50 p-1">
-                        <button
-                          type="button"
-                          onClick={() => setScope('me')}
-                          className={`flex-1 rounded px-2 py-1 text-xs transition ${
-                            scope === 'me'
-                              ? 'bg-sky-500/20 text-sky-200'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          {t('database.myData')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setScope('all')}
-                          className={`flex-1 rounded px-2 py-1 text-xs transition ${
-                            scope === 'all'
-                              ? 'bg-amber-500/20 text-amber-200'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          {t('database.allUsers')}
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
 
-            {/* Categories Section */}
+            {/* Advanced Filters Section */}
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => setCategoryExpanded(!categoryExpanded)}
+                onClick={() => setAdvancedExpanded(!advancedExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>📊 {t('database.categories')}</span>
+                <span>🧭 {t('database.categories')}</span>
                 <svg
-                  className={`h-4 w-4 transform transition-transform ${categoryExpanded ? 'rotate-180' : ''}`}
+                  className={`h-4 w-4 transform transition-transform ${advancedExpanded ? 'rotate-180' : ''}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -255,7 +213,7 @@ export function FilterSidebar({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-              {categoryExpanded && (
+              {advancedExpanded && (
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <label className="text-xs text-slate-400">{t('database.category')}</label>
@@ -295,99 +253,6 @@ export function FilterSidebar({
                 </div>
               )}
             </div>
-
-            {/* Metadata Filters Section */}
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setMetadataExpanded(!metadataExpanded)}
-                className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
-              >
-                <span>⚙️ {t('database.metadata')}</span>
-                <svg
-                  className={`h-4 w-4 transform transition-transform ${metadataExpanded ? 'rotate-180' : ''}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {metadataExpanded && (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-400">{t('database.sentiment')}</label>
-                    <div className="flex flex-col gap-1">
-                      {(['all', 'positive', 'negative'] as const).map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setQuickSentiment(value)}
-                          className={`rounded-lg border px-3 py-2 text-xs text-left transition ${
-                            quickSentiment === value
-                              ? 'border-sky-400 bg-sky-500/20 text-white'
-                              : 'border-white/10 bg-white/5 text-slate-300 hover:border-sky-400/40'
-                          }`}
-                        >
-                          {value === 'all' ? t('common.all') : value === 'positive' ? t('common.recommended') : t('common.notRecommended')}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-400">{t('database.type')}</label>
-                    <div className="flex flex-col gap-1">
-                      {(['all', 'issue', 'request'] as const).map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setQuickType(value)}
-                          className={`rounded-lg border px-3 py-2 text-xs text-left transition ${
-                            quickType === value
-                              ? 'border-purple-400 bg-purple-500/20 text-white'
-                              : 'border-white/10 bg-white/5 text-slate-300 hover:border-purple-400/40'
-                          }`}
-                        >
-                          {value === 'all' ? t('common.all') : value === 'issue' ? t('common.issues') : t('common.requests')}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Export Section */}
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setExportExpanded(!exportExpanded)}
-                className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
-              >
-                <span>📤 {t('database.export')}</span>
-                <svg
-                  className={`h-4 w-4 transform transition-transform ${exportExpanded ? 'rotate-180' : ''}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {exportExpanded && (
-                <div className="space-y-2">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    className="w-full"
-                    disabled={downloadBusy}
-                    onClick={onExportPreview}
-                  >
-                    {downloadBusy ? t('database.preparingExport') : t('database.previewExport')}
-                  </Button>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Footer */}
@@ -397,7 +262,7 @@ export function FilterSidebar({
               variant="primary"
               className="w-full mb-2"
               onClick={onApplyFilters}
-              disabled={!hasPendingChanges}
+              disabled={!hasPendingChanges && hasAppliedFilters}
             >
               {t('database.applyFilters')}
             </Button>

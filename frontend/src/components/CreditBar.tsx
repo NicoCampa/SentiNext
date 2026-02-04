@@ -25,9 +25,12 @@ export function CreditBar({ compact = false }: CreditBarProps) {
     return null;
   }
 
-  const percentUsed = Math.min(credits.percent_used, 110);
-  // Show remaining credits (bar goes DOWN as you use more)
-  const percentRemaining = Math.max(0, 100 - percentUsed);
+  // Calculate percentage based on actual balance vs limit
+  // For users with bonus credits, balance can exceed limit
+  const effectiveMax = Math.max(credits.limit, credits.balance + credits.used);
+  const percentRemaining = effectiveMax > 0
+    ? Math.min(100, Math.max(0, (credits.balance / effectiveMax) * 100))
+    : 0;
   const isWarning = credits.warning;
   const isBlocked = credits.blocked;
 
@@ -67,7 +70,7 @@ export function CreditBar({ compact = false }: CreditBarProps) {
             Credits
           </span>
           <span className={`text-xs font-mono ${getTextColor()}`}>
-            {Math.max(0, credits.limit - credits.used).toLocaleString()} left
+            {Math.max(0, credits.balance).toLocaleString()} left
           </span>
         </div>
         <div className="mt-1 h-1 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
@@ -121,7 +124,7 @@ export function CreditBar({ compact = false }: CreditBarProps) {
       {/* Stats */}
       <div className="flex items-center justify-between">
         <span className={`text-sm font-mono ${getTextColor()}`}>
-          {Math.max(0, credits.limit - credits.used).toLocaleString()} left
+          {Math.max(0, credits.balance).toLocaleString()} left
         </span>
         {resetDate && (
           <span className="text-[9px] text-[rgb(150,150,170)]">

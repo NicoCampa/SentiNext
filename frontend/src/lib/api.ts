@@ -281,6 +281,22 @@ export async function fetchAnalysisResult(appId: number): Promise<AnalysisResult
   return handleResponse<AnalysisResultResponse>(response);
 }
 
+export async function rebuildInsights(appId: number): Promise<{ status: string; message: string; app_id: number }> {
+  const response = await authFetch(apiUrl(`/analysis/${appId}/rebuild-insights`), {
+    method: "POST",
+    cache: "no-store",
+  });
+  return handleResponse<{ status: string; message: string; app_id: number }>(response);
+}
+
+export async function rebuildTrends(appId: number): Promise<{ status: string; message: string; app_id: number }> {
+  const response = await authFetch(apiUrl(`/analysis/${appId}/rebuild-trends`), {
+    method: "POST",
+    cache: "no-store",
+  });
+  return handleResponse<{ status: string; message: string; app_id: number }>(response);
+}
+
 export async function fetchHealth(): Promise<{ status: string; timestamp: string }> {
   const response = await authFetch(apiUrl("/health"), { cache: "no-store" });
   return handleResponse<{ status: string; timestamp: string }>(response);

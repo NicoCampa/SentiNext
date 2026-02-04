@@ -8,10 +8,63 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 import pandas as pd
 
 _TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9']+")
+_TRUE_STRINGS = {
+    "true",
+    "1",
+    "yes",
+    "y",
+    "positive",
+    "recommended",
+    "recommend",
+    "thumbs_up",
+    "thumbsup",
+    "up",
+}
+_FALSE_STRINGS = {
+    "false",
+    "0",
+    "no",
+    "n",
+    "negative",
+    "not recommended",
+    "not_recommended",
+    "thumbs_down",
+    "thumbsdown",
+    "down",
+}
 
 
 def tokenize(text: str) -> List[str]:
     return [token for token in _TOKEN_PATTERN.findall(text.lower()) if token]
+
+
+def _coerce_optional_bool(value: Any) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUE_STRINGS:
+            return True
+        if normalized in _FALSE_STRINGS:
+            return False
+    return None
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    parsed = _coerce_optional_bool(value)
+    return parsed if parsed is not None else default
+
+
+def _coerce_voted_up(review: dict) -> bool:
+    for key in ("voted_up", "reviewer_voted_up", "recommendation", "sentiment"):
+        parsed = _coerce_optional_bool(review.get(key))
+        if parsed is not None:
+            return parsed
+    return False
 
 
 def build_reviews_dataframe(reviews: Sequence[dict]) -> pd.DataFrame:
@@ -32,15 +85,15 @@ def build_reviews_dataframe(reviews: Sequence[dict]) -> pd.DataFrame:
                 "language": review.get("language"),
                 "timestamp_created": review.get("timestamp_created"),
                 "timestamp_updated": review.get("timestamp_updated"),
-                "voted_up": bool(review.get("voted_up")),
+                "voted_up": _coerce_voted_up(review),
                 "votes_up": review.get("votes_up", 0),
                 "votes_funny": review.get("votes_funny", 0),
                 "weighted_vote_score": review.get("weighted_vote_score"),
                 "comment_count": review.get("comment_count", 0),
-                "steam_purchase": bool(review.get("steam_purchase")),
-                "received_for_free": bool(review.get("received_for_free")),
-                "written_during_early_access": bool(review.get("written_during_early_access")),
-                "primarily_steam_deck": bool(review.get("primarily_steam_deck")),
+                "steam_purchase": _coerce_bool(review.get("steam_purchase")),
+                "received_for_free": _coerce_bool(review.get("received_for_free")),
+                "written_during_early_access": _coerce_bool(review.get("written_during_early_access")),
+                "primarily_steam_deck": _coerce_bool(review.get("primarily_steam_deck")),
                 "author_steamid": author.get("steamid"),
                 "author_num_games_owned": author.get("num_games_owned", 0),
                 "author_num_reviews": author.get("num_reviews", 0),
@@ -162,7 +215,12 @@ def recommendation_rate(df: pd.DataFrame) -> float:
     return float(df["voted_up"].mean())
 
 
-def recommended_share_over_time(df: pd.DataFrame, freq: str = "7D") -> pd.DataFrame:
+def recommended_share_over_time(
+    df: pd.DataFrame,
+    freq: str = "auto",
+    *,
+    fill_missing: bool = False,
+) -> pd.DataFrame:
     if df.empty or "created_at" not in df.columns:
         return pd.DataFrame(columns=["period", "recommendation_rate", "avg_compound", "reviews"])
 
@@ -174,8 +232,21 @@ def recommended_share_over_time(df: pd.DataFrame, freq: str = "7D") -> pd.DataFr
     min_date = ts_df["created_at"].min()
     max_date = ts_df["created_at"].max()
 
-    # Create a complete date range
-    date_range = pd.date_range(start=min_date, end=max_date, freq=freq)
+    # Auto-select frequency based on date range
+    if freq == "auto":
+        date_span = (max_date - min_date).days
+        if date_span <= 14:
+            # 2 weeks or less: daily
+            freq = "D"
+        elif date_span <= 60:
+            # 2 months or less: weekly
+            freq = "7D"
+        elif date_span <= 365:
+            # 1 year or less: bi-weekly
+            freq = "14D"
+        else:
+            # More than 1 year: monthly
+            freq = "30D"
 
     resampled = (
         ts_df.set_index("created_at")
@@ -186,13 +257,27 @@ def recommended_share_over_time(df: pd.DataFrame, freq: str = "7D") -> pd.DataFr
             avg_compound=("voted_up", lambda s: (s.sum() - (~s).sum()) / len(s) if len(s) > 0 else 0.0),
             reviews=("voted_up", "count"),
         )
-        .reindex(date_range, fill_value=0)
-        .reset_index()
     )
-    resampled.rename(columns={"index": "period"}, inplace=True)
-    resampled.loc[:, ["recommendation_rate", "avg_compound"]] = resampled[["recommendation_rate", "avg_compound"]].fillna(0.0)
+    resampled.index.name = "period"
 
-    # Filter out periods with zero reviews (keep structure but mark as no data)
+    if fill_missing:
+        # Align to resample index to avoid off-by-one gaps for weekly buckets.
+        start = resampled.index.min()
+        end = resampled.index.max()
+        full_range = pd.date_range(start=start, end=end, freq=freq)
+        resampled = resampled.reindex(full_range)
+        resampled.index.name = "period"
+        resampled["reviews"] = resampled["reviews"].fillna(0)
+        resampled["recommendation_rate"] = resampled["recommendation_rate"].fillna(0.0)
+        resampled["avg_compound"] = resampled["avg_compound"].fillna(0.0)
+    else:
+        # Only keep periods that have actual reviews (don't interpolate empty periods)
+        resampled = resampled[resampled["reviews"] > 0].copy()
+        # Fill any NaN values in rate columns (shouldn't happen, but defensive)
+        resampled.loc[:, ["recommendation_rate", "avg_compound"]] = resampled[["recommendation_rate", "avg_compound"]].fillna(0.0)
+
+    resampled = resampled.reset_index()
+
     return resampled
 
 
@@ -370,54 +455,53 @@ def market_quality_signal(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def experience_level_issues(df: pd.DataFrame) -> Dict[str, Any]:
-    """Analyze what issues different experience levels are reporting."""
-    if df.empty:
+    """Analyze recommendation rate by gaming experience (number of games owned).
+
+    EXPERIENCE = how many games the reviewer owns overall (their general gaming experience).
+    Segments:
+    - New: < 50 games owned
+    - Casual: 50-200 games owned
+    - Regular: 200-500 games owned
+    - Veteran: 500+ games owned
+    """
+    def get_recommendation_rate(segment_df):
+        if segment_df.empty or "voted_up" not in segment_df.columns:
+            return 0.0
+        return float(segment_df["voted_up"].mean())
+
+    if df.empty or "author_num_games_owned" not in df.columns:
         return {
-            "newcomers": {"count": 0, "top_issues": [], "issue_count": 0},
-            "casual": {"count": 0, "top_issues": [], "issue_count": 0},
-            "experienced": {"count": 0, "top_issues": [], "issue_count": 0},
-            "veterans": {"count": 0, "top_issues": [], "issue_count": 0},
+            "newcomers": {"count": 0, "recommendation_rate": 0.0},
+            "casual": {"count": 0, "recommendation_rate": 0.0},
+            "experienced": {"count": 0, "recommendation_rate": 0.0},
+            "veterans": {"count": 0, "recommendation_rate": 0.0},
         }
 
-    minutes = df["author_playtime_forever"].fillna(0)
+    games_owned = df["author_num_games_owned"].fillna(0)
 
-    # Segment by experience
-    newcomers = df[minutes < 120]  # <2 hours
-    casual = df[(minutes >= 120) & (minutes < 1200)]  # 2-20 hours
-    experienced = df[(minutes >= 1200) & (minutes < 6000)]  # 20-100 hours
-    veterans = df[minutes >= 6000]  # 100+ hours
-
-    def analyze_segment(segment_df):
-        if segment_df.empty:
-            return {"count": 0, "top_issues": [], "issue_count": 0}
-
-        top_issues = []
-        if "llm_issue_subcategories" in segment_df.columns:
-            exploded = segment_df["llm_issue_subcategories"].explode()
-            if not exploded.empty:
-                counts = exploded.dropna().value_counts().head(3)
-                top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
-        elif "llm_subcategories" in segment_df.columns:
-            exploded = segment_df["llm_subcategories"].explode()
-            if not exploded.empty:
-                counts = exploded.dropna().value_counts().head(3)
-                top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
-
-        issue_count = 0
-        if "llm_issue_subcategories" in segment_df.columns:
-            issue_count = int(segment_df["llm_issue_subcategories"].apply(lambda v: isinstance(v, list) and len(v) > 0).sum())
-
-        return {
-            "count": len(segment_df),
-            "top_issues": top_issues,
-            "issue_count": issue_count,
-        }
+    # Segment by number of games owned (gaming experience)
+    newcomers = df[games_owned < 50]  # < 50 games
+    casual = df[(games_owned >= 50) & (games_owned < 200)]  # 50-200 games
+    experienced = df[(games_owned >= 200) & (games_owned < 500)]  # 200-500 games
+    veterans = df[games_owned >= 500]  # 500+ games
 
     return {
-        "newcomers": analyze_segment(newcomers),
-        "casual": analyze_segment(casual),
-        "experienced": analyze_segment(experienced),
-        "veterans": analyze_segment(veterans),
+        "newcomers": {
+            "count": len(newcomers),
+            "recommendation_rate": get_recommendation_rate(newcomers),
+        },
+        "casual": {
+            "count": len(casual),
+            "recommendation_rate": get_recommendation_rate(casual),
+        },
+        "experienced": {
+            "count": len(experienced),
+            "recommendation_rate": get_recommendation_rate(experienced),
+        },
+        "veterans": {
+            "count": len(veterans),
+            "recommendation_rate": get_recommendation_rate(veterans),
+        },
     }
 
 
@@ -460,40 +544,45 @@ def purchase_type_insights(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def engagement_based_topics(df: pd.DataFrame) -> Dict[str, Any]:
-    """Analyze what categories different engagement levels discuss. v7: uses main_category."""
-    if df.empty or "llm_main_category" not in df.columns:
+    """Analyze recommendation rate by game playtime (engagement with THIS game).
+
+    ENGAGEMENT = how much time they played this specific game.
+    Uses same playtime buckets as dashboard filter:
+    - Low: < 2 hours (< 120 minutes)
+    - Medium: 2-20 hours (120-1200 minutes)
+    - High: 20+ hours (>= 1200 minutes)
+    """
+    def get_recommendation_rate(segment_df):
+        if segment_df.empty or "voted_up" not in segment_df.columns:
+            return 0.0
+        return float(segment_df["voted_up"].mean())
+
+    if df.empty:
         return {
-            "highly_engaged": {"count": 0, "top_topics": []},
-            "moderately_engaged": {"count": 0, "top_topics": []},
-            "low_engagement": {"count": 0, "top_topics": []},
+            "highly_engaged": {"count": 0, "recommendation_rate": 0.0},
+            "moderately_engaged": {"count": 0, "recommendation_rate": 0.0},
+            "low_engagement": {"count": 0, "recommendation_rate": 0.0},
         }
 
     minutes = df["author_playtime_forever"].fillna(0)
 
-    highly_engaged = df[minutes >= 6000]  # 100+ hours
-    moderately_engaged = df[(minutes >= 600) & (minutes < 6000)]  # 10-100 hours
-    low_engagement = df[minutes < 600]  # <10 hours
-
-    def get_top_categories(segment_df, limit=5):
-        if segment_df.empty:
-            return []
-
-        # Count main categories
-        category_counts = segment_df["llm_main_category"].value_counts().head(limit)
-        return [{"topic": cat, "count": int(count)} for cat, count in category_counts.items()]
+    # Match dashboard filter categories
+    highly_engaged = df[minutes >= 1200]  # 20+ hours
+    moderately_engaged = df[(minutes >= 120) & (minutes < 1200)]  # 2-20 hours
+    low_engagement = df[minutes < 120]  # <2 hours
 
     return {
         "highly_engaged": {
             "count": len(highly_engaged),
-            "top_topics": get_top_categories(highly_engaged),
+            "recommendation_rate": get_recommendation_rate(highly_engaged),
         },
         "moderately_engaged": {
             "count": len(moderately_engaged),
-            "top_topics": get_top_categories(moderately_engaged),
+            "recommendation_rate": get_recommendation_rate(moderately_engaged),
         },
         "low_engagement": {
             "count": len(low_engagement),
-            "top_topics": get_top_categories(low_engagement),
+            "recommendation_rate": get_recommendation_rate(low_engagement),
         },
     }
 
@@ -615,7 +704,7 @@ def language_segment_insights(df: pd.DataFrame) -> Dict[str, Any]:
         if "llm_issue_subcategories" in lang_df.columns:
             exploded = lang_df["llm_issue_subcategories"].explode()
             if not exploded.empty:
-                counts = exploded.dropna().value_counts().head(3)
+                counts = exploded.dropna().value_counts().head(5)
                 top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
 
         issue_count = 0
@@ -700,10 +789,10 @@ def quality_weighted_insights(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def cross_segment_analysis(df: pd.DataFrame) -> Dict[str, Any]:
-    """Analyze cross-segment combinations for unique insights.
+    """Analyze segments for notable patterns in recommendation rates.
 
-    Combines multiple segmentation dimensions to find specific pain points.
-    E.g., "Veterans on Steam Deck" or "Newcomers who received for free".
+    Finds segments with significantly different recommendation rates from average.
+    E.g., "Veterans" or "Steam Deck players" with notably higher/lower satisfaction.
     """
     if df.empty:
         return {"cross_segments": [], "notable_findings": []}
@@ -713,42 +802,31 @@ def cross_segment_analysis(df: pd.DataFrame) -> Dict[str, Any]:
 
     minutes = df["author_playtime_forever"].fillna(0)
 
-    # Define segment masks
-    segment_defs = {
-        "newcomers": minutes < 120,
-        "veterans": minutes >= 6000,
-        "steam_deck": df.get("primarily_steam_deck", pd.Series([False] * len(df))).fillna(False) == True,  # noqa: E712
-        "desktop": df.get("primarily_steam_deck", pd.Series([True] * len(df))).fillna(True) == False,  # noqa: E712
-        "negative": df["voted_up"] == False,  # noqa: E712
-        "positive": df["voted_up"] == True,  # noqa: E712
-        "free_users": df.get("received_for_free", pd.Series([False] * len(df))).fillna(False) == True,  # noqa: E712
-        "steam_buyers": df.get("steam_purchase", pd.Series([True] * len(df))).fillna(True) == True,  # noqa: E712
-    }
-
-    # Key cross-segment combinations to analyze
-    combinations = [
-        ("veterans", "negative", "Disappointed Veterans"),
-        ("newcomers", "negative", "Frustrated Newcomers"),
-        ("steam_deck", "negative", "Steam Deck Issues"),
-        ("veterans", "steam_deck", "Veteran Deck Players"),
-        ("free_users", "negative", "Unhappy Free Users"),
+    # Define single-segment analyses (NOT combined with positive/negative)
+    # These segments can have varying recommendation rates
+    segment_analyses = [
+        ("Newcomers", minutes < 120, "info"),
+        ("Casual Players", (minutes >= 120) & (minutes < 1200), "info"),
+        ("Experienced Players", (minutes >= 1200) & (minutes < 6000), "info"),
+        ("Veterans", minutes >= 6000, "info"),
+        ("Steam Deck Players", df.get("primarily_steam_deck", pd.Series([False] * len(df))).fillna(False) == True, "info"),  # noqa: E712
+        ("Key Redeemers", (df.get("steam_purchase", pd.Series([True] * len(df))).fillna(True) == False) & (df.get("received_for_free", pd.Series([False] * len(df))).fillna(False) == False), "info"),  # noqa: E712
+        ("Early Access Reviewers", df.get("written_during_early_access", pd.Series([False] * len(df))).fillna(False) == True, "info"),  # noqa: E712
+        ("Post-Release Reviewers", df.get("written_during_early_access", pd.Series([True] * len(df))).fillna(True) == False, "info"),  # noqa: E712
+        ("Influential Reviewers", df.get("votes_up", pd.Series([0] * len(df))).fillna(0) >= 10, "info"),
+        ("Steam Purchasers", df.get("steam_purchase", pd.Series([True] * len(df))).fillna(True) == True, "info"),  # noqa: E712
     ]
 
-    for seg1_key, seg2_key, label in combinations:
-        if seg1_key not in segment_defs or seg2_key not in segment_defs:
-            continue
+    overall_rec_rate = float(df["voted_up"].mean()) if "voted_up" in df.columns else 0.5
+    total_reviews = len(df)
 
-        mask1 = segment_defs[seg1_key]
-        mask2 = segment_defs[seg2_key]
-
-        # Handle potential series alignment issues
+    for label, mask, base_severity in segment_analyses:
         try:
-            combined_mask = mask1 & mask2
-            segment_df = df[combined_mask]
+            segment_df = df[mask]
         except Exception:
             continue
 
-        if len(segment_df) < 3:  # Need minimum sample
+        if len(segment_df) < 5:  # Need minimum sample
             continue
 
         top_issues = []
@@ -759,31 +837,60 @@ def cross_segment_analysis(df: pd.DataFrame) -> Dict[str, Any]:
                 top_issues = [{"category": cat, "count": int(count)} for cat, count in counts.items()]
 
         recommendation_rate = float(segment_df["voted_up"].mean()) if "voted_up" in segment_df.columns else 0.0
+        share_of_total = len(segment_df) / total_reviews if total_reviews > 0 else 0
+
+        # Determine severity based on difference from average
+        diff = recommendation_rate - overall_rec_rate
+        if diff <= -0.15:
+            severity = "critical" if diff <= -0.25 else "warning"
+        elif diff >= 0.15:
+            severity = "success"
+        else:
+            severity = base_severity
 
         segment_data = {
             "label": label,
-            "segments": [seg1_key, seg2_key],
+            "segments": [label.lower().replace(" ", "_")],
             "count": len(segment_df),
             "recommendation_rate": recommendation_rate,
             "top_issues": top_issues,
+            "severity": severity,
         }
         cross_segments.append(segment_data)
 
         # Check for notable findings (significantly different from average)
-        overall_rec_rate = float(df["voted_up"].mean()) if "voted_up" in df.columns else 0.5
         if len(segment_df) >= 5:
             diff = recommendation_rate - overall_rec_rate
-            if abs(diff) >= 0.15:  # 15%+ difference is notable
+            if abs(diff) >= 0.10:  # 10%+ difference is notable (lowered from 15%)
                 direction = "lower" if diff < 0 else "higher"
+                # Generate more descriptive findings
+                if diff < 0:
+                    if abs(diff) >= 0.30:
+                        insight = f"Critical: {label} are significantly less satisfied ({abs(diff)*100:.0f}% below average)"
+                    else:
+                        insight = f"{label} show {abs(diff)*100:.0f}% lower satisfaction than overall"
+                else:
+                    if abs(diff) >= 0.30:
+                        insight = f"Highlight: {label} are highly satisfied ({abs(diff)*100:.0f}% above average)"
+                    else:
+                        insight = f"{label} show {abs(diff)*100:.0f}% higher satisfaction than overall"
+
                 notable_findings.append({
                     "segment": label,
-                    "finding": f"{label} have {abs(diff)*100:.0f}% {direction} recommendation rate than average",
+                    "finding": insight,
                     "count": len(segment_df),
                     "recommendation_rate": recommendation_rate,
                     "overall_rate": overall_rec_rate,
+                    "diff": diff,
+                    "severity": severity,
+                    "top_issues": top_issues[:3],
+                    "share_of_total": share_of_total,
                 })
+
+    # Sort notable findings by absolute difference (most significant first)
+    notable_findings.sort(key=lambda x: abs(x.get("diff", 0)), reverse=True)
 
     return {
         "cross_segments": cross_segments,
-        "notable_findings": notable_findings,
+        "notable_findings": notable_findings[:8],  # Limit to top 8 most notable
     }

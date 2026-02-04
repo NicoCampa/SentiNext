@@ -203,6 +203,10 @@ export interface NotableFinding {
   count: number;
   recommendation_rate: number;
   overall_rate: number;
+  diff?: number;
+  severity?: 'info' | 'success' | 'warning' | 'critical';
+  top_issues?: IssueCategory[];
+  share_of_total?: number;
 }
 
 export interface CrossSegmentAnalysis {

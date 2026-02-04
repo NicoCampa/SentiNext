@@ -161,7 +161,7 @@ export default function SettingsPage() {
             <div className="h-[1px] bg-gradient-to-r from-[rgb(0,255,255)]/50 via-[rgb(0,255,255)]/20 to-transparent" />
           </div>
 
-          <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-xl'}`}>
+          <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-xl mx-auto'}`}>
           {/* Left Column */}
           <div className="space-y-6">
             {/* Language Section */}

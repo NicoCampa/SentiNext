@@ -202,7 +202,7 @@ function applyDashboardReviewFilters(reviews: ReviewRow[], filters: DashboardFil
 
   return reviews.filter((review) => {
     if (filters.sentiment !== "all") {
-      const isPositive = Boolean(review.voted_up);
+      const isPositive = isRecommended(review.voted_up);
       if (filters.sentiment === "positive" && !isPositive) return false;
       if (filters.sentiment === "negative" && isPositive) return false;
     }
@@ -264,6 +264,13 @@ interface TrendSeriesPoint {
   reviews: number;
 }
 
+interface TrendWeekSelection {
+  key: string;
+  start: Date;
+  end: Date;
+  label: string;
+}
+
 function parseReviewDate(value: unknown): Date | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -286,6 +293,27 @@ function parseReviewDate(value: unknown): Date | null {
   return null;
 }
 
+function isRecommended(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value > 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (
+      ["true", "1", "yes", "positive", "recommended", "recommend", "thumbs_up", "thumbsup", "up"].includes(normalized)
+    ) {
+      return true;
+    }
+    if (
+      ["false", "0", "no", "negative", "not recommended", "not_recommended", "thumbs_down", "thumbsdown", "down"].includes(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+  }
+  return false;
+}
+
 function extractReviewDate(review: ReviewRow): Date | null {
   const fallback = (review as unknown as { [key: string]: unknown }) || {};
   return (
@@ -297,65 +325,107 @@ function extractReviewDate(review: ReviewRow): Date | null {
   );
 }
 
+function formatTrendLabel(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function startOfWeek(date: Date): Date {
   const copy = new Date(date);
   const day = copy.getDay();
-  const diff = (day + 6) % 7; // Monday start
+  const diff = (day + 6) % 7; // Monday as start of week
   copy.setDate(copy.getDate() - diff);
   copy.setHours(0, 0, 0, 0);
   return copy;
 }
 
-function formatTrendLabel(date: Date): string {
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function formatWeekRangeLabel(start: Date): string {
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return `${formatTrendLabel(start)} → ${formatTrendLabel(end)}`;
 }
 
-function buildTrendSeriesFromReviews(reviews: ReviewRow[], maxPoints = 12): TrendSeriesPoint[] {
+function buildTrendSeriesFromReviews(reviews: ReviewRow[]): TrendSeriesPoint[] {
   const buckets = new Map<string, { date: Date; total: number; recommended: number }>();
+  let minDate: Date | null = null;
+  let maxDate: Date | null = null;
   reviews.forEach((review) => {
     const created = extractReviewDate(review);
     if (!created) return;
     const weekStart = startOfWeek(created);
+    if (!minDate || weekStart < minDate) minDate = weekStart;
+    if (!maxDate || weekStart > maxDate) maxDate = weekStart;
     const key = weekStart.toISOString().slice(0, 10);
     const bucket = buckets.get(key) || { date: weekStart, total: 0, recommended: 0 };
     bucket.total += 1;
-    if (review.voted_up) bucket.recommended += 1;
+    if (isRecommended(review.voted_up)) bucket.recommended += 1;
     buckets.set(key, bucket);
   });
 
-  const series = Array.from(buckets.values())
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .map((bucket) => ({
-      label: formatTrendLabel(bucket.date),
-      date: bucket.date,
-      recommendation_rate: bucket.total > 0 ? bucket.recommended / bucket.total : 0,
-      reviews: bucket.total,
-    }));
+  if (!minDate || !maxDate) return [];
 
-  if (series.length > maxPoints) {
-    return series.slice(series.length - maxPoints);
+  const series: TrendSeriesPoint[] = [];
+  const cursor = new Date(minDate);
+  while (cursor <= maxDate) {
+    const key = cursor.toISOString().slice(0, 10);
+    const bucket = buckets.get(key);
+    const total = bucket?.total ?? 0;
+    const recommended = bucket?.recommended ?? 0;
+    series.push({
+      label: formatTrendLabel(cursor),
+      date: new Date(cursor),
+      recommendation_rate: total > 0 ? recommended / total : 0,
+      reviews: total,
+    });
+    cursor.setDate(cursor.getDate() + 7);
   }
   return series;
 }
 
-function normalizeTrendSeries(trend: TrendPoint[] | undefined, maxPoints = 12): TrendSeriesPoint[] {
+function normalizeTrendSeries(trend: TrendPoint[] | undefined): TrendSeriesPoint[] {
   if (!trend || trend.length === 0) return [];
-  const series = trend
+  const parsedPoints = trend
     .map((point, index) => {
       const parsed = parseReviewDate(point.period);
+      const labelDate = parsed ? startOfWeek(parsed) : null;
       return {
-        label: parsed ? formatTrendLabel(parsed) : point.period,
+        label: labelDate ? formatTrendLabel(labelDate) : point.period,
         date: parsed,
         recommendation_rate: Number(point.recommendation_rate ?? 0),
         reviews: Number(point.reviews ?? 0),
         order: parsed ? parsed.getTime() : index,
       };
     })
-    .sort((a, b) => a.order - b.order)
-    .map(({ order, ...rest }) => rest);
+    .filter((point) => point.date);
 
-  if (series.length > maxPoints) {
-    return series.slice(series.length - maxPoints);
+  if (parsedPoints.length === 0) return [];
+
+  parsedPoints.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const start = startOfWeek(parsedPoints[0].date as Date);
+  const end = startOfWeek(parsedPoints[parsedPoints.length - 1].date as Date);
+  const byDate = new Map<string, Omit<TrendSeriesPoint, "label"> & { label?: string }>();
+  parsedPoints.forEach((point) => {
+    const date = startOfWeek(point.date as Date);
+    const key = date.toISOString().slice(0, 10);
+    byDate.set(key, {
+      date,
+      recommendation_rate: point.recommendation_rate,
+      reviews: point.reviews,
+      label: point.label,
+    });
+  });
+
+  const series: TrendSeriesPoint[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const key = cursor.toISOString().slice(0, 10);
+    const point = byDate.get(key);
+    series.push({
+      label: point?.label ?? formatTrendLabel(cursor),
+      date: new Date(cursor),
+      recommendation_rate: point?.recommendation_rate ?? 0,
+      reviews: point?.reviews ?? 0,
+    });
+    cursor.setDate(cursor.getDate() + 7);
   }
   return series;
 }
@@ -513,6 +583,7 @@ function DashboardContent() {
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
   const recentAnalyses = games.slice(0, 6);
   const favoriteGames = useMemo(() => games.filter(game => game.is_favorite), [games]);
+  const transitionKey = selectedGame ? `game-${selectedGame.appid}` : `home-${viewParam ?? "default"}`;
 
   const handleToggleFavorite = async (appId: number, currentStatus: boolean) => {
     try {
@@ -525,7 +596,7 @@ function DashboardContent() {
   if (loadingStarred) {
     return (
       <AppLayout>
-        <PageTransition>
+        <PageTransition key={`loading-${gameParam ?? "none"}`}>
           <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6">
             <Card variant="glass" className="p-5">
               <div className="flex items-center justify-center gap-4">
@@ -541,16 +612,16 @@ function DashboardContent() {
 
   return (
     <AppLayout>
-      <PageTransition>
+      <PageTransition key={transitionKey}>
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-6 space-y-8 sm:space-y-6">
           {selectedGame ? (
             <div className="flex items-center justify-between">
               <button
                 onClick={handleReset}
-                className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-sky-400 transition-colors"
+                className="group inline-flex items-center gap-2 text-sm text-slate-400 hover:text-sky-400 transition-colors"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-4 h-4 transition-transform duration-200 ease-out group-hover:-translate-x-1"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -682,7 +753,7 @@ function DashboardContent() {
                   {favoriteGames.map((game) => {
                     const sample = game.sample ?? [];
                     const rate = sample.length
-                      ? sample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / sample.length
+                      ? sample.reduce((sum, review) => sum + (isRecommended(review.voted_up) ? 1 : 0), 0) / sample.length
                       : null;
                     return (
                       <div
@@ -760,7 +831,7 @@ function DashboardContent() {
                     {recentAnalyses.map((game) => {
                       const sample = game.sample ?? [];
                       const rate = sample.length
-                        ? sample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / sample.length
+                        ? sample.reduce((sum, review) => sum + (isRecommended(review.voted_up) ? 1 : 0), 0) / sample.length
                         : null;
                       const isFavorite = game.is_favorite ?? false;
                       return (
@@ -987,6 +1058,7 @@ function AnalysisResults({
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [selectedSubcategoryType, setSelectedSubcategoryType] = useState<'issue' | 'request' | 'general'>('general');
+  const [selectedTrendWeek, setSelectedTrendWeek] = useState<TrendWeekSelection | null>(null);
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set());
   const [filters, setFilters] = useState<DashboardFilters>(() => ({ ...DEFAULT_DASHBOARD_FILTERS }));
   const [reviewQuery, setReviewQuery] = useState("");
@@ -994,6 +1066,12 @@ function AnalysisResults({
   const [subcategorySummary, setSubcategorySummary] = useState<SubcategorySummaryResponse | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Trigger animations on mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   // Translation state: key is reviewKey, value is { text: string, loading: boolean, show: boolean }
   const [translations, setTranslations] = useState<Map<string, { text: string | null; loading: boolean; show: boolean }>>(new Map());
 
@@ -1124,6 +1202,19 @@ function AnalysisResults({
     return buildPlayerSegments(filteredReviewSample);
   }, [filteredReviewSample, filtersActive, insights?.player_segments]);
 
+  const selectedWeekReviews = useMemo(() => {
+    if (!selectedTrendWeek) return [];
+    const start = selectedTrendWeek.start;
+    const end = selectedTrendWeek.end;
+    return filteredReviewSample
+      .filter((review) => {
+        const created = extractReviewDate(review);
+        if (!created) return false;
+        return created >= start && created < end;
+      })
+      .sort((a, b) => Number(b.votes_up ?? 0) - Number(a.votes_up ?? 0));
+  }, [filteredReviewSample, selectedTrendWeek]);
+
   const selectedReviews = useMemo(() => {
     if (!selectedSubcategory) return [];
     return filteredReviewSample
@@ -1215,7 +1306,7 @@ function AnalysisResults({
   const summaryTotal = filteredReviewSample.length;
   const summaryRecommendationRate =
     summaryTotal > 0
-      ? filteredReviewSample.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0) / summaryTotal
+      ? filteredReviewSample.reduce((sum, review) => sum + (isRecommended(review.voted_up) ? 1 : 0), 0) / summaryTotal
       : null;
   const summaryIssueRate =
     summaryTotal > 0
@@ -1232,8 +1323,10 @@ function AnalysisResults({
   const recLineColor = theme.palette.secondary ?? theme.palette.accent;
   const recFillColor = hexToRgba(recLineColor, 0.18);
   const volumeBarColor = hexToRgba(theme.palette.accent, 0.55);
+  const volumeBarHighlight = hexToRgba(theme.palette.accent, 0.9);
   const gridColor = "rgba(148,163,184,0.12)";
   const axisColor = "rgba(148,163,184,0.7)";
+  const selectedTrendKey = selectedTrendWeek?.key ?? null;
 
   const recommendationTrendData = {
     labels: trendLabels,
@@ -1256,12 +1349,30 @@ function AnalysisResults({
     datasets: [
       {
         data: trendSeries.map((point) => point.reviews),
-        backgroundColor: volumeBarColor,
+        backgroundColor: trendSeries.map((point) => {
+          const key = point.date ? startOfWeek(point.date).toISOString().slice(0, 10) : point.label;
+          return selectedTrendKey && key === selectedTrendKey ? volumeBarHighlight : volumeBarColor;
+        }),
         borderRadius: 6,
         maxBarThickness: 28,
       },
     ],
   };
+
+  const handleVolumeBarClick = useCallback(
+    (index: number) => {
+      const point = trendSeries[index];
+      if (!point?.date) return;
+      const start = startOfWeek(point.date);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      const key = start.toISOString().slice(0, 10);
+      const label = formatWeekRangeLabel(start);
+      setSelectedSubcategory(null);
+      setSelectedTrendWeek((prev) => (prev?.key === key ? null : { key, start, end, label }));
+    },
+    [trendSeries],
+  );
 
   const recommendationTrendOptions = {
     responsive: true,
@@ -1295,6 +1406,10 @@ function AnalysisResults({
   const volumeTrendOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (_event: unknown, elements: Array<{ index: number }>) => {
+      if (!elements || elements.length === 0) return;
+      handleVolumeBarClick(elements[0].index);
+    },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -1319,18 +1434,26 @@ function AnalysisResults({
     },
   };
 
+  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek);
+
   useEffect(() => {
-    if (!selectedSubcategory) return;
+    if (!hasOverlay) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setSelectedSubcategory(null);
+        if (selectedTrendWeek) {
+          setSelectedTrendWeek(null);
+          return;
+        }
+        if (selectedSubcategory) {
+          setSelectedSubcategory(null);
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [selectedSubcategory]);
+  }, [hasOverlay, selectedTrendWeek, selectedSubcategory]);
 
   useEffect(() => {
     setExpandedReviews(new Set());
@@ -1339,9 +1462,14 @@ function AnalysisResults({
     setSummaryLoading(false);
   }, [selectedSubcategory]);
 
+  useEffect(() => {
+    if (!selectedTrendWeek) return;
+    setExpandedReviews(new Set());
+  }, [selectedTrendWeek]);
+
   // Lock body scroll and scroll to top when modal is open
   useEffect(() => {
-    if (selectedSubcategory) {
+    if (hasOverlay) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       document.body.style.overflow = 'hidden';
     } else {
@@ -1350,7 +1478,7 @@ function AnalysisResults({
     return () => {
       document.body.style.overflow = '';
     };
-  }, [selectedSubcategory]);
+  }, [hasOverlay]);
 
   const handleSummarize = async () => {
     if (!selectedSubcategory || !selectedGame || selectedReviews.length === 0) return;
@@ -1381,7 +1509,7 @@ function AnalysisResults({
 
   return (
     <div className="space-y-8">
-      <Card variant="glass" className="p-6">
+      <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
         <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-5">
             {selectedGame ? (
@@ -1428,12 +1556,16 @@ function AnalysisResults({
           )}
           <Button
             onClick={() => {
-              if (!selectedGame) return;
-              router.push(`/reviews?appId=${selectedGame.appid}`);
+              router.push('/database');
             }}
-            variant="secondary"
+            className="inline-flex items-center gap-2 bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500"
           >
-            {t('dashboard.openReviews')}
+            <svg className="h-3.5 w-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <rect x="5" y="10" width="14" height="10" rx="3" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10V8a4 4 0 118 0v2" />
+              <circle cx="12" cy="15" r="1.2" />
+            </svg>
+            <span className="text-amber-400">{t('dashboard.openReviews')}</span>
           </Button>
         </div>
       </div>
@@ -1471,7 +1603,7 @@ function AnalysisResults({
         )}
 
         <div className="mt-5 grid gap-4 sm:gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-scale-in animation-delay-100' : 'opacity-0'}`}>
             <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.recommendation')}</p>
             <p
               className="mt-2 text-2xl font-semibold"
@@ -1480,11 +1612,11 @@ function AnalysisResults({
               {formatPercentOrDash(summaryRecommendationRate)}
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-scale-in animation-delay-200' : 'opacity-0'}`}>
             <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.issueRate')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-scale-in animation-delay-300' : 'opacity-0'}`}>
             <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{t('dashboard.requestRate')}</p>
             <p className="mt-2 text-2xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
           </div>
@@ -1493,7 +1625,7 @@ function AnalysisResults({
 
       <div className="space-y-6">
 
-        <Card variant="glass" className="p-6">
+        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
           <div>
             <h4 className="text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
             <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
@@ -1561,7 +1693,7 @@ function AnalysisResults({
         </Card>
 
         <div className="grid gap-6 xl:grid-cols-2">
-          <Card variant="glass" className="p-6">
+          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-lg font-semibold text-white">{t('dashboard.topIssues')}</h4>
@@ -1618,7 +1750,7 @@ function AnalysisResults({
             )}
           </Card>
 
-          <Card variant="glass" className="p-6">
+          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-lg font-semibold text-white">{t('dashboard.topRequests')}</h4>
@@ -1676,7 +1808,7 @@ function AnalysisResults({
           </Card>
         </div>
 
-        <Card variant="glass" className="p-6">
+        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-500' : 'opacity-0'}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h4 className="text-lg font-semibold text-white">Trends</h4>
@@ -1724,10 +1856,25 @@ function AnalysisResults({
               <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-white">Review volume</p>
-                  {trendRangeLabel && (
-                    <span className="text-xs text-slate-500">{trendRangeLabel}</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {trendRangeLabel && (
+                      <span className="text-xs text-slate-500">{trendRangeLabel}</span>
+                    )}
+                    {selectedTrendWeek && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTrendWeek(null)}
+                        className="text-xs text-sky-300 hover:text-sky-200"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
+                <p className="mt-1 text-xs text-slate-500">Click a bar to view reviews from that week.</p>
+                {selectedTrendWeek && (
+                  <p className="mt-1 text-xs text-sky-300">Selected {selectedTrendWeek.label}</p>
+                )}
                 <div className="mt-3 h-40">
                   <Chart type="bar" data={volumeTrendData} options={volumeTrendOptions as any} />
                 </div>
@@ -1736,7 +1883,7 @@ function AnalysisResults({
           )}
         </Card>
 
-        <Card variant="glass" className="p-6">
+        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-600' : 'opacity-0'}`}>
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-lg font-semibold text-white">Userbase segmentation</h4>
@@ -1755,15 +1902,17 @@ function AnalysisResults({
                     <h5 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Regional Breakdown</h5>
                     <span className="text-xs text-slate-500">{playerSegments.language.total_languages} languages</span>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {(() => {
                       const langs = playerSegments.language.languages.slice(0, 5);
-                      const maxCount = Math.max(...langs.map(l => l.count));
+                      // Calculate total reviews across all displayed languages for percentage
+                      const totalReviews = langs.reduce((sum, l) => sum + l.count, 0);
                       return langs.map((lang) => {
-                        const barWidth = maxCount > 0 ? (lang.count / maxCount) * 100 : 0;
-                        const topIssue = lang.top_issues?.[0]?.category;
+                        // Bar width as percentage of total reviews (not relative to max)
+                        const barWidth = totalReviews > 0 ? (lang.count / totalReviews) * 100 : 0;
+                        const topIssues = lang.top_issues?.slice(0, 5) ?? [];
                         return (
-                          <div key={lang.language} className="space-y-1">
+                          <div key={lang.language} className="space-y-2">
                             <div className="flex items-center gap-3">
                               <span className="w-20 text-xs text-slate-300 truncate">
                                 {lang.language.charAt(0).toUpperCase() + lang.language.slice(1)}
@@ -1774,7 +1923,9 @@ function AnalysisResults({
                                   style={{ width: `${barWidth}%` }}
                                 />
                                 <div className="absolute inset-0 flex items-center justify-between px-2">
-                                  <span className="text-[10px] text-slate-400">{lang.count.toLocaleString()}</span>
+                                  <span className="text-[10px] text-slate-400">
+                                    {lang.count.toLocaleString()} ({Math.round(barWidth)}%)
+                                  </span>
                                   <span
                                     className="text-xs font-medium"
                                     style={{ color: getRecommendationColor(lang.recommendation_rate) }}
@@ -1784,9 +1935,17 @@ function AnalysisResults({
                                 </div>
                               </div>
                             </div>
-                            {topIssue && (
-                              <div className="ml-[5.5rem] text-[10px] text-slate-500">
-                                Top issue: <span className="text-rose-300">{toSubcategoryLabel(topIssue)}</span>
+                            {topIssues.length > 0 && (
+                              <div className="ml-[5.5rem] flex flex-wrap gap-1.5">
+                                {topIssues.map((issue, idx) => (
+                                  <span
+                                    key={issue.category}
+                                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-slate-800/50 border border-white/5"
+                                  >
+                                    <span className="text-rose-300">{toSubcategoryLabel(issue.category)}</span>
+                                    <span className="text-slate-500">({issue.count})</span>
+                                  </span>
+                                ))}
                               </div>
                             )}
                           </div>
@@ -1853,6 +2012,7 @@ function AnalysisResults({
                               <div className="h-full bg-sky-500/70 rounded-full" style={{ width: `${share}%` }} />
                             </div>
                             <span className="text-xs text-slate-300">{row.label}</span>
+                            <span className="text-[10px] text-slate-500">{share}%</span>
                           </div>
                           <span
                             className="text-xs"
@@ -1888,6 +2048,7 @@ function AnalysisResults({
                               <div className={`h-full rounded-full ${row.color}`} style={{ width: `${share}%` }} />
                             </div>
                             <span className="text-xs text-slate-300">{row.label}</span>
+                            <span className="text-[10px] text-slate-500">{share}%</span>
                           </div>
                           <span
                             className="text-xs"
@@ -1923,13 +2084,12 @@ function AnalysisResults({
                               <div className="h-full bg-teal-500/70 rounded-full" style={{ width: `${share}%` }} />
                             </div>
                             <span className="text-xs text-slate-300">{row.label}</span>
+                            <span className="text-[10px] text-slate-500">{share}%</span>
                           </div>
-                          {topTopic ? (
-                            <span className="text-[10px] text-slate-500 truncate max-w-[60px]">
+                          {topTopic && (
+                            <span className="text-[10px] text-teal-400 truncate max-w-[60px]" title={topTopic}>
                               {formatMainCategoryLabel(topTopic)}
                             </span>
-                          ) : (
-                            <span className="text-xs text-slate-400">{share}%</span>
                           )}
                         </div>
                       );
@@ -1941,41 +2101,9 @@ function AnalysisResults({
           )}
         </Card>
 
-        {/* Cross-segment insights card */}
-        {insights?.cross_segment && insights.cross_segment.notable_findings?.length > 0 && (
-          <Card variant="glass" className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-lg font-semibold text-white">Notable segment insights</h4>
-                <p className="mt-1 text-sm text-slate-400">Significant patterns across user segments</p>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {insights.cross_segment.notable_findings.map((finding, index) => (
-                <div key={index} className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="rounded-full bg-amber-500/20 p-2">
-                      <svg className="h-4 w-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-white">{finding.segment}</p>
-                      <p className="mt-1 text-sm text-slate-300">{finding.finding}</p>
-                      <p className="mt-2 text-xs text-slate-500">
-                        Based on {finding.count.toLocaleString()} reviews
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
         {/* Quality weighted insights card */}
         {insights?.quality_weighted && insights.quality_weighted.high_quality_reviews > 0 && (
-          <Card variant="glass" className="p-6">
+          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-700' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-lg font-semibold text-white">Quality-weighted insights</h4>
@@ -2251,10 +2379,10 @@ function AnalysisResults({
                       <div className="mt-3 flex items-center justify-between gap-3 text-xs">
                         <span
                           className={`rounded-full px-2 py-1 ${
-                            review.voted_up ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
+                            isRecommended(review.voted_up) ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
                           }`}
                         >
-                          {review.voted_up ? "Recommended" : "Not recommended"}
+                          {isRecommended(review.voted_up) ? "Recommended" : "Not recommended"}
                         </span>
                         {shouldClamp ? (
                           <button
@@ -2282,6 +2410,198 @@ function AnalysisResults({
                 })}
               </div>
             )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedTrendWeek ? (
+        <div
+          className="fixed top-0 left-0 right-0 bottom-0 z-[9998] bg-black/60 backdrop-blur-md overflow-y-auto"
+          onClick={() => setSelectedTrendWeek(null)}
+          style={{ WebkitBackdropFilter: 'blur(12px)' }}
+        >
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Week of {formatTrendLabel(selectedTrendWeek.start)}</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {selectedTrendWeek.label} - {selectedWeekReviews.length.toLocaleString()} reviews
+                    {filtersActive ? " - filters applied" : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => setSelectedTrendWeek(null)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+
+              {selectedWeekReviews.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No reviews found for this week.</p>
+              ) : (
+                <div className="mt-4 max-h-[32rem] space-y-3 overflow-auto pr-2">
+                  {selectedWeekReviews.map((review, idx) => {
+                    const reviewKey = String(review.review_id ?? idx);
+                    const text = review.review ?? "";
+                    const createdAt = review.created_at ? new Date(review.created_at) : null;
+                    const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
+                      ? createdAt.toLocaleDateString()
+                      : "Date unknown";
+                    const shouldClamp = text.length > 240 || text.split("\n").length > 3;
+                    const isExpanded = expandedReviews.has(reviewKey);
+                    const reviewLangCode = STEAM_TO_APP_LANGUAGE[review.language?.toLowerCase() || ''] || review.language?.toLowerCase();
+                    const needsTranslation = reviewLangCode !== userLanguage && review.language;
+                    const translationState = translations.get(reviewKey);
+                    const isTranslating = translationState?.loading ?? false;
+                    const translatedText = translationState?.text ?? null;
+                    const showTranslation = translationState?.show ?? false;
+
+                    const handleTranslate = async () => {
+                      if (translatedText) {
+                        setTranslations((prev) => {
+                          const next = new Map(prev);
+                          const current = next.get(reviewKey);
+                          if (current) {
+                            next.set(reviewKey, { ...current, show: !current.show });
+                          }
+                          return next;
+                        });
+                        return;
+                      }
+                      setTranslations((prev) => {
+                        const next = new Map(prev);
+                        next.set(reviewKey, { text: null, loading: true, show: false });
+                        return next;
+                      });
+                      try {
+                        const result = await translateText({
+                          text,
+                          target_language: userLanguage,
+                        });
+                        setTranslations((prev) => {
+                          const next = new Map(prev);
+                          next.set(reviewKey, { text: result.translated_text, loading: false, show: true });
+                          return next;
+                        });
+                        refreshCredits();
+                      } catch (error) {
+                        console.error("Translation error:", error);
+                        setTranslations((prev) => {
+                          const next = new Map(prev);
+                          next.delete(reviewKey);
+                          return next;
+                        });
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={reviewKey}
+                        className="rounded-xl border border-white/10 bg-white/5 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs text-slate-500">{createdLabel}</p>
+                            <p className="mt-1 text-sm text-slate-200">{review.language}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {needsTranslation && (
+                              <button
+                                type="button"
+                                onClick={handleTranslate}
+                                disabled={isTranslating}
+                                className="flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
+                              >
+                                {isTranslating ? (
+                                  <>
+                                    <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Translating...
+                                  </>
+                                ) : translatedText ? (
+                                  <>
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                                    </svg>
+                                    {showTranslation ? 'Original' : 'Translated'}
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                                    </svg>
+                                    Translate
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {showTranslation && translatedText && (
+                          <div className="mt-2 rounded-lg border border-sky-500/20 bg-sky-500/5 p-2">
+                            <p className="whitespace-pre-line text-sm text-slate-200">
+                              {translatedText}
+                            </p>
+                          </div>
+                        )}
+
+                        <p
+                          className="mt-2 whitespace-pre-line text-sm text-slate-100"
+                          style={
+                            !isExpanded && shouldClamp
+                              ? {
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 3,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden",
+                                }
+                              : undefined
+                          }
+                        >
+                          {text}
+                        </p>
+                        <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                          <span
+                            className={`rounded-full px-2 py-1 ${
+                              isRecommended(review.voted_up) ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
+                            }`}
+                          >
+                            {isRecommended(review.voted_up) ? "Recommended" : "Not recommended"}
+                          </span>
+                          {shouldClamp ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedReviews((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(reviewKey)) {
+                                    next.delete(reviewKey);
+                                  } else {
+                                    next.add(reviewKey);
+                                  }
+                                  return next;
+                                })
+                              }
+                              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:border-white/20 hover:bg-white/10"
+                              aria-label={isExpanded ? "Collapse review" : "Expand review"}
+                            >
+                              {isExpanded ? "−" : "+"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2329,7 +2649,7 @@ function buildPlayerSegments(reviews: ReviewRow[]): PlayerSegments {
 
   const countRecommendationRate = (segment: ReviewRow[]) => {
     if (!segment.length) return 0;
-    const recommended = segment.reduce((sum, review) => sum + (review.voted_up ? 1 : 0), 0);
+    const recommended = segment.reduce((sum, review) => sum + (isRecommended(review.voted_up) ? 1 : 0), 0);
     return recommended / segment.length;
   };
 
