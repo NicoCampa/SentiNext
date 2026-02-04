@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { fetchAuthStatus, type AuthStatus } from '@/lib/api';
+import { fetchAuthStatus, type AuthStatus, getAdminToken, verifyAdminToken } from '@/lib/api';
 
 interface AdminStatusState {
   isAdmin: boolean;
@@ -21,6 +21,23 @@ export function useAdminStatus(): AdminStatusState {
 
     async function checkAdminStatus() {
       try {
+        const token = getAdminToken();
+        if (token) {
+          try {
+            await verifyAdminToken(token);
+            if (active) {
+              setState({
+                isAdmin: true,
+                isLoading: false,
+                error: null,
+              });
+            }
+            return;
+          } catch (err) {
+            // Fall back to user-based admin status if token is invalid
+          }
+        }
+
         const status: AuthStatus = await fetchAuthStatus();
         if (active) {
           setState({
