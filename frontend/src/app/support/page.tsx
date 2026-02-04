@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/AppLayout";
 import { PageTransition } from "@/components/PageTransition";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { fetchSupportThread, sendSupportMessage, SupportMessage } from "@/lib/api";
 
 function formatTimestamp(value?: string | null) {
@@ -17,6 +19,8 @@ function formatTimestamp(value?: string | null) {
 
 export default function SupportPage() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -39,8 +43,13 @@ export default function SupportPage() {
   }
 
   useEffect(() => {
+    if (isAdminLoading) return;
+    if (isAdmin) {
+      router.replace("/admin?tab=inbox");
+      return;
+    }
     loadThread();
-  }, []);
+  }, [isAdmin, isAdminLoading, router]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

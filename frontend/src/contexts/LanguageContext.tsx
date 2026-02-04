@@ -22,6 +22,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.database': 'Database',
     'nav.reports': 'Reports',
     'nav.support': 'Support',
+    'nav.inbox': 'Inbox',
     'nav.settings': 'Settings',
 
     // Common
@@ -271,6 +272,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.database': 'Database',
     'nav.reports': 'Rapporti',
     'nav.support': 'Supporto',
+    'nav.inbox': 'Inbox',
     'nav.settings': 'Impostazioni',
 
     // Common
@@ -520,6 +522,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.database': 'Base de données',
     'nav.reports': 'Rapports',
     'nav.support': 'Support',
+    'nav.inbox': 'Inbox',
     'nav.settings': 'Paramètres',
 
     // Common
@@ -769,6 +772,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.database': 'Datenbank',
     'nav.reports': 'Berichte',
     'nav.support': 'Support',
+    'nav.inbox': 'Inbox',
     'nav.settings': 'Einstellungen',
 
     // Common

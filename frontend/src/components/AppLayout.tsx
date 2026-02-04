@@ -40,8 +40,13 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
       { href: "/chat", label: t('nav.chat'), code: "02" },
       { href: "/compare", label: t('nav.compare'), code: "03" },
       { href: "/reports", label: t('nav.reports'), code: "04" },
-      { href: "/support", label: t('nav.support'), code: "0S" },
     ];
+
+    if (isAdmin) {
+      items.push({ href: "/admin?tab=inbox", label: t('nav.inbox'), code: "0S" });
+    } else {
+      items.push({ href: "/support", label: t('nav.support'), code: "0S" });
+    }
 
     if (isAdmin) {
       items.push({ href: "/database", label: t('nav.database'), code: "05" });

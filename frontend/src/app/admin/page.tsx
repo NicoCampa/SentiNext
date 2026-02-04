@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -287,6 +288,7 @@ function buildChartOptions(spec: ChartSpec) {
 
 export default function AdminPage() {
   const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
+  const searchParams = useSearchParams();
   const [sessions, setSessions] = useState<AdminChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<AdminChatSession | null>(null);
   const [chatHistory, setChatHistory] = useState<AdminChatMessage[]>([]);
@@ -305,6 +307,13 @@ export default function AdminPage() {
   const [supportReply, setSupportReply] = useState("");
   const [supportSending, setSupportSending] = useState(false);
   const supportBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const tab = searchParams?.get("tab");
+    if (tab === "inbox") {
+      setActivePanel("support");
+    }
+  }, [searchParams]);
   const [adminDashboard, setAdminDashboard] = useState<AdminDashboardSummary | null>(null);
   const [adminDashboardLoading, setAdminDashboardLoading] = useState(false);
   const [adminDashboardError, setAdminDashboardError] = useState<string | null>(null);
@@ -965,7 +974,7 @@ export default function AdminPage() {
                 onClick={() => setActivePanel("support")}
                 className="text-xs"
               >
-                Support Inbox
+                Inbox
               </Button>
             </div>
             <div className="text-xs text-slate-500">
@@ -1227,7 +1236,7 @@ export default function AdminPage() {
               <Card variant="glass" className="w-96 flex-shrink-0 flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Support Inbox</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Inbox</p>
                     <p className="text-xs text-slate-500 mt-1">
                       {supportUnreadCount} unread
                     </p>
