@@ -793,51 +793,52 @@ export default function ChatPage() {
         }
       `}</style>
       <PageTransition>
-        <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-4 px-4 py-6 sm:px-6 lg:px-6">
+        <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-2 sm:gap-4 px-2 py-3 sm:px-4 sm:py-6 lg:px-6">
           {/* Header */}
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold">
+          <div className="mb-2 sm:mb-6 flex items-center justify-between">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg sm:text-xl font-bold">
                 <span className="text-white">
                   {t('chat.title')}
                 </span>
               </h1>
-              <p className="text-xs text-slate-400">
+              <p className="text-[11px] sm:text-xs text-slate-400 truncate">
                 {selectedGames.length > 0
-                  ? `Chatting with ${selectedGames.length} game${selectedGames.length > 1 ? "s" : ""} selected`
+                  ? `${selectedGames.length} game${selectedGames.length > 1 ? "s" : ""} selected`
                   : t('chat.subtitle')}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1 sm:gap-2 flex-shrink-0">
               {currentSessionId && messages.length > 0 && (
                 <Button
                   variant="secondary"
                   onClick={handleExportChat}
-                  className="text-xs"
+                  className="text-[10px] sm:text-xs px-2 sm:px-3"
                 >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  Export
+                  <span className="hidden sm:inline">Export</span>
                 </Button>
               )}
               <Button
                 variant="secondary"
                 onClick={handleNewConversation}
-                className="text-xs"
+                className="text-[10px] sm:text-xs px-2 sm:px-3"
               >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                {t('chat.newChat')}
+                <span className="hidden sm:inline">{t('chat.newChat')}</span>
+                <span className="sm:hidden">New</span>
               </Button>
             </div>
           </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex gap-4 overflow-hidden">
-          {/* Left Sidebar: Chat History */}
-          <Card variant="glass" className="w-72 flex-shrink-0 p-4 overflow-hidden flex flex-col transition-colors duration-200">
+        <div className="flex-1 flex flex-col lg:flex-row gap-2 sm:gap-4 overflow-hidden">
+          {/* Left Sidebar: Chat History - hidden on mobile, shown on desktop */}
+          <Card variant="glass" className="hidden lg:flex w-72 flex-shrink-0 p-4 overflow-hidden flex-col transition-colors duration-200">
             <div className="flex-1 flex flex-col gap-4 animate-slide-up-soft">
             {/* Chat History */}
             <div className="flex-1 flex flex-col min-h-0">
@@ -908,22 +909,22 @@ export default function ChatPage() {
           {/* Messages Container */}
           <Card variant="glass" className="flex-1 flex flex-col overflow-hidden relative transition-colors duration-200">
             {copyToast && (
-              <div className="absolute right-6 top-4 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-1 text-xs text-slate-200">
+              <div className="absolute right-3 sm:right-6 top-2 sm:top-4 rounded-lg border border-white/10 bg-slate-900/90 px-2 sm:px-3 py-1 text-[10px] sm:text-xs text-slate-200">
                 {copyToast}
               </div>
             )}
-            <div className="flex h-full flex-col px-6 pb-6 pt-4 animate-slide-up-soft animation-delay-100">
+            <div className="flex h-full flex-col px-3 sm:px-6 pb-4 sm:pb-6 pt-3 sm:pt-4 animate-slide-up-soft animation-delay-100">
               {/* Messages */}
               <div className="flex-1 overflow-y-auto mb-4 pr-2 scrollbar-hide">
                 <div className="min-h-full space-y-4">
                 {messages.length > 0 && selectedGames.length > 0 && (
-                  <div className="sticky top-0 z-10 -mx-6 mb-3 border-b border-white/10 bg-slate-900/90 px-6 py-2 backdrop-blur">
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="sticky top-0 z-10 -mx-3 sm:-mx-6 mb-2 sm:mb-3 border-b border-white/10 bg-slate-900/90 px-3 sm:px-6 py-1.5 sm:py-2 backdrop-blur">
+                    <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-400">
                       <span>Chatting with:</span>
                       {selectedGames.map((appId) => {
                         const game = starredGames.find(g => g.app_id === appId);
                         return game ? (
-                          <span key={appId} className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[11px]">
+                          <span key={appId} className="px-1.5 sm:px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[10px] sm:text-[11px] truncate max-w-[120px] sm:max-w-none">
                             {game.name}
                           </span>
                         ) : null;
@@ -933,54 +934,54 @@ export default function ChatPage() {
                 )}
                 {messages.length === 0 ? (
                   /* Game Selection Screen */
-                  <div className="h-full flex flex-col p-4">
+                  <div className="h-full flex flex-col p-2 sm:p-4">
                     {/* Header - sticky at top */}
-                    <div className="text-center pb-4 flex-shrink-0">
-                      <h2 className="text-lg font-semibold text-white mb-1">
+                    <div className="text-center pb-3 sm:pb-4 flex-shrink-0">
+                      <h2 className="text-base sm:text-lg font-semibold text-white mb-1">
                         Select Games to Chat About
                       </h2>
-                      <p className="text-sm text-slate-400">
+                      <p className="text-xs sm:text-sm text-slate-400">
                         {selectedGames.length === 0
                           ? "Choose up to 2 games to unlock chat"
-                          : `${selectedGames.length} selected. Ask a question below or pick a suggested one.`}
+                          : `${selectedGames.length} selected. Ask a question below.`}
                       </p>
                     </div>
 
                     {/* Scrollable game grid */}
                     <div className="flex-1 overflow-y-auto">
-                    <div className="w-full max-w-3xl mx-auto space-y-6">
+                    <div className="w-full max-w-3xl mx-auto space-y-4 sm:space-y-6">
                       {/* Game Grid */}
                       {loadingGames ? (
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                           {[0, 1, 2, 3, 4, 5, 6, 7].map((idx) => (
                             <div
                               key={`game-skeleton-${idx}`}
                               className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-900/40"
                             >
                               <div className="aspect-[460/215] bg-slate-800/50 animate-pulse" />
-                              <div className="p-3 bg-slate-900/90">
+                              <div className="p-2 sm:p-3 bg-slate-900/90">
                                 <div className="h-3 w-3/4 bg-slate-700/40 rounded animate-pulse" />
                               </div>
                             </div>
                           ))}
                         </div>
                       ) : starredGames.length === 0 ? (
-                        <div className="text-center py-8">
-                          <p className="text-sm text-slate-400 mb-2">No analyzed games found</p>
-                          <p className="text-xs text-slate-500 mb-4">You need to analyze a game before you can chat about it.</p>
-                          <a href="/" className="text-sm text-[rgb(0,255,255)] hover:underline inline-block">
-                            Go to Dashboard to analyze games
+                        <div className="text-center py-6 sm:py-8">
+                          <p className="text-xs sm:text-sm text-slate-400 mb-2">No analyzed games found</p>
+                          <p className="text-[10px] sm:text-xs text-slate-500 mb-4">Analyze a game before chatting.</p>
+                          <a href="/" className="text-xs sm:text-sm text-[rgb(0,255,255)] hover:underline inline-block">
+                            Go to Dashboard
                           </a>
                         </div>
                       ) : (
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                           {starredGames.map((game) => {
                             const isSelected = selectedGames.includes(game.app_id);
                             return (
                               <button
                                 key={game.app_id}
                                 onClick={() => toggleGameSelection(game.app_id)}
-                                className={`relative overflow-hidden rounded-lg border transition-all ${
+                                className={`relative overflow-hidden rounded-lg border transition-all active:scale-[0.98] ${
                                   isSelected
                                     ? "border-sky-500 ring-2 ring-sky-500/50"
                                     : "border-white/10 hover:border-white/20"
@@ -996,9 +997,9 @@ export default function ChatPage() {
                                   />
                                   {isSelected && (
                                     <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
-                                      <div className="bg-sky-500 text-white rounded-full p-2">
+                                      <div className="bg-sky-500 text-white rounded-full p-1.5 sm:p-2">
                                         <svg
-                                          className="w-6 h-6"
+                                          className="w-4 h-4 sm:w-6 sm:h-6"
                                           fill="none"
                                           stroke="currentColor"
                                           viewBox="0 0 24 24"
@@ -1014,11 +1015,11 @@ export default function ChatPage() {
                                     </div>
                                   )}
                                 </div>
-                                <div className="p-3 bg-slate-900/90">
-                                  <p className="text-sm font-medium text-white truncate">{game.name}</p>
+                                <div className="p-2 sm:p-3 bg-slate-900/90">
+                                  <p className="text-xs sm:text-sm font-medium text-white truncate">{game.name}</p>
                                 </div>
                                 {isSelected && (
-                                  <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white z-10">
+                                  <div className="absolute right-1.5 top-1.5 sm:right-2 sm:top-2 rounded-full bg-sky-500 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[10px] sm:text-xs font-bold text-white z-10">
                                     Selected
                                   </div>
                                 )}
@@ -1031,10 +1032,10 @@ export default function ChatPage() {
                       {/* Suggested Prompts */}
                   {!loadingGames && selectedGames.length > 0 && (
                     <div ref={suggestedQueriesRef} className="border-t border-white/10 pt-4">
-                      <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3 text-center">
+                      <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] text-slate-500 mb-3 text-center">
                         Suggested Questions
                       </p>
-                          <div className="flex flex-wrap justify-center gap-2">
+                          <div className="flex overflow-x-auto pb-2 gap-2 sm:flex-wrap sm:justify-center sm:overflow-x-visible sm:pb-0 scrollbar-hide -mx-2 px-2 sm:mx-0 sm:px-0">
                             {(selectedGames.length > 1
                               ? [...SUGGESTED_PROMPTS, ...COMPARE_SUGGESTED_PROMPTS]
                               : SUGGESTED_PROMPTS
@@ -1042,13 +1043,13 @@ export default function ChatPage() {
                               <button
                                 key={prompt}
                                 onClick={() => sendMessage(prompt)}
-                                className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                                className="text-[11px] sm:text-xs px-2.5 py-1.5 sm:px-3 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition whitespace-nowrap flex-shrink-0 active:scale-[0.98]"
                               >
                                 {prompt}
                               </button>
                             ))}
                           </div>
-                          <p className="text-xs text-slate-500 mt-3 text-center">
+                          <p className="text-[10px] sm:text-xs text-slate-500 mt-3 text-center">
                             Pick one to start, or type your own question below.
                           </p>
                         </div>
@@ -1064,8 +1065,8 @@ export default function ChatPage() {
                     >
                       <div
                         className={`${
-                          msg.role === "user" ? "max-w-[75%]" : "max-w-[95%]"
-                        } rounded-2xl px-4 py-3 ${
+                          msg.role === "user" ? "max-w-[85%] sm:max-w-[75%]" : "max-w-[98%] sm:max-w-[95%]"
+                        } rounded-xl sm:rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 ${
                           msg.role === "user"
                             ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-white"
                             : "bg-slate-900/60 border border-white/10 text-slate-100"
@@ -1178,14 +1179,14 @@ export default function ChatPage() {
                         )}
                         {/* Suggested follow-up questions */}
                         {msg.role === "assistant" && msg.suggestedQuestions && msg.suggestedQuestions.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-white/10">
-                            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.suggestedQuestions")}</p>
-                            <div className="flex flex-wrap gap-2">
+                          <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-white/10">
+                            <p className="text-[10px] sm:text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.suggestedQuestions")}</p>
+                            <div className="flex overflow-x-auto pb-1 gap-1.5 sm:gap-2 sm:flex-wrap sm:overflow-x-visible sm:pb-0 scrollbar-hide -mx-1 px-1 sm:mx-0 sm:px-0">
                               {msg.suggestedQuestions.map((q, qIdx) => (
                                 <button
                                   key={qIdx}
                                   onClick={() => handleSuggestedQuestion(q)}
-                                  className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                                  className="text-[11px] sm:text-xs px-2.5 py-1.5 sm:px-3 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition whitespace-nowrap flex-shrink-0 active:scale-[0.98]"
                                 >
                                   {q}
                                 </button>
@@ -1195,14 +1196,14 @@ export default function ChatPage() {
                         )}
                         {/* Clarification options */}
                         {msg.role === "assistant" && msg.needsClarification && msg.clarificationOptions && msg.clarificationOptions.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-white/10">
-                            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.pleaseClarify")}</p>
-                            <div className="flex flex-wrap gap-2">
+                          <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-white/10">
+                            <p className="text-[10px] sm:text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.pleaseClarify")}</p>
+                            <div className="flex overflow-x-auto pb-1 gap-1.5 sm:gap-2 sm:flex-wrap sm:overflow-x-visible sm:pb-0 scrollbar-hide -mx-1 px-1 sm:mx-0 sm:px-0">
                               {msg.clarificationOptions.map((opt, optIdx) => (
                                 <button
                                   key={optIdx}
                                   onClick={() => handleClarificationOption(opt)}
-                                  className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition"
+                                  className="text-[11px] sm:text-xs px-2.5 py-1.5 sm:px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition whitespace-nowrap flex-shrink-0 active:scale-[0.98]"
                                 >
                                   {opt}
                                 </button>
@@ -1227,15 +1228,15 @@ export default function ChatPage() {
                           </div>
                         )}
                         {/* Timestamp and message feedback */}
-                        <div className="flex items-center justify-between mt-2 gap-2">
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <div className="flex items-center justify-between mt-2 gap-1 sm:gap-2">
+                          <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs text-slate-500">
                             <span>{formatTime(msg.timestamp)}</span>
                             {msg.role === "assistant" && (
                               <>
                                 <button
                                   type="button"
                                   onClick={() => handleCopyAnswer(msg.content)}
-                                  className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400"
+                                  className="rounded-full border border-white/10 px-1.5 py-0.5 sm:px-2 text-[10px] sm:text-xs text-slate-300 hover:border-slate-400 active:scale-[0.98]"
                                 >
                                   {t("chat.copy")}
                                 </button>
@@ -1243,7 +1244,7 @@ export default function ChatPage() {
                                   type="button"
                                   onClick={() => handleRegenerate(idx)}
                                   disabled={loading}
-                                  className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400 disabled:opacity-50"
+                                  className="rounded-full border border-white/10 px-1.5 py-0.5 sm:px-2 text-[10px] sm:text-xs text-slate-300 hover:border-slate-400 disabled:opacity-50 active:scale-[0.98]"
                                 >
                                   {t("chat.regenerate")}
                                 </button>
@@ -1313,8 +1314,8 @@ export default function ChatPage() {
               </div>
 
             {/* Input Area */}
-            <div className="border-t border-white/10 pt-4">
-            <div className="flex gap-3">
+            <div className="border-t border-white/10 pt-3 sm:pt-4">
+            <div className="flex gap-2 sm:gap-3">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -1322,13 +1323,13 @@ export default function ChatPage() {
                 placeholder={chatLocked ? "Select at least one game to start chatting" : t('chat.placeholder')}
                 rows={2}
                 disabled={loading || chatLocked}
-                className="flex-1 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-[rgb(0,255,255)] focus:outline-none resize-none disabled:opacity-50"
+                className="flex-1 rounded-lg sm:rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2.5 sm:px-4 sm:py-3 text-sm text-white placeholder:text-slate-500 focus:border-[rgb(0,255,255)] focus:outline-none resize-none disabled:opacity-50"
               />
               <Button
                 variant="primary"
                 onClick={handleSend}
                 disabled={loading || !input.trim() || chatLocked}
-                className="self-end"
+                className="self-end min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
                 {loading ? (
                   <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1342,7 +1343,7 @@ export default function ChatPage() {
                 )}
               </Button>
             </div>
-            <p className="text-xs text-slate-600 mt-2">
+            <p className="text-[10px] sm:text-xs text-slate-600 mt-2">
               {!chatLocked ? (
                 <>Press Enter to search reviews and get insights</>
               ) : (

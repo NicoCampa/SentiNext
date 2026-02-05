@@ -754,10 +754,10 @@ function DashboardContent() {
 
             {/* Favorites Section */}
             {favoriteGames.length > 0 && (
-              <Card variant="glass" className={`p-5 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+              <Card variant="glass" className={`p-4 sm:p-5 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
                       <span className="text-amber-400">★</span>
                       Favorite Games
                     </h2>
@@ -765,7 +765,7 @@ function DashboardContent() {
                   <span className="text-xs text-slate-500">{favoriteGames.length} game{favoriteGames.length !== 1 ? 's' : ''}</span>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                <div className="mt-3 sm:mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
                   {favoriteGames.map((game) => {
                     const sample = game.sample ?? [];
                     const rate = sample.length
@@ -774,7 +774,7 @@ function DashboardContent() {
                     return (
                       <div
                         key={game.app_id}
-                        className="group relative rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden transition hover:border-amber-500/50 hover:bg-amber-500/10"
+                        className="group relative rounded-lg sm:rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden transition active:scale-[0.98] hover:border-amber-500/50 hover:bg-amber-500/10"
                       >
                         <button
                           onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
@@ -789,11 +789,11 @@ function DashboardContent() {
                               imageUrl={game.metadata.header_image}
                             />
                           </div>
-                          <div className="p-2.5">
-                            <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
-                            <div className="flex items-center justify-between mt-1">
-                              <p className="text-xs text-slate-500">{sample.length.toLocaleString()} reviews</p>
-                              <p className="text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
+                          <div className="p-2 sm:p-2.5">
+                            <p className="text-[11px] sm:text-xs font-semibold text-white line-clamp-1">{game.name}</p>
+                            <div className="flex items-center justify-between mt-0.5 sm:mt-1">
+                              <p className="text-[10px] sm:text-xs text-slate-500">{sample.length.toLocaleString()} reviews</p>
+                              <p className="text-[11px] sm:text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
                                 {formatPercentOrDash(rate)}
                               </p>
                             </div>
@@ -804,7 +804,7 @@ function DashboardContent() {
                             e.stopPropagation();
                             handleToggleFavorite(game.app_id, true);
                           }}
-                          className="absolute top-1 right-1 px-2 py-1.5 rounded bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                          className="absolute top-1 right-1 p-1.5 sm:px-2 sm:py-1.5 rounded bg-black/50 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-black/70"
                           title="Remove from favorites"
                         >
                           <span className="text-amber-400 text-sm">★</span>
@@ -816,24 +816,24 @@ function DashboardContent() {
               </Card>
             )}
 
-            <Card variant="glass" className={`p-5 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
+            <Card variant="glass" className={`p-4 sm:p-5 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">{t('dashboard.recentAnalyses')}</h2>
-                  <p className="text-xs text-slate-400">{t('dashboard.recentDesc')}</p>
+                  <h2 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.recentAnalyses')}</h2>
+                  <p className="text-[11px] sm:text-xs text-slate-400">{t('dashboard.recentDesc')}</p>
                 </div>
                 {recentAnalyses.length > 0 ? (
-                  <a href="/compare" className="text-xs text-sky-400 hover:text-sky-300">
+                  <a href="/compare" className="text-xs text-sky-400 hover:text-sky-300 px-2 py-1 -mr-2">
                     {t('dashboard.viewAll')}
                   </a>
                 ) : null}
               </div>
 
-              <div className="mt-4">
+              <div className="mt-3 sm:mt-4">
                 {gamesLoading ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
                     {[...Array(4)].map((_, idx) => (
-                      <div key={idx} className="h-32 animate-pulse rounded-xl border border-white/10 bg-slate-900/40" />
+                      <div key={idx} className="h-28 sm:h-32 animate-pulse rounded-lg sm:rounded-xl border border-white/10 bg-slate-900/40" />
                     ))}
                   </div>
                 ) : recentAnalyses.length === 0 ? (
@@ -843,7 +843,7 @@ function DashboardContent() {
                     variant="info"
                   />
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
                     {recentAnalyses.map((game) => {
                       const sample = game.sample ?? [];
                       const rate = sample.length
@@ -853,7 +853,7 @@ function DashboardContent() {
                       return (
                         <div
                           key={game.app_id}
-                          className="group relative rounded-xl border border-white/10 bg-slate-900/30 overflow-hidden transition hover:border-sky-500/40 hover:bg-slate-900/50"
+                          className="group relative rounded-lg sm:rounded-xl border border-white/10 bg-slate-900/30 overflow-hidden transition active:scale-[0.98] hover:border-sky-500/40 hover:bg-slate-900/50"
                         >
                           <button
                             onClick={() => router.push(`/dashboard?game=${game.app_id}`)}
@@ -868,11 +868,11 @@ function DashboardContent() {
                                 imageUrl={game.metadata.header_image}
                               />
                             </div>
-                            <div className="p-2.5">
-                              <p className="text-xs font-semibold text-white line-clamp-1">{game.name}</p>
-                              <div className="flex items-center justify-between mt-1">
-                                <p className="text-xs text-slate-500">{sample.length.toLocaleString()} reviews</p>
-                                <p className="text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
+                            <div className="p-2 sm:p-2.5">
+                              <p className="text-[11px] sm:text-xs font-semibold text-white line-clamp-1">{game.name}</p>
+                              <div className="flex items-center justify-between mt-0.5 sm:mt-1">
+                                <p className="text-[10px] sm:text-xs text-slate-500">{sample.length.toLocaleString()} reviews</p>
+                                <p className="text-[11px] sm:text-xs font-semibold" style={{ color: getRecommendationColor(rate ?? 0) }}>
                                   {formatPercentOrDash(rate)}
                                 </p>
                               </div>
@@ -883,7 +883,7 @@ function DashboardContent() {
                               e.stopPropagation();
                               handleToggleFavorite(game.app_id, isFavorite);
                             }}
-                            className="absolute top-1 right-1 px-2 py-1.5 rounded bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                            className="absolute top-1 right-1 p-1.5 sm:px-2 sm:py-1.5 rounded bg-black/50 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-black/70"
                             title={isFavorite ? "Remove from favorites" : "Add to favorites"}
                           >
                             <span className={`text-sm ${isFavorite ? 'text-amber-400' : 'text-white/70 hover:text-amber-400'}`}>
@@ -964,15 +964,19 @@ function DashboardFiltersBar({
 }) {
   const { t } = useLanguage();
 
+  const selectClass = "rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none w-full sm:w-auto";
+  const dateInputClass = "rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none flex-1 sm:flex-none";
+
   return (
-    <div className="rounded-lg border border-white/10 bg-slate-900/40 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wider text-slate-500">{t("common.filters")}:</span>
+    <div className="rounded-lg border border-white/10 bg-slate-900/40 px-3 py-3 sm:py-2">
+      <span className="text-xs uppercase tracking-wider text-slate-500 block sm:hidden mb-2">{t("common.filters")}</span>
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+        <span className="text-xs uppercase tracking-wider text-slate-500 hidden sm:inline">{t("common.filters")}:</span>
 
         <select
           value={filters.sentiment}
           onChange={(event) => onChange({ sentiment: event.target.value as DashboardSentimentFilter })}
-          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+          className={selectClass}
         >
           <option value="all">{t("filters.allSentiment")}</option>
           <option value="positive">{t("common.recommended")}</option>
@@ -989,7 +993,7 @@ function DashboardFiltersBar({
               onChange({ dateRange: value });
             }
           }}
-          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+          className={selectClass}
         >
           <option value="all">{t("filters.allTime")}</option>
           <option value="30d">{t("filters.last30Days")}</option>
@@ -998,30 +1002,10 @@ function DashboardFiltersBar({
           <option value="custom">{t("filters.customRange")}</option>
         </select>
 
-        {filters.dateRange === "custom" && (
-          <>
-            <input
-              type="date"
-              value={filters.customStartDate || ""}
-              onChange={(event) => onChange({ customStartDate: event.target.value || null })}
-              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
-              placeholder="Start date"
-            />
-            <span className="text-xs text-slate-500">to</span>
-            <input
-              type="date"
-              value={filters.customEndDate || ""}
-              onChange={(event) => onChange({ customEndDate: event.target.value || null })}
-              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
-              placeholder="End date"
-            />
-          </>
-        )}
-
         <select
           value={filters.minHelpful}
           onChange={(event) => onChange({ minHelpful: Number(event.target.value) as DashboardHelpfulFilter })}
-          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+          className={selectClass}
         >
           <option value={0}>{t("filters.allHelpful")}</option>
           <option value={10}>{t("filters.helpfulVotes10")}</option>
@@ -1032,7 +1016,7 @@ function DashboardFiltersBar({
         <select
           value={filters.playtime}
           onChange={(event) => onChange({ playtime: event.target.value as DashboardPlaytimeFilter })}
-          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+          className={selectClass}
         >
           <option value="all">{t("filters.allPlaytime")}</option>
           <option value="lt2h">{t("filters.playtimeLt2h")}</option>
@@ -1043,13 +1027,32 @@ function DashboardFiltersBar({
         <select
           value={filters.language || "all"}
           onChange={(event) => onChange({ language: event.target.value })}
-          className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+          className={`${selectClass} col-span-2 sm:col-span-1`}
         >
           {LANGUAGE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
       </div>
+
+      {filters.dateRange === "custom" && (
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-white/5">
+          <span className="text-xs text-slate-500 w-full sm:w-auto">Date range:</span>
+          <input
+            type="date"
+            value={filters.customStartDate || ""}
+            onChange={(event) => onChange({ customStartDate: event.target.value || null })}
+            className={dateInputClass}
+          />
+          <span className="text-xs text-slate-500">to</span>
+          <input
+            type="date"
+            value={filters.customEndDate || ""}
+            onChange={(event) => onChange({ customEndDate: event.target.value || null })}
+            className={dateInputClass}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1963,62 +1966,60 @@ function AnalysisResults({
 
   return (
     <div className="space-y-8">
-      <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap items-center gap-5">
+      <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
+        <div className="flex flex-col gap-4 sm:gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-start gap-3 sm:gap-5">
             {selectedGame ? (
               <SteamImage
                 appId={selectedGame.appid}
                 variant="header"
                 alt={selectedGame.name}
-                className="h-24 w-44 rounded-xl object-cover"
+                className="h-16 w-28 sm:h-24 sm:w-44 rounded-lg sm:rounded-xl object-cover flex-shrink-0"
                 imageUrl={analysis.metadata.header_image}
               />
             ) : null}
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-2xl font-semibold text-white">
-                  {selectedGame?.name ?? "Analysis"}
-                </h2>
-              </div>
-              <p className="text-sm text-slate-400">
+            <div className="space-y-1 sm:space-y-2 min-w-0">
+              <h2 className="text-lg sm:text-2xl font-semibold text-white line-clamp-2">
+                {selectedGame?.name ?? "Analysis"}
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-400">
                 Last run {new Date(analysis.metadata.fetched_at).toLocaleDateString()}
               </p>
-              <p className="text-xs text-slate-500">
-                {analysis.metadata.retrieved.toLocaleString()} reviews analyzed
+              <p className="text-[11px] sm:text-xs text-slate-500">
+                {analysis.metadata.retrieved.toLocaleString()} reviews
               </p>
             </div>
           </div>
 
         {updateSuccess && (
-          <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
-            <p className="text-sm text-green-400">{updateSuccess}</p>
+          <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-2 sm:p-3">
+            <p className="text-xs sm:text-sm text-green-400">{updateSuccess}</p>
           </div>
         )}
 
         {error && (
-          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
-            <p className="text-sm text-rose-400">{error}</p>
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 sm:p-3">
+            <p className="text-xs sm:text-sm text-rose-400">{error}</p>
           </div>
         )}
 
         {onUpdate && (
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button onClick={handleSummarizeRecentReviews} variant="ghost" size="sm" disabled={!selectedGame}>
-              Summary of recent reviews
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 sm:justify-end">
+            <Button onClick={handleSummarizeRecentReviews} variant="ghost" size="sm" disabled={!selectedGame} className="text-xs sm:text-sm flex-1 sm:flex-none">
+              Summary
             </Button>
-            <Button onClick={onUpdate} variant="ghost" size="sm">
+            <Button onClick={onUpdate} variant="ghost" size="sm" className="text-xs sm:text-sm flex-1 sm:flex-none">
               Update
             </Button>
           </div>
         )}
       </div>
 
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Quick filter toggles */}
           <button
             onClick={() => setLastMonthOnly((prev) => !prev)}
-            className={`text-xs px-2 py-1 rounded border transition-colors ${
+            className={`text-xs px-2.5 py-1.5 sm:px-2 sm:py-1 rounded border transition-colors ${
               lastMonthOnly
                 ? "border-sky-500/50 bg-sky-500/20 text-sky-300"
                 : "border-white/10 text-slate-400 hover:text-sky-400 hover:border-sky-500/30"
@@ -2028,7 +2029,7 @@ function AnalysisResults({
           </button>
           <button
             onClick={() => setNegativeOnly((prev) => !prev)}
-            className={`text-xs px-2 py-1 rounded border transition-colors ${
+            className={`text-xs px-2.5 py-1.5 sm:px-2 sm:py-1 rounded border transition-colors ${
               negativeOnly
                 ? "border-rose-500/50 bg-rose-500/20 text-rose-300"
                 : "border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/30"
@@ -2038,7 +2039,7 @@ function AnalysisResults({
           </button>
           <button
             onClick={() => setHighPlaytime((prev) => !prev)}
-            className={`text-xs px-2 py-1 rounded border transition-colors ${
+            className={`text-xs px-2.5 py-1.5 sm:px-2 sm:py-1 rounded border transition-colors ${
               highPlaytime
                 ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
                 : "border-white/10 text-slate-400 hover:text-amber-400 hover:border-amber-500/30"
@@ -2048,7 +2049,7 @@ function AnalysisResults({
           </button>
           <button
             onClick={() => setHighHelpful((prev) => !prev)}
-            className={`text-xs px-2 py-1 rounded border transition-colors ${
+            className={`text-xs px-2.5 py-1.5 sm:px-2 sm:py-1 rounded border transition-colors ${
               highHelpful
                 ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
                 : "border-white/10 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30"
@@ -2057,14 +2058,14 @@ function AnalysisResults({
             10+ helpful
           </button>
           {filtersActive && (
-            <button onClick={resetFilters} className="text-xs text-slate-500 hover:text-slate-300">
+            <button onClick={resetFilters} className="text-xs px-2.5 py-1.5 sm:px-0 sm:py-0 text-slate-500 hover:text-slate-300">
               {t('common.clearFilters')}
             </button>
           )}
-          {filtersActive && <span className="text-xs text-emerald-400">•</span>}
+          {filtersActive && <span className="text-xs text-emerald-400 hidden sm:inline">•</span>}
           <button
             onClick={() => setFiltersOpen((prev) => !prev)}
-            className="text-xs text-slate-400 hover:text-sky-400 transition-colors"
+            className="text-xs px-2.5 py-1.5 sm:px-0 sm:py-0 text-slate-400 hover:text-sky-400 transition-colors"
           >
             {filtersOpen ? t('dashboard.hideFilters') : t('dashboard.showFilters')} {filtersOpen ? "↑" : "→"}
           </button>
@@ -2112,32 +2113,32 @@ function AnalysisResults({
 
         <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
           <div>
-            <h4 className="text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
-            <p className="mt-1 text-sm text-slate-400">Recommendation rate by main category and tagged subcategories</p>
+            <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
+            <p className="mt-1 text-xs sm:text-sm text-slate-400">Recommendation rate by category</p>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <div className="mt-4 sm:mt-5 grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {categories.map((category) => {
               const rateText = formatPercentOrDash(category.rate);
               const rateColor = getRecommendationColor(category.rate);
               return (
                 <div
                   key={category.key}
-                  className="rounded-2xl border border-white/10 bg-slate-900/30 p-5"
+                  className="rounded-xl sm:rounded-2xl border border-white/10 bg-slate-900/30 p-3 sm:p-5"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{category.label}</p>
-                      <p className="mt-1 text-xs text-slate-500">{category.count.toLocaleString()} tagged reviews</p>
+                  <div className="flex items-start justify-between gap-2 sm:gap-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-slate-400 truncate">{category.label}</p>
+                      <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-500">{category.count.toLocaleString()} reviews</p>
                     </div>
-                    <p className="text-3xl font-semibold" style={{ color: rateColor }}>
+                    <p className="text-2xl sm:text-3xl font-semibold flex-shrink-0" style={{ color: rateColor }}>
                       {rateText}
                     </p>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="mt-3 sm:mt-4 grid grid-cols-2 gap-1.5 sm:gap-2">
                     {category.subcategories.length === 0 ? (
-                      <p className="text-sm text-slate-500 col-span-2">No tagged subcategories.</p>
+                      <p className="text-xs sm:text-sm text-slate-500 col-span-2">No tagged subcategories.</p>
                     ) : (
                       category.subcategories.map((sub) => (
                         <button
@@ -2146,20 +2147,20 @@ function AnalysisResults({
                           onClick={() => {
                             openSubcategory(sub.subcategory, 'general');
                           }}
-                          className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left ${
+                          className={`flex flex-col items-start rounded-lg sm:rounded-xl border px-2 sm:px-3 py-1.5 sm:py-2 text-left active:scale-[0.98] ${
                             selectedSubcategory === sub.subcategory
                               ? "border-sky-400/50 bg-sky-500/10"
                               : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
                           }`}
                         >
                           <div className="w-full min-w-0">
-                            <p className="truncate text-sm text-slate-200">
+                            <p className="truncate text-[11px] sm:text-sm text-slate-200">
                               {toSubcategoryLabel(sub.subcategory, sub.sub_category)}
                             </p>
-                            <div className="flex items-center justify-between gap-2 mt-1">
-                              <p className="text-xs text-slate-500">{Number(sub.count ?? 0).toLocaleString()} tags</p>
+                            <div className="flex items-center justify-between gap-1 sm:gap-2 mt-0.5 sm:mt-1">
+                              <p className="text-[10px] sm:text-xs text-slate-500">{Number(sub.count ?? 0).toLocaleString()}</p>
                               <p
-                                className="text-sm font-semibold"
+                                className="text-[11px] sm:text-sm font-semibold"
                                 style={{ color: getRecommendationColor(sub.recommendation_rate) }}
                               >
                                 {formatPercentOrDash(sub.recommendation_rate)}
@@ -2176,19 +2177,19 @@ function AnalysisResults({
           </div>
         </Card>
 
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
+          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-lg font-semibold text-white">{t('dashboard.topIssues')}</h4>
-                <p className="mt-1 text-sm text-slate-400">Subcategories with the most reported issues</p>
+                <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topIssues')}</h4>
+                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most reported issues</p>
               </div>
-              <span className="text-xs text-slate-500">{issueItems.length} items</span>
+              <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.length} items</span>
             </div>
             {issueItems.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No issue tags found yet.</p>
+              <p className="mt-3 text-xs sm:text-sm text-slate-500">No issue tags found yet.</p>
             ) : (
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
                 {issueItems.map((entry) => {
                   const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
                   const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
@@ -2203,25 +2204,23 @@ function AnalysisResults({
                       onClick={() => {
                         openSubcategory(subcategoryKey, 'issue');
                       }}
-                      className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
+                      className={`flex w-full items-start justify-between gap-2 rounded-lg sm:rounded-xl border px-2.5 sm:px-3 py-2 text-left active:scale-[0.99] ${
                         selectedSubcategory === subcategoryKey
                           ? "border-sky-400/50 bg-sky-500/10"
                           : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
                       }`}
                     >
-                      <div className="min-w-0 space-y-1">
-                        <p className="truncate text-sm text-slate-200">{label}</p>
-                        <p className="text-xs text-slate-500">
-                          {issueCount.toLocaleString()} issues ({issuePercentage}% of reviews)
+                      <div className="min-w-0 space-y-0.5 sm:space-y-1 flex-1">
+                        <p className="truncate text-xs sm:text-sm text-slate-200">{label}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500">
+                          {issueCount.toLocaleString()} issues ({issuePercentage}%)
                         </p>
                         {snippet ? (
-                          <p className="text-xs text-slate-400">{snippet}</p>
-                        ) : (
-                          <p className="text-xs text-slate-600">No evidence captured yet.</p>
-                        )}
+                          <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2">{snippet}</p>
+                        ) : null}
                       </div>
                       <p
-                        className="text-sm font-semibold"
+                        className="text-xs sm:text-sm font-semibold flex-shrink-0"
                         style={{ color: getRecommendationColor(entry.recommendation_rate) }}
                       >
                         {formatPercentOrDash(entry.recommendation_rate)}
@@ -2233,18 +2232,18 @@ function AnalysisResults({
             )}
           </Card>
 
-          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
+          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-lg font-semibold text-white">{t('dashboard.topRequests')}</h4>
-                <p className="mt-1 text-sm text-slate-400">Most requested improvements and additions</p>
+                <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topRequests')}</h4>
+                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most requested features</p>
               </div>
-              <span className="text-xs text-slate-500">{requestItems.length} items</span>
+              <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.length} items</span>
             </div>
             {requestItems.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No feature requests tagged yet.</p>
+              <p className="mt-3 text-xs sm:text-sm text-slate-500">No feature requests tagged yet.</p>
             ) : (
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
                 {requestItems.map((entry) => {
                   const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
                   const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
@@ -2259,25 +2258,23 @@ function AnalysisResults({
                       onClick={() => {
                         openSubcategory(subcategoryKey, 'request');
                       }}
-                      className={`flex w-full items-start justify-between rounded-xl border px-3 py-2 text-left ${
+                      className={`flex w-full items-start justify-between gap-2 rounded-lg sm:rounded-xl border px-2.5 sm:px-3 py-2 text-left active:scale-[0.99] ${
                         selectedSubcategory === subcategoryKey
                           ? "border-sky-400/50 bg-sky-500/10"
                           : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
                       }`}
                     >
-                      <div className="min-w-0 space-y-1">
-                        <p className="truncate text-sm text-slate-200">{label}</p>
-                        <p className="text-xs text-slate-500">
-                          {requestCount.toLocaleString()} requests ({requestPercentage}% of reviews)
+                      <div className="min-w-0 space-y-0.5 sm:space-y-1 flex-1">
+                        <p className="truncate text-xs sm:text-sm text-slate-200">{label}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500">
+                          {requestCount.toLocaleString()} requests ({requestPercentage}%)
                         </p>
                         {snippet ? (
-                          <p className="text-xs text-slate-400">{snippet}</p>
-                        ) : (
-                          <p className="text-xs text-slate-600">No evidence captured yet.</p>
-                        )}
+                          <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2">{snippet}</p>
+                        ) : null}
                       </div>
                       <p
-                        className="text-sm font-semibold"
+                        className="text-xs sm:text-sm font-semibold flex-shrink-0"
                         style={{ color: getRecommendationColor(entry.recommendation_rate) }}
                       >
                         {formatPercentOrDash(entry.recommendation_rate)}
@@ -2322,42 +2319,42 @@ function AnalysisResults({
                 : "Trend data is not available for this analysis."}
             </p>
           ) : (
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+            <div className="mt-4 sm:mt-5 grid gap-3 sm:gap-4 lg:grid-cols-2">
+              <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-slate-900/30 p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-white">Recommendation rate</p>
+                  <p className="text-xs sm:text-sm font-semibold text-white">Recommendation rate</p>
                   {trendRangeLabel && (
-                    <span className="text-xs text-slate-500">{trendRangeLabel}</span>
+                    <span className="text-[10px] sm:text-xs text-slate-500 hidden sm:inline">{trendRangeLabel}</span>
                   )}
                 </div>
-                <div className="mt-3 h-40">
+                <div className="mt-2 sm:mt-3 h-36 sm:h-40">
                   <Chart type="line" data={recommendationTrendData} options={recommendationTrendOptions as any} />
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-slate-900/30 p-4">
+              <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-slate-900/30 p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-white">Review volume</p>
+                  <p className="text-xs sm:text-sm font-semibold text-white">Review volume</p>
                   <div className="flex items-center gap-2">
                     {trendRangeLabel && (
-                      <span className="text-xs text-slate-500">{trendRangeLabel}</span>
+                      <span className="text-[10px] sm:text-xs text-slate-500 hidden sm:inline">{trendRangeLabel}</span>
                     )}
                     {selectedTrendWeek && (
                       <button
                         type="button"
                         onClick={() => setSelectedTrendWeek(null)}
-                        className="text-xs text-sky-300 hover:text-sky-200"
+                        className="text-xs text-sky-300 hover:text-sky-200 px-2 py-1 -mr-2"
                       >
                         Clear
                       </button>
                     )}
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">Click a bar to view reviews from that week.</p>
+                <p className="mt-1 text-[10px] sm:text-xs text-slate-500">Tap a bar to view reviews from that week.</p>
                 {selectedTrendWeek && (
-                  <p className="mt-1 text-xs text-sky-300">Selected {selectedTrendWeek.label}</p>
+                  <p className="mt-1 text-[10px] sm:text-xs text-sky-300">Selected {selectedTrendWeek.label}</p>
                 )}
-                <div className="mt-3 h-40">
+                <div className="mt-2 sm:mt-3 h-36 sm:h-40">
                   <Chart type="bar" data={volumeTrendData} options={volumeTrendOptions as any} />
                 </div>
               </div>
@@ -2670,33 +2667,34 @@ function AnalysisResults({
             onClick={clearSelectedSubcategory}
             style={{ WebkitBackdropFilter: 'blur(12px)' }}
           >
-            <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
               <div
-                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                className="w-full max-w-4xl rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
                 onClick={(event) => event.stopPropagation()}
               >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-white">{selectedSubcategoryLabel}</h3>
-                <p className="mt-1 text-sm text-slate-400">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold text-white">{selectedSubcategoryLabel}</h3>
+                <p className="mt-1 text-xs sm:text-sm text-slate-400">
                   {selectedMainLabel} · {selectedReviews.length.toLocaleString()} reviews
                   {selectedSubcategoryLanguageLabel ? ` · ${selectedSubcategoryLanguageLabel} only` : ""}
                 </p>
                 {filterScopeLabel && (
-                  <p className="mt-1 text-xs text-sky-400">
+                  <p className="mt-1 text-[11px] sm:text-xs text-sky-400 line-clamp-2">
                     Filters: {filterScopeLabel}
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Button
                   variant="primary"
                   onClick={handleSummarize}
                   disabled={summaryLoading || selectedReviews.length === 0}
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
-                  {summaryLoading ? "Summarizing..." : subcategorySummary ? "Refresh Summary" : "Summarize"}
+                  {summaryLoading ? "Summarizing..." : subcategorySummary ? "Refresh" : "Summarize"}
                 </Button>
-                <Button variant="secondary" onClick={clearSelectedSubcategory}>
+                <Button variant="secondary" onClick={clearSelectedSubcategory} className="flex-1 sm:flex-none text-xs sm:text-sm">
                   Close
                 </Button>
               </div>
@@ -2951,32 +2949,33 @@ function AnalysisResults({
             onClick={() => setSelectedTrendWeek(null)}
             style={{ WebkitBackdropFilter: 'blur(12px)' }}
           >
-            <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
               <div
-                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                className="w-full max-w-4xl rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
                 onClick={(event) => event.stopPropagation()}
               >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Week of {formatTrendLabel(selectedTrendWeek.start)}</h3>
-                  <p className="mt-1 text-sm text-slate-400">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Week of {formatTrendLabel(selectedTrendWeek.start)}</h3>
+                  <p className="mt-1 text-xs sm:text-sm text-slate-400">
                     {selectedTrendWeek.label} - {selectedWeekReviews.length.toLocaleString()} reviews
                   </p>
                   {filterScopeLabel && (
-                    <p className="mt-1 text-xs text-sky-400">
+                    <p className="mt-1 text-[11px] sm:text-xs text-sky-400 line-clamp-2">
                       Filters: {filterScopeLabel}
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <Button
                     variant="primary"
                     onClick={handleSummarizeTrendWeek}
                     disabled={trendWeekSummaryLoading || selectedWeekReviews.length === 0}
+                    className="flex-1 sm:flex-none text-xs sm:text-sm"
                   >
-                    {trendWeekSummaryLoading ? "Summarizing..." : trendWeekSummary ? "Refresh Summary" : "Summarize"}
+                    {trendWeekSummaryLoading ? "Summarizing..." : trendWeekSummary ? "Refresh" : "Summarize"}
                   </Button>
-                  <Button variant="secondary" onClick={() => setSelectedTrendWeek(null)}>
+                  <Button variant="secondary" onClick={() => setSelectedTrendWeek(null)} className="flex-1 sm:flex-none text-xs sm:text-sm">
                     Close
                   </Button>
                 </div>
@@ -3211,34 +3210,35 @@ function AnalysisResults({
             onClick={() => setSelectedSegment(null)}
             style={{ WebkitBackdropFilter: 'blur(12px)' }}
           >
-            <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
               <div
-                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                className="w-full max-w-4xl rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
                 onClick={(event) => event.stopPropagation()}
               >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold text-white">
                     {selectedSegment.label} {selectedSegment.type === 'experience' ? 'Players' : selectedSegment.type === 'purchase' ? 'Users' : selectedSegment.type === 'activity' ? 'Players' : 'Players'}
                   </h3>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-xs sm:text-sm text-slate-400">
                     {selectedSegment.description} - {selectedSegmentReviews.length.toLocaleString()} reviews
                   </p>
                   {filterScopeLabel && (
-                    <p className="mt-1 text-xs text-sky-400">
+                    <p className="mt-1 text-[11px] sm:text-xs text-sky-400 line-clamp-2">
                       Filters: {filterScopeLabel}
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <Button
                     variant="primary"
                     onClick={handleSummarizeSegment}
                     disabled={segmentSummaryLoading || selectedSegmentReviews.length === 0}
+                    className="flex-1 sm:flex-none text-xs sm:text-sm"
                   >
-                    {segmentSummaryLoading ? "Summarizing..." : segmentSummary ? "Refresh Summary" : "Summarize"}
+                    {segmentSummaryLoading ? "Summarizing..." : segmentSummary ? "Refresh" : "Summarize"}
                   </Button>
-                  <Button variant="secondary" onClick={() => setSelectedSegment(null)}>
+                  <Button variant="secondary" onClick={() => setSelectedSegment(null)} className="flex-1 sm:flex-none text-xs sm:text-sm">
                     Close
                   </Button>
                 </div>
@@ -3475,35 +3475,35 @@ function AnalysisResults({
             onClick={closeRecentReviewsModal}
             style={{ WebkitBackdropFilter: "blur(12px)" }}
           >
-            <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
               <div
-                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                className="w-full max-w-4xl rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
                 onClick={(event) => event.stopPropagation()}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">Recent reviews</h3>
-                    <p className="mt-1 text-sm text-slate-400">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base sm:text-lg font-semibold text-white">Recent reviews</h3>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-400">
                       Most recent {recentReviewsSummary?.review_count ?? 100} reviews
                       {recentReviewsSummary?.start_date && recentReviewsSummary?.end_date
                         ? ` · ${recentReviewsSummary.start_date} → ${recentReviewsSummary.end_date}`
                         : ""}
                     </p>
                     {filterScopeLabel && (
-                      <p className="mt-1 text-xs text-sky-400">
+                      <p className="mt-1 text-[11px] sm:text-xs text-sky-400 line-clamp-2">
                         Filters: {filterScopeLabel}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="primary" onClick={handleSummarizeRecentReviews} disabled={recentReviewsSummaryLoading}>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button variant="primary" onClick={handleSummarizeRecentReviews} disabled={recentReviewsSummaryLoading} className="flex-1 sm:flex-none text-xs sm:text-sm">
                       {recentReviewsSummaryLoading
                         ? "Summarizing..."
                         : recentReviewsSummary
-                        ? "Refresh Summary"
+                        ? "Refresh"
                         : "Summarize"}
                     </Button>
-                    <Button variant="secondary" onClick={closeRecentReviewsModal}>
+                    <Button variant="secondary" onClick={closeRecentReviewsModal} className="flex-1 sm:flex-none text-xs sm:text-sm">
                       Close
                     </Button>
                   </div>

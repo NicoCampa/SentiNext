@@ -246,12 +246,12 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
         <nav
           aria-label="Primary"
           className="fixed bottom-0 left-0 right-0 z-40 border-t border-[rgb(0,255,255)]/20 bg-[rgb(5,5,15)]/95 backdrop-blur-xl lg:hidden"
-          style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+          style={{ paddingBottom: "calc(0.25rem + env(safe-area-inset-bottom))" }}
         >
           {/* Top glow line */}
           <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[rgb(0,255,255)]/50 to-transparent" />
 
-          <div className="mx-auto flex max-w-md items-center justify-between gap-1 px-2 pt-2">
+          <div className="mx-auto flex max-w-lg items-center justify-around px-1 pt-1">
             {navItems.map((item) => {
               const active = isActiveRoute(item.href);
               const showNotification = item.hasNotification && supportNotificationCount > 0;
@@ -261,21 +261,18 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={clsx(
-                    "flex flex-1 flex-col items-center gap-1 px-2 py-2 transition-all duration-200 relative",
+                    "flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-1 py-1 transition-all duration-200 relative rounded-lg",
                     active
-                      ? "text-[rgb(0,255,255)]"
-                      : "text-[rgb(100,100,120)] hover:text-[rgb(0,255,255)]"
+                      ? "text-[rgb(0,255,255)] bg-[rgb(0,255,255)]/10"
+                      : "text-[rgb(100,100,120)] active:bg-white/5"
                   )}
                 >
-                  {active && (
-                    <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-sky-500" />
-                  )}
                   {showNotification && (
-                    <span className="absolute -top-0.5 right-1/4 flex h-4 min-w-4 items-center justify-center rounded-full bg-[rgb(255,0,128)] px-1 text-[8px] font-medium text-white">
+                    <span className="absolute top-0.5 right-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[rgb(255,0,128)] px-1 text-[8px] font-medium text-white">
                       {supportNotificationCount > 9 ? "9+" : supportNotificationCount}
                     </span>
                   )}
-                  <span className="text-[8px] uppercase tracking-[0.15em]">{item.label}</span>
+                  <span className="text-[10px] uppercase tracking-[0.1em] font-medium">{item.label}</span>
                 </Link>
               );
             })}

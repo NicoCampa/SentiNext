@@ -168,20 +168,20 @@ export default function SettingsPage() {
   return (
     <AppLayout>
       <PageTransition>
-        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-6">
+        <div className="mx-auto max-w-4xl px-3 py-4 sm:px-6 sm:py-8 space-y-4 sm:space-y-6">
           {/* Header */}
-          <div className="mb-8 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center">
-                <span className="text-[rgb(0,255,255)] text-lg">⚙</span>
+          <div className="mb-4 sm:mb-8 space-y-3 sm:space-y-4">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center flex-shrink-0">
+                <span className="text-[rgb(0,255,255)] text-base sm:text-lg">⚙</span>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-wider">
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-2xl font-bold tracking-wider">
                   <span className="text-white">
                     {t('settings.title').toUpperCase()}
                   </span>
                 </h1>
-                <p className="text-xs text-[rgb(150,150,170)] uppercase tracking-[0.2em]">
+                <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-[0.15em] sm:tracking-[0.2em]">
                   System Configuration
                 </p>
               </div>
@@ -193,15 +193,15 @@ export default function SettingsPage() {
           {/* Left Column */}
           <div className="space-y-6">
             {/* Language Section */}
-            <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
-              <div className="mb-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-base">🌐</span>
-                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
+              <div className="mb-4 sm:mb-5">
+                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                  <span className="text-sm sm:text-base">🌐</span>
+                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                     {t('settings.language')}
                   </p>
                 </div>
-                <p className="text-sm text-[rgb(150,150,170)]">{t('settings.selectLanguage')}</p>
+                <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">{t('settings.selectLanguage')}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -209,7 +209,7 @@ export default function SettingsPage() {
                   <button
                     key={lang}
                     onClick={() => setLanguage(lang)}
-                    className={`group relative p-3 border transition-all ${
+                    className={`group relative p-2.5 sm:p-3 border transition-all active:scale-[0.98] ${
                       language === lang
                         ? 'border-[rgb(0,255,255)] bg-[rgb(0,255,255)]/10'
                         : 'border-[rgb(0,255,255)]/20 hover:border-[rgb(0,255,255)]/50 bg-[rgb(10,10,25)]'
@@ -217,13 +217,13 @@ export default function SettingsPage() {
                   >
                     {language === lang && (
                       <>
-                        <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
-                        <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
-                        <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-[rgb(0,255,255)]" />
-                        <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-[rgb(0,255,255)]" />
+                        <div className="absolute top-0 left-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
+                        <div className="absolute top-0 right-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
+                        <div className="absolute bottom-0 left-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-b-2 border-l-2 border-[rgb(0,255,255)]" />
+                        <div className="absolute bottom-0 right-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-b-2 border-r-2 border-[rgb(0,255,255)]" />
                       </>
                     )}
-                    <p className={`text-sm font-medium ${
+                    <p className={`text-xs sm:text-sm font-medium ${
                       language === lang ? 'text-[rgb(0,255,255)]' : 'text-[rgb(200,200,210)]'
                     }`}>
                       {t(`lang.${lang}`)}
@@ -234,31 +234,31 @@ export default function SettingsPage() {
             </Card>
 
             {/* System Status */}
-            <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
-              <div className="mb-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-base">📡</span>
-                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
+              <div className="mb-4 sm:mb-5">
+                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                  <span className="text-sm sm:text-base">📡</span>
+                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                     System Status
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {/* Backend Status */}
-                <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                  <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                <div className="flex items-center justify-between p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                  <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
                     Backend
                   </span>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
                       health.state === "online"
                         ? 'bg-[rgb(0,255,136)]'
                         : health.state === "offline"
                         ? 'bg-rose-500'
                         : 'bg-amber-500 animate-pulse'
                     }`} />
-                    <span className={`text-xs font-mono uppercase ${
+                    <span className={`text-[10px] sm:text-xs font-mono uppercase ${
                       health.state === "online"
                         ? 'text-[rgb(0,255,136)]'
                         : health.state === "offline"
@@ -272,22 +272,22 @@ export default function SettingsPage() {
 
                 {/* App Version (if Tauri) */}
                 {isTauriApp() && (
-                  <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                    <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                    <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
                       {t('settings.appVersion')}
                     </span>
-                    <span className="font-mono text-xs text-[rgb(0,255,255)]">
+                    <span className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
                       {appVersion ?? t('common.loading')}
                     </span>
                   </div>
                 )}
 
                 {/* Frontend Version */}
-                <div className="flex items-center justify-between p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                  <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                <div className="flex items-center justify-between p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
+                  <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
                     Frontend
                   </span>
-                  <span className="font-mono text-xs text-[rgb(0,255,255)]">
+                  <span className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
                     v0.1.0
                   </span>
                 </div>
@@ -295,31 +295,31 @@ export default function SettingsPage() {
             </Card>
 
             {/* Subscription & Credits */}
-            <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
-              <div className="mb-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-base">💎</span>
-                  <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+              <div className="mb-4 sm:mb-5">
+                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                  <span className="text-sm sm:text-base">💎</span>
+                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                     Subscription & Credits
                   </p>
                 </div>
-                <p className="text-sm text-[rgb(150,150,170)]">Manage your plan and credit balance</p>
+                <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">Manage your plan and credit balance</p>
               </div>
 
               {creditsLoading && !credits ? (
-                <div className="space-y-3 animate-pulse">
-                  <div className="h-10 bg-[rgb(0,255,255)]/10 rounded" />
+                <div className="space-y-2 sm:space-y-3 animate-pulse">
+                  <div className="h-8 sm:h-10 bg-[rgb(0,255,255)]/10 rounded" />
                   <div className="h-3 bg-[rgb(0,255,255)]/10 rounded w-2/3" />
                 </div>
               ) : credits ? (
                 <>
                   {/* Current Plan */}
-                  <div className="mb-4 p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                  <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
+                    <div className="flex items-center justify-between mb-2 sm:mb-3">
+                      <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
                         Current Plan
                       </span>
-                      <span className={`text-sm font-bold uppercase tracking-wider ${
+                      <span className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${
                         tierColorMap[credits.tier] ?? "text-[rgb(150,150,170)]"
                       }`}>
                         {tierLabelMap[credits.tier] ?? credits.tier}
@@ -327,13 +327,13 @@ export default function SettingsPage() {
                     </div>
 
                     {/* Tier Benefits */}
-                    <p className="text-xs text-[rgb(150,150,170)]">
+                    <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)]">
                       {tierCreditsMap[credits.tier] ?? ""}
                     </p>
                   </div>
 
                   {/* Credits */}
-                  <div className="mb-4 p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
+                  <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
                     {(() => {
                       const effectiveMax = Math.max(credits.limit ?? 0, (credits.balance ?? 0) + (credits.used ?? 0));
                       const percentRemaining = effectiveMax > 0
@@ -347,15 +347,15 @@ export default function SettingsPage() {
                       return (
                         <>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                            <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
                               Credits
                             </span>
-                            <span className="font-mono text-xs text-[rgb(0,255,255)]">
+                            <span className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
                               {Math.max(0, credits.balance).toLocaleString()} left
                             </span>
                           </div>
 
-                          <div className="h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
+                          <div className="h-1.5 sm:h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
                             <div
                               className={`h-full transition-all duration-300 ${
                                 credits.warning ? "bg-amber-500" : "bg-[rgb(0,255,255)]"
@@ -364,31 +364,31 @@ export default function SettingsPage() {
                             />
                           </div>
 
-                          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-[rgb(150,150,170)]">
+                          <div className="mt-2 sm:mt-3 grid grid-cols-2 gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-[rgb(150,150,170)]">
                             <div>
-                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Balance</span>
-                              <div className="font-mono text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.balance).toLocaleString()}</div>
+                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Balance</span>
+                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.balance).toLocaleString()}</div>
                             </div>
                             <div>
-                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Used</span>
-                              <div className="font-mono text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.used).toLocaleString()}</div>
+                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Used</span>
+                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.used).toLocaleString()}</div>
                             </div>
                             <div>
-                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Monthly limit</span>
-                              <div className="font-mono text-xs text-[rgb(0,255,255)]">
+                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Monthly limit</span>
+                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
                                 {isWallet ? "No monthly reset" : credits.limit.toLocaleString()}
                               </div>
                             </div>
                             <div>
-                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Resets</span>
-                              <div className="font-mono text-xs text-[rgb(0,255,255)]">
+                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Resets</span>
+                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
                                 {isWallet ? "—" : (resetDate || "—")}
                               </div>
                             </div>
                           </div>
 
                           {isWallet && (
-                            <p className="mt-2 text-[11px] text-[rgb(150,150,170)]">
+                            <p className="mt-2 text-[10px] sm:text-[11px] text-[rgb(150,150,170)]">
                               One-time trial credits (no monthly reset).
                             </p>
                           )}
@@ -399,38 +399,38 @@ export default function SettingsPage() {
 
                   {/* Upgrade Options */}
                   {credits.tier !== "max" && (
-                    <div className="space-y-3 mb-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/50">
+                    <div className="space-y-2 sm:space-y-3 mb-3 sm:mb-4">
+                      <p className="text-[10px] sm:text-xs uppercase tracking-[0.15em] sm:tracking-[0.2em] text-[rgb(0,255,255)]/50">
                         Upgrade Your Plan
                       </p>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
                         {credits.tier === "free" && (
                           <button
                             onClick={() => handleUpgrade("indie")}
                             disabled={upgradeLoading !== null}
-                            className="p-3 border border-emerald-500/30 bg-[rgb(10,10,25)] hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-2.5 sm:p-3 border border-emerald-500/30 bg-[rgb(10,10,25)] hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                           >
-                            <p className="text-sm font-bold text-emerald-400">Indie</p>
-                            <p className="text-xs text-emerald-400/50 mt-1">2,500 credits / month</p>
+                            <p className="text-xs sm:text-sm font-bold text-emerald-400">Indie</p>
+                            <p className="text-[10px] sm:text-xs text-emerald-400/50 mt-0.5 sm:mt-1">2,500 credits / month</p>
                           </button>
                         )}
                         {(credits.tier === "free" || credits.tier === "indie") && (
                           <button
                             onClick={() => handleUpgrade("pro")}
                             disabled={upgradeLoading !== null}
-                            className="p-3 border border-sky-500/30 bg-[rgb(10,10,25)] hover:bg-sky-500/10 hover:border-sky-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-2.5 sm:p-3 border border-sky-500/30 bg-[rgb(10,10,25)] hover:bg-sky-500/10 hover:border-sky-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                           >
-                            <p className="text-sm font-bold text-sky-400">Pro</p>
-                            <p className="text-xs text-sky-400/50 mt-1">5,000 credits / month</p>
+                            <p className="text-xs sm:text-sm font-bold text-sky-400">Pro</p>
+                            <p className="text-[10px] sm:text-xs text-sky-400/50 mt-0.5 sm:mt-1">5,000 credits / month</p>
                           </button>
                         )}
                         {(credits.tier === "free" || credits.tier === "indie" || credits.tier === "pro") && (
                           <Link
                             href="/support"
-                            className="p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all"
+                            className="p-2.5 sm:p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all active:scale-[0.98]"
                           >
-                            <p className="text-sm font-bold text-purple-400">Enterprise</p>
-                            <p className="text-xs text-purple-400/50 mt-1">Custom pricing</p>
+                            <p className="text-xs sm:text-sm font-bold text-purple-400">Enterprise</p>
+                            <p className="text-[10px] sm:text-xs text-purple-400/50 mt-0.5 sm:mt-1">Custom pricing</p>
                           </Link>
                         )}
                       </div>
@@ -458,70 +458,70 @@ export default function SettingsPage() {
 
           {/* Right Column - Diagnostics (Admin Only) */}
           {isAdmin && (
-            <div className="space-y-6">
-              <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
-                <div className="mb-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-base">🔧</span>
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
+            <div className="space-y-4 sm:space-y-6">
+              <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
+                <div className="mb-4 sm:mb-5">
+                  <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                    <span className="text-sm sm:text-base">🔧</span>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                       {t('settings.diagnostics')}
                     </p>
                   </div>
-                  <p className="text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
+                  <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
                 </div>
 
                 {/* Quick Actions */}
-                <div className="flex flex-wrap gap-2 mb-5">
-                  <Button size="sm" variant="secondary" onClick={() => refreshHealth()}>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-4 sm:mb-5">
+                  <Button size="sm" variant="secondary" onClick={() => refreshHealth()} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
                     {t('settings.recheckBackend')}
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => { loadLogTail(); setShowLogs(true); }}>
+                  <Button size="sm" variant="secondary" onClick={() => { loadLogTail(); setShowLogs(true); }} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
                     {t('settings.refreshLogs')}
                   </Button>
-                  <Button size="sm" variant="primary" onClick={handleCopyDiagnostics}>
+                  <Button size="sm" variant="primary" onClick={handleCopyDiagnostics} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
                     {t('settings.copyDiagnostics')}
                   </Button>
                 </div>
 
                 {copiedDiagnostics && (
-                  <div className="flex items-center gap-2 mb-4 p-2 bg-[rgb(0,255,136)]/10 border border-[rgb(0,255,136)]/30">
+                  <div className="flex items-center gap-2 mb-3 sm:mb-4 p-2 bg-[rgb(0,255,136)]/10 border border-[rgb(0,255,136)]/30">
                     <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
-                    <span className="text-xs text-[rgb(0,255,136)]">{t('settings.copied')}</span>
+                    <span className="text-[10px] sm:text-xs text-[rgb(0,255,136)]">{t('settings.copied')}</span>
                   </div>
                 )}
 
                 {copyError && (
-                  <p className="text-xs text-rose-400 mb-4">{copyError}</p>
+                  <p className="text-[10px] sm:text-xs text-rose-400 mb-3 sm:mb-4">{copyError}</p>
                 )}
 
                 {/* Backend Boot Error */}
                 {backendBootError && (
-                  <div className="space-y-3 p-4 border border-rose-500/30 bg-rose-500/5 mb-5">
+                  <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 border border-rose-500/30 bg-rose-500/5 mb-4 sm:mb-5">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
-                      <p className="text-xs uppercase tracking-[0.2em] text-rose-400">
+                      <p className="text-[10px] sm:text-xs uppercase tracking-[0.15em] sm:tracking-[0.2em] text-rose-400">
                         Backend Error
                       </p>
                     </div>
-                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-3 text-[11px] text-rose-200 font-mono">
+                    <pre className="max-h-24 sm:max-h-32 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-2 sm:p-3 text-[10px] sm:text-[11px] text-rose-200 font-mono">
                       {backendBootError}
                     </pre>
-                    <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)}>
+                    <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)} className="text-[10px] sm:text-xs">
                       Copy Error
                     </Button>
                   </div>
                 )}
 
                 {/* Log Tail (Collapsible) */}
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   <button
                     onClick={() => setShowLogs(!showLogs)}
-                    className="flex items-center gap-2 text-left w-full"
+                    className="flex items-center gap-2 text-left w-full min-h-[44px] sm:min-h-0"
                   >
                     <span className={`text-[rgb(0,255,255)]/50 transition-transform ${showLogs ? 'rotate-90' : ''}`}>
                       ▶
                     </span>
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/50">
+                    <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/50">
                       System Logs
                     </p>
                   </button>
@@ -529,9 +529,9 @@ export default function SettingsPage() {
                   {showLogs && (
                     <>
                       {logTailError ? (
-                        <p className="text-xs text-rose-400">{logTailError}</p>
+                        <p className="text-[10px] sm:text-xs text-rose-400">{logTailError}</p>
                       ) : (
-                        <pre className="max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-4 text-xs text-[rgb(200,200,210)] font-mono">
+                        <pre className="max-h-36 sm:max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-3 sm:p-4 text-[10px] sm:text-xs text-[rgb(200,200,210)] font-mono">
                           {logTail || "No logs yet."}
                         </pre>
                       )}

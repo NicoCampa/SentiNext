@@ -917,10 +917,10 @@ function ComparisonDashboard({
   return (
     <div className="space-y-8">
       {/* Quick Filters and Filters Toggle */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <button
           onClick={() => setNegativeOnly((prev) => !prev)}
-          className={`text-xs px-2 py-1 rounded border transition-colors ${
+          className={`text-xs px-2.5 py-1.5 sm:px-2 sm:py-1 rounded border transition-colors ${
             negativeOnly
               ? "border-rose-500/50 bg-rose-500/20 text-rose-300"
               : "border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/30"
@@ -930,7 +930,7 @@ function ComparisonDashboard({
         </button>
         <button
           onClick={() => setHighPlaytime((prev) => !prev)}
-          className={`text-xs px-2 py-1 rounded border transition-colors ${
+          className={`text-xs px-2.5 py-1.5 sm:px-2 sm:py-1 rounded border transition-colors ${
             highPlaytime
               ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
               : "border-white/10 text-slate-400 hover:text-amber-400 hover:border-amber-500/30"
@@ -940,7 +940,7 @@ function ComparisonDashboard({
         </button>
         <button
           onClick={() => setHighHelpful((prev) => !prev)}
-          className={`text-xs px-2 py-1 rounded border transition-colors ${
+          className={`text-xs px-2.5 py-1.5 sm:px-2 sm:py-1 rounded border transition-colors ${
             highHelpful
               ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
               : "border-white/10 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30"
@@ -951,7 +951,7 @@ function ComparisonDashboard({
 
         <button
           onClick={() => setFiltersOpen((prev) => !prev)}
-          className="text-xs text-slate-400 hover:text-white transition-colors"
+          className="text-xs px-2.5 py-1.5 sm:px-0 sm:py-0 text-slate-400 hover:text-white transition-colors"
         >
           {filtersOpen ? t("dashboard.hideFilters") : t("dashboard.showFilters")} {filtersOpen ? "↑" : "→"}
         </button>
@@ -959,28 +959,29 @@ function ComparisonDashboard({
         {filtersActive && (
           <button
             onClick={resetFilters}
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            className="text-xs px-2.5 py-1.5 sm:px-0 sm:py-0 text-slate-500 hover:text-slate-300 transition-colors"
           >
             {t("common.clearFilters")}
           </button>
         )}
 
         {filtersActive && (
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 w-full sm:w-auto mt-1 sm:mt-0">
             ({gameData.reduce((sum, g) => sum + g.filteredCount, 0).toLocaleString()} of {gameData.reduce((sum, g) => sum + g.sampleCount, 0).toLocaleString()} reviews)
           </span>
         )}
       </div>
 
       {filtersOpen && (
-        <div className="rounded-lg border border-white/10 bg-slate-900/40 px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase tracking-wider text-slate-500">{t("common.filters")}:</span>
+        <div className="rounded-lg border border-white/10 bg-slate-900/40 px-3 py-3 sm:py-2">
+          <span className="text-xs uppercase tracking-wider text-slate-500 block sm:hidden mb-2">{t("common.filters")}</span>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+            <span className="text-xs uppercase tracking-wider text-slate-500 hidden sm:inline">{t("common.filters")}:</span>
 
             <select
               value={filters.sentiment}
               onChange={(e) => updateFilters({ sentiment: e.target.value as CompareFilters["sentiment"] })}
-              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none w-full sm:w-auto"
             >
               <option value="all">{t("filters.allSentiment")}</option>
               <option value="positive">{t("common.recommended")}</option>
@@ -997,7 +998,7 @@ function ComparisonDashboard({
                   updateFilters({ dateRange: value });
                 }
               }}
-              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none w-full sm:w-auto"
             >
               <option value="all">{t("filters.allTime")}</option>
               <option value="30d">{t("filters.last30Days")}</option>
@@ -1006,30 +1007,10 @@ function ComparisonDashboard({
               <option value="custom">{t("filters.customRange")}</option>
             </select>
 
-            {filters.dateRange === "custom" && (
-              <>
-                <input
-                  type="date"
-                  value={filters.customStartDate || ""}
-                  onChange={(e) => updateFilters({ customStartDate: e.target.value || null })}
-                  className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
-                  placeholder="Start date"
-                />
-                <span className="text-xs text-slate-500">to</span>
-                <input
-                  type="date"
-                  value={filters.customEndDate || ""}
-                  onChange={(e) => updateFilters({ customEndDate: e.target.value || null })}
-                  className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
-                  placeholder="End date"
-                />
-              </>
-            )}
-
             <select
               value={filters.minHelpful}
               onChange={(e) => updateFilters({ minHelpful: Number(e.target.value) as CompareFilters["minHelpful"] })}
-              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none w-full sm:w-auto"
             >
               <option value={0}>{t("filters.allHelpful")}</option>
               <option value={10}>{t("filters.helpfulVotes10")}</option>
@@ -1040,7 +1021,7 @@ function ComparisonDashboard({
             <select
               value={filters.playtime}
               onChange={(e) => updateFilters({ playtime: e.target.value as CompareFilters["playtime"] })}
-              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none w-full sm:w-auto"
             >
               <option value="all">{t("filters.allPlaytime")}</option>
               <option value="lt2h">{t("filters.playtimeLt2h")}</option>
@@ -1051,7 +1032,7 @@ function ComparisonDashboard({
             <select
               value={filters.language || "all"}
               onChange={(e) => updateFilters({ language: e.target.value })}
-              className="rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none"
+              className="rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none w-full sm:w-auto col-span-2 sm:col-span-1"
             >
               {LANGUAGE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1059,12 +1040,31 @@ function ComparisonDashboard({
             </select>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          {filters.dateRange === "custom" && (
+            <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-white/5">
+              <span className="text-xs text-slate-500 w-full sm:w-auto">Date range:</span>
+              <input
+                type="date"
+                value={filters.customStartDate || ""}
+                onChange={(e) => updateFilters({ customStartDate: e.target.value || null })}
+                className="rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none flex-1 sm:flex-none"
+              />
+              <span className="text-xs text-slate-500">to</span>
+              <input
+                type="date"
+                value={filters.customEndDate || ""}
+                onChange={(e) => updateFilters({ customEndDate: e.target.value || null })}
+                className="rounded border border-white/10 bg-slate-900/70 px-2 py-2 sm:py-1 text-xs text-slate-200 focus:border-sky-400 focus:outline-none flex-1 sm:flex-none"
+              />
+            </div>
+          )}
+
+          <div className="mt-3">
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('database.searchPlaceholder')}
-              className="flex-1 min-w-[200px] rounded border border-white/10 bg-slate-900/70 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
+              className="w-full rounded border border-white/10 bg-slate-900/70 px-3 py-2 sm:py-1 text-xs text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none"
             />
           </div>
         </div>
