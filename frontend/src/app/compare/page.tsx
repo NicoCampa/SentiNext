@@ -343,6 +343,11 @@ export default function ComparePage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [initialSelectionDone, setInitialSelectionDone] = useState(false);
   const [swapCandidateId, setSwapCandidateId] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Set initial selection when games load
   useEffect(() => {
@@ -477,7 +482,7 @@ export default function ComparePage() {
             </Card>
           )}
 
-        <Card variant="glass" className="p-6">
+        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
           <h2 className="mb-4 text-lg font-semibold text-white">
             Select Games to Compare ({analyzedGames.length} analyzed)
           </h2>
@@ -560,6 +565,11 @@ function ComparisonDashboard({
   const [filters, setFilters] = useState<CompareFilters>(() => ({ ...DEFAULT_COMPARE_FILTERS }));
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const updateFilters = (patch: Partial<CompareFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -676,7 +686,6 @@ function ComparisonDashboard({
 
       const subcategoryRows = Array.from(subcategoryTotals.entries())
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 4)
         .map(([subcategoryKey]) => {
           const label = subcategoryLabel(subcategoryKey);
           const perGameMetrics = perGame.map((game) => {
@@ -996,7 +1005,7 @@ function ComparisonDashboard({
         </div>
       )}
 
-      <Card variant="glass" className="p-6">
+      <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-white">Category Comparison</h3>
           <p className="mt-1 text-sm text-slate-400">Compare recommendation rates across categories</p>
@@ -1085,7 +1094,7 @@ function ComparisonDashboard({
         </div>
       </Card>
 
-      <Card variant="glass" className="p-6">
+      <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white">Trends</h3>

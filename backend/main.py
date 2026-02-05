@@ -176,6 +176,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/credits/stripe-webhook"}
@@ -1673,6 +1674,11 @@ class SummarizeSubcategoryRequest(BaseModel):
     subcategory: str = Field(..., min_length=3)
     reviews: List[dict] = Field(..., min_length=1, max_length=100)
     summary_type: str = Field(default="general", pattern="^(issue|request|general)$")
+    summary_context: Optional[str] = Field(
+        default=None,
+        description="Optional scope/filter context shown in the UI (e.g., language, date range, segment).",
+        max_length=1200,
+    )
 
 
 class SummarizeSubcategoryResponse(BaseModel):
@@ -1710,6 +1716,7 @@ def summarize_subcategory(
                 subcategory=request.subcategory,
                 game_context=game_context,
                 summary_type=request.summary_type,
+                summary_context=request.summary_context,
             )
 
         # Note: Credit deduction removed - now using game-based billing
@@ -1720,10 +1727,190 @@ def summarize_subcategory(
         raise HTTPException(status_code=500, detail="Failed to generate summary.") from exc
 
 
+class SummarizeWidgetRequest(BaseModel):
+    app_id: int = Field(..., gt=0)
+    widget_kind: str = Field(..., pattern="^(trend_week|segment)$")
+    widget_label: str = Field(..., min_length=1, max_length=160)
+    context: Dict[str, Any] = Field(default_factory=dict)
+    reviews: List[dict] = Field(..., min_length=1, max_length=100)
+
+
+class SummarizeWidgetResponse(BaseModel):
+    summary: str
+    key_points: List[str] = Field(default_factory=list)
+    actions: List[str] = Field(default_factory=list)
+
+
+@app.post("/summarize/widget", response_model=SummarizeWidgetResponse, dependencies=[Depends(require_license)])
+def summarize_widget(
+    request: SummarizeWidgetRequest,
+    user_id: str = Depends(require_user_id),
+) -> SummarizeWidgetResponse:
+    """Generate a widget-specific summary for a set of reviews shown in the UI."""
+    summarize_cost = credits.CREDIT_COSTS["summarize"]
+    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, summarize_cost)
+    if not can_proceed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": credit_message,
+                "credits_needed": summarize_cost,
+                "credits_available": credit_status["balance"],
+                "tier": credit_status["tier"],
+            },
+        )
+
+    game_context = fetch_app_details(request.app_id)
+
+    try:
+        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize"):
+            result = llm.summarize_widget_reviews(
+                reviews=request.reviews,
+                widget_kind=request.widget_kind,
+                widget_label=request.widget_label,
+                widget_context=request.context,
+                game_context=game_context,
+            )
+        return SummarizeWidgetResponse(**result)
+    except Exception as exc:
+        logger.exception("Widget summarize failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate widget summary.") from exc
+
+
+class SummarizeRecentReviewsRequest(BaseModel):
+    app_id: int = Field(..., gt=0)
+    count: int = Field(default=100, ge=10, le=200)
+
+
+class SummarizeRecentReviewsResponse(BaseModel):
+    summary: str
+    key_points: List[str] = Field(default_factory=list)
+    actions: List[str] = Field(default_factory=list)
+    review_count: int
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+@app.post("/summarize/recent-reviews", response_model=SummarizeRecentReviewsResponse, dependencies=[Depends(require_license)])
+def summarize_recent_reviews(
+    request: SummarizeRecentReviewsRequest,
+    user_id: str = Depends(require_user_id),
+) -> SummarizeRecentReviewsResponse:
+    """Generate a summary for the most recent N stored reviews (no re-analysis)."""
+    summarize_cost = credits.CREDIT_COSTS["summarize"]
+    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, summarize_cost)
+    if not can_proceed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": credit_message,
+                "credits_needed": summarize_cost,
+                "credits_available": credit_status["balance"],
+                "tier": credit_status["tier"],
+            },
+        )
+
+    stored_reviews = storage.load_reviews(request.app_id, limit=int(request.count or 100))
+    if not stored_reviews:
+        raise HTTPException(status_code=404, detail="No stored reviews found for this app.")
+
+    game_context = fetch_app_details(request.app_id)
+
+    df = build_reviews_dataframe(stored_reviews)
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail="No review data available for this app.")
+
+    # Apply cached labels when available (no new LLM labeling here).
+    try:
+        llm_labels = storage.load_review_labels(request.app_id)
+        df = llm.apply_review_labels(df, llm_labels)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to apply cached labels for app %s: %s", request.app_id, exc)
+
+    if "created_at" in df.columns:
+        try:
+            df = df.sort_values(by="created_at", ascending=False)
+        except Exception:
+            pass
+    df = df.head(int(request.count or 100))
+
+    start_date = None
+    end_date = None
+    try:
+        if "created_at" in df.columns and not df["created_at"].dropna().empty:
+            start_dt = df["created_at"].min()
+            end_dt = df["created_at"].max()
+            if start_dt is not None and hasattr(start_dt, "date"):
+                start_date = start_dt.date().isoformat()
+            if end_dt is not None and hasattr(end_dt, "date"):
+                end_date = end_dt.date().isoformat()
+    except Exception:
+        pass
+
+    baseline = None
+    try:
+        result = storage.load_analysis_result(user_id, request.app_id) or {}
+        insights = result.get("insights") or {}
+        if insights:
+            baseline = {
+                "recommendation_rate": insights.get("recommendation"),
+                "issue_rate": (insights.get("llm") or {}).get("issue_rate"),
+                "request_rate": (insights.get("llm") or {}).get("feature_request_rate"),
+            }
+    except Exception:
+        baseline = None
+
+    export_columns = [
+        "review_id",
+        "review",
+        "language",
+        "created_at",
+        "voted_up",
+        "votes_up",
+        "votes_funny",
+        "comment_count",
+        "llm_subcategories",
+        "llm_issue_subcategories",
+        "llm_request_subcategories",
+        "llm_subcategory_evidence",
+    ]
+    export_columns = [col for col in export_columns if col in df.columns]
+    reviews_payload = (
+        json.loads(
+            df[export_columns].to_json(orient="records", date_format="iso", date_unit="s")
+        )
+        if export_columns
+        else []
+    )
+
+    widget_context: Dict[str, Any] = {
+        "date_range": f"{start_date} → {end_date}" if start_date and end_date else None,
+        "baseline": baseline,
+    }
+
+    try:
+        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize"):
+            result = llm.summarize_widget_reviews(
+                reviews=reviews_payload,
+                widget_kind="recent_reviews",
+                widget_label=f"Most recent {len(reviews_payload)} reviews",
+                widget_context=widget_context,
+                game_context=game_context,
+            )
+        return SummarizeRecentReviewsResponse(
+            **result,
+            review_count=len(reviews_payload),
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except Exception as exc:
+        logger.exception("Recent reviews summarize failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate recent reviews summary.") from exc
+
 class GameComparisonData(BaseModel):
     app_id: int
     name: str
-    reviews: List[dict] = Field(..., max_length=30)
+    reviews: List[dict] = Field(..., max_length=50)
     metrics: dict
 
 
@@ -2848,6 +3035,7 @@ def generate_executive_summary(
     # Get game details
     game_context = fetch_app_details(app_id)
     game_name = game_context.get("name", f"App {app_id}") if game_context else f"App {app_id}"
+    header_image = game_context.get("header_image", "") if game_context else ""
 
     # Load reviews for this game
     reviews = storage.load_reviews(app_id, limit=None)
@@ -2874,9 +3062,14 @@ def generate_executive_summary(
             detail=f"No reviews found for {datetime(year, month, 1).strftime('%B %Y')}",
         )
 
-    # Calculate insights
+    # Calculate insights with month-over-month comparison
     try:
-        insights = reports.calculate_monthly_insights(filtered_df)
+        insights = reports.calculate_monthly_insights(
+            filtered_df,
+            full_df=df,
+            year=year,
+            month=month,
+        )
     except Exception as e:
         logger.error(f"Failed to calculate insights: {e}")
         raise HTTPException(status_code=500, detail="Failed to calculate insights") from e
@@ -2904,15 +3097,17 @@ def generate_executive_summary(
 
     # Generate report
 
-    # Format filename for downloads
+    # Format filename for downloads: GameName_January2026.pdf
     safe_game_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in game_name)
-    safe_game_name = safe_game_name.replace(' ', '')[:50]
-    month_abbr = datetime(year, month, 1).strftime("%b%Y")
+    safe_game_name = safe_game_name.replace(' ', '_')[:40]
+    month_label = datetime(year, month, 1).strftime("%B%Y")
 
     if format == "html":
         # Return HTML for preview
         try:
-            html_content = reports.create_dashboard_html(insights, game_name, period)
+            html_content = reports.create_dashboard_html(
+                insights, game_name, period, app_id=app_id, header_image=header_image
+            )
         except Exception as e:
             logger.error(f"Failed to generate HTML: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate HTML report") from e
@@ -2930,7 +3125,7 @@ def generate_executive_summary(
             logger.error(f"Failed to generate legacy PDF: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate PDF report") from e
 
-        filename = f"ExecutiveSummary_{safe_game_name}_{month_abbr}.pdf"
+        filename = f"{safe_game_name}_{month_label}.pdf"
         return StreamingResponse(
             iter([pdf_bytes]),
             media_type="application/pdf",
@@ -2942,12 +3137,14 @@ def generate_executive_summary(
     elif format == "pdf":
         # New 1-page dashboard PDF (default)
         try:
-            pdf_bytes = reports.create_pdf_report(insights, game_name, period)
+            pdf_bytes = reports.create_pdf_report(
+                insights, game_name, period, app_id=app_id, header_image=header_image
+            )
         except Exception as e:
             logger.error(f"Failed to generate PDF: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate PDF report") from e
 
-        filename = f"ExecutiveSummary_{safe_game_name}_{month_abbr}.pdf"
+        filename = f"{safe_game_name}_{month_label}.pdf"
         return StreamingResponse(
             iter([pdf_bytes]),
             media_type="application/pdf",

@@ -1298,10 +1298,18 @@ export interface SubcategorySummaryPayload {
   app_id: number;
   subcategory: string;
   summary_type?: 'issue' | 'request' | 'general';
+  summary_context?: string;
   reviews: Array<{
     review_id?: string;
     review?: string;
     voted_up?: boolean;
+    votes_up?: number;
+    language?: string;
+    created_at?: string;
+    llm_subcategories?: string[];
+    llm_issue_subcategories?: string[];
+    llm_request_subcategories?: string[];
+    llm_subcategory_evidence?: Record<string, string[]>;
   }>;
 }
 
@@ -1323,6 +1331,77 @@ export async function summarizeSubcategory(
     body: JSON.stringify(payload),
   });
   return handleResponse<SubcategorySummaryResponse>(response);
+}
+
+// ============================================================================
+// Widget Summary API
+// ============================================================================
+
+export interface WidgetSummaryPayload {
+  app_id: number;
+  widget_kind: 'trend_week' | 'segment';
+  widget_label: string;
+  context?: Record<string, unknown>;
+  reviews: Array<{
+    review_id?: string;
+    review?: string;
+    voted_up?: boolean;
+    votes_up?: number;
+    votes_funny?: number;
+    comment_count?: number;
+    language?: string;
+    created_at?: string;
+    llm_subcategories?: string[];
+    llm_issue_subcategories?: string[];
+    llm_request_subcategories?: string[];
+    llm_subcategory_evidence?: Record<string, string[]>;
+  }>;
+}
+
+export interface WidgetSummaryResponse {
+  summary: string;
+  key_points: string[];
+  actions: string[];
+}
+
+export async function summarizeWidget(
+  payload: WidgetSummaryPayload
+): Promise<WidgetSummaryResponse> {
+  const response = await authFetch(apiUrl("/summarize/widget"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<WidgetSummaryResponse>(response);
+}
+
+// ============================================================================
+// Recent Reviews Summary API
+// ============================================================================
+
+export interface RecentReviewsSummaryPayload {
+  app_id: number;
+  count?: number;
+}
+
+export interface RecentReviewsSummaryResponse {
+  summary: string;
+  key_points: string[];
+  actions: string[];
+  review_count: number;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+export async function summarizeRecentReviews(
+  payload: RecentReviewsSummaryPayload
+): Promise<RecentReviewsSummaryResponse> {
+  const response = await authFetch(apiUrl("/summarize/recent-reviews"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<RecentReviewsSummaryResponse>(response);
 }
 
 // ============================================================================

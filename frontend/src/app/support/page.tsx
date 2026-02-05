@@ -29,6 +29,11 @@ export default function SupportPage() {
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   async function loadThread() {
     setLoading(true);
@@ -99,11 +104,11 @@ export default function SupportPage() {
               </span>
             </h1>
             <p className="text-xs text-slate-400">
-              Send a message to the admin team. Replies will appear here.
+              Send a message to the admin team. Request features or get help. Replies will appear here.
             </p>
           </div>
 
-          <Card variant="glass" className="flex-1 flex flex-col overflow-hidden">
+          <Card variant="glass" className={`flex-1 flex flex-col overflow-hidden ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Support Inbox</p>
@@ -138,15 +143,16 @@ export default function SupportPage() {
                   <p className="text-sm text-slate-400">No messages yet. Start the conversation below.</p>
                 </div>
               ) : (
-                messages.map((msg) => {
+                messages.map((msg, index) => {
                   const isUser = msg.sender_role === "user";
                   return (
                     <div
                       key={msg.id}
-                      className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                      className={`flex ${isUser ? "justify-end" : "justify-start"} animate-fade-in`}
+                      style={{ animationDelay: `${Math.min(index * 50, 300)}ms` }}
                     >
                       <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                        className={`max-w-[85%] rounded-2xl px-4 py-3 transition-all hover:scale-[1.01] ${
                           isUser
                             ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-white"
                             : "bg-slate-900/60 border border-white/10 text-slate-100"

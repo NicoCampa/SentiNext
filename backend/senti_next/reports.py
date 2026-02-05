@@ -23,7 +23,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from .analysis import summarize_playtime, summarize_sentiment
+from .analysis import summarize_playtime
 
 logger = logging.getLogger(__name__)
 
@@ -85,44 +85,42 @@ def filter_reviews_by_month(reviews_df: pd.DataFrame, year: int, month: int) -> 
     return reviews_df[mask].copy()
 
 
-def calculate_monthly_insights(reviews_df: pd.DataFrame) -> Dict[str, Any]:
-    """Calculate insights for filtered reviews.
+def calculate_monthly_insights(
+    reviews_df: pd.DataFrame,
+    full_df: pd.DataFrame | None = None,
+    year: int | None = None,
+    month: int | None = None,
+) -> Dict[str, Any]:
+    """Calculate insights for filtered reviews with optional month-over-month comparison.
 
-    Returns subset of InsightsResponse with:
-    - Core metrics: recommendation_rate, share_positive/negative, average_compound
-    - Risk metrics: refund_risk, core_fan_disappointment
+    Args:
+        reviews_df: DataFrame filtered to the target month
+        full_df: Optional full DataFrame for calculating previous month comparison
+        year: Target year (required if full_df provided)
+        month: Target month (required if full_df provided)
+
+    Returns dict with:
+    - Core metrics: recommendation_rate, total_reviews
     - Top issues (top 5 by count with evidence snippets)
     - Top requests (top 5 by count with evidence snippets)
-    - Player segments: experience_level breakdown
-    - Trend: weekly recommendation_rate within month
+    - Playtime stats
+    - Optional: previous month metrics and deltas
     """
     if reviews_df.empty:
         return {
             "total_reviews": 0,
             "recommendation_rate": 0.0,
-            "sentiment": {
-                "average_compound": 0.0,
-                "share_positive": 0.0,
-                "share_negative": 0.0,
-            },
             "playtime": {
                 "median_playtime_hours": 0.0,
                 "mean_playtime_hours": 0.0,
             },
             "top_issues": [],
             "top_requests": [],
-            "player_segments": [],
-            "weekly_trend": [],
-            "refund_risk": 0.0,
-            "core_fan_disappointment": 0.0,
         }
 
     # Core metrics
     total_reviews = len(reviews_df)
     recommendation_rate = float(reviews_df["voted_up"].mean()) if "voted_up" in reviews_df.columns else 0.0
-
-    # Sentiment
-    sentiment = summarize_sentiment(reviews_df)
 
     # Playtime
     playtime = summarize_playtime(reviews_df)
@@ -173,8 +171,8 @@ def calculate_monthly_insights(reviews_df: pd.DataFrame) -> Dict[str, Any]:
             count = issue["count"]
             recommended = issue["recommended"]
             issue["recommendation_rate"] = float(recommended / count) if count > 0 else 0.0
-            # Limit snippets to 2
-            issue["snippets"] = issue["snippets"][:2]
+            # Limit snippets to 5 for fuller report
+            issue["snippets"] = issue["snippets"][:5]
 
     # Top requests
     top_requests = []
@@ -222,70 +220,114 @@ def calculate_monthly_insights(reviews_df: pd.DataFrame) -> Dict[str, Any]:
             count = request["count"]
             recommended = request["recommended"]
             request["recommendation_rate"] = float(recommended / count) if count > 0 else 0.0
-            # Limit snippets to 2
-            request["snippets"] = request["snippets"][:2]
+            # Limit snippets to 5 for fuller report
+            request["snippets"] = request["snippets"][:5]
 
-    # Player segments by experience level
-    player_segments = []
-    if "llm_experience_level" in reviews_df.columns:
-        segments_data = reviews_df.groupby("llm_experience_level").agg({
-            "voted_up": ["count", "sum"]
-        }).reset_index()
+    # Top praises (positive mentions that are not issues or requests)
+    top_praises = []
+    if "llm_subcategories" in reviews_df.columns and "llm_subcategory_evidence" in reviews_df.columns:
+        # Build sets of issue and request subcats per review for exclusion
+        praise_data = {}
+        for _, row in reviews_df.iterrows():
+            all_subcats = row.get("llm_subcategories")
+            if not isinstance(all_subcats, list) or not all_subcats:
+                continue
 
-        for _, row in segments_data.iterrows():
-            segment = row["llm_experience_level"]
-            count = int(row["voted_up"]["count"])
-            recommended = int(row["voted_up"]["sum"])
-            rec_rate = float(recommended / count) if count > 0 else 0.0
+            issue_subcats = set(row.get("llm_issue_subcategories") or [])
+            request_subcats = set(row.get("llm_request_subcategories") or [])
 
-            player_segments.append({
-                "segment": segment,
-                "count": count,
-                "recommendation_rate": rec_rate,
-            })
+            evidence = row.get("llm_subcategory_evidence") or {}
+            if not isinstance(evidence, dict):
+                evidence = {}
 
-    # Weekly trend
-    weekly_trend = []
-    if "created_at" in reviews_df.columns and "voted_up" in reviews_df.columns:
-        try:
-            weekly = reviews_df.set_index("created_at").resample("W")["voted_up"].agg(["mean", "count"])
-            for date, row in weekly.iterrows():
-                if row["count"] > 0:
-                    weekly_trend.append({
-                        "week": date.strftime("%Y-%m-%d"),
-                        "recommendation_rate": float(row["mean"]),
-                        "count": int(row["count"]),
-                    })
-        except Exception as e:
-            logger.warning(f"Failed to calculate weekly trend: {e}")
+            voted_up = row.get("voted_up", True)
 
-    # Risk metrics (reuse logic from insights.py)
-    from .analysis import refund_risk_index, core_fan_disappointment
+            # Only include subcategories that are NOT issues or requests
+            for subcat in all_subcats:
+                if subcat in issue_subcats or subcat in request_subcats:
+                    continue
 
-    refund_risk = refund_risk_index(reviews_df)
-    core_fan_disappointment_score = core_fan_disappointment(reviews_df)
+                if subcat not in praise_data:
+                    praise_data[subcat] = {
+                        "subcategory": subcat,
+                        "count": 0,
+                        "recommended": 0,
+                        "snippets": [],
+                    }
 
-    return {
+                praise_data[subcat]["count"] += 1
+                if voted_up:
+                    praise_data[subcat]["recommended"] += 1
+
+                # Collect evidence snippets
+                snippets = evidence.get(subcat)
+                if isinstance(snippets, list):
+                    for snippet in snippets:
+                        text = str(snippet).replace("\n", " ").strip()[:120]
+                        if text and text not in praise_data[subcat]["snippets"]:
+                            praise_data[subcat]["snippets"].append(text)
+
+        # Sort by count and get top 3, excluding "other" category and subcategories
+        praises_list = [
+            p for p in praise_data.values()
+            if "other" not in p["subcategory"].lower()
+        ]
+        praises_list.sort(key=lambda x: x["count"], reverse=True)
+        top_praises = praises_list[:3]
+
+        # Add recommendation rate and limit snippets
+        for praise in top_praises:
+            count = praise["count"]
+            recommended = praise["recommended"]
+            praise["recommendation_rate"] = float(recommended / count) if count > 0 else 0.0
+            praise["snippets"] = praise["snippets"][:3]
+
+    result = {
         "total_reviews": total_reviews,
         "recommendation_rate": recommendation_rate,
-        "sentiment": sentiment,
         "playtime": playtime,
         "top_issues": top_issues,
         "top_requests": top_requests,
-        "player_segments": player_segments,
-        "weekly_trend": weekly_trend,
-        "refund_risk": refund_risk,
-        "core_fan_disappointment": core_fan_disappointment_score,
+        "top_praises": top_praises,
     }
 
+    # Calculate previous month comparison if full_df provided
+    if full_df is not None and year is not None and month is not None:
+        prev_year, prev_month = (year, month - 1) if month > 1 else (year - 1, 12)
+        prev_df = filter_reviews_by_month(full_df, prev_year, prev_month)
 
-def create_dashboard_html(data: Dict[str, Any], game_name: str, period: str) -> str:
+        if not prev_df.empty:
+            prev_total = len(prev_df)
+            prev_rec_rate = float(prev_df["voted_up"].mean()) if "voted_up" in prev_df.columns else 0.0
+
+            result["previous"] = {
+                "total_reviews": prev_total,
+                "recommendation_rate": prev_rec_rate,
+                "period": datetime(prev_year, prev_month, 1).strftime("%B %Y"),
+            }
+            result["deltas"] = {
+                "reviews": total_reviews - prev_total,
+                "recommendation_rate": recommendation_rate - prev_rec_rate,
+            }
+
+    return result
+
+
+def create_dashboard_html(
+    data: Dict[str, Any],
+    game_name: str,
+    period: str,
+    app_id: int = 0,
+    header_image: str = "",
+) -> str:
     """Generate HTML dashboard report from Jinja2 template.
 
     Args:
         data: Monthly insights data from calculate_monthly_insights()
         game_name: Name of the game
         period: Report period label (e.g., "January 2024")
+        app_id: Steam app ID for the game
+        header_image: URL to game's header image
 
     Returns:
         HTML string of the dashboard report
@@ -300,16 +342,26 @@ def create_dashboard_html(data: Dict[str, Any], game_name: str, period: str) -> 
         game_name=game_name,
         period=period,
         generated_at=generated_at,
+        app_id=app_id,
+        header_image=header_image,
     )
 
 
-def create_dashboard_pdf(data: Dict[str, Any], game_name: str, period: str) -> bytes:
+def create_dashboard_pdf(
+    data: Dict[str, Any],
+    game_name: str,
+    period: str,
+    app_id: int = 0,
+    header_image: str = "",
+) -> bytes:
     """Generate 1-page PDF dashboard report using WeasyPrint.
 
     Args:
         data: Monthly insights data from calculate_monthly_insights()
         game_name: Name of the game
         period: Report period label (e.g., "January 2024")
+        app_id: Steam app ID for the game
+        header_image: URL to game's header image
 
     Returns:
         PDF bytes
@@ -320,7 +372,7 @@ def create_dashboard_pdf(data: Dict[str, Any], game_name: str, period: str) -> b
         logger.warning("WeasyPrint not installed, falling back to legacy PDF")
         return create_pdf_report_legacy(data, game_name, period)
 
-    html_content = create_dashboard_html(data, game_name, period)
+    html_content = create_dashboard_html(data, game_name, period, app_id, header_image)
 
     try:
         pdf_bytes = HTML(string=html_content).write_pdf()
@@ -330,13 +382,19 @@ def create_dashboard_pdf(data: Dict[str, Any], game_name: str, period: str) -> b
         return create_pdf_report_legacy(data, game_name, period)
 
 
-def create_pdf_report(data: Dict[str, Any], game_name: str, period: str) -> bytes:
+def create_pdf_report(
+    data: Dict[str, Any],
+    game_name: str,
+    period: str,
+    app_id: int = 0,
+    header_image: str = "",
+) -> bytes:
     """Generate PDF executive summary report.
 
     This is the main entry point - uses the new dashboard PDF by default,
     falls back to legacy if WeasyPrint is not available.
     """
-    return create_dashboard_pdf(data, game_name, period)
+    return create_dashboard_pdf(data, game_name, period, app_id, header_image)
 
 
 def create_pdf_report_legacy(data: Dict[str, Any], game_name: str, period: str) -> bytes:

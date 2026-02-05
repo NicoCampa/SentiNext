@@ -344,6 +344,11 @@ export default function AdminPage() {
   const [updatingTier, setUpdatingTier] = useState<string | null>(null);
   const [tierUpdateSuccess, setTierUpdateSuccess] = useState<string | null>(null);
   const [tierUpdateError, setTierUpdateError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     async function loadSessions() {
@@ -641,7 +646,7 @@ export default function AdminPage() {
 
         {!isInboxMode && (
           <>
-          <Card variant="glass" className="mb-4 p-6">
+          <Card variant="glass" className={`mb-4 p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-base">🧠</span>
@@ -822,7 +827,7 @@ export default function AdminPage() {
         </Card>
 
         {/* Credits Management Section */}
-        <Card variant="glass" className="mb-4 p-5">
+        <Card variant="glass" className={`mb-4 p-5 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
           <h2 className="text-sm font-semibold text-white mb-3">Grant Credits</h2>
           <form onSubmit={handleGrantCredits} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -884,7 +889,7 @@ export default function AdminPage() {
         </Card>
 
         {/* User Subscriptions Management Section */}
-        <Card variant="glass" className="mb-4 p-5">
+        <Card variant="glass" className={`mb-4 p-5 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-white">User Subscriptions</h2>
             <Button
@@ -1002,7 +1007,7 @@ export default function AdminPage() {
           {activePanel === "chat" ? (
             <div className="flex-1 flex gap-4 overflow-hidden">
           {/* Sessions List */}
-          <Card variant="glass" className="w-96 flex-shrink-0 flex flex-col overflow-hidden">
+          <Card variant="glass" className={`w-96 flex-shrink-0 flex flex-col overflow-hidden ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
             {/* Filter Tabs */}
             <div className="p-4 border-b border-white/10">
               <div className="flex gap-2">
@@ -1096,7 +1101,7 @@ export default function AdminPage() {
           </Card>
 
           {/* Chat History View */}
-          <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6">
+          <Card variant="glass" className={`flex-1 flex flex-col overflow-hidden p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
             {!selectedSession ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
@@ -1249,7 +1254,7 @@ export default function AdminPage() {
             </div>
           ) : (
             <div className="flex-1 flex gap-4 overflow-hidden">
-              <Card variant="glass" className="w-96 flex-shrink-0 flex flex-col overflow-hidden">
+              <Card variant="glass" className={`w-96 flex-shrink-0 flex flex-col overflow-hidden ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Inbox</p>
@@ -1327,7 +1332,7 @@ export default function AdminPage() {
                 </div>
               </Card>
 
-              <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6">
+              <Card variant="glass" className={`flex-1 flex flex-col overflow-hidden p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
                 {!selectedSupportThread ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="text-center">

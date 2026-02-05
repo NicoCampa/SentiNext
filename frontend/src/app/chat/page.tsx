@@ -483,7 +483,12 @@ export default function ChatPage() {
   // Message feedback state: tracks which message indices user has voted on
   const [messageFeedback, setMessageFeedback] = useState<Record<number, boolean>>({});
   const [feedbackSubmitting, setFeedbackSubmitting] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
   const chatLocked = selectedGames.length === 0 && messages.length === 0;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -836,7 +841,7 @@ export default function ChatPage() {
         {/* Main Content Area */}
         <div className="flex-1 flex gap-4 overflow-hidden">
           {/* Left Sidebar: Chat History */}
-          <Card variant="glass" className="w-72 flex-shrink-0 p-4 overflow-hidden flex flex-col gap-4">
+          <Card variant="glass" className={`w-72 flex-shrink-0 p-4 overflow-hidden flex flex-col gap-4 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
             {/* Chat History */}
             <div className="flex-1 flex flex-col min-h-0">
               <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
@@ -891,7 +896,7 @@ export default function ChatPage() {
           </Card>
 
           {/* Messages Container */}
-          <Card variant="glass" className="flex-1 flex flex-col overflow-hidden p-6 relative">
+          <Card variant="glass" className={`flex-1 flex flex-col overflow-hidden p-6 relative ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
             {copyToast && (
               <div className="absolute right-6 top-4 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-1 text-xs text-slate-200">
                 {copyToast}
@@ -914,16 +919,17 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
-            {loadingHistory ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center space-y-4">
+            {(loadingHistory || loadingGames) ? (
+              /* Unified loading state - wait for both history and games to load */
+              <div className="h-full flex flex-col items-center justify-center p-4">
+                <div className="w-full max-w-3xl flex flex-col items-center justify-center">
                   <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
                     <svg className="w-8 h-8 text-[rgb(0,255,255)] animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
                   </div>
-                  <p className="text-sm text-slate-400">{t("chat.loadingConversation")}</p>
+                  <p className="text-sm text-slate-400 mt-4">{t("chat.loadingConversation")}</p>
                 </div>
               </div>
             ) : messages.length === 0 ? (
@@ -943,11 +949,7 @@ export default function ChatPage() {
                   </div>
 
                   {/* Game Grid */}
-                  {loadingGames ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="h-8 w-8 animate-spin spinner-blue" />
-                    </div>
-                  ) : starredGames.length === 0 ? (
+                  {starredGames.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-sm text-slate-400 mb-2">No analyzed games found</p>
                       <p className="text-xs text-slate-500 mb-4">You need to analyze a game before you can chat about it.</p>

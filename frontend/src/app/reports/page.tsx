@@ -21,6 +21,11 @@ export default function ReportsPage() {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load available months when game is selected
   useEffect(() => {
@@ -134,7 +139,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Game Selection Grid */}
-          <Card variant="glass" className="p-6">
+          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Choose game</h2>
               <span className="text-xs text-slate-500">{starredGames.length} analyzed</span>
@@ -191,7 +196,7 @@ export default function ReportsPage() {
 
         {/* Report Configuration Card */}
           {selectedGame && (
-            <Card variant="glass" className="p-6 space-y-5">
+            <Card variant="glass" className={`p-6 space-y-5 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Report</p>

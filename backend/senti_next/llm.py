@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import contextvars
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -2198,6 +2199,9 @@ _SUMMARIZE_ISSUES_PROMPT = Template(
         Genres: $game_genres
         Description: $game_description
 
+        SUMMARY SCOPE / FILTERS:
+        $summary_context
+
         ISSUE CATEGORY: $subcategory
         TOTAL REVIEWS WITH THIS ISSUE: $review_count
 
@@ -2219,6 +2223,7 @@ _SUMMARIZE_ISSUES_PROMPT = Template(
         - Extract direct player quotes where impactful
         - Focus on technical specifics: error messages, reproduction steps, affected hardware/platforms
         - Distinguish between bug reports vs. design complaints
+        - Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
 
         REVIEWS (players reporting this issue):
         <<<BEGIN REVIEWS>>>
@@ -2237,6 +2242,9 @@ _SUMMARIZE_REQUESTS_PROMPT = Template(
         Type: $game_type
         Genres: $game_genres
         Description: $game_description
+
+        SUMMARY SCOPE / FILTERS:
+        $summary_context
 
         REQUEST CATEGORY: $subcategory
         TOTAL REVIEWS REQUESTING THIS: $review_count
@@ -2260,6 +2268,7 @@ _SUMMARIZE_REQUESTS_PROMPT = Template(
         - Distinguish between "nice to have" vs. "deal-breaker" requests
         - Note any common alternatives or workarounds players suggest
         - Group similar requests (e.g., multiple UI customization requests)
+        - Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
 
         REVIEWS (players requesting this feature):
         <<<BEGIN REVIEWS>>>
@@ -2279,6 +2288,9 @@ _SUMMARIZE_PROMPT_TEMPLATE = Template(
         Genres: $game_genres
         Description: $game_description
 
+        SUMMARY SCOPE / FILTERS:
+        $summary_context
+
         SUBCATEGORY: $subcategory
         TOTAL REVIEWS IN CATEGORY: $review_count
 
@@ -2290,12 +2302,13 @@ _SUMMARIZE_PROMPT_TEMPLATE = Template(
         }
 
         RULES:
-        - summary: A concise 2-4 sentence overview capturing the main sentiment and key points
+        - summary: A concise 2-4 sentence overview capturing recommendation (thumbs up/down) and key points
         - pros: 2-5 specific positive aspects mentioned by players (empty list if none)
         - cons: 2-5 specific issues or complaints mentioned by players (empty list if none)
         - Be specific and actionable, not generic
         - Use player language where appropriate
         - Focus on patterns across multiple reviews, not single opinions
+        - Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
         - JSON MUST be valid: double quotes only, no trailing commas
 
         REVIEWS (sample from this subcategory):
@@ -2303,6 +2316,269 @@ _SUMMARIZE_PROMPT_TEMPLATE = Template(
         $reviews_text
         <<<END REVIEWS>>>
         """
+    )
+)
+
+_SUMMARIZE_WIDGET_GENERIC_PROMPT = Template(
+    dedent(
+        """You are analyzing a set of Steam game reviews shown in a dashboard widget. These reviews are a SAMPLE from the UI (not necessarily the full dataset).
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+WIDGET:
+$widget_label
+
+WIDGET CONTEXT (structured):
+$widget_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Languages (top): $language_mix
+- Issue-tagged reviews: $issue_rate
+- Request-tagged reviews: $request_rate
+
+TOP TAGGED ISSUES (count of reviews mentioning the issue):
+$top_issues
+
+TOP TAGGED REQUESTS (count of reviews mentioning the request):
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence overview grounded in the provided reviews>",
+  "key_points": ["<key point 1>", "<key point 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Use only the provided context + reviews. If something is unknown, say it's unknown.
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- key_points: 3-6 concise bullets, grounded in repeated patterns across reviews.
+- actions: EXACTLY 3 prioritized, developer-actionable actions (start each with a verb).
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
+    )
+)
+
+_SUMMARIZE_WIDGET_TREND_WEEK_PROMPT = Template(
+    dedent(
+        """You are analyzing Steam reviews for one game during a specific week. These reviews are a SAMPLE shown in the dashboard widget.
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+WEEK:
+$widget_label
+
+WIDGET CONTEXT (structured):
+$widget_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Languages (top): $language_mix
+- Issue-tagged reviews: $issue_rate
+- Request-tagged reviews: $request_rate
+
+TOP TAGGED ISSUES (count of reviews mentioning the issue):
+$top_issues
+
+TOP TAGGED REQUESTS (count of reviews mentioning the request):
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence weekly recap grounded in the provided reviews>",
+  "key_points": ["<key point 1>", "<key point 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Treat this as a weekly snapshot: focus on what was top-of-mind for players that week.
+- Highlight any recurring breakages/regressions and the most demanded fixes.
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- key_points: 3-6 bullets; include at least 1 player-facing positive if present.
+- actions: EXACTLY 3 prioritized actions (start each with a verb). If evidence is insufficient, propose safe next steps (instrument, reproduce, clarify).
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
+    )
+)
+
+_SUMMARIZE_WIDGET_SEGMENT_PROMPT = Template(
+    dedent(
+        """You are analyzing Steam reviews for one game written by a specific player segment (e.g., veterans, Steam Deck players, key users, a specific language).
+These reviews are a SAMPLE shown in the dashboard widget.
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+SEGMENT:
+$widget_label
+
+WIDGET CONTEXT (structured):
+$widget_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Languages (top): $language_mix
+- Issue-tagged reviews: $issue_rate
+- Request-tagged reviews: $request_rate
+
+TOP TAGGED ISSUES (count of reviews mentioning the issue):
+$top_issues
+
+TOP TAGGED REQUESTS (count of reviews mentioning the request):
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence summary of what this segment cares about>",
+  "key_points": ["<key point 1>", "<key point 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Explain what this segment disproportionately notices (pain points, expectations, requests).
+- If baseline metrics are provided in widget_context, call out meaningful differences (avoid made-up numbers).
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- key_points: 3-6 bullets, grounded in review evidence.
+- actions: EXACTLY 3 prioritized actions (start each with a verb).
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
+    )
+)
+
+_SUMMARIZE_WIDGET_LANGUAGE_PROMPT = Template(
+    dedent(
+        """You are analyzing Steam reviews for one game written in a specific language (regional segment). These reviews are a SAMPLE shown in the dashboard widget.
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+LANGUAGE SEGMENT:
+$widget_label
+
+WIDGET CONTEXT (structured):
+$widget_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Issue-tagged reviews: $issue_rate
+- Request-tagged reviews: $request_rate
+
+TOP TAGGED ISSUES:
+$top_issues
+
+TOP TAGGED REQUESTS:
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence summary of what this language segment is saying>",
+  "key_points": ["<key point 1>", "<key point 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Pay attention to localization/regional issues: translation quality, UI strings, cultural references, region-specific pricing, servers, input layouts, legality/compliance, etc (only if present in reviews).
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- key_points: 3-6 bullets grounded in evidence; avoid generalizations about a region.
+- actions: EXACTLY 3 prioritized actions (start each with a verb).
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
+    )
+)
+
+_SUMMARIZE_WIDGET_RECENT_REVIEWS_PROMPT = Template(
+    dedent(
+        """You are analyzing the MOST RECENT Steam reviews for one game. These reviews represent the latest feedback window and should be treated as a "what's happening now" snapshot.
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+RECENT WINDOW:
+$widget_label
+
+WIDGET CONTEXT (structured):
+$widget_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Languages (top): $language_mix
+- Issue-tagged reviews: $issue_rate
+- Request-tagged reviews: $request_rate
+
+TOP TAGGED ISSUES (count of reviews mentioning the issue):
+$top_issues
+
+TOP TAGGED REQUESTS (count of reviews mentioning the request):
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence recap of the most recent player feedback>",
+  "key_points": ["<key point 1>", "<key point 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Focus on NEW/EMERGING themes, regressions, and "top-of-mind" issues/requests in this recent window.
+- If baseline metrics are provided in widget_context, call out meaningful differences (do not invent numbers).
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- key_points: 3-6 bullets grounded in repeated patterns across reviews.
+- actions: EXACTLY 3 prioritized, developer-actionable actions (start each with a verb).
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
     )
 )
 
@@ -2316,9 +2592,7 @@ PERIOD: $period
 CORE METRICS:
 - Total reviews: $total_reviews
 - Recommendation rate: $recommendation_rate
-- Average sentiment (compound): $average_sentiment
-- Refund risk index: $refund_risk
-- Core fan disappointment: $core_fan_disappointment
+$comparison_text
 
 TOP ISSUES:
 $top_issues
@@ -2326,20 +2600,20 @@ $top_issues
 TOP REQUESTS:
 $top_requests
 
-PLAYER SEGMENTS (experience level):
-$segments
-
 OUTPUT JSON SCHEMA (use these exact keys; no extras):
 {
   "summary": "<2-3 sentence executive summary of the month>",
+  "key_points": ["<key insight 1>", "<key insight 2>", "<key insight 3>"],
   "actions": ["<action 1>", "<action 2>", "<action 3>"]
 }
 
 RULES:
-- Keep the summary short and concrete (2-3 sentences).
-- Actions should be specific and actionable (not generic).
-- Use the data provided; do not invent facts.
-- If data is insufficient, return an honest summary and an empty actions list.
+- summary: Short overview (2-3 sentences) covering recommendation rate, main issue, and main request.
+- key_points: 3 bullet-style insights from the data (what's working, what's broken, what players want).
+- actions: 3 specific, developer-actionable recommendations ordered by priority.
+- If month-over-month comparison provided, mention significant changes (>5% delta).
+- Use only data provided; do not invent facts.
+- Never use the word "sentiment". Say "recommendation rate" or "thumbs up/down".
 - JSON MUST be valid: double quotes only, no trailing commas.
 """
     )
@@ -2354,11 +2628,12 @@ def summarize_monthly_report(
 ) -> Dict[str, Any]:
     """Generate a concise executive summary for a monthly report.
 
-    Returns dict with 'summary' and 'actions' keys.
+    Returns dict with 'summary', 'key_points', and 'actions' keys.
     """
     if not insights:
         return {
             "summary": "Not enough data to summarize this period.",
+            "key_points": [],
             "actions": [],
         }
 
@@ -2384,60 +2659,64 @@ def summarize_monthly_report(
             lines.append(f"- {name}: {count} mentions ({rec_text}).{snippet}")
         return "\n".join(lines)
 
-    def _format_segments(items: Any, limit: int = 4) -> str:
-        if not isinstance(items, list) or not items:
-            return "No segment data."
-        sorted_items = sorted(
-            items,
-            key=lambda entry: int(entry.get("count") or 0),
-            reverse=True,
-        )
-        lines = []
-        for item in sorted_items[:limit]:
-            name = _format_label(item.get("segment"))
-            count = int(item.get("count") or 0)
-            rec_rate = item.get("recommendation_rate")
-            rec_text = f"{rec_rate:.1%}" if isinstance(rec_rate, (int, float)) else "n/a"
-            lines.append(f"- {name}: {count} reviews, {rec_text} recommend")
-        return "\n".join(lines)
-
     total_reviews = int(insights.get("total_reviews") or 0)
     recommendation_rate = float(insights.get("recommendation_rate") or 0.0)
-    sentiment = insights.get("sentiment") or {}
-    refund_risk = float(insights.get("refund_risk") or 0.0)
-    core_fan_disappointment = float(insights.get("core_fan_disappointment") or 0.0)
+
+    # Build comparison text if previous month data available
+    comparison_text = ""
+    previous = insights.get("previous")
+    deltas = insights.get("deltas")
+    if previous and deltas:
+        prev_period = previous.get("period", "previous month")
+        prev_reviews = previous.get("total_reviews", 0)
+        delta_reviews = deltas.get("reviews", 0)
+        delta_rec = deltas.get("recommendation_rate", 0.0)
+
+        comparison_lines = [f"\nCOMPARISON WITH {prev_period.upper()}:"]
+        review_change = "+" if delta_reviews >= 0 else ""
+        comparison_lines.append(f"- Review volume: {review_change}{delta_reviews:,} ({prev_reviews:,} → {total_reviews:,})")
+        rec_change = "+" if delta_rec >= 0 else ""
+        comparison_lines.append(f"- Recommendation rate: {rec_change}{delta_rec:.1%} ({previous.get('recommendation_rate', 0):.1%} → {recommendation_rate:.1%})")
+        comparison_text = "\n".join(comparison_lines)
 
     prompt = _REPORT_SUMMARY_PROMPT.substitute(
         game_name=game_name or "Unknown",
         period=period or "Unknown",
         total_reviews=f"{total_reviews:,}",
         recommendation_rate=f"{recommendation_rate:.1%}",
-        average_sentiment=f"{float(sentiment.get('average_compound', 0.0)):+.2f}",
-        refund_risk=f"{refund_risk:.2f}",
-        core_fan_disappointment=f"{core_fan_disappointment:.2f}",
+        comparison_text=comparison_text,
         top_issues=_format_issue_list(insights.get("top_issues")),
         top_requests=_format_issue_list(insights.get("top_requests")),
-        segments=_format_segments(insights.get("player_segments")),
     )
 
     try:
         raw, _model_used = _run_llm(prompt)
         payload = _load_json_mapping(raw)
         summary = str(payload.get("summary", "")).strip()
+        key_points = payload.get("key_points", [])
         actions = payload.get("actions", [])
+
+        if not isinstance(key_points, list):
+            key_points = []
+        key_points = [str(item).strip() for item in key_points if item][:3]
+
         if not isinstance(actions, list):
             actions = []
         actions = [str(item).strip() for item in actions if item][:3]
+
         if not summary:
             summary = "Unable to generate summary."
+
         return {
             "summary": summary,
+            "key_points": key_points,
             "actions": actions,
         }
     except Exception as exc:
         logger.error("Failed to generate monthly report summary: %s", exc)
         return {
             "summary": "Unable to generate summary.",
+            "key_points": [],
             "actions": [],
         }
 
@@ -2447,6 +2726,7 @@ def summarize_subcategory_reviews(
     subcategory: str,
     game_context: Optional[Dict[str, Any]] = None,
     summary_type: str = "general",
+    summary_context: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generate a summary with pros/cons for reviews in a subcategory.
 
@@ -2564,6 +2844,7 @@ def summarize_subcategory_reviews(
         game_type=game_type,
         game_genres=game_genres,
         game_description=game_description,
+        summary_context=(summary_context or "None"),
         subcategory=subcategory,
         review_count=len(reviews),
         reviews_text=reviews_text,
@@ -2597,6 +2878,282 @@ def summarize_subcategory_reviews(
             "summary": f"Failed to generate summary: {str(exc)}",
             "pros": [],
             "cons": [],
+        }
+
+
+def summarize_widget_reviews(
+    reviews: Sequence[Mapping[str, Any]],
+    widget_kind: str,
+    widget_label: str,
+    widget_context: Optional[Mapping[str, Any]] = None,
+    game_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Summarize review sets shown in different UI widgets (week/segment/etc.).
+
+    Returns a structured summary suitable for displaying inside modal widgets.
+    """
+    if not reviews:
+        return {
+            "summary": "No reviews available for this widget.",
+            "key_points": [],
+            "actions": [],
+        }
+
+    widget_context = widget_context or {}
+
+    # Build game context strings
+    if game_context:
+        game_name = game_context.get("name", "Unknown")
+        game_type = game_context.get("type", "game")
+        genres = game_context.get("genres", [])
+        description = game_context.get("short_description", "")[:200]
+
+        game_genres = ", ".join(genres) if genres else "Unknown"
+        game_description = description if description else "Not available"
+    else:
+        game_name = "Unknown"
+        game_type = "game"
+        game_genres = "Unknown"
+        game_description = "Not available"
+
+    def _to_int(value: Any) -> int:
+        try:
+            if value is None:
+                return 0
+            if isinstance(value, bool):
+                return int(value)
+            if isinstance(value, (int, float)):
+                return int(value)
+            if isinstance(value, str):
+                return int(float(value))
+        except Exception:
+            return 0
+        return 0
+
+    def _to_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y", "recommended", "thumbs_up", "up"}
+        return False
+
+    def _clean_snippet(value: Any, max_len: int = 160) -> Optional[str]:
+        text = str(value).replace("\n", " ").replace("\r", " ").strip()
+        if not text:
+            return None
+        if len(text) > max_len:
+            return text[:max_len] + "..."
+        return text
+
+    def _listify_strings(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
+
+    def _extract_any_evidence_snippets(review: Mapping[str, Any], max_snippets: int = 2) -> list[str]:
+        evidence = review.get("llm_subcategory_evidence") or review.get("subcategory_evidence") or {}
+        if not isinstance(evidence, dict):
+            return []
+
+        # Prioritize issue/request subcategories when available, else fall back to evidence keys.
+        candidate_keys: list[str] = []
+        candidate_keys.extend(_listify_strings(review.get("llm_issue_subcategories")))
+        candidate_keys.extend(_listify_strings(review.get("llm_request_subcategories")))
+        if not candidate_keys:
+            candidate_keys = [str(key) for key in evidence.keys() if isinstance(key, str)]
+
+        snippets: list[str] = []
+        for key in candidate_keys:
+            raw_values = evidence.get(key)
+            if raw_values is None:
+                # evidence keys might have different casing
+                for ev_key, ev_val in evidence.items():
+                    if isinstance(ev_key, str) and ev_key.lower() == str(key).lower():
+                        raw_values = ev_val
+                        break
+            if raw_values is None:
+                continue
+            values = raw_values if isinstance(raw_values, list) else [raw_values]
+            for item in values:
+                cleaned = _clean_snippet(item)
+                if cleaned and cleaned not in snippets:
+                    snippets.append(cleaned)
+                if len(snippets) >= max_snippets:
+                    return snippets
+        return snippets
+
+    # Compute subset metrics
+    review_count = len(reviews)
+    voted_flags: list[bool] = [_to_bool(r.get("voted_up", False)) for r in reviews]
+    rec_rate = (sum(1 for v in voted_flags if v) / review_count) if review_count else 0.0
+    avg_helpful = sum(_to_int(r.get("votes_up")) for r in reviews) / review_count if review_count else 0.0
+
+    # Issue/request rate + top tags
+    issue_hits = 0
+    request_hits = 0
+    issue_counter: Counter[str] = Counter()
+    request_counter: Counter[str] = Counter()
+    for r in reviews:
+        issues = _listify_strings(r.get("llm_issue_subcategories"))
+        requests = _listify_strings(r.get("llm_request_subcategories"))
+        if issues:
+            issue_hits += 1
+            issue_counter.update(issues)
+        if requests:
+            request_hits += 1
+            request_counter.update(requests)
+
+    issue_rate = issue_hits / review_count if review_count else 0.0
+    request_rate = request_hits / review_count if review_count else 0.0
+
+    def _format_top(counter: Counter[str], limit: int = 8) -> str:
+        if not counter:
+            return "- None"
+        lines = []
+        for key, count in counter.most_common(limit):
+            lines.append(f"- {key}: {count}")
+        return "\n".join(lines)
+
+    # Language mix
+    lang_counter: Counter[str] = Counter()
+    for r in reviews:
+        lang = r.get("language")
+        if isinstance(lang, str) and lang.strip():
+            lang_counter.update([lang.strip().lower()])
+    if lang_counter:
+        top_langs = [f"{lang} ({count})" for lang, count in lang_counter.most_common(3)]
+        language_mix = ", ".join(top_langs)
+    else:
+        language_mix = "unknown"
+
+    # Build review blocks (evidence snippets + a few full reviews)
+    # Keep the prompt compact: prioritize helpful reviews for full examples.
+    def _helpful_sort_key(r: Mapping[str, Any]) -> int:
+        return _to_int(r.get("votes_up"))
+
+    sorted_by_helpful = sorted(list(reviews), key=_helpful_sort_key, reverse=True)
+    sampled_reviews = sorted_by_helpful[: min(50, len(sorted_by_helpful))]
+    full_review_limit = min(8, len(sampled_reviews))
+
+    evidence_blocks: list[str] = []
+    full_review_blocks: list[str] = []
+
+    for i, review in enumerate(sampled_reviews, 1):
+        voted_up = _to_bool(review.get("voted_up", False))
+        sentiment = "Recommended" if voted_up else "Not recommended"
+        helpful = _to_int(review.get("votes_up"))
+        lang = str(review.get("language") or "unknown")
+        created = str(review.get("created_at") or "")
+
+        snippets = _extract_any_evidence_snippets(review, max_snippets=2)
+        if snippets:
+            evidence_blocks.append(f"[Review {i}] ({sentiment}, {helpful} helpful, {lang}, {created}) " + " | ".join(snippets))
+        else:
+            fallback = _clean_snippet(review.get("review") or "", max_len=160)
+            if fallback:
+                evidence_blocks.append(f"[Review {i}] ({sentiment}, {helpful} helpful, {lang}, {created}) {fallback}")
+
+        if i <= full_review_limit:
+            text = (review.get("review") or "").strip()
+            if text:
+                if len(text) > 500:
+                    text = text[:500] + "..."
+                full_review_blocks.append(f"[Review {i}] ({sentiment}, {helpful} helpful, {lang}, {created})\n{text}")
+
+    sections: list[str] = []
+    if evidence_blocks:
+        sections.append("EVIDENCE SNIPPETS (highlights):\n" + "\n".join(evidence_blocks[:24]))
+    if full_review_blocks:
+        sections.append("FULL REVIEW EXAMPLES (top helpful):\n" + "\n\n".join(full_review_blocks))
+
+    reviews_text = "\n\n".join(sections)
+    if not reviews_text.strip():
+        return {
+            "summary": "No review text available for this widget.",
+            "key_points": [],
+            "actions": [],
+        }
+
+    # Compact context formatting (avoid dumping raw JSON).
+    context_lines: list[str] = []
+    for key in ("week_range", "segment_type", "segment_key", "segment_criteria", "filters", "query", "baseline"):
+        value = widget_context.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (dict, list)):
+            try:
+                value_text = json.dumps(value, ensure_ascii=True)
+            except Exception:
+                value_text = str(value)
+        else:
+            value_text = str(value)
+        if value_text.strip():
+            context_lines.append(f"- {key}: {value_text.strip()}")
+    widget_context_text = "\n".join(context_lines) if context_lines else "- None"
+
+    # Pick a prompt based on widget kind and segment type.
+    prompt_template = _SUMMARIZE_WIDGET_GENERIC_PROMPT
+    if widget_kind == "recent_reviews":
+        prompt_template = _SUMMARIZE_WIDGET_RECENT_REVIEWS_PROMPT
+    elif widget_kind == "trend_week":
+        prompt_template = _SUMMARIZE_WIDGET_TREND_WEEK_PROMPT
+    elif widget_kind == "segment":
+        segment_type = str(widget_context.get("segment_type") or "").strip().lower()
+        if segment_type == "language":
+            prompt_template = _SUMMARIZE_WIDGET_LANGUAGE_PROMPT
+        else:
+            prompt_template = _SUMMARIZE_WIDGET_SEGMENT_PROMPT
+
+    prompt = prompt_template.substitute(
+        game_name=game_name,
+        game_type=game_type,
+        game_genres=game_genres,
+        game_description=game_description,
+        widget_label=widget_label,
+        widget_context=widget_context_text,
+        review_count=f"{review_count:,}",
+        recommendation_rate=f"{rec_rate:.1%}",
+        avg_helpful=f"{avg_helpful:.1f}",
+        language_mix=language_mix,
+        issue_rate=f"{issue_rate:.1%}",
+        request_rate=f"{request_rate:.1%}",
+        top_issues=_format_top(issue_counter),
+        top_requests=_format_top(request_counter),
+        reviews_text=reviews_text,
+    )
+
+    try:
+        raw, _model_used = _run_llm(prompt)
+        payload = _load_json_mapping(raw)
+
+        summary = str(payload.get("summary", "")).strip()
+        key_points = payload.get("key_points", [])
+        actions = payload.get("actions", [])
+
+        if not isinstance(key_points, list):
+            key_points = []
+        if not isinstance(actions, list):
+            actions = []
+
+        key_points = [str(item).strip() for item in key_points if item][:6]
+        actions = [str(item).strip() for item in actions if item][:3]
+
+        if not summary:
+            summary = "Unable to generate summary."
+
+        return {
+            "summary": summary,
+            "key_points": key_points,
+            "actions": actions,
+        }
+    except Exception as exc:
+        logger.error("Failed to summarize widget reviews: %s", exc)
+        return {
+            "summary": "Unable to generate summary.",
+            "key_points": [],
+            "actions": [],
         }
 
 
@@ -2757,9 +3314,15 @@ REVIEW SAMPLES (filtered for {subcategory}):
     game_summaries = []
     for game in games_data:
         metrics = game.get("metrics", {})
-        rec_rate = metrics.get("recommendation_rate", 0)
+        rec_rate_raw = metrics.get("recommendation_rate", 0)
+        try:
+            rec_rate = float(rec_rate_raw or 0.0)
+        except Exception:
+            rec_rate = 0.0
+        # Support both 0-1 fractions and 0-100 percentages.
+        rec_pct = rec_rate * 100.0 if rec_rate <= 1.0 else rec_rate
         total = metrics.get("total_reviews", len(game.get("reviews", [])))
-        summary = f"Game: \"{game['name']}\" (App ID: {game['app_id']}, Recommendation: {rec_rate:.1f}%, Reviews: {total})"
+        summary = f"Game: \"{game['name']}\" (App ID: {game['app_id']}, Recommendation: {rec_pct:.1f}%, Reviews: {total})"
         game_summaries.append(summary)
 
     def _clean_snippet(value: Any, max_len: int = 160) -> Optional[str]:

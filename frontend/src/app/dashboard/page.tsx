@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import clsx from "clsx";
 import {
@@ -18,7 +18,16 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 
-import { searchGames, summarizeSubcategory, SubcategorySummaryResponse, translateText } from "@/lib/api";
+import {
+  searchGames,
+  summarizeRecentReviews,
+  summarizeSubcategory,
+  summarizeWidget,
+  RecentReviewsSummaryResponse,
+  SubcategorySummaryResponse,
+  WidgetSummaryResponse,
+  translateText,
+} from "@/lib/api";
 import { useCredits } from "@/contexts/CreditsContext";
 import type {
   AnalyzeResponse,
@@ -462,6 +471,11 @@ function DashboardContent() {
   const reviewCount = 1000; // Fixed at 1000 latest reviews
   const fetchFilter = "recent"; // Fixed to recent (latest reviews)
   const { credits, refresh: refreshCredits } = useCredits();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const currentTask = selectedGame ? getTask(selectedGame.appid) : undefined;
   const isAnalyzing = currentTask?.status === "analyzing";
@@ -643,7 +657,7 @@ function DashboardContent() {
 
           {!selectedGame && (
             <>
-              <Card variant="glass" className="p-6">
+              <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
                 <div className="space-y-3">
                   <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">{t('dashboard.welcome')}</p>
                   <div>
@@ -660,7 +674,7 @@ function DashboardContent() {
             </Card>
 
             <div id="new-analysis">
-              <Card variant="glass" className="p-5">
+              <Card variant="glass" className={`p-5 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold text-white">{t('dashboard.newAnalysis')}</h2>
@@ -740,7 +754,7 @@ function DashboardContent() {
 
             {/* Favorites Section */}
             {favoriteGames.length > 0 && (
-              <Card variant="glass" className="p-5">
+              <Card variant="glass" className={`p-5 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -802,7 +816,7 @@ function DashboardContent() {
               </Card>
             )}
 
-            <Card variant="glass" className="p-5">
+            <Card variant="glass" className={`p-5 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">{t('dashboard.recentAnalyses')}</h2>
@@ -1075,7 +1089,18 @@ function AnalysisResults({
   const [subcategorySummary, setSubcategorySummary] = useState<SubcategorySummaryResponse | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [trendWeekSummary, setTrendWeekSummary] = useState<WidgetSummaryResponse | null>(null);
+  const [trendWeekSummaryLoading, setTrendWeekSummaryLoading] = useState(false);
+  const [trendWeekSummaryError, setTrendWeekSummaryError] = useState<string | null>(null);
+  const [segmentSummary, setSegmentSummary] = useState<WidgetSummaryResponse | null>(null);
+  const [segmentSummaryLoading, setSegmentSummaryLoading] = useState(false);
+  const [segmentSummaryError, setSegmentSummaryError] = useState<string | null>(null);
+  const [recentReviewsModalOpen, setRecentReviewsModalOpen] = useState(false);
+  const [recentReviewsSummary, setRecentReviewsSummary] = useState<RecentReviewsSummaryResponse | null>(null);
+  const [recentReviewsSummaryLoading, setRecentReviewsSummaryLoading] = useState(false);
+  const [recentReviewsSummaryError, setRecentReviewsSummaryError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const recentSummaryRequestIdRef = useRef(0);
 
   // Trigger animations on mount
   useEffect(() => {
@@ -1548,12 +1573,24 @@ function AnalysisResults({
     },
   };
 
-  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek || selectedSegment);
+  const closeRecentReviewsModal = useCallback(() => {
+    recentSummaryRequestIdRef.current += 1; // invalidate in-flight requests
+    setRecentReviewsModalOpen(false);
+    setRecentReviewsSummary(null);
+    setRecentReviewsSummaryError(null);
+    setRecentReviewsSummaryLoading(false);
+  }, []);
+
+  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek || selectedSegment || recentReviewsModalOpen);
 
   useEffect(() => {
     if (!hasOverlay) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (recentReviewsModalOpen) {
+          closeRecentReviewsModal();
+          return;
+        }
         if (selectedSegment) {
           setSelectedSegment(null);
           return;
@@ -1571,7 +1608,15 @@ function AnalysisResults({
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [hasOverlay, selectedTrendWeek, selectedSubcategory, selectedSegment, clearSelectedSubcategory]);
+  }, [
+    hasOverlay,
+    selectedTrendWeek,
+    selectedSubcategory,
+    selectedSegment,
+    recentReviewsModalOpen,
+    closeRecentReviewsModal,
+    clearSelectedSubcategory,
+  ]);
 
   useEffect(() => {
     setExpandedReviews(new Set());
@@ -1583,7 +1628,18 @@ function AnalysisResults({
   useEffect(() => {
     if (!selectedTrendWeek) return;
     setExpandedReviews(new Set());
+    setTrendWeekSummary(null);
+    setTrendWeekSummaryError(null);
+    setTrendWeekSummaryLoading(false);
   }, [selectedTrendWeek]);
+
+  useEffect(() => {
+    if (!selectedSegment) return;
+    setExpandedReviews(new Set());
+    setSegmentSummary(null);
+    setSegmentSummaryError(null);
+    setSegmentSummaryLoading(false);
+  }, [selectedSegment]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -1601,6 +1657,37 @@ function AnalysisResults({
     };
   }, [hasOverlay]);
 
+  const filterScopeLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (filters.sentiment === "positive") parts.push("thumbs up only");
+    if (filters.sentiment === "negative") parts.push("thumbs down only");
+
+    if (filters.dateRange === "30d") parts.push("last 30d");
+    if (filters.dateRange === "90d") parts.push("last 90d");
+    if (filters.dateRange === "365d") parts.push("last 365d");
+    if (filters.dateRange === "custom" && (filters.customStartDate || filters.customEndDate)) {
+      const start = filters.customStartDate ? new Date(filters.customStartDate).toLocaleDateString() : "…";
+      const end = filters.customEndDate ? new Date(filters.customEndDate).toLocaleDateString() : "…";
+      parts.push(`custom range ${start} → ${end}`);
+    }
+
+    if (filters.minHelpful > 0) parts.push(`min helpful ≥${filters.minHelpful}`);
+
+    if (filters.playtime === "lt2h") parts.push("playtime <2h");
+    if (filters.playtime === "2to20h") parts.push("playtime 2–20h");
+    if (filters.playtime === "20hplus") parts.push("playtime 20h+");
+
+    if (filters.language && filters.language !== "all") {
+      const match = LANGUAGE_OPTIONS.find((option) => option.value === filters.language.toLowerCase());
+      parts.push(`language ${match?.label ?? filters.language}`);
+    }
+
+    const query = reviewQuery.trim();
+    if (query) parts.push(`search "${query}"`);
+
+    return parts.length ? parts.join(" · ") : null;
+  }, [filters, reviewQuery]);
+
   const handleSummarize = async () => {
     if (!selectedSubcategory || !selectedGame || selectedReviews.length === 0) return;
 
@@ -1608,16 +1695,27 @@ function AnalysisResults({
     setSummaryError(null);
 
     try {
+      const scopeParts: string[] = [];
+      if (selectedSubcategoryLanguageLabel) scopeParts.push(`${selectedSubcategoryLanguageLabel} only`);
+      if (filterScopeLabel) scopeParts.push(filterScopeLabel);
+      const summary_context = scopeParts.length ? scopeParts.join(" · ") : "None";
+
       const result = await summarizeSubcategory({
         app_id: selectedGame.appid,
         subcategory: selectedSubcategory,
         summary_type: selectedSubcategoryType,
+        summary_context,
         reviews: selectedReviews.slice(0, 50).map((r) => ({
           review_id: String(r.review_id ?? ""),
           review: r.review ?? "",
           voted_up: r.voted_up,
+          votes_up: r.votes_up ?? 0,
+          language: r.language ?? "",
+          created_at: r.created_at,
           llm_subcategory_evidence: r.llm_subcategory_evidence ?? {},
           llm_subcategories: r.llm_subcategories ?? [],
+          llm_issue_subcategories: r.llm_issue_subcategories ?? [],
+          llm_request_subcategories: r.llm_request_subcategories ?? [],
         })),
       });
       setSubcategorySummary(result);
@@ -1629,6 +1727,181 @@ function AnalysisResults({
       setSummaryLoading(false);
     }
   };
+
+  const handleSummarizeTrendWeek = async () => {
+    if (!selectedTrendWeek || !selectedGame || selectedWeekReviews.length === 0) return;
+
+    setTrendWeekSummaryLoading(true);
+    setTrendWeekSummaryError(null);
+
+    const weekStart = selectedTrendWeek.start.toISOString().slice(0, 10);
+    const weekEnd = selectedTrendWeek.end.toISOString().slice(0, 10);
+
+    try {
+      const result = await summarizeWidget({
+        app_id: selectedGame.appid,
+        widget_kind: "trend_week",
+        widget_label: `Week of ${weekStart}`,
+        context: {
+          week_range: `${weekStart} → ${weekEnd}`,
+          filters: filterScopeLabel ?? "None",
+          baseline: {
+            recommendation_rate: summaryRecommendationRate,
+            issue_rate: summaryIssueRate,
+            request_rate: summaryRequestRate,
+          },
+        },
+        reviews: selectedWeekReviews.slice(0, 50).map((r) => ({
+          review_id: String(r.review_id ?? ""),
+          review: r.review ?? "",
+          voted_up: r.voted_up,
+          votes_up: r.votes_up ?? 0,
+          votes_funny: r.votes_funny ?? 0,
+          language: r.language ?? "",
+          created_at: r.created_at,
+          llm_subcategories: r.llm_subcategories ?? [],
+          llm_issue_subcategories: r.llm_issue_subcategories ?? [],
+          llm_request_subcategories: r.llm_request_subcategories ?? [],
+          llm_subcategory_evidence: r.llm_subcategory_evidence ?? {},
+        })),
+      });
+
+      setTrendWeekSummary(result);
+      refreshCredits();
+    } catch (err) {
+      setTrendWeekSummaryError((err as Error).message || "Failed to generate summary");
+    } finally {
+      setTrendWeekSummaryLoading(false);
+    }
+  };
+
+  const handleSummarizeSegment = async () => {
+    if (!selectedSegment || !selectedGame || selectedSegmentReviews.length === 0) return;
+
+    setSegmentSummaryLoading(true);
+    setSegmentSummaryError(null);
+
+    const segmentCriteria = (() => {
+      switch (selectedSegment.type) {
+        case "experience":
+          switch (selectedSegment.key) {
+            case "newcomers":
+              return "<50 games owned";
+            case "casual":
+              return "50–200 games owned";
+            case "experienced":
+              return "200–500 games owned";
+            case "veterans":
+              return "500+ games owned";
+            default:
+              return "unknown";
+          }
+        case "purchase":
+          switch (selectedSegment.key) {
+            case "steam_buyers":
+              return "Steam purchase";
+            case "key_users":
+              return "Activated key (not Steam purchase, not free)";
+            case "free_users":
+              return "Received for free";
+            default:
+              return "unknown";
+          }
+        case "activity":
+          switch (selectedSegment.key) {
+            case "currently_active":
+              return "Played in the last 2 weeks";
+            case "recently_stopped":
+              return "No playtime in the last 2 weeks, but has total playtime";
+            case "inactive":
+              return "No playtime recorded";
+            default:
+              return "unknown";
+          }
+        case "engagement":
+          switch (selectedSegment.key) {
+            case "highly_engaged":
+              return "20h+ played";
+            case "moderately_engaged":
+              return "2–20h played";
+            case "low_engagement":
+              return "<2h played";
+            default:
+              return "unknown";
+          }
+        case "language":
+          return `Reviews written in ${selectedSegment.label}`;
+        default:
+          return "unknown";
+      }
+    })();
+
+    try {
+      const result = await summarizeWidget({
+        app_id: selectedGame.appid,
+        widget_kind: "segment",
+        widget_label: `${selectedSegment.label} (${segmentCriteria})`,
+        context: {
+          segment_type: selectedSegment.type,
+          segment_key: selectedSegment.key,
+          segment_criteria: segmentCriteria,
+          filters: filterScopeLabel ?? "None",
+          baseline: {
+            recommendation_rate: summaryRecommendationRate,
+            issue_rate: summaryIssueRate,
+            request_rate: summaryRequestRate,
+          },
+        },
+        reviews: selectedSegmentReviews.slice(0, 50).map((r) => ({
+          review_id: String(r.review_id ?? ""),
+          review: r.review ?? "",
+          voted_up: r.voted_up,
+          votes_up: r.votes_up ?? 0,
+          votes_funny: r.votes_funny ?? 0,
+          language: r.language ?? "",
+          created_at: r.created_at,
+          llm_subcategories: r.llm_subcategories ?? [],
+          llm_issue_subcategories: r.llm_issue_subcategories ?? [],
+          llm_request_subcategories: r.llm_request_subcategories ?? [],
+          llm_subcategory_evidence: r.llm_subcategory_evidence ?? {},
+        })),
+      });
+
+      setSegmentSummary(result);
+      refreshCredits();
+    } catch (err) {
+      setSegmentSummaryError((err as Error).message || "Failed to generate summary");
+    } finally {
+      setSegmentSummaryLoading(false);
+    }
+  };
+
+  const handleSummarizeRecentReviews = useCallback(async () => {
+    if (!selectedGame) return;
+
+    const requestId = recentSummaryRequestIdRef.current + 1;
+    recentSummaryRequestIdRef.current = requestId;
+
+    setRecentReviewsModalOpen(true);
+    setRecentReviewsSummaryLoading(true);
+    setRecentReviewsSummaryError(null);
+
+    try {
+      const result = await summarizeRecentReviews({
+        app_id: selectedGame.appid,
+        count: 100,
+      });
+      if (recentSummaryRequestIdRef.current !== requestId) return;
+      setRecentReviewsSummary(result);
+      refreshCredits();
+    } catch (err) {
+      if (recentSummaryRequestIdRef.current !== requestId) return;
+      setRecentReviewsSummaryError((err as Error).message || "Failed to generate summary");
+    } finally {
+      if (recentSummaryRequestIdRef.current !== requestId) return;
+      setRecentReviewsSummaryLoading(false);
+    }
+  }, [selectedGame, refreshCredits]);
 
   return (
     <div className="space-y-8">
@@ -1673,6 +1946,9 @@ function AnalysisResults({
 
         {onUpdate && (
           <div className="flex flex-wrap items-center justify-end gap-3">
+            <Button onClick={handleSummarizeRecentReviews} variant="ghost" size="sm" disabled={!selectedGame}>
+              Summary of recent reviews
+            </Button>
             <Button onClick={onUpdate} variant="ghost" size="sm">
               Update
             </Button>
@@ -2586,11 +2862,73 @@ function AnalysisResults({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={handleSummarizeTrendWeek}
+                    disabled={trendWeekSummaryLoading || selectedWeekReviews.length === 0}
+                  >
+                    {trendWeekSummaryLoading ? "Summarizing..." : trendWeekSummary ? "Refresh Summary" : "Summarize"}
+                  </Button>
                   <Button variant="secondary" onClick={() => setSelectedTrendWeek(null)}>
                     Close
                   </Button>
                 </div>
               </div>
+
+              {trendWeekSummaryError && (
+                <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
+                  <p className="text-sm text-rose-400">{trendWeekSummaryError}</p>
+                </div>
+              )}
+
+              {trendWeekSummary && (
+                <div className="mt-4 space-y-4 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+                  <div>
+                    <h4 className="text-xs uppercase tracking-wider text-sky-400 mb-2">Summary</h4>
+                    <p className="text-sm text-slate-200 leading-relaxed">{trendWeekSummary.summary}</p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {trendWeekSummary.key_points.length > 0 && (
+                      <div>
+                        <h4 className="text-xs uppercase tracking-wider text-white/80 mb-2 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 bg-white/70" />
+                          Key points
+                        </h4>
+                        <ul className="space-y-1.5">
+                          {trendWeekSummary.key_points.map((item, idx) => (
+                            <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                              <span className="text-sky-300 mt-1">•</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {trendWeekSummary.actions.length > 0 && (
+                      <div>
+                        <h4 className="text-xs uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 bg-emerald-400" />
+                          Actions
+                        </h4>
+                        <ul className="space-y-1.5">
+                          {trendWeekSummary.actions.map((item, idx) => (
+                            <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                              <span className="text-emerald-400 mt-1">→</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
+                    Based on {Math.min(selectedWeekReviews.length, 50)} reviews
+                  </p>
+                </div>
+              )}
 
               {selectedWeekReviews.length === 0 ? (
                 <p className="mt-4 text-sm text-slate-500">No reviews found for this week.</p>
@@ -2782,11 +3120,73 @@ function AnalysisResults({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={handleSummarizeSegment}
+                    disabled={segmentSummaryLoading || selectedSegmentReviews.length === 0}
+                  >
+                    {segmentSummaryLoading ? "Summarizing..." : segmentSummary ? "Refresh Summary" : "Summarize"}
+                  </Button>
                   <Button variant="secondary" onClick={() => setSelectedSegment(null)}>
                     Close
                   </Button>
                 </div>
               </div>
+
+              {segmentSummaryError && (
+                <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
+                  <p className="text-sm text-rose-400">{segmentSummaryError}</p>
+                </div>
+              )}
+
+              {segmentSummary && (
+                <div className="mt-4 space-y-4 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+                  <div>
+                    <h4 className="text-xs uppercase tracking-wider text-sky-400 mb-2">Summary</h4>
+                    <p className="text-sm text-slate-200 leading-relaxed">{segmentSummary.summary}</p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {segmentSummary.key_points.length > 0 && (
+                      <div>
+                        <h4 className="text-xs uppercase tracking-wider text-white/80 mb-2 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 bg-white/70" />
+                          Key points
+                        </h4>
+                        <ul className="space-y-1.5">
+                          {segmentSummary.key_points.map((item, idx) => (
+                            <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                              <span className="text-sky-300 mt-1">•</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {segmentSummary.actions.length > 0 && (
+                      <div>
+                        <h4 className="text-xs uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 bg-emerald-400" />
+                          Actions
+                        </h4>
+                        <ul className="space-y-1.5">
+                          {segmentSummary.actions.map((item, idx) => (
+                            <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                              <span className="text-emerald-400 mt-1">→</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
+                    Based on {Math.min(selectedSegmentReviews.length, 50)} reviews
+                  </p>
+                </div>
+              )}
 
               {selectedSegmentReviews.length === 0 ? (
                 <p className="mt-4 text-sm text-slate-500">No reviews found for this segment.</p>
@@ -2951,6 +3351,106 @@ function AnalysisResults({
                   })}
                 </div>
               )}
+              </div>
+            </div>
+          </div>
+        </Portal>
+      ) : null}
+
+      {recentReviewsModalOpen ? (
+        <Portal>
+          <div
+            className="fixed inset-0 z-[9996] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
+            onClick={closeRecentReviewsModal}
+            style={{ WebkitBackdropFilter: "blur(12px)" }}
+          >
+            <div className="min-h-screen flex items-center justify-center p-4">
+              <div
+                className="w-full max-w-4xl rounded-2xl border border-white/20 bg-slate-900 p-6 shadow-2xl my-8 animate-modal-content"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Recent reviews</h3>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Most recent {recentReviewsSummary?.review_count ?? 100} reviews
+                      {recentReviewsSummary?.start_date && recentReviewsSummary?.end_date
+                        ? ` · ${recentReviewsSummary.start_date} → ${recentReviewsSummary.end_date}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="primary" onClick={handleSummarizeRecentReviews} disabled={recentReviewsSummaryLoading}>
+                      {recentReviewsSummaryLoading
+                        ? "Summarizing..."
+                        : recentReviewsSummary
+                        ? "Refresh Summary"
+                        : "Summarize"}
+                    </Button>
+                    <Button variant="secondary" onClick={closeRecentReviewsModal}>
+                      Close
+                    </Button>
+                  </div>
+                </div>
+
+                {recentReviewsSummaryError && (
+                  <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
+                    <p className="text-sm text-rose-400">{recentReviewsSummaryError}</p>
+                  </div>
+                )}
+
+                {recentReviewsSummary ? (
+                  <div className="mt-4 space-y-4 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-sky-400 mb-2">Summary</h4>
+                      <p className="text-sm text-slate-200 leading-relaxed">{recentReviewsSummary.summary}</p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {recentReviewsSummary.key_points.length > 0 && (
+                        <div>
+                          <h4 className="text-xs uppercase tracking-wider text-white/80 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-white/70" />
+                            Key points
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {recentReviewsSummary.key_points.map((item, idx) => (
+                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                                <span className="text-sky-300 mt-1">•</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {recentReviewsSummary.actions.length > 0 && (
+                        <div>
+                          <h4 className="text-xs uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-emerald-400" />
+                            Actions
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {recentReviewsSummary.actions.map((item, idx) => (
+                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                                <span className="text-emerald-400 mt-1">→</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
+                      Based on {recentReviewsSummary.review_count} reviews
+                    </p>
+                  </div>
+                ) : recentReviewsSummaryLoading ? (
+                  <p className="mt-4 text-sm text-slate-500">Generating summary…</p>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-500">Click “Summarize” to generate a recent reviews recap.</p>
+                )}
               </div>
             </div>
           </div>

@@ -25,6 +25,11 @@ export default function SettingsPage() {
   const { credits, loading: creditsLoading, refresh: refreshCredits } = useCredits();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -166,7 +171,7 @@ export default function SettingsPage() {
           {/* Left Column */}
           <div className="space-y-6">
             {/* Language Section */}
-            <Card variant="glass" className="p-6">
+            <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-base">🌐</span>
@@ -207,7 +212,7 @@ export default function SettingsPage() {
             </Card>
 
             {/* System Status */}
-            <Card variant="glass" className="p-6">
+            <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-base">📡</span>
@@ -268,7 +273,7 @@ export default function SettingsPage() {
             </Card>
 
             {/* Subscription & Games */}
-            <Card variant="glass" className="p-6">
+            <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-base">💎</span>
@@ -426,7 +431,7 @@ export default function SettingsPage() {
           {/* Right Column - Diagnostics (Admin Only) */}
           {isAdmin && (
             <div className="space-y-6">
-              <Card variant="glass" className="p-6">
+              <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
                 <div className="mb-5">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-base">🔧</span>
