@@ -933,20 +933,22 @@ export default function ChatPage() {
                 )}
                 {messages.length === 0 ? (
                   /* Game Selection Screen */
-                  <div className="h-full flex flex-col items-center justify-center p-4">
-                    <div className="w-full max-w-3xl space-y-6">
-                      {/* Header */}
-                      <div className="text-center">
-                        <h2 className="text-lg font-semibold text-white mb-1">
-                          Select Games to Chat About
-                        </h2>
-                        <p className="text-sm text-slate-400">
-                          {selectedGames.length === 0
-                            ? "Choose up to 2 games to unlock chat"
-                            : `${selectedGames.length} selected. Ask a question below or pick a suggested one.`}
-                        </p>
-                      </div>
+                  <div className="h-full flex flex-col p-4">
+                    {/* Header - sticky at top */}
+                    <div className="text-center pb-4 flex-shrink-0">
+                      <h2 className="text-lg font-semibold text-white mb-1">
+                        Select Games to Chat About
+                      </h2>
+                      <p className="text-sm text-slate-400">
+                        {selectedGames.length === 0
+                          ? "Choose up to 2 games to unlock chat"
+                          : `${selectedGames.length} selected. Ask a question below or pick a suggested one.`}
+                      </p>
+                    </div>
 
+                    {/* Scrollable game grid */}
+                    <div className="flex-1 overflow-y-auto">
+                    <div className="w-full max-w-3xl mx-auto space-y-6">
                       {/* Game Grid */}
                       {loadingGames ? (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -1051,6 +1053,7 @@ export default function ChatPage() {
                           </p>
                         </div>
                       )}
+                    </div>
                     </div>
                   </div>
                 ) : (
