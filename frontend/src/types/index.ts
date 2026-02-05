@@ -13,6 +13,14 @@ export interface AnalyzeMetadata {
   language: string;
   fetched_at: string;
   header_image?: string | null;
+  // Price fields
+  price_initial?: number | null;       // Original price in major units (e.g., 29.99)
+  price_final?: number | string | null; // Current price or "Free"
+  price_initial_formatted?: string;     // e.g., "$29.99"
+  price_final_formatted?: string;       // e.g., "$19.99"
+  price_discount?: number;              // Discount percentage (0-100)
+  price_currency?: string | null;       // e.g., "USD"
+  is_free?: boolean;
 }
 
 export interface StoragePaths {

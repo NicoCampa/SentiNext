@@ -11,7 +11,7 @@ from datetime import datetime
 import hashlib
 from pathlib import Path
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 # Load environment variables from .env.local (for local development)
 from dotenv import load_dotenv
@@ -39,7 +39,14 @@ from .senti_next import (
     search_applications,
 )
 from .senti_next import ingest
-from .senti_next.steam_api import fetch_app_details
+from .senti_next.steam_api import (
+    fetch_app_details,
+    fetch_news_for_app,
+    fetch_current_players,
+    fetch_global_achievements,
+    fetch_achievement_schema,
+    fetch_achievements_with_stats,
+)
 from .senti_next.insights import prepare_insights
 from .senti_next.analysis import recommended_share_over_time
 from .senti_next import storage
@@ -338,6 +345,14 @@ class AnalyzeMetadata(BaseModel):
     languages: Optional[List[str]] = None
     fetched_at: str
     header_image: Optional[str] = None
+    # Price fields
+    price_initial: Optional[float] = None
+    price_final: Optional[Union[float, str]] = None  # Can be number or "Free"
+    price_initial_formatted: Optional[str] = None
+    price_final_formatted: Optional[str] = None
+    price_discount: Optional[int] = None
+    price_currency: Optional[str] = None
+    is_free: Optional[bool] = None
 
 
 class LabelReuseEstimate(BaseModel):
@@ -1912,6 +1927,113 @@ def summarize_recent_reviews(
     except Exception as exc:
         logger.exception("Recent reviews summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate recent reviews summary.") from exc
+
+
+class SummarizeNewsRequest(BaseModel):
+    app_id: int
+    news_count: int = Field(default=10, ge=1, le=30)
+    include_sentiment: bool = Field(default=True)
+
+
+class SummarizeNewsResponse(BaseModel):
+    summary: str
+    key_updates: List[str] = Field(default_factory=list)
+    potential_impacts: List[str] = Field(default_factory=list)
+    correlation_insights: Optional[str] = None
+    news_count: int
+    credits_charged: int
+
+
+@app.post("/summarize/news", response_model=SummarizeNewsResponse, dependencies=[Depends(require_license)])
+def summarize_news(
+    request: SummarizeNewsRequest,
+    user_id: str = Depends(require_user_id),
+) -> SummarizeNewsResponse:
+    """Generate AI summary of recent game news/patches and correlate with sentiment."""
+    # Fetch news from Steam API
+    try:
+        news_items = fetch_news_for_app(request.app_id, count=request.news_count, max_length=500)
+    except SteamAPIError as exc:
+        logger.error("Failed to fetch news for app %s: %s", request.app_id, exc)
+        raise HTTPException(status_code=502, detail=f"Failed to fetch news: {str(exc)}") from exc
+
+    if not news_items:
+        return SummarizeNewsResponse(
+            summary="No recent news or updates available for this game.",
+            key_updates=[],
+            potential_impacts=[],
+            correlation_insights=None,
+            news_count=0,
+            credits_charged=0,
+        )
+
+    # Get game context
+    game_context = fetch_app_details(request.app_id)
+
+    # Get recent sentiment data if requested
+    recent_sentiment = None
+    if request.include_sentiment:
+        try:
+            result = storage.load_analysis_result(user_id, request.app_id)
+            if result:
+                insights = result.get("insights") or {}
+                llm_insights = insights.get("llm") or {}
+                recent_sentiment = {
+                    "recommendation_rate": insights.get("recommendation"),
+                    "trend": insights.get("trend_direction"),
+                    "top_issues": [
+                        item.get("subcategory")
+                        for item in (llm_insights.get("top_issue_subcategories") or [])[:3]
+                    ],
+                    "top_requests": [
+                        item.get("subcategory")
+                        for item in (llm_insights.get("top_request_subcategories") or [])[:3]
+                    ],
+                }
+        except Exception as exc:
+            logger.warning("Failed to load sentiment data for news summary: %s", exc)
+
+    # Reserve credits
+    credit_cost = credits.CREDIT_COSTS.get("summarize", 2)
+    try:
+        credits.reserve_credits_or_raise(
+            user_id=user_id,
+            amount=credit_cost,
+            operation="summarize_news",
+            description="Summarize game news/updates",
+        )
+    except credits.InsufficientCreditsError as exc:
+        _raise_insufficient_credits(user_id, exc)
+
+    # Convert news items to dicts for the LLM function
+    news_dicts = [
+        {
+            "title": item.title,
+            "contents": item.contents,
+            "date": item.date,
+            "feed_label": item.feed_label,
+        }
+        for item in news_items
+    ]
+
+    # Generate summary
+    try:
+        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize_news"):
+            result = llm.summarize_news_updates(
+                news_items=news_dicts,
+                game_name=game_context.get("name") if game_context else None,
+                game_context=game_context,
+                recent_sentiment=recent_sentiment,
+            )
+        return SummarizeNewsResponse(
+            **result,
+            news_count=len(news_items),
+            credits_charged=credit_cost,
+        )
+    except Exception as exc:
+        logger.exception("News summarize failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to generate news summary.") from exc
+
 
 class GameComparisonData(BaseModel):
     app_id: int
@@ -3732,6 +3854,339 @@ def database_export(
             yield output.getvalue().encode("utf-8")
 
     return StreamingResponse(iter_csv(), media_type="text/csv", headers=headers)
+
+
+# ============================================================================
+# Steam Extended Data Endpoints (News, Players, Achievements)
+# ============================================================================
+
+class NewsItemResponse(BaseModel):
+    gid: str
+    title: str
+    url: str
+    author: str
+    contents: str
+    feed_label: str
+    date: int
+    feed_name: str
+    feed_type: int
+
+
+class NewsResponse(BaseModel):
+    app_id: int
+    news_items: List[NewsItemResponse]
+
+
+@app.get("/steam/news/{app_id}", response_model=NewsResponse, dependencies=[Depends(require_license)])
+def get_steam_news(
+    app_id: int,
+    count: int = 20,
+    max_length: int = 500,
+    user_id: str = Depends(require_user_id),
+):
+    """Fetch news and announcements for a Steam game.
+
+    Returns patch notes, announcements, and updates that can be used
+    to correlate with sentiment changes on the timeline.
+    """
+    try:
+        news_items = fetch_news_for_app(app_id, count=count, max_length=max_length)
+        return NewsResponse(
+            app_id=app_id,
+            news_items=[
+                NewsItemResponse(
+                    gid=item.gid,
+                    title=item.title,
+                    url=item.url,
+                    author=item.author,
+                    contents=item.contents,
+                    feed_label=item.feed_label,
+                    date=item.date,
+                    feed_name=item.feed_name,
+                    feed_type=item.feed_type,
+                )
+                for item in news_items
+            ],
+        )
+    except SteamAPIError as exc:
+        logger.error("Steam API error fetching news for app %s: %s", app_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error fetching news for app %s", app_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+class PlayerCountResponse(BaseModel):
+    app_id: int
+    player_count: Optional[int]
+    timestamp: int
+
+
+@app.get("/steam/players/{app_id}", response_model=PlayerCountResponse, dependencies=[Depends(require_license)])
+def get_steam_player_count(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+):
+    """Fetch the current number of players for a Steam game.
+
+    Returns the live player count which can be used to correlate
+    with review volume and sentiment patterns.
+    """
+    try:
+        player_count = fetch_current_players(app_id)
+        return PlayerCountResponse(
+            app_id=app_id,
+            player_count=player_count,
+            timestamp=int(datetime.utcnow().timestamp()),
+        )
+    except SteamAPIError as exc:
+        logger.error("Steam API error fetching player count for app %s: %s", app_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error fetching player count for app %s", app_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+class PriceResponse(BaseModel):
+    app_id: int
+    is_free: bool
+    price_initial: Optional[float] = None  # Original price in major units (e.g., 29.99)
+    price_final: Optional[float] = None    # Current price after discount
+    price_initial_formatted: Optional[str] = None  # e.g., "$29.99"
+    price_final_formatted: Optional[str] = None    # e.g., "$19.99"
+    price_discount: int = 0                # Discount percentage (0-100)
+    price_currency: Optional[str] = None   # e.g., "USD"
+    timestamp: int
+
+
+@app.get("/steam/price/{app_id}", response_model=PriceResponse, dependencies=[Depends(require_license)])
+def get_steam_price(
+    app_id: int,
+    cc: str = "us",  # Country code for regional pricing (default USD)
+    user_id: str = Depends(require_user_id),
+):
+    """Fetch the current price for a Steam game.
+
+    Returns live pricing data including discounts. Prices are in USD by default.
+    Use the 'cc' parameter for regional pricing (e.g., 'de' for Germany, 'it' for Italy).
+    """
+    try:
+        details = fetch_app_details(app_id, use_cache=False)  # Don't cache for fresh prices
+        if not details:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        is_free = details.get("is_free", False)
+
+        return PriceResponse(
+            app_id=app_id,
+            is_free=is_free,
+            price_initial=details.get("price_initial"),
+            price_final=details.get("price_final") if not is_free else None,
+            price_initial_formatted=details.get("price_initial_formatted"),
+            price_final_formatted="Free" if is_free else details.get("price_final_formatted"),
+            price_discount=details.get("price_discount", 0),
+            price_currency=details.get("price_currency"),
+            timestamp=int(datetime.utcnow().timestamp()),
+        )
+    except SteamAPIError as exc:
+        logger.error("Steam API error fetching price for app %s: %s", app_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error fetching price for app %s", app_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+class GameDetailsResponse(BaseModel):
+    app_id: int
+    name: str
+    release_date: Optional[str] = None
+    coming_soon: bool = False
+    developers: List[str] = []
+    publishers: List[str] = []
+    genres: List[str] = []
+    categories: List[str] = []
+    # Price info included for convenience
+    is_free: bool = False
+    price_initial: Optional[float] = None
+    price_final: Optional[float] = None
+    price_discount: int = 0
+    price_currency: Optional[str] = None
+    timestamp: int
+
+
+@app.get("/steam/details/{app_id}", response_model=GameDetailsResponse, dependencies=[Depends(require_license)])
+def get_steam_details(
+    app_id: int,
+    user_id: str = Depends(require_user_id),
+):
+    """Fetch detailed information for a Steam game.
+
+    Returns release date, developers, publishers, genres, categories, and pricing.
+    """
+    try:
+        details = fetch_app_details(app_id, use_cache=False)
+        if not details:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        is_free = details.get("is_free", False)
+
+        return GameDetailsResponse(
+            app_id=app_id,
+            name=details.get("name", ""),
+            release_date=details.get("release_date"),
+            coming_soon=details.get("coming_soon", False),
+            developers=details.get("developers", []),
+            publishers=details.get("publishers", []),
+            genres=details.get("genres", []),
+            categories=details.get("categories", []),
+            is_free=is_free,
+            price_initial=details.get("price_initial"),
+            price_final=details.get("price_final") if not is_free else None,
+            price_discount=details.get("price_discount", 0),
+            price_currency=details.get("price_currency"),
+            timestamp=int(datetime.utcnow().timestamp()),
+        )
+    except SteamAPIError as exc:
+        logger.error("Steam API error fetching details for app %s: %s", app_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error fetching details for app %s", app_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+class AchievementResponse(BaseModel):
+    name: str
+    display_name: str
+    description: str
+    percent: float
+    icon: str
+    icon_gray: str
+    hidden: bool
+
+
+class AchievementsResponse(BaseModel):
+    app_id: int
+    achievements: List[AchievementResponse]
+    total_count: int
+    completion_rate: Optional[float]  # Average completion rate across all achievements
+
+
+@app.get("/steam/achievements/{app_id}", response_model=AchievementsResponse, dependencies=[Depends(require_license)])
+def get_steam_achievements(
+    app_id: int,
+    limit: int = 50,
+    user_id: str = Depends(require_user_id),
+):
+    """Fetch global achievement statistics for a Steam game.
+
+    Returns achievement percentages which can indicate player retention,
+    difficulty perception, and engagement levels.
+    """
+    try:
+        achievements = fetch_achievements_with_stats(app_id)
+
+        # Calculate average completion rate
+        completion_rate = None
+        if achievements:
+            completion_rate = sum(a["percent"] for a in achievements) / len(achievements)
+
+        # Limit results
+        limited_achievements = achievements[:limit]
+
+        return AchievementsResponse(
+            app_id=app_id,
+            achievements=[
+                AchievementResponse(
+                    name=a["name"],
+                    display_name=a["display_name"],
+                    description=a["description"],
+                    percent=a["percent"],
+                    icon=a["icon"],
+                    icon_gray=a["icon_gray"],
+                    hidden=a["hidden"],
+                )
+                for a in limited_achievements
+            ],
+            total_count=len(achievements),
+            completion_rate=completion_rate,
+        )
+    except SteamAPIError as exc:
+        logger.error("Steam API error fetching achievements for app %s: %s", app_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error fetching achievements for app %s", app_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+class GameContextResponse(BaseModel):
+    """Extended game context including live data."""
+    app_id: int
+    name: Optional[str]
+    short_description: Optional[str]
+    genres: List[str]
+    categories: List[str]
+    header_image: Optional[str]
+    current_players: Optional[int]
+    recent_news: List[NewsItemResponse]
+
+
+@app.get("/steam/context/{app_id}", response_model=GameContextResponse, dependencies=[Depends(require_license)])
+def get_steam_game_context(
+    app_id: int,
+    news_count: int = 5,
+    user_id: str = Depends(require_user_id),
+):
+    """Fetch comprehensive game context including details, players, and recent news.
+
+    This is a convenience endpoint that combines multiple Steam API calls
+    into a single response for dashboard display.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        # Fetch all data in parallel for efficiency
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            details_future = executor.submit(fetch_app_details, app_id)
+            players_future = executor.submit(fetch_current_players, app_id)
+            news_future = executor.submit(fetch_news_for_app, app_id, count=news_count, max_length=300)
+
+            details = details_future.result()
+            current_players = players_future.result()
+            news_items = news_future.result()
+
+        return GameContextResponse(
+            app_id=app_id,
+            name=details.get("name") if details else None,
+            short_description=details.get("short_description") if details else None,
+            genres=details.get("genres", []) if details else [],
+            categories=details.get("categories", []) if details else [],
+            header_image=details.get("header_image") if details else None,
+            current_players=current_players,
+            recent_news=[
+                NewsItemResponse(
+                    gid=item.gid,
+                    title=item.title,
+                    url=item.url,
+                    author=item.author,
+                    contents=item.contents,
+                    feed_label=item.feed_label,
+                    date=item.date,
+                    feed_name=item.feed_name,
+                    feed_type=item.feed_type,
+                )
+                for item in news_items
+            ],
+        )
+    except SteamAPIError as exc:
+        logger.error("Steam API error fetching context for app %s: %s", app_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error fetching context for app %s", app_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 if __name__ == "__main__":

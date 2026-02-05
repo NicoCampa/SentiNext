@@ -1567,3 +1567,214 @@ export async function downloadExecutiveSummary(
   link.remove();
   window.URL.revokeObjectURL(objectUrl);
 }
+
+// ============================================================================
+// Steam Extended Data API (News, Players, Achievements)
+// ============================================================================
+
+export interface SteamNewsItem {
+  gid: string;
+  title: string;
+  url: string;
+  author: string;
+  contents: string;
+  feed_label: string;
+  date: number;
+  feed_name: string;
+  feed_type: number;
+}
+
+export interface SteamNewsResponse {
+  app_id: number;
+  news_items: SteamNewsItem[];
+}
+
+/**
+ * Fetch news and announcements for a Steam game.
+ * Useful for correlating sentiment changes with patches/updates.
+ */
+export async function fetchSteamNews(
+  appId: number,
+  count: number = 20,
+  maxLength: number = 500
+): Promise<SteamNewsResponse> {
+  const url = new URL(
+    apiUrl(`/steam/news/${appId}`),
+    typeof window !== "undefined" ? window.location.origin : "http://localhost"
+  );
+  url.searchParams.set("count", String(count));
+  url.searchParams.set("max_length", String(maxLength));
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<SteamNewsResponse>(response);
+}
+
+export interface SteamPlayerCountResponse {
+  app_id: number;
+  player_count: number | null;
+  timestamp: number;
+}
+
+/**
+ * Fetch current player count for a Steam game.
+ */
+export async function fetchSteamPlayerCount(
+  appId: number
+): Promise<SteamPlayerCountResponse> {
+  const response = await authFetch(apiUrl(`/steam/players/${appId}`), {
+    cache: "no-store",
+  });
+  return handleResponse<SteamPlayerCountResponse>(response);
+}
+
+export interface SteamPriceResponse {
+  app_id: number;
+  is_free: boolean;
+  price_initial: number | null;  // Original price (e.g., 29.99)
+  price_final: number | null;    // Current price after discount
+  price_initial_formatted: string | null;  // e.g., "$29.99"
+  price_final_formatted: string | null;    // e.g., "$19.99" or "Free"
+  price_discount: number;        // Discount percentage (0-100)
+  price_currency: string | null; // e.g., "USD"
+  timestamp: number;
+}
+
+/**
+ * Fetch current price for a Steam game.
+ * Returns live pricing data including discounts.
+ */
+export async function fetchSteamPrice(
+  appId: number,
+  cc: string = "us"  // Country code for regional pricing
+): Promise<SteamPriceResponse> {
+  const url = new URL(
+    apiUrl(`/steam/price/${appId}`),
+    typeof window !== "undefined" ? window.location.origin : "http://localhost"
+  );
+  url.searchParams.set("cc", cc);
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<SteamPriceResponse>(response);
+}
+
+export interface SteamGameDetailsResponse {
+  app_id: number;
+  name: string;
+  release_date: string | null;
+  coming_soon: boolean;
+  developers: string[];
+  publishers: string[];
+  genres: string[];
+  categories: string[];
+  is_free: boolean;
+  price_initial: number | null;
+  price_final: number | null;
+  price_discount: number;
+  price_currency: string | null;
+  timestamp: number;
+}
+
+/**
+ * Fetch detailed information for a Steam game.
+ * Returns release date, developers, publishers, genres, categories, and pricing.
+ */
+export async function fetchSteamGameDetails(
+  appId: number
+): Promise<SteamGameDetailsResponse> {
+  const response = await authFetch(apiUrl(`/steam/details/${appId}`), { cache: "no-store" });
+  return handleResponse<SteamGameDetailsResponse>(response);
+}
+
+export interface SteamAchievement {
+  name: string;
+  display_name: string;
+  description: string;
+  percent: number;
+  icon: string;
+  icon_gray: string;
+  hidden: boolean;
+}
+
+export interface SteamAchievementsResponse {
+  app_id: number;
+  achievements: SteamAchievement[];
+  total_count: number;
+  completion_rate: number | null;
+}
+
+/**
+ * Fetch global achievement statistics for a Steam game.
+ * Useful for understanding player retention and engagement.
+ */
+export async function fetchSteamAchievements(
+  appId: number,
+  limit: number = 50
+): Promise<SteamAchievementsResponse> {
+  const url = new URL(
+    apiUrl(`/steam/achievements/${appId}`),
+    typeof window !== "undefined" ? window.location.origin : "http://localhost"
+  );
+  url.searchParams.set("limit", String(limit));
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<SteamAchievementsResponse>(response);
+}
+
+export interface SteamGameContext {
+  app_id: number;
+  name: string | null;
+  short_description: string | null;
+  genres: string[];
+  categories: string[];
+  header_image: string | null;
+  current_players: number | null;
+  recent_news: SteamNewsItem[];
+}
+
+/**
+ * Fetch comprehensive game context including details, current players, and recent news.
+ * Combines multiple Steam API calls into a single response.
+ */
+export async function fetchSteamGameContext(
+  appId: number,
+  newsCount: number = 5
+): Promise<SteamGameContext> {
+  const url = new URL(
+    apiUrl(`/steam/context/${appId}`),
+    typeof window !== "undefined" ? window.location.origin : "http://localhost"
+  );
+  url.searchParams.set("news_count", String(newsCount));
+  const response = await authFetch(url.toString(), { cache: "no-store" });
+  return handleResponse<SteamGameContext>(response);
+}
+
+// ============================================================================
+// News Summary API
+// ============================================================================
+
+export interface SummarizeNewsPayload {
+  app_id: number;
+  news_count?: number;
+  include_sentiment?: boolean;
+}
+
+export interface SummarizeNewsResponse {
+  summary: string;
+  key_updates: string[];
+  potential_impacts: string[];
+  correlation_insights: string | null;
+  news_count: number;
+  credits_charged: number;
+}
+
+/**
+ * Generate AI summary of recent game news/patches with optional sentiment correlation.
+ */
+export async function summarizeNews(
+  payload: SummarizeNewsPayload
+): Promise<SummarizeNewsResponse> {
+  const response = await authFetch(apiUrl("/summarize/news"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  await throwIfInsufficientCredits(response);
+  return handleResponse<SummarizeNewsResponse>(response);
+}

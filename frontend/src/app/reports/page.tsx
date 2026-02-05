@@ -11,6 +11,8 @@ import { SteamImage } from '@/components/SteamImage';
 import { MonthSelector } from '@/components/reports/MonthSelector';
 import { PageTransition } from '@/components/PageTransition';
 import { useStarredGames } from '@/contexts/StarredGamesContext';
+import { AchievementsWidget } from '@/components/AchievementsWidget';
+import { CurrentPlayersWidget, NewsWithSummary } from '@/components/SteamLiveContext';
 
 export default function ReportsPage() {
   const { games: starredGames, loading } = useStarredGames();
@@ -260,6 +262,30 @@ export default function ReportsPage() {
                 ) : null}
               </div>
             </Card>
+          )}
+
+          {/* Game Context Panel - Achievements, Players, News */}
+          {selectedGame && (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Achievements Widget */}
+              <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs sm:text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Player Retention
+                  </h3>
+                  <CurrentPlayersWidget appId={selectedGame.app_id} />
+                </div>
+                <AchievementsWidget appId={selectedGame.app_id} limit={20} />
+              </Card>
+
+              {/* News Widget with AI Summary */}
+              <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
+                <h3 className="text-xs sm:text-sm font-semibold uppercase tracking-[0.2em] text-slate-400 mb-4">
+                  Recent Updates & Patches
+                </h3>
+                <NewsWithSummary appId={selectedGame.app_id} count={10} />
+              </Card>
+            </div>
           )}
         </div>
       </PageTransition>

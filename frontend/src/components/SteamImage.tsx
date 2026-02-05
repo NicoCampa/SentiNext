@@ -17,7 +17,7 @@ export function SteamImage({
   variant,
   alt,
   className,
-  fallbackIcon = "▶",
+  fallbackIcon = "?",
   imageUrl,
 }: SteamImageProps) {
   const [error, setError] = useState(false);

@@ -27,7 +27,10 @@ import {
   SubcategorySummaryResponse,
   WidgetSummaryResponse,
   translateText,
+  fetchSteamGameDetails,
+  SteamGameDetailsResponse,
 } from "@/lib/api";
+import { CurrentPlayersWidget, NewsWithSummary } from "@/components/SteamLiveContext";
 import { useCredits } from "@/contexts/CreditsContext";
 import type {
   AnalyzeResponse,
@@ -1076,6 +1079,31 @@ function AnalysisResults({
   const insights = analysis.insights ?? null;
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+
+  // Game details state - fetched live (includes price, release date, developers, etc.)
+  const [gameDetails, setGameDetails] = useState<SteamGameDetailsResponse | null>(null);
+  const [gameDetailsLoading, setGameDetailsLoading] = useState(false);
+
+  // Fetch game details when game changes
+  useEffect(() => {
+    if (!selectedGame?.appid) {
+      setGameDetails(null);
+      return;
+    }
+    let cancelled = false;
+    setGameDetailsLoading(true);
+    fetchSteamGameDetails(selectedGame.appid)
+      .then((data) => {
+        if (!cancelled) setGameDetails(data);
+      })
+      .catch(() => {
+        if (!cancelled) setGameDetails(null);
+      })
+      .finally(() => {
+        if (!cancelled) setGameDetailsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedGame?.appid]);
   const [selectedSubcategoryType, setSelectedSubcategoryType] = useState<'issue' | 'request' | 'general'>('general');
   const [selectedSubcategoryLanguage, setSelectedSubcategoryLanguage] = useState<{ key: string; label: string } | null>(null);
   const [selectedTrendWeek, setSelectedTrendWeek] = useState<TrendWeekSelection | null>(null);
@@ -1979,9 +2007,12 @@ function AnalysisResults({
               />
             ) : null}
             <div className="space-y-1 sm:space-y-2 min-w-0">
-              <h2 className="text-lg sm:text-2xl font-semibold text-white line-clamp-2">
-                {selectedGame?.name ?? "Analysis"}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <h2 className="text-lg sm:text-2xl font-semibold text-white line-clamp-2">
+                  {selectedGame?.name ?? "Analysis"}
+                </h2>
+                {selectedGame && <CurrentPlayersWidget appId={selectedGame.appid} />}
+              </div>
               <p className="text-xs sm:text-sm text-slate-400">
                 Last run {new Date(analysis.metadata.fetched_at).toLocaleDateString()}
               </p>
@@ -2005,9 +2036,16 @@ function AnalysisResults({
 
         {onUpdate && (
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 sm:justify-end">
-            <Button onClick={handleSummarizeRecentReviews} variant="ghost" size="sm" disabled={!selectedGame} className="text-xs sm:text-sm flex-1 sm:flex-none">
-              Summary
-            </Button>
+            <button
+              onClick={handleSummarizeRecentReviews}
+              disabled={!selectedGame}
+              className="text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              AI Summary
+            </button>
             <Button onClick={onUpdate} variant="ghost" size="sm" className="text-xs sm:text-sm flex-1 sm:flex-none">
               Update
             </Button>
@@ -2088,24 +2126,97 @@ function AnalysisResults({
           </Card>
         )}
 
-        <div className="mt-5 grid gap-3 sm:gap-2 sm:grid-cols-3">
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-3 ${mounted ? 'animate-scale-in animation-delay-100' : 'opacity-0'}`}>
-            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{t('dashboard.recommendation')}</p>
-            <p
-              className="mt-1.5 text-xl font-semibold"
-              style={{ color: getRecommendationColor(summaryRecommendationRate ?? 0) }}
-            >
-              {formatPercentOrDash(summaryRecommendationRate)}
-            </p>
+        {/* Two-column layout: KPIs list | News */}
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {/* Column 1: KPIs as vertical list */}
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
+            <div className="space-y-3">
+              {/* Recommendation */}
+              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
+                <span className="text-xs text-slate-400">{t('dashboard.recommendation')}</span>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: getRecommendationColor(summaryRecommendationRate ?? 0) }}
+                >
+                  {formatPercentOrDash(summaryRecommendationRate)}
+                </span>
+              </div>
+              {/* Issue Rate */}
+              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
+                <span className="text-xs text-slate-400">{t('dashboard.issueRate')}</span>
+                <span className="text-sm font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</span>
+              </div>
+              {/* Request Rate */}
+              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
+                <span className="text-xs text-slate-400">{t('dashboard.requestRate')}</span>
+                <span className="text-sm font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</span>
+              </div>
+              {/* Price - fetched live */}
+              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
+                <span className="text-xs text-slate-400">Price</span>
+                <div className="text-right">
+                  {gameDetailsLoading ? (
+                    <span className="text-sm text-slate-500 animate-pulse">Loading...</span>
+                  ) : gameDetails?.is_free ? (
+                    <span className="text-sm font-semibold text-emerald-400">Free</span>
+                  ) : gameDetails?.price_final ? (
+                    <div className="flex items-center gap-2">
+                      {gameDetails.price_discount > 0 && gameDetails.price_initial && (
+                        <>
+                          <span className="text-xs text-slate-500 line-through">
+                            ${gameDetails.price_initial.toFixed(2)}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                            -{gameDetails.price_discount}%
+                          </span>
+                        </>
+                      )}
+                      <span className="text-sm font-semibold text-white">
+                        ${gameDetails.price_final.toFixed(2)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-slate-500">—</span>
+                  )}
+                </div>
+              </div>
+              {/* Release Date */}
+              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
+                <span className="text-xs text-slate-400">Release Date</span>
+                <span className="text-sm font-semibold text-white">
+                  {gameDetailsLoading ? (
+                    <span className="text-slate-500 animate-pulse">Loading...</span>
+                  ) : gameDetails?.coming_soon ? (
+                    <span className="text-amber-400">Coming Soon</span>
+                  ) : gameDetails?.release_date ? (
+                    gameDetails.release_date
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </span>
+              </div>
+              {/* Developer */}
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-xs text-slate-400">Developer</span>
+                <span className="text-sm font-semibold text-white truncate max-w-[180px]" title={gameDetails?.developers?.join(', ')}>
+                  {gameDetailsLoading ? (
+                    <span className="text-slate-500 animate-pulse">Loading...</span>
+                  ) : gameDetails?.developers && gameDetails.developers.length > 0 ? (
+                    gameDetails.developers.join(', ')
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-3 ${mounted ? 'animate-scale-in animation-delay-200' : 'opacity-0'}`}>
-            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{t('dashboard.issueRate')}</p>
-            <p className="mt-1.5 text-xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
-          </div>
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-3 ${mounted ? 'animate-scale-in animation-delay-300' : 'opacity-0'}`}>
-            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{t('dashboard.requestRate')}</p>
-            <p className="mt-1.5 text-xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
-          </div>
+
+          {/* Column 2: Recent Updates */}
+          {selectedGame && (
+            <div className={`${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+              <NewsWithSummary appId={selectedGame.appid} count={5} />
+            </div>
+          )}
         </div>
       </Card>
 
@@ -2615,9 +2726,9 @@ function AnalysisResults({
                   <p className="text-[10px] text-slate-500 mb-3">Playtime in this game</p>
                   <div className="space-y-2">
                     {[
-                      { label: "High", subLabel: "20h+", key: "highly_engaged", desc: "20+ hours played", data: playerSegments.engagement_topics?.highly_engaged },
-                      { label: "Medium", subLabel: "2-20h", key: "moderately_engaged", desc: "2-20 hours played", data: playerSegments.engagement_topics?.moderately_engaged },
                       { label: "Low", subLabel: "<2h", key: "low_engagement", desc: "Under 2 hours played", data: playerSegments.engagement_topics?.low_engagement },
+                      { label: "Medium", subLabel: "2-20h", key: "moderately_engaged", desc: "2-20 hours played", data: playerSegments.engagement_topics?.moderately_engaged },
+                      { label: "High", subLabel: "20h+", key: "highly_engaged", desc: "20+ hours played", data: playerSegments.engagement_topics?.highly_engaged },
                     ].map((row) => {
                       const count = row.data?.count ?? 0;
                       const rec = row.data?.recommendation_rate ?? 0;
@@ -2686,14 +2797,28 @@ function AnalysisResults({
                 )}
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Button
-                  variant="primary"
+                <button
                   onClick={handleSummarize}
                   disabled={summaryLoading || selectedReviews.length === 0}
-                  className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
-                  {summaryLoading ? "Summarizing..." : subcategorySummary ? "Refresh" : "Summarize"}
-                </Button>
+                  {summaryLoading ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Summarizing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      {subcategorySummary ? "Refresh" : "AI Summary"}
+                    </>
+                  )}
+                </button>
                 <Button variant="secondary" onClick={clearSelectedSubcategory} className="flex-1 sm:flex-none text-xs sm:text-sm">
                   Close
                 </Button>
@@ -2967,14 +3092,28 @@ function AnalysisResults({
                   )}
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <Button
-                    variant="primary"
+                  <button
                     onClick={handleSummarizeTrendWeek}
                     disabled={trendWeekSummaryLoading || selectedWeekReviews.length === 0}
-                    className="flex-1 sm:flex-none text-xs sm:text-sm"
+                    className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                   >
-                    {trendWeekSummaryLoading ? "Summarizing..." : trendWeekSummary ? "Refresh" : "Summarize"}
-                  </Button>
+                    {trendWeekSummaryLoading ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Summarizing...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        {trendWeekSummary ? "Refresh" : "AI Summary"}
+                      </>
+                    )}
+                  </button>
                   <Button variant="secondary" onClick={() => setSelectedTrendWeek(null)} className="flex-1 sm:flex-none text-xs sm:text-sm">
                     Close
                   </Button>
@@ -3230,14 +3369,28 @@ function AnalysisResults({
                   )}
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <Button
-                    variant="primary"
+                  <button
                     onClick={handleSummarizeSegment}
                     disabled={segmentSummaryLoading || selectedSegmentReviews.length === 0}
-                    className="flex-1 sm:flex-none text-xs sm:text-sm"
+                    className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                   >
-                    {segmentSummaryLoading ? "Summarizing..." : segmentSummary ? "Refresh" : "Summarize"}
-                  </Button>
+                    {segmentSummaryLoading ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Summarizing...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        {segmentSummary ? "Refresh" : "AI Summary"}
+                      </>
+                    )}
+                  </button>
                   <Button variant="secondary" onClick={() => setSelectedSegment(null)} className="flex-1 sm:flex-none text-xs sm:text-sm">
                     Close
                   </Button>
@@ -3496,13 +3649,28 @@ function AnalysisResults({
                     )}
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <Button variant="primary" onClick={handleSummarizeRecentReviews} disabled={recentReviewsSummaryLoading} className="flex-1 sm:flex-none text-xs sm:text-sm">
-                      {recentReviewsSummaryLoading
-                        ? "Summarizing..."
-                        : recentReviewsSummary
-                        ? "Refresh"
-                        : "Summarize"}
-                    </Button>
+                    <button
+                      onClick={handleSummarizeRecentReviews}
+                      disabled={recentReviewsSummaryLoading}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      {recentReviewsSummaryLoading ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Summarizing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          {recentReviewsSummary ? "Refresh" : "AI Summary"}
+                        </>
+                      )}
+                    </button>
                     <Button variant="secondary" onClick={closeRecentReviewsModal} className="flex-1 sm:flex-none text-xs sm:text-sm">
                       Close
                     </Button>
@@ -3565,7 +3733,7 @@ function AnalysisResults({
                 ) : recentReviewsSummaryLoading ? (
                   <p className="mt-4 text-sm text-slate-500">Generating summary…</p>
                 ) : (
-                  <p className="mt-4 text-sm text-slate-500">Click “Summarize” to generate a recent reviews recap.</p>
+                  <p className="mt-4 text-sm text-slate-500">Click "AI Summary" to generate a recent reviews recap.</p>
                 )}
               </div>
             </div>

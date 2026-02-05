@@ -63,7 +63,7 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
         onClick={handleGenerate}
         className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 text-white rounded-xl transition-all"
       >
-        <span className="text-lg">✨</span>
+        <span className="text-lg font-bold text-[rgb(0,255,255)]">//</span>
         <span>AI Comparison</span>
         <span className="text-xs opacity-80">(5 credits)</span>
       </button>
@@ -106,7 +106,7 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
 
               {error && (
                 <div className="p-4 bg-red-900/20 border border-red-700/50 rounded-lg">
-                  <p className="text-sm text-red-400">⚠️ {error}</p>
+                  <p className="text-sm text-red-400">{error}</p>
                 </div>
               )}
 

@@ -111,7 +111,7 @@ export function FilterSidebar({
                 onClick={() => setSearchExpanded(!searchExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>🔍 {t('common.search')}</span>
+                <span>{t('common.search')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${searchExpanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -168,7 +168,7 @@ export function FilterSidebar({
                 onClick={() => setGameExpanded(!gameExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>🎮 {t('database.game')}</span>
+                <span>{t('database.game')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${gameExpanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -206,7 +206,7 @@ export function FilterSidebar({
                 onClick={() => setAdvancedExpanded(!advancedExpanded)}
                 className="flex w-full items-center justify-between text-xs uppercase tracking-[0.25em] text-slate-400 hover:text-slate-300"
               >
-                <span>🧭 {t('database.categories')}</span>
+                <span>{t('database.categories')}</span>
                 <svg
                   className={`h-4 w-4 transform transition-transform ${advancedExpanded ? 'rotate-180' : ''}`}
                   fill="none"

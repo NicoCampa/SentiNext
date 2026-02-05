@@ -12,6 +12,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useCredits } from "@/contexts/CreditsContext";
 import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
+import { useOnboarding } from "@/contexts/OnboardingContext";
 
 export default function SettingsPage() {
   const { health, refresh: refreshHealth } = useBackendHealth();
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
   const { openUserProfile, signOut } = useClerk();
   const { user } = useUser();
+  const { resetOnboarding } = useOnboarding();
 
   useEffect(() => {
     setMounted(true);
@@ -133,7 +135,10 @@ export default function SettingsPage() {
           <div className="mb-4 sm:mb-8 space-y-3 sm:space-y-4">
             <div className="flex items-center gap-2.5 sm:gap-3">
               <div className="w-8 h-8 sm:w-10 sm:h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center flex-shrink-0">
-                <span className="text-[rgb(0,255,255)] text-base sm:text-lg">⚙</span>
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-[rgb(0,255,255)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-2xl font-bold tracking-wider">
@@ -156,7 +161,9 @@ export default function SettingsPage() {
             <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
               <div className="mb-4 sm:mb-5">
                 <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <span className="text-sm sm:text-base">🌐</span>
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                  </svg>
                   <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                     {t('settings.language')}
                   </p>
@@ -198,7 +205,9 @@ export default function SettingsPage() {
               <Card variant="glass" className={`p-4 sm:p-6 lg:hidden ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
                 <div className="mb-4 sm:mb-5">
                   <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                    <span className="text-sm sm:text-base">👤</span>
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
                     <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                       {t('settings.account') || 'Account'}
                     </p>
@@ -264,7 +273,9 @@ export default function SettingsPage() {
             <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200 lg:animation-delay-100' : 'opacity-0'}`}>
               <div className="mb-4 sm:mb-5">
                 <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <span className="text-sm sm:text-base">📡</span>
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                  </svg>
                   <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                     System Status
                   </p>
@@ -313,7 +324,9 @@ export default function SettingsPage() {
             <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300 lg:animation-delay-200' : 'opacity-0'}`}>
               <div className="mb-4 sm:mb-5">
                 <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <span className="text-sm sm:text-base">💎</span>
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                   <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                     Subscription & Credits
                   </p>
@@ -477,7 +490,10 @@ export default function SettingsPage() {
               <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
                 <div className="mb-4 sm:mb-5">
                   <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                    <span className="text-sm sm:text-base">🔧</span>
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
                     <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
                       {t('settings.diagnostics')}
                     </p>
@@ -495,6 +511,9 @@ export default function SettingsPage() {
                   </Button>
                   <Button size="sm" variant="primary" onClick={handleCopyDiagnostics} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
                     {t('settings.copyDiagnostics')}
+                  </Button>
+                  <Button size="sm" variant="update" onClick={resetOnboarding} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
+                    Test Onboarding
                   </Button>
                 </div>
 
@@ -516,7 +535,7 @@ export default function SettingsPage() {
                     className="flex items-center gap-2 text-left w-full min-h-[44px] sm:min-h-0"
                   >
                     <span className={`text-[rgb(0,255,255)]/50 transition-transform ${showLogs ? 'rotate-90' : ''}`}>
-                      ▶
+                      &gt;
                     </span>
                     <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/50">
                       System Logs

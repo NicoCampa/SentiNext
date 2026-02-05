@@ -308,6 +308,42 @@ def _fetch_app_details_uncached(app_id: int) -> Optional[Dict]:
         categories = details.get("categories", [])
         result["categories"] = [c.get("description", "") for c in categories if isinstance(c, dict)]
 
+        # Extract price info
+        is_free = details.get("is_free", False)
+        price_overview = details.get("price_overview", {})
+        if is_free:
+            result["price_final"] = "Free"
+            result["price_initial"] = None
+            result["is_free"] = True
+            result["price_discount"] = 0
+            result["price_currency"] = None
+        elif price_overview:
+            # Convert cents to major currency units (e.g., $29.99)
+            initial_cents = price_overview.get("initial", 0)
+            final_cents = price_overview.get("final", 0)
+            result["price_initial"] = float(initial_cents) / 100.0 if initial_cents else None
+            result["price_final"] = float(final_cents) / 100.0 if final_cents else None
+            result["price_initial_formatted"] = price_overview.get("initial_formatted", "")
+            result["price_final_formatted"] = price_overview.get("final_formatted", "")
+            result["price_discount"] = int(price_overview.get("discount_percent", 0))
+            result["price_currency"] = price_overview.get("currency", "USD")
+            result["is_free"] = False
+        else:
+            result["price_final"] = None
+            result["price_initial"] = None
+            result["is_free"] = False
+            result["price_discount"] = 0
+            result["price_currency"] = None
+
+        # Extract release date
+        release_date = details.get("release_date", {})
+        result["release_date"] = release_date.get("date", None)
+        result["coming_soon"] = release_date.get("coming_soon", False)
+
+        # Extract developers and publishers
+        result["developers"] = details.get("developers", [])
+        result["publishers"] = details.get("publishers", [])
+
         return result
 
     except Exception:
@@ -490,3 +526,279 @@ def iter_review_fields() -> Iterable[str]:
 def iter_author_fields() -> Iterable[str]:
     """Return all author-level fields available from the API."""
     return AUTHOR_METADATA_FIELDS.keys()
+
+
+# ============================================================================
+# Steam Web API Endpoints (News, Players, Achievements)
+# ============================================================================
+
+STEAM_NEWS_URL = "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2"
+STEAM_PLAYER_COUNT_URL = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1"
+STEAM_ACHIEVEMENTS_URL = "https://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2"
+STEAM_ACHIEVEMENT_SCHEMA_URL = "https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2"
+
+
+@dataclass
+class NewsItem:
+    """Represents a Steam news/announcement item."""
+    gid: str  # Unique news item ID
+    title: str
+    url: str
+    author: str
+    contents: str  # Can be HTML or BBCode
+    feed_label: str  # e.g., "Community Announcements", "Patch Notes"
+    date: int  # Unix timestamp
+    feed_name: str
+    feed_type: int  # 0 = unknown, 1 = Steam announcements, 2 = Steam news
+
+
+def fetch_news_for_app(
+    app_id: int,
+    count: int = 20,
+    max_length: int = 500,
+) -> List[NewsItem]:
+    """Fetch news/announcements for a Steam application.
+
+    Uses ISteamNews/GetNewsForApp endpoint to retrieve patch notes,
+    announcements, and updates.
+
+    Args:
+        app_id: Steam application ID
+        count: Maximum number of news items to return (default 20)
+        max_length: Maximum length of contents field (0 for full content)
+
+    Returns:
+        List of NewsItem objects sorted by date (newest first)
+    """
+    params = {
+        "appid": app_id,
+        "count": count,
+        "maxlength": max_length,
+        "format": "json",
+    }
+
+    try:
+        resp = _protected_get(STEAM_NEWS_URL, params=params, timeout=15)
+        data = resp.json()
+
+        app_news = data.get("appnews", {})
+        news_items = app_news.get("newsitems", [])
+
+        results: List[NewsItem] = []
+        for item in news_items:
+            try:
+                results.append(
+                    NewsItem(
+                        gid=str(item.get("gid", "")),
+                        title=item.get("title", ""),
+                        url=item.get("url", ""),
+                        author=item.get("author", ""),
+                        contents=item.get("contents", ""),
+                        feed_label=item.get("feedlabel", ""),
+                        date=item.get("date", 0),
+                        feed_name=item.get("feedname", ""),
+                        feed_type=item.get("feed_type", 0),
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Failed to parse news item: {e}")
+                continue
+
+        return results
+
+    except SteamAPIError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch news for app {app_id}: {e}")
+        return []
+
+
+def fetch_current_players(app_id: int) -> Optional[int]:
+    """Fetch the current number of players for a Steam application.
+
+    Uses ISteamUserStats/GetNumberOfCurrentPlayers endpoint.
+
+    Args:
+        app_id: Steam application ID
+
+    Returns:
+        Current player count, or None if unavailable
+    """
+    params = {
+        "appid": app_id,
+        "format": "json",
+    }
+
+    try:
+        resp = _protected_get(STEAM_PLAYER_COUNT_URL, params=params, timeout=10)
+        data = resp.json()
+
+        response = data.get("response", {})
+        if response.get("result") == 1:
+            return response.get("player_count")
+        return None
+
+    except SteamAPIError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch player count for app {app_id}: {e}")
+        return None
+
+
+@dataclass
+class AchievementStat:
+    """Global achievement percentage data."""
+    name: str  # Internal achievement name/API name
+    percent: float  # Percentage of players who earned this (0-100)
+
+
+@dataclass
+class AchievementInfo:
+    """Full achievement info including display name and icon."""
+    name: str  # Internal API name
+    display_name: str  # Localized display name
+    description: str  # Achievement description
+    icon: str  # URL to unlocked icon
+    icon_gray: str  # URL to locked icon
+    hidden: bool  # Whether achievement is hidden until unlocked
+
+
+def fetch_global_achievements(app_id: int) -> List[AchievementStat]:
+    """Fetch global achievement percentages for a Steam application.
+
+    Uses ISteamUserStats/GetGlobalAchievementPercentagesForApp endpoint.
+
+    Args:
+        app_id: Steam application ID
+
+    Returns:
+        List of AchievementStat objects sorted by percentage (highest first)
+    """
+    params = {
+        "gameid": app_id,
+        "format": "json",
+    }
+
+    try:
+        resp = _protected_get(STEAM_ACHIEVEMENTS_URL, params=params, timeout=15)
+        data = resp.json()
+
+        achievement_percentages = data.get("achievementpercentages", {})
+        achievements = achievement_percentages.get("achievements", [])
+
+        results: List[AchievementStat] = []
+        for ach in achievements:
+            try:
+                results.append(
+                    AchievementStat(
+                        name=ach.get("name", ""),
+                        percent=float(ach.get("percent", 0)),
+                    )
+                )
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse achievement stat: {e}")
+                continue
+
+        # Sort by percentage descending (most common achievements first)
+        results.sort(key=lambda x: x.percent, reverse=True)
+        return results
+
+    except SteamAPIError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch achievements for app {app_id}: {e}")
+        return []
+
+
+def fetch_achievement_schema(app_id: int) -> List[AchievementInfo]:
+    """Fetch achievement schema (names, descriptions, icons) for a Steam application.
+
+    Uses ISteamUserStats/GetSchemaForGame endpoint.
+    Note: Some games may not expose their schema publicly.
+
+    Args:
+        app_id: Steam application ID
+
+    Returns:
+        List of AchievementInfo objects
+    """
+    params = {
+        "appid": app_id,
+        "format": "json",
+    }
+
+    try:
+        resp = _protected_get(STEAM_ACHIEVEMENT_SCHEMA_URL, params=params, timeout=15)
+        data = resp.json()
+
+        game = data.get("game", {})
+        available_stats = game.get("availableGameStats", {})
+        achievements = available_stats.get("achievements", [])
+
+        results: List[AchievementInfo] = []
+        for ach in achievements:
+            try:
+                results.append(
+                    AchievementInfo(
+                        name=ach.get("name", ""),
+                        display_name=ach.get("displayName", ach.get("name", "")),
+                        description=ach.get("description", ""),
+                        icon=ach.get("icon", ""),
+                        icon_gray=ach.get("icongray", ""),
+                        hidden=bool(ach.get("hidden", 0)),
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Failed to parse achievement schema: {e}")
+                continue
+
+        return results
+
+    except SteamAPIError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch achievement schema for app {app_id}: {e}")
+        return []
+
+
+def fetch_achievements_with_stats(app_id: int) -> List[Dict]:
+    """Fetch achievements with both percentages and display info combined.
+
+    Merges data from GetGlobalAchievementPercentagesForApp and GetSchemaForGame.
+
+    Args:
+        app_id: Steam application ID
+
+    Returns:
+        List of dicts with combined achievement data:
+        {name, display_name, description, percent, icon, icon_gray, hidden}
+    """
+    # Fetch both in parallel for efficiency
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        stats_future = executor.submit(fetch_global_achievements, app_id)
+        schema_future = executor.submit(fetch_achievement_schema, app_id)
+
+        stats = stats_future.result()
+        schema = schema_future.result()
+
+    # Create lookup by name
+    schema_map = {ach.name: ach for ach in schema}
+
+    # Merge data
+    results: List[Dict] = []
+    for stat in stats:
+        info = schema_map.get(stat.name)
+        result = {
+            "name": stat.name,
+            "percent": stat.percent,
+            "display_name": info.display_name if info else stat.name,
+            "description": info.description if info else "",
+            "icon": info.icon if info else "",
+            "icon_gray": info.icon_gray if info else "",
+            "hidden": info.hidden if info else False,
+        }
+        results.append(result)
+
+    return results

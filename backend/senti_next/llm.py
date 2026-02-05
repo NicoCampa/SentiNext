@@ -3699,6 +3699,129 @@ REVIEW SAMPLES (filtered for {subcategory}):
         ) from exc
 
 
+def summarize_news_updates(
+    news_items: Sequence[Mapping[str, Any]],
+    game_name: Optional[str] = None,
+    game_context: Optional[Dict[str, Any]] = None,
+    recent_sentiment: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Summarize recent game news/patches and correlate with sentiment if available.
+
+    Args:
+        news_items: List of news items with keys: title, contents, date, feed_label
+        game_name: Name of the game
+        game_context: Optional game context (genres, description)
+        recent_sentiment: Optional recent sentiment data to correlate
+
+    Returns:
+        Dict with keys:
+        - summary: Overall summary paragraph
+        - key_updates: List of important updates
+        - potential_impacts: List of potential player impact areas
+        - correlation_insights: Optional insights correlating with sentiment
+    """
+    if not news_items:
+        return {
+            "summary": "No recent updates available.",
+            "key_updates": [],
+            "potential_impacts": [],
+            "correlation_insights": None,
+        }
+
+    game_name = game_name or (game_context.get("name") if game_context else None) or "the game"
+
+    # Build news context
+    news_texts = []
+    for item in news_items[:10]:  # Limit to recent 10 items
+        title = item.get("title", "Untitled")
+        contents = item.get("contents", "")[:500]  # Truncate long content
+        feed_label = item.get("feed_label", "Update")
+        date_ts = item.get("date", 0)
+        date_str = time.strftime("%Y-%m-%d", time.localtime(date_ts)) if date_ts else "Unknown date"
+
+        news_texts.append(f"[{date_str}] {feed_label}: {title}\n{contents}")
+
+    news_block = "\n\n---\n\n".join(news_texts)
+
+    # Build sentiment context if available
+    sentiment_context = ""
+    if recent_sentiment:
+        rec_rate = recent_sentiment.get("recommendation_rate")
+        trend = recent_sentiment.get("trend")  # e.g., "improving", "declining", "stable"
+        top_issues = recent_sentiment.get("top_issues", [])[:3]
+        top_requests = recent_sentiment.get("top_requests", [])[:3]
+
+        if rec_rate is not None:
+            sentiment_context += f"\nCurrent recommendation rate: {rec_rate:.1%}"
+        if trend:
+            sentiment_context += f"\nSentiment trend: {trend}"
+        if top_issues:
+            sentiment_context += f"\nTop complaints: {', '.join(top_issues)}"
+        if top_requests:
+            sentiment_context += f"\nTop requests: {', '.join(top_requests)}"
+
+    prompt = dedent(f"""
+        Analyze these recent news and updates for {game_name}.
+
+        **Recent News/Patches:**
+        {news_block}
+        {f"**Recent Player Sentiment:**{sentiment_context}" if sentiment_context else ""}
+
+        Provide a concise analysis in JSON format:
+        {{
+            "summary": "Brief 2-3 sentence overview of recent update activity",
+            "key_updates": ["List of 3-5 most important updates/changes"],
+            "potential_impacts": ["List of 2-4 areas that might affect player experience"],
+            "correlation_insights": "If sentiment data provided, any correlation between updates and sentiment (or null if no sentiment data)"
+        }}
+
+        Focus on:
+        - Major patches, bug fixes, content updates
+        - Changes that could affect player satisfaction
+        - Patterns in update frequency or focus areas
+        - If sentiment data available: whether updates address player concerns
+
+        Return ONLY the JSON object.
+    """).strip()
+
+    try:
+        response = _call_gemini_api(prompt, model=GEMINI_MODEL_CHEAP, max_tokens=800)
+        response_text = response.content.strip()
+
+        # Clean JSON from markdown if present
+        json_text = response_text
+        if "```json" in json_text:
+            json_text = json_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in json_text:
+            json_text = json_text.split("```")[1].split("```")[0].strip()
+
+        result = json.loads(json_text)
+
+        return {
+            "summary": result.get("summary", "Unable to generate summary."),
+            "key_updates": result.get("key_updates", []),
+            "potential_impacts": result.get("potential_impacts", []),
+            "correlation_insights": result.get("correlation_insights"),
+        }
+
+    except json.JSONDecodeError as exc:
+        logger.warning(f"Failed to parse news summary JSON: {exc}")
+        return {
+            "summary": "Failed to parse update summary.",
+            "key_updates": [],
+            "potential_impacts": [],
+            "correlation_insights": None,
+        }
+    except Exception as exc:
+        logger.exception(f"Failed to summarize news: {exc}")
+        return {
+            "summary": "Failed to generate update summary.",
+            "key_updates": [],
+            "potential_impacts": [],
+            "correlation_insights": None,
+        }
+
+
 __all__ = [
     "apply_review_labels",
     "call_llm_with_tools",
@@ -3710,6 +3833,7 @@ __all__ = [
     "LLMResponse",
     "llm_usage_context",
     "run_chat_completion",
+    "summarize_news_updates",
     "summarize_subcategory_reviews",
     "summarize_monthly_report",
 ]
