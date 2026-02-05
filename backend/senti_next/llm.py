@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 # LLM Provider configuration
 GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
+GEMINI_MODEL_CHEAP = os.getenv("SENTINEXT_GEMINI_MODEL_CHEAP", "gemini-flash-lite-latest")
 
 # Timeout and retry configuration
 LLM_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_LLM_TIMEOUT", "30"))
@@ -1685,6 +1686,8 @@ LANGUAGE_NAMES = {
 def translate_text(text: str, target_language: str) -> tuple[str, str]:
     """Translate text to the target language using the LLM.
 
+    Uses GEMINI_MODEL_CHEAP for cost efficiency since translation is a simpler task.
+
     Args:
         text: The text to translate
         target_language: Target language code (e.g., 'en', 'it', 'fr', 'de')
@@ -1693,7 +1696,7 @@ def translate_text(text: str, target_language: str) -> tuple[str, str]:
         Tuple of (translated_text, model_id)
     """
     if not text or not text.strip():
-        return text, _model_id("google", GEMINI_MODEL)
+        return text, _model_id("google", GEMINI_MODEL_CHEAP)
 
     target_name = LANGUAGE_NAMES.get(target_language, target_language)
 
@@ -1710,7 +1713,9 @@ Text to translate:
             "translate",
             description=f"Translate to {target_name}",
         )
-        translated, model_used = _run_llm(prompt)
+        # Use cheap model for translation
+        translated = _run_gemini(prompt, GEMINI_MODEL_CHEAP)
+        model_used = _model_id("google", GEMINI_MODEL_CHEAP)
         return translated.strip(), model_used
     except credits.InsufficientCreditsError:
         raise
