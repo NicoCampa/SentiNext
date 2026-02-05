@@ -139,19 +139,19 @@ export default function ReportsPage() {
           </div>
 
           {/* Game Selection Grid */}
-          <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Choose game</h2>
-              <span className="text-xs text-slate-500">{starredGames.length} analyzed</span>
+          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
+            <div className="mb-3 sm:mb-4 flex items-center justify-between">
+              <h2 className="text-xs sm:text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Choose game</h2>
+              <span className="text-[10px] sm:text-xs text-slate-500">{starredGames.length} analyzed</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {starredGames.map((game) => {
                 const isSelected = selectedGame?.app_id === game.app_id;
                 return (
                   <button
                     key={game.app_id}
                     onClick={() => handleGameSelect(game)}
-                    className={`relative overflow-hidden border transition-all ${
+                    className={`relative overflow-hidden border rounded-lg transition-all active:scale-[0.98] ${
                       isSelected
                         ? 'border-sky-500 ring-2 ring-sky-500/50'
                         : 'border-white/10 hover:border-white/20'
@@ -167,9 +167,9 @@ export default function ReportsPage() {
                       />
                       {isSelected && (
                         <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
-                          <div className="bg-sky-500 text-white p-2">
+                          <div className="bg-sky-500 text-white p-1.5 sm:p-2 rounded-full">
                             <svg
-                              className="w-6 h-6"
+                              className="w-4 h-4 sm:w-6 sm:h-6"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -185,8 +185,8 @@ export default function ReportsPage() {
                         </div>
                       )}
                     </div>
-                    <div className="p-3 bg-slate-900/90">
-                      <p className="text-sm font-medium text-white truncate">{game.name}</p>
+                    <div className="p-2 sm:p-3 bg-slate-900/90">
+                      <p className="text-xs sm:text-sm font-medium text-white truncate">{game.name}</p>
                     </div>
                   </button>
                 );

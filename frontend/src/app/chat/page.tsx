@@ -793,7 +793,7 @@ export default function ChatPage() {
         }
       `}</style>
       <PageTransition>
-        <div className="w-full h-[calc(100vh-2rem)] flex flex-col gap-2 sm:gap-4 px-2 py-3 sm:px-4 sm:py-6 lg:px-6">
+        <div className="w-full h-[calc(100vh-5rem)] sm:h-[calc(100vh-2rem)] flex flex-col gap-2 sm:gap-4 px-2 py-3 sm:px-4 sm:py-6 lg:px-6">
           {/* Header */}
           <div className="mb-2 sm:mb-6 flex items-center justify-between">
             <div className="min-w-0 flex-1">

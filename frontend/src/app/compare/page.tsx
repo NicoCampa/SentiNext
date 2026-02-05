@@ -482,11 +482,11 @@ export default function ComparePage() {
             </Card>
           )}
 
-        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
-          <h2 className="mb-4 text-lg font-semibold text-white">
+        <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
+          <h2 className="mb-3 sm:mb-4 text-base sm:text-lg font-semibold text-white">
             Select Games to Compare ({analyzedGames.length} analyzed)
           </h2>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {analyzedGames.map((game) => {
               const isSelected = selectedIds.includes(game.app_id);
               const previewSample = game.sample ?? [];
@@ -497,7 +497,7 @@ export default function ComparePage() {
                 <button
                   key={game.app_id}
                   onClick={() => toggleGame(game.app_id)}
-                  className={`relative overflow-hidden rounded-lg border transition-all ${
+                  className={`relative overflow-hidden rounded-lg border transition-all active:scale-[0.98] ${
                     isSelected
                       ? "border-sky-500 ring-2 ring-sky-500/50"
                       : "border-white/10 hover:border-white/20"
@@ -512,11 +512,11 @@ export default function ComparePage() {
                       imageUrl={game.metadata.header_image}
                     />
                   </div>
-                  <div className="p-3 bg-slate-900/90">
-                    <p className="text-sm font-medium text-white truncate">{game.name}</p>
+                  <div className="p-2 sm:p-3 bg-slate-900/90">
+                    <p className="text-xs sm:text-sm font-medium text-white truncate">{game.name}</p>
                     {game.sample?.length ? (
                       <p
-                        className="text-xs mt-0.5"
+                        className="text-[10px] sm:text-xs mt-0.5"
                         style={{ color: getRecommendationColor(previewRecommendation) }}
                       >
                         {formatPercentage(previewRecommendation)} recommend
@@ -524,7 +524,7 @@ export default function ComparePage() {
                     ) : null}
                   </div>
                   {isSelected && (
-                    <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white z-10">
+                    <div className="absolute right-1 top-1 sm:right-2 sm:top-2 rounded-full bg-sky-500 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[10px] sm:text-xs font-bold text-white z-10">
                       Selected
                     </div>
                   )}

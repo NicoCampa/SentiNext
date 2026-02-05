@@ -55,9 +55,9 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const supportNotificationCount = isAdmin ? adminUnreadCount : userUnreadCount;
 
   const navItems = useMemo(() => {
-    const items: Array<{ href: string; label: string; code: string; hasNotification?: boolean }> = [
+    const items: Array<{ href: string; label: string; mobileLabel?: string; code: string; hasNotification?: boolean }> = [
       { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
-      { href: "/chat", label: t('nav.chat'), code: "02" },
+      { href: "/chat", label: t('nav.chat'), mobileLabel: t('nav.chatMobile'), code: "02" },
       { href: "/compare", label: t('nav.compare'), code: "03" },
       { href: "/reports", label: t('nav.reports'), code: "04" },
     ];
@@ -272,7 +272,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                       {supportNotificationCount > 9 ? "9+" : supportNotificationCount}
                     </span>
                   )}
-                  <span className="text-[10px] uppercase tracking-[0.1em] font-medium">{item.label}</span>
+                  <span className="text-[10px] uppercase tracking-[0.1em] font-medium">{item.mobileLabel || item.label}</span>
                 </Link>
               );
             })}
