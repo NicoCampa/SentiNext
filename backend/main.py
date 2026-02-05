@@ -300,6 +300,19 @@ def resolve_scope_user_id(scope: Optional[str], user_id: str) -> Optional[str]:
     return user_id
 
 
+def _raise_insufficient_credits(user_id: str, exc: credits.InsufficientCreditsError) -> None:
+    status = exc.status or credits.get_credit_status(user_id)
+    raise HTTPException(
+        status_code=402,
+        detail={
+            "message": str(exc),
+            "credits_needed": exc.amount,
+            "credits_available": status.get("balance"),
+            "tier": status.get("tier"),
+        },
+    ) from exc
+
+
 class SearchResult(BaseModel):
     appid: int
     name: str
@@ -697,7 +710,7 @@ class CreditEstimateResponse(BaseModel):
 
 
 class CheckoutSessionRequest(BaseModel):
-    tier: str = Field(..., pattern="^(pro|max)$")
+    tier: str = Field(..., pattern="^(indie|pro)$")
     success_url: str
     cancel_url: str
     billing_period: str = Field(default="monthly", pattern="^(monthly|annual)$")
@@ -964,7 +977,7 @@ def get_credit_estimate(
     Args:
         review_count: Total review count (legacy param, used if new_reviews not specified)
         new_reviews: Number of new reviews requiring LLM classification (1 credit each)
-        cached_reviews: Number of cached reviews (0.5 credits each)
+        cached_reviews: Number of cached reviews (1 credit each)
     """
     # If new_reviews/cached_reviews provided, use them; otherwise treat all as new
     if new_reviews > 0 or cached_reviews > 0:
@@ -1131,9 +1144,6 @@ def _run_analysis_job(
                 game_context=game_context,
             )
 
-        # Note: Credit deduction removed - now using game-based billing
-        # LLM usage is still tracked via log_llm_usage for cost monitoring
-
         df = build_reviews_dataframe(all_reviews)
         df = llm.apply_review_labels(df, llm_labels)
 
@@ -1164,6 +1174,20 @@ def _run_analysis_job(
             insights=insights,
             reviews=reviews_payload,
             status="completed",
+            run_id=run_id,
+            snapshot_hash=snapshot_hash,
+            context_hash=context_hash,
+        )
+    except credits.InsufficientCreditsError as exc:
+        logger.info(f"Analysis failed due to insufficient credits for app {app_id}: {exc}")
+        storage.save_analysis_result(
+            user_id=user_id,
+            app_id=app_id,
+            metadata=metadata.dict(),
+            insights=None,
+            reviews=[],
+            status="failed",
+            error=str(exc),
             run_id=run_id,
             snapshot_hash=snapshot_hash,
             context_hash=context_hash,
@@ -1306,6 +1330,25 @@ def analyze(
         )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to estimate cached labels for app %s: %s", request.app_id, exc)
+
+    # Credit preflight for review labeling (cached + LLM labels)
+    credits_needed = None
+    if label_estimate is not None:
+        credits_needed = int(label_estimate.cached_reviews + label_estimate.llm_reviews)
+    else:
+        credits_needed = len(all_reviews)
+    if credits_needed and credits_needed > 0:
+        can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, credits_needed)
+        if not can_proceed:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "message": credit_message,
+                    "credits_needed": credits_needed,
+                    "credits_available": credit_status.get("balance"),
+                    "tier": credit_status.get("tier"),
+                },
+            )
 
     # Check game limit for all tiers
     is_new_game = not storage.user_has_game(user_id, request.app_id)
@@ -1693,19 +1736,6 @@ def summarize_subcategory(
     user_id: str = Depends(require_user_id),
 ) -> SummarizeSubcategoryResponse:
     """Generate a summary with pros/cons for reviews in a specific subcategory."""
-    summarize_cost = credits.CREDIT_COSTS["summarize"]
-    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, summarize_cost)
-    if not can_proceed:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": credit_message,
-                "credits_needed": summarize_cost,
-                "credits_available": credit_status["balance"],
-                "tier": credit_status["tier"],
-            },
-        )
-
     # Get game context
     game_context = fetch_app_details(request.app_id)
 
@@ -1718,10 +1748,9 @@ def summarize_subcategory(
                 summary_type=request.summary_type,
                 summary_context=request.summary_context,
             )
-
-        # Note: Credit deduction removed - now using game-based billing
-
         return SummarizeSubcategoryResponse(**result)
+    except credits.InsufficientCreditsError as exc:
+        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate summary.") from exc
@@ -1747,19 +1776,6 @@ def summarize_widget(
     user_id: str = Depends(require_user_id),
 ) -> SummarizeWidgetResponse:
     """Generate a widget-specific summary for a set of reviews shown in the UI."""
-    summarize_cost = credits.CREDIT_COSTS["summarize"]
-    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, summarize_cost)
-    if not can_proceed:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": credit_message,
-                "credits_needed": summarize_cost,
-                "credits_available": credit_status["balance"],
-                "tier": credit_status["tier"],
-            },
-        )
-
     game_context = fetch_app_details(request.app_id)
 
     try:
@@ -1772,6 +1788,8 @@ def summarize_widget(
                 game_context=game_context,
             )
         return SummarizeWidgetResponse(**result)
+    except credits.InsufficientCreditsError as exc:
+        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Widget summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate widget summary.") from exc
@@ -1780,6 +1798,7 @@ def summarize_widget(
 class SummarizeRecentReviewsRequest(BaseModel):
     app_id: int = Field(..., gt=0)
     count: int = Field(default=100, ge=10, le=200)
+    filter_context: Optional[str] = Field(default=None, description="Description of active filters for context")
 
 
 class SummarizeRecentReviewsResponse(BaseModel):
@@ -1797,19 +1816,6 @@ def summarize_recent_reviews(
     user_id: str = Depends(require_user_id),
 ) -> SummarizeRecentReviewsResponse:
     """Generate a summary for the most recent N stored reviews (no re-analysis)."""
-    summarize_cost = credits.CREDIT_COSTS["summarize"]
-    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, summarize_cost)
-    if not can_proceed:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": credit_message,
-                "credits_needed": summarize_cost,
-                "credits_available": credit_status["balance"],
-                "tier": credit_status["tier"],
-            },
-        )
-
     stored_reviews = storage.load_reviews(request.app_id, limit=int(request.count or 100))
     if not stored_reviews:
         raise HTTPException(status_code=404, detail="No stored reviews found for this app.")
@@ -1886,6 +1892,7 @@ def summarize_recent_reviews(
     widget_context: Dict[str, Any] = {
         "date_range": f"{start_date} → {end_date}" if start_date and end_date else None,
         "baseline": baseline,
+        "filters": request.filter_context if request.filter_context else None,
     }
 
     try:
@@ -1903,6 +1910,8 @@ def summarize_recent_reviews(
             start_date=start_date,
             end_date=end_date,
         )
+    except credits.InsufficientCreditsError as exc:
+        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Recent reviews summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate recent reviews summary.") from exc
@@ -1944,32 +1953,30 @@ def compare_games_summarize(
         app_ids, request.comparison_type, request.category, request.subcategory
     )
 
-    # 2. Check cache
+    # 2. Determine credit cost and reserve upfront (cached + uncached)
+    credit_operation = {
+        "overview": "compare_overview",
+        "category": "compare_category",
+        "subcategory": "compare_subcategory",
+    }[request.comparison_type]
+    credit_cost = credits.CREDIT_COSTS[credit_operation]
+
+    try:
+        credits.reserve_credits_or_raise(
+            user_id=user_id,
+            amount=credit_cost,
+            operation=credit_operation,
+            description=f"Compare {request.comparison_type}",
+        )
+    except credits.InsufficientCreditsError as exc:
+        _raise_insufficient_credits(user_id, exc)
+
+    # 3. Check cache
     cached = storage.load_comparison_summary(cache_key)
     if cached:
-        return ComparisonSummaryResponse(**cached, cached=True, credits_charged=0)
+        return ComparisonSummaryResponse(**cached, cached=True, credits_charged=credit_cost)
 
-    # 3. Determine credit cost
-    credit_cost = {
-        "overview": 5,
-        "category": 3,
-        "subcategory": 2,
-    }[request.comparison_type]
-
-    # 4. Check credits
-    can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, credit_cost)
-    if not can_proceed:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": credit_message,
-                "credits_needed": credit_cost,
-                "credits_available": credit_status["balance"],
-                "tier": credit_status["tier"],
-            },
-        )
-
-    # 5. Call LLM
+    # 4. Call LLM
     try:
         logger.info(f"Generating comparison for {len(app_ids)} games (type: {request.comparison_type})")
         with llm.llm_usage_context(user_id=user_id, operation="compare"):
@@ -1990,15 +1997,25 @@ def compare_games_summarize(
             summary_data=result,
         )
 
-        # Note: Credit deduction removed - now using game-based billing
-
         logger.info(f"Successfully generated comparison for {len(app_ids)} games")
-        return ComparisonSummaryResponse(**result, cached=False, credits_charged=0)
+        return ComparisonSummaryResponse(**result, cached=False, credits_charged=credit_cost)
 
     except llm.LLMError as exc:
+        credits.refund_credits(
+            user_id=user_id,
+            amount=credit_cost,
+            operation=credit_operation,
+            description="Refund: comparison LLM failed",
+        )
         logger.exception("LLM comparison failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"AI comparison failed: {str(exc)}") from exc
     except Exception as exc:
+        credits.refund_credits(
+            user_id=user_id,
+            amount=credit_cost,
+            operation=credit_operation,
+            description="Refund: comparison failed",
+        )
         logger.exception("Comparison failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to generate comparison: {str(exc)}") from exc
 
@@ -2026,6 +2043,8 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
             max_reviews=request.max_reviews,
             max_snippets=request.max_snippets,
         )
+    except credits.InsufficientCreditsError as exc:
+        _raise_insufficient_credits(user_id, exc)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -2059,14 +2078,12 @@ def translate_text_endpoint(
     if not target_language:
         raise HTTPException(status_code=400, detail="Target language is required.")
 
-    # Note: Credit check removed - now using game-based billing
-
     try:
-        translated, model_id = llm.translate_text(text, target_language)
-
-        # Note: Credit deduction removed - now using game-based billing
-
+        with llm.llm_usage_context(user_id=user_id, operation="translate"):
+            translated, model_id = llm.translate_text(text, target_language)
         return TranslateResponse(translated_text=translated, model_id=model_id)
+    except credits.InsufficientCreditsError as exc:
+        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Translation failed: %s", exc)
         raise HTTPException(status_code=500, detail="Translation failed.") from exc
@@ -2083,8 +2100,7 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    # Note: Credit check removed - now using game-based billing
-
+    session_id: Optional[str] = None
     try:
         import uuid
 
@@ -2271,8 +2287,6 @@ Example:
             suggested_questions = []
             tool_calls_made = 0
 
-        # Note: Credit deduction removed - now using game-based billing
-
         # Save both user message and assistant response with session_id
         storage.save_chat_message(user_id, "user", message, session_id=session_id)
         storage.save_chat_message(user_id, "assistant", response_text, session_id=session_id)
@@ -2292,6 +2306,10 @@ Example:
             suggest_search_game=False,
             search_game_name="",
         )
+    except credits.InsufficientCreditsError as exc:
+        if session_id:
+            _clear_chat_status(session_id)
+        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Simple chat failed: %s", exc)
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc
@@ -2701,7 +2719,7 @@ def grant_credits_to_user(
 
 class UpdateTierRequest(BaseModel):
     user_id: str
-    tier: str = Field(..., pattern="^(free|pro|max)$")
+    tier: str = Field(..., pattern="^(free|indie|pro|max)$")
 
 
 class UpdateTierResponse(BaseModel):
@@ -2943,8 +2961,11 @@ def export_reviews(
 
     if refresh:
         game_context = fetch_app_details(app_id)
-        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
-            llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
+        try:
+            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
+                llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
+        except credits.InsufficientCreditsError as exc:
+            _raise_insufficient_credits(user_id, exc)
     else:
         cached_labels = storage.load_review_labels(app_id)
         if not cached_labels:
@@ -3079,7 +3100,7 @@ def generate_executive_summary(
     # Optional LLM executive summary (generated on report download)
     if include_llm_summary and format in {"pdf", "html"}:
         try:
-            summarize_cost = credits.CREDIT_COSTS["summarize"]
+            summarize_cost = credits.CREDIT_COSTS["report_summary"]
             can_proceed, credit_message, _credit_status = credits.check_credits_available(user_id, summarize_cost)
             if can_proceed:
                 with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="report_summary"):
@@ -3092,6 +3113,8 @@ def generate_executive_summary(
                 insights = {**insights, "llm_summary": llm_summary}
             else:
                 logger.info("Skipping report summary (credits unavailable): %s", credit_message)
+        except credits.InsufficientCreditsError as exc:
+            logger.info("Skipping report summary (insufficient credits): %s", exc)
         except Exception as exc:
             logger.exception("Failed to generate report summary: %s", exc)
 

@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, CreditStatus } from "@/lib/api";
+import { fetchLogTail, createCheckoutSession, getBillingPortalUrl } from "@/lib/api";
 import { isTauriApp } from "@/lib/settings";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -22,7 +23,7 @@ export default function SettingsPage() {
   const { language, setLanguage, t } = useLanguage();
   const [showLogs, setShowLogs] = useState(false);
   const { isAdmin } = useAdminStatus();
-  const { credits, loading: creditsLoading, refresh: refreshCredits } = useCredits();
+  const { credits, loading: creditsLoading } = useCredits();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -30,6 +31,27 @@ export default function SettingsPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const tierLabelMap: Record<string, string> = {
+    free: "Free",
+    indie: "Indie",
+    pro: "Pro",
+    max: "Enterprise",
+  };
+
+  const tierCreditsMap: Record<string, string> = {
+    free: "1,000 one-time trial credits",
+    indie: "2,500 credits / month",
+    pro: "5,000 credits / month",
+    max: "Custom credits / month",
+  };
+
+  const tierColorMap: Record<string, string> = {
+    free: "text-[rgb(150,150,170)]",
+    indie: "text-emerald-400",
+    pro: "text-sky-400",
+    max: "text-purple-400",
+  };
 
   const backendBootError =
     typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
@@ -84,7 +106,7 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleUpgrade(tier: "pro" | "max") {
+  async function handleUpgrade(tier: "indie" | "pro") {
     setUpgradeLoading(tier);
     try {
       const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
@@ -272,16 +294,16 @@ export default function SettingsPage() {
               </div>
             </Card>
 
-            {/* Subscription & Games */}
+            {/* Subscription & Credits */}
             <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-base">💎</span>
                   <p className="text-xs uppercase tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                    Subscription & Usage
+                    Subscription & Credits
                   </p>
                 </div>
-                <p className="text-sm text-[rgb(150,150,170)]">Manage your plan and game limits</p>
+                <p className="text-sm text-[rgb(150,150,170)]">Manage your plan and credit balance</p>
               </div>
 
               {creditsLoading && !credits ? (
@@ -298,87 +320,82 @@ export default function SettingsPage() {
                         Current Plan
                       </span>
                       <span className={`text-sm font-bold uppercase tracking-wider ${
-                        credits.tier === "max"
-                          ? "text-purple-400"
-                          : credits.tier === "pro"
-                          ? "text-sky-400"
-                          : "text-[rgb(150,150,170)]"
+                        tierColorMap[credits.tier] ?? "text-[rgb(150,150,170)]"
                       }`}>
-                        {credits.tier}
+                        {tierLabelMap[credits.tier] ?? credits.tier}
                       </span>
                     </div>
 
-                    {/* Game Usage */}
-                    {(() => {
-                      const defaultLimits: Record<string, number> = { free: 3, pro: 25, max: 100 };
-                      const gamesLimit = credits.games_limit ?? defaultLimits[credits.tier] ?? 100;
-                      const gamesUsed = credits.games_used ?? 0;
-                      const percentUsed = gamesLimit > 0 ? (gamesUsed / gamesLimit) * 100 : 0;
-                      const isApproaching = gamesUsed >= gamesLimit - 1;
-
-                      return (
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="text-[rgb(150,150,170)]">Games Analyzed</span>
-                            <span className={`font-mono ${
-                              credits.at_game_limit
-                                ? "text-rose-400"
-                                : isApproaching
-                                ? "text-amber-400"
-                                : credits.tier === "max"
-                                ? "text-purple-400"
-                                : credits.tier === "pro"
-                                ? "text-sky-400"
-                                : "text-[rgb(0,255,255)]"
-                            }`}>
-                              {gamesUsed} / {gamesLimit}
-                            </span>
-                          </div>
-                          <div className="h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full transition-all duration-300 ${
-                                credits.at_game_limit
-                                  ? "bg-rose-500"
-                                  : isApproaching
-                                  ? "bg-amber-500"
-                                  : credits.tier === "max"
-                                  ? "bg-purple-500"
-                                  : credits.tier === "pro"
-                                  ? "bg-sky-400"
-                                  : "bg-[rgb(0,255,255)]"
-                              }`}
-                              style={{ width: `${Math.min(percentUsed, 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })()}
-
                     {/* Tier Benefits */}
                     <p className="text-xs text-[rgb(150,150,170)]">
-                      {credits.tier === "free" && "Analyze up to 3 games"}
-                      {credits.tier === "pro" && "Analyze up to 25 games"}
-                      {credits.tier === "max" && "Analyze up to 100 games"}
+                      {tierCreditsMap[credits.tier] ?? ""}
                     </p>
                   </div>
 
-                  {/* Warning/Blocked Messages */}
-                  {credits.at_game_limit && (
-                    <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/30">
-                      <p className="text-xs text-rose-400">
-                        {credits.tier === "free"
-                          ? "You've reached your game limit. Upgrade to Pro to analyze more games."
-                          : "You've reached your game limit. Upgrade to Max for unlimited games."}
-                      </p>
-                    </div>
-                  )}
-                  {!credits.at_game_limit && credits.games_limit && credits.games_used >= credits.games_limit - 1 && (
-                    <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30">
-                      <p className="text-xs text-amber-400">
-                        You&apos;re approaching your game limit. Consider upgrading for more capacity.
-                      </p>
-                    </div>
-                  )}
+                  {/* Credits */}
+                  <div className="mb-4 p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
+                    {(() => {
+                      const effectiveMax = Math.max(credits.limit ?? 0, (credits.balance ?? 0) + (credits.used ?? 0));
+                      const percentRemaining = effectiveMax > 0
+                        ? Math.min(100, Math.max(0, ((credits.balance ?? 0) / effectiveMax) * 100))
+                        : 0;
+                      const resetDate = credits.period_end
+                        ? new Date(credits.period_end).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                        : null;
+                      const isWallet = !credits.limit || credits.limit <= 0;
+
+                      return (
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
+                              Credits
+                            </span>
+                            <span className="font-mono text-xs text-[rgb(0,255,255)]">
+                              {Math.max(0, credits.balance).toLocaleString()} left
+                            </span>
+                          </div>
+
+                          <div className="h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                credits.warning ? "bg-amber-500" : "bg-[rgb(0,255,255)]"
+                              }`}
+                              style={{ width: `${percentRemaining}%` }}
+                            />
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-[rgb(150,150,170)]">
+                            <div>
+                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Balance</span>
+                              <div className="font-mono text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.balance).toLocaleString()}</div>
+                            </div>
+                            <div>
+                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Used</span>
+                              <div className="font-mono text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.used).toLocaleString()}</div>
+                            </div>
+                            <div>
+                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Monthly limit</span>
+                              <div className="font-mono text-xs text-[rgb(0,255,255)]">
+                                {isWallet ? "No monthly reset" : credits.limit.toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="uppercase tracking-wider text-[9px] text-[rgb(0,255,255)]/50">Resets</span>
+                              <div className="font-mono text-xs text-[rgb(0,255,255)]">
+                                {isWallet ? "—" : (resetDate || "—")}
+                              </div>
+                            </div>
+                          </div>
+
+                          {isWallet && (
+                            <p className="mt-2 text-[11px] text-[rgb(150,150,170)]">
+                              One-time trial credits (no monthly reset).
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
 
                   {/* Upgrade Options */}
                   {credits.tier !== "max" && (
@@ -389,22 +406,33 @@ export default function SettingsPage() {
                       <div className="grid grid-cols-2 gap-3">
                         {credits.tier === "free" && (
                           <button
+                            onClick={() => handleUpgrade("indie")}
+                            disabled={upgradeLoading !== null}
+                            className="p-3 border border-emerald-500/30 bg-[rgb(10,10,25)] hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <p className="text-sm font-bold text-emerald-400">Indie</p>
+                            <p className="text-xs text-emerald-400/50 mt-1">2,500 credits / month</p>
+                          </button>
+                        )}
+                        {(credits.tier === "free" || credits.tier === "indie") && (
+                          <button
                             onClick={() => handleUpgrade("pro")}
                             disabled={upgradeLoading !== null}
                             className="p-3 border border-sky-500/30 bg-[rgb(10,10,25)] hover:bg-sky-500/10 hover:border-sky-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <p className="text-sm font-bold text-sky-400">Pro</p>
-                            <p className="text-xs text-sky-400/50 mt-1">25 games</p>
+                            <p className="text-xs text-sky-400/50 mt-1">5,000 credits / month</p>
                           </button>
                         )}
-                        <button
-                          onClick={() => handleUpgrade("max")}
-                          disabled={upgradeLoading !== null}
-                          className="p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <p className="text-sm font-bold text-purple-400">Max</p>
-                          <p className="text-xs text-purple-400/50 mt-1">100 games</p>
-                        </button>
+                        {(credits.tier === "free" || credits.tier === "indie" || credits.tier === "pro") && (
+                          <Link
+                            href="/support"
+                            className="p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all"
+                          >
+                            <p className="text-sm font-bold text-purple-400">Enterprise</p>
+                            <p className="text-xs text-purple-400/50 mt-1">Custom pricing</p>
+                          </Link>
+                        )}
                       </div>
                     </div>
                   )}

@@ -36,12 +36,20 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { credits } = useCredits();
   const { userUnreadCount, adminUnreadCount } = useSupportNotification();
   const compact = density === "compact";
-  const tierLabel = credits?.tier ? credits.tier.charAt(0).toUpperCase() + credits.tier.slice(1) : null;
+  const tierLabelMap: Record<string, string> = {
+    free: "Free",
+    indie: "Indie",
+    pro: "Pro",
+    max: "Enterprise",
+  };
+  const tierLabel = credits?.tier ? (tierLabelMap[credits.tier] ?? credits.tier) : null;
   const tierBadgeClass = credits?.tier === "max"
     ? "border-purple-500/30 bg-purple-500/10 text-purple-400"
     : credits?.tier === "pro"
     ? "border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)]"
-    : "border-sky-500/30 bg-sky-500/10 text-sky-400";
+    : credits?.tier === "indie"
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+    : "border-slate-500/30 bg-slate-500/10 text-slate-300";
 
   // Get notification count for support/inbox
   const supportNotificationCount = isAdmin ? adminUnreadCount : userUnreadCount;

@@ -17,7 +17,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Navigation
     'nav.home': 'Home',
     'nav.dashboard': 'Dashboard',
-    'nav.chat': 'Chat',
+    'nav.chat': 'Chat with Agent',
     'nav.compare': 'Compare',
     'nav.database': 'Database',
     'nav.reports': 'Reports',
@@ -112,8 +112,9 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.noAnalysesDesc': 'Search for a game to start your first analysis.',
     'dashboard.openReviews': 'Open reviews',
     'dashboard.filtersActive': 'Active',
-    'dashboard.showFilters': 'Show filters',
-    'dashboard.hideFilters': 'Hide filters',
+    'dashboard.showFilters': 'Show all filters',
+    'dashboard.hideFilters': 'Hide all filters',
+    'dashboard.lastMonthOnly': 'Last month only',
     'dashboard.categoriesOverview': 'Categories overview',
     'dashboard.topIssues': 'Top issues',
     'dashboard.topRequests': 'Top feature requests',
@@ -140,7 +141,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.queueStatus': 'Queue: {count} running',
 
     // Chat
-    'chat.title': 'AI Assistant',
+    'chat.title': 'Chat with Agent',
     'chat.subtitle': 'Your intelligent conversation partner',
     'chat.placeholder': 'Type your message...',
     'chat.send': 'Send',
@@ -267,7 +268,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Navigation
     'nav.home': 'Home',
     'nav.dashboard': 'Cruscotto',
-    'nav.chat': 'Chat',
+    'nav.chat': 'Chat con Agente',
     'nav.compare': 'Confronta',
     'nav.database': 'Database',
     'nav.reports': 'Rapporti',
@@ -362,8 +363,9 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.noAnalysesDesc': 'Cerca un gioco per iniziare la tua prima analisi.',
     'dashboard.openReviews': 'Apri recensioni',
     'dashboard.filtersActive': 'Attivi',
-    'dashboard.showFilters': 'Mostra filtri',
-    'dashboard.hideFilters': 'Nascondi filtri',
+    'dashboard.showFilters': 'Mostra tutti i filtri',
+    'dashboard.hideFilters': 'Nascondi tutti i filtri',
+    'dashboard.lastMonthOnly': 'Solo ultimo mese',
     'dashboard.categoriesOverview': 'Panoramica categorie',
     'dashboard.topIssues': 'Principali problemi',
     'dashboard.topRequests': 'Principali richieste',
@@ -390,7 +392,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.queueStatus': 'Coda: {count} in esecuzione',
 
     // Chat
-    'chat.title': 'Assistente AI',
+    'chat.title': 'Chat con Agente',
     'chat.subtitle': 'Il tuo partner conversazionale intelligente',
     'chat.placeholder': 'Scrivi il tuo messaggio...',
     'chat.send': 'Invia',
@@ -517,7 +519,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Navigation
     'nav.home': 'Accueil',
     'nav.dashboard': 'Tableau de bord',
-    'nav.chat': 'Chat',
+    'nav.chat': 'Chat avec agent',
     'nav.compare': 'Comparer',
     'nav.database': 'Base de données',
     'nav.reports': 'Rapports',
@@ -612,8 +614,9 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.noAnalysesDesc': 'Recherchez un jeu pour commencer votre première analyse.',
     'dashboard.openReviews': 'Ouvrir les avis',
     'dashboard.filtersActive': 'Actifs',
-    'dashboard.showFilters': 'Afficher les filtres',
-    'dashboard.hideFilters': 'Masquer les filtres',
+    'dashboard.showFilters': 'Afficher tous les filtres',
+    'dashboard.hideFilters': 'Masquer tous les filtres',
+    'dashboard.lastMonthOnly': 'Mois dernier seulement',
     'dashboard.categoriesOverview': 'Aperçu des catégories',
     'dashboard.topIssues': 'Principaux problèmes',
     'dashboard.topRequests': 'Principales demandes',
@@ -640,7 +643,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.queueStatus': 'File : {count} en cours',
 
     // Chat
-    'chat.title': 'Assistant IA',
+    'chat.title': 'Chat avec agent',
     'chat.subtitle': 'Votre partenaire conversationnel intelligent',
     'chat.placeholder': 'Tapez votre message...',
     'chat.send': 'Envoyer',
@@ -767,7 +770,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Navigation
     'nav.home': 'Startseite',
     'nav.dashboard': 'Dashboard',
-    'nav.chat': 'Chat',
+    'nav.chat': 'Chat mit Agent',
     'nav.compare': 'Vergleichen',
     'nav.database': 'Datenbank',
     'nav.reports': 'Berichte',
@@ -862,8 +865,9 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.noAnalysesDesc': 'Suchen Sie nach einem Spiel, um Ihre erste Analyse zu starten.',
     'dashboard.openReviews': 'Bewertungen öffnen',
     'dashboard.filtersActive': 'Aktiv',
-    'dashboard.showFilters': 'Filter anzeigen',
-    'dashboard.hideFilters': 'Filter ausblenden',
+    'dashboard.showFilters': 'Alle Filter anzeigen',
+    'dashboard.hideFilters': 'Alle Filter ausblenden',
+    'dashboard.lastMonthOnly': 'Nur letzter Monat',
     'dashboard.categoriesOverview': 'Kategorieübersicht',
     'dashboard.topIssues': 'Hauptprobleme',
     'dashboard.topRequests': 'Hauptanfragen',
@@ -890,7 +894,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.queueStatus': 'Warteschlange: {count} läuft',
 
     // Chat
-    'chat.title': 'KI-Assistent',
+    'chat.title': 'Chat mit Agent',
     'chat.subtitle': 'Ihr intelligenter Gesprächspartner',
     'chat.placeholder': 'Geben Sie Ihre Nachricht ein...',
     'chat.send': 'Senden',

@@ -92,6 +92,13 @@ type ChatPart =
 
 const CHART_BLOCK_RE = /```(?:chart|chartjs|chart-json)\n([\s\S]*?)```/gi;
 
+const TIER_LABELS: Record<string, string> = {
+  free: "Free",
+  indie: "Indie",
+  pro: "Pro",
+  max: "Enterprise",
+};
+
 function splitChatContent(content: string): ChatPart[] {
   const parts: ChatPart[] = [];
   let lastIndex = 0;
@@ -495,7 +502,7 @@ export default function AdminPage() {
     }
   }
 
-  async function handleUpdateTier(userId: string, newTier: "free" | "pro" | "max") {
+  async function handleUpdateTier(userId: string, newTier: "free" | "indie" | "pro" | "max") {
     setUpdatingTier(userId);
     setTierUpdateSuccess(null);
     setTierUpdateError(null);
@@ -760,7 +767,9 @@ export default function AdminPage() {
                 <div className="space-y-2">
                   {adminDashboard.users.tier_counts.map((item, idx) => (
                     <div key={`${item.tier ?? "unknown"}-${idx}`} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">{item.tier ?? "unknown"}</span>
+                      <span className="text-slate-400">
+                        {item.tier ? (TIER_LABELS[item.tier] ?? item.tier) : "unknown"}
+                      </span>
                       <span className="font-mono text-amber-300">{item.count.toLocaleString()}</span>
                     </div>
                   ))}
@@ -941,7 +950,7 @@ export default function AdminPage() {
                       </p>
                     </div>
                     <div className="flex gap-1">
-                      {(["free", "pro", "max"] as const).map((tier) => (
+                      {(["free", "indie", "pro", "max"] as const).map((tier) => (
                         <button
                           key={tier}
                           onClick={() => handleUpdateTier(user.user_id, tier)}
@@ -950,13 +959,15 @@ export default function AdminPage() {
                             user.tier === tier
                               ? tier === "free"
                                 ? "bg-slate-600 text-white border border-slate-500"
+                                : tier === "indie"
+                                ? "bg-emerald-600 text-white border border-emerald-500"
                                 : tier === "pro"
                                 ? "bg-sky-600 text-white border border-sky-500"
-                                : "bg-amber-600 text-white border border-amber-500"
+                                : "bg-purple-600 text-white border border-purple-500"
                               : "bg-slate-900/50 text-slate-400 border border-white/10 hover:border-white/20 hover:text-white"
                           } disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
-                          {tier}
+                          {TIER_LABELS[tier] ?? tier}
                         </button>
                       ))}
                     </div>

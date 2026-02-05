@@ -483,12 +483,8 @@ export default function ChatPage() {
   // Message feedback state: tracks which message indices user has voted on
   const [messageFeedback, setMessageFeedback] = useState<Record<number, boolean>>({});
   const [feedbackSubmitting, setFeedbackSubmitting] = useState<number | null>(null);
-  const [mounted, setMounted] = useState(false);
   const chatLocked = selectedGames.length === 0 && messages.length === 0;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -841,7 +837,8 @@ export default function ChatPage() {
         {/* Main Content Area */}
         <div className="flex-1 flex gap-4 overflow-hidden">
           {/* Left Sidebar: Chat History */}
-          <Card variant="glass" className={`w-72 flex-shrink-0 p-4 overflow-hidden flex flex-col gap-4 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
+          <Card variant="glass" className="w-72 flex-shrink-0 p-4 overflow-hidden flex flex-col transition-colors duration-200">
+            <div className="flex-1 flex flex-col gap-4 animate-slide-up-soft">
             {/* Chat History */}
             <div className="flex-1 flex flex-col min-h-0">
               <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
@@ -851,7 +848,19 @@ export default function ChatPage() {
                 {t('chat.history')}
               </h2>
               <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
-                {sessions.length === 0 ? (
+                {loadingHistory ? (
+                  <div className="space-y-2 animate-pulse">
+                    {[0, 1, 2, 3].map((idx) => (
+                      <div
+                        key={`session-skeleton-${idx}`}
+                        className="w-full rounded-lg border border-white/5 bg-slate-900/40 p-3"
+                      >
+                        <div className="h-3 w-3/4 bg-slate-700/40 rounded mb-2" />
+                        <div className="h-2 w-1/2 bg-slate-700/30 rounded" />
+                      </div>
+                    ))}
+                  </div>
+                ) : sessions.length === 0 ? (
                   <p className="text-xs text-slate-500 text-center py-4">{t('chat.noConversations')}</p>
                 ) : (
                   <div className="space-y-2">
@@ -893,410 +902,415 @@ export default function ChatPage() {
                 )}
               </div>
             </div>
+            </div>
           </Card>
 
           {/* Messages Container */}
-          <Card variant="glass" className={`flex-1 flex flex-col overflow-hidden p-6 relative ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
+          <Card variant="glass" className="flex-1 flex flex-col overflow-hidden relative transition-colors duration-200">
             {copyToast && (
               <div className="absolute right-6 top-4 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-1 text-xs text-slate-200">
                 {copyToast}
               </div>
             )}
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 scrollbar-hide">
-            {messages.length > 0 && selectedGames.length > 0 && (
-              <div className="sticky top-0 z-10 -mx-6 mb-3 border-b border-white/10 bg-slate-900/90 px-6 py-2 backdrop-blur">
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <span>Chatting with:</span>
-                  {selectedGames.map((appId) => {
-                    const game = starredGames.find(g => g.app_id === appId);
-                    return game ? (
-                      <span key={appId} className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[11px]">
-                        {game.name}
-                      </span>
-                    ) : null;
-                  })}
-                </div>
-              </div>
-            )}
-            {(loadingHistory || loadingGames) ? (
-              /* Unified loading state - wait for both history and games to load */
-              <div className="h-full flex flex-col items-center justify-center p-4">
-                <div className="w-full max-w-3xl flex flex-col items-center justify-center">
-                  <div className="w-16 h-16 mx-auto border-2 border-[rgb(0,255,255)]/30 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-[rgb(0,255,255)] animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm text-slate-400 mt-4">{t("chat.loadingConversation")}</p>
-                </div>
-              </div>
-            ) : messages.length === 0 ? (
-              /* Game Selection Screen */
-              <div className="h-full flex flex-col items-center justify-center p-4">
-                <div className="w-full max-w-3xl space-y-6">
-                  {/* Header */}
-                  <div className="text-center">
-                    <h2 className="text-lg font-semibold text-white mb-1">
-                      Select Games to Chat About
-                    </h2>
-                    <p className="text-sm text-slate-400">
-                      {selectedGames.length === 0
-                        ? "Choose up to 2 games to unlock chat"
-                        : `${selectedGames.length} selected. Ask a question below or pick a suggested one.`}
-                    </p>
-                  </div>
-
-                  {/* Game Grid */}
-                  {starredGames.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-sm text-slate-400 mb-2">No analyzed games found</p>
-                      <p className="text-xs text-slate-500 mb-4">You need to analyze a game before you can chat about it.</p>
-                      <a href="/" className="text-sm text-[rgb(0,255,255)] hover:underline inline-block">
-                        Go to Dashboard to analyze games
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {starredGames.map((game) => {
-                        const isSelected = selectedGames.includes(game.app_id);
-                        return (
-                          <button
-                            key={game.app_id}
-                            onClick={() => toggleGameSelection(game.app_id)}
-                            className={`relative overflow-hidden rounded-lg border transition-all ${
-                              isSelected
-                                ? "border-sky-500 ring-2 ring-sky-500/50"
-                                : "border-white/10 hover:border-white/20"
-                            }`}
-                          >
-                            <div className="aspect-[460/215] relative">
-                              <SteamImage
-                                appId={game.app_id}
-                                variant="header"
-                                alt={game.name}
-                                className="h-full w-full object-cover"
-                                imageUrl={game.metadata.header_image}
-                              />
-                              {isSelected && (
-                                <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
-                                  <div className="bg-sky-500 text-white rounded-full p-2">
-                                    <svg
-                                      className="w-6 h-6"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={3}
-                                        d="M5 13l4 4L19 7"
-                                      />
-                                    </svg>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            <div className="p-3 bg-slate-900/90">
-                              <p className="text-sm font-medium text-white truncate">{game.name}</p>
-                            </div>
-                            {isSelected && (
-                              <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white z-10">
-                                Selected
-                              </div>
-                            )}
-                          </button>
-                        );
+            <div className="flex h-full flex-col px-6 pb-6 pt-4 animate-slide-up-soft animation-delay-100">
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto mb-4 pr-2 scrollbar-hide">
+                <div className="min-h-full space-y-4">
+                {messages.length > 0 && selectedGames.length > 0 && (
+                  <div className="sticky top-0 z-10 -mx-6 mb-3 border-b border-white/10 bg-slate-900/90 px-6 py-2 backdrop-blur">
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <span>Chatting with:</span>
+                      {selectedGames.map((appId) => {
+                        const game = starredGames.find(g => g.app_id === appId);
+                        return game ? (
+                          <span key={appId} className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[11px]">
+                            {game.name}
+                          </span>
+                        ) : null;
                       })}
                     </div>
-                  )}
+                  </div>
+                )}
+                {messages.length === 0 ? (
+                  /* Game Selection Screen */
+                  <div className="h-full flex flex-col items-center justify-center p-4">
+                    <div className="w-full max-w-3xl space-y-6">
+                      {/* Header */}
+                      <div className="text-center">
+                        <h2 className="text-lg font-semibold text-white mb-1">
+                          Select Games to Chat About
+                        </h2>
+                        <p className="text-sm text-slate-400">
+                          {selectedGames.length === 0
+                            ? "Choose up to 2 games to unlock chat"
+                            : `${selectedGames.length} selected. Ask a question below or pick a suggested one.`}
+                        </p>
+                      </div>
 
-                  {/* Suggested Prompts */}
-                  {selectedGames.length > 0 && (
+                      {/* Game Grid */}
+                      {loadingGames ? (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {[0, 1, 2, 3, 4, 5, 6, 7].map((idx) => (
+                            <div
+                              key={`game-skeleton-${idx}`}
+                              className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-900/40"
+                            >
+                              <div className="aspect-[460/215] bg-slate-800/50 animate-pulse" />
+                              <div className="p-3 bg-slate-900/90">
+                                <div className="h-3 w-3/4 bg-slate-700/40 rounded animate-pulse" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : starredGames.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-sm text-slate-400 mb-2">No analyzed games found</p>
+                          <p className="text-xs text-slate-500 mb-4">You need to analyze a game before you can chat about it.</p>
+                          <a href="/" className="text-sm text-[rgb(0,255,255)] hover:underline inline-block">
+                            Go to Dashboard to analyze games
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {starredGames.map((game) => {
+                            const isSelected = selectedGames.includes(game.app_id);
+                            return (
+                              <button
+                                key={game.app_id}
+                                onClick={() => toggleGameSelection(game.app_id)}
+                                className={`relative overflow-hidden rounded-lg border transition-all ${
+                                  isSelected
+                                    ? "border-sky-500 ring-2 ring-sky-500/50"
+                                    : "border-white/10 hover:border-white/20"
+                                }`}
+                              >
+                                <div className="aspect-[460/215] relative">
+                                  <SteamImage
+                                    appId={game.app_id}
+                                    variant="header"
+                                    alt={game.name}
+                                    className="h-full w-full object-cover"
+                                    imageUrl={game.metadata.header_image}
+                                  />
+                                  {isSelected && (
+                                    <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
+                                      <div className="bg-sky-500 text-white rounded-full p-2">
+                                        <svg
+                                          className="w-6 h-6"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={3}
+                                            d="M5 13l4 4L19 7"
+                                          />
+                                        </svg>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="p-3 bg-slate-900/90">
+                                  <p className="text-sm font-medium text-white truncate">{game.name}</p>
+                                </div>
+                                {isSelected && (
+                                  <div className="absolute right-2 top-2 rounded-full bg-sky-500 px-2 py-1 text-xs font-bold text-white z-10">
+                                    Selected
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Suggested Prompts */}
+                  {!loadingGames && selectedGames.length > 0 && (
                     <div ref={suggestedQueriesRef} className="border-t border-white/10 pt-4">
                       <p className="text-xs uppercase tracking-[0.25em] text-slate-500 mb-3 text-center">
                         Suggested Questions
                       </p>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        {(selectedGames.length > 1
-                          ? [...SUGGESTED_PROMPTS, ...COMPARE_SUGGESTED_PROMPTS]
-                          : SUGGESTED_PROMPTS
-                        ).map((prompt) => (
-                          <button
-                            key={prompt}
-                            onClick={() => sendMessage(prompt)}
-                            className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
-                          >
-                            {prompt}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-xs text-slate-500 mt-3 text-center">
-                        Pick one to start, or type your own question below.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`${
-                      msg.role === "user" ? "max-w-[75%]" : "max-w-[95%]"
-                    } rounded-2xl px-4 py-3 ${
-                      msg.role === "user"
-                        ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-white"
-                        : "bg-slate-900/60 border border-white/10 text-slate-100"
-                    }`}
-                  >
-                    <div className="text-sm text-slate-100 space-y-3">
-                      {splitChatContent(msg.content).map((part, partIdx) => {
-                        if (part.type === "text") {
-                          return (
-                            <ReactMarkdown
-                              key={`text-${partIdx}`}
-                              components={markdownComponents}
-                              remarkPlugins={[remarkGfm]}
-                              rehypePlugins={[rehypeSanitize]}
-                            >
-                              {part.value}
-                            </ReactMarkdown>
-                          );
-                        }
-
-                        const chartRef = { current: null as ChartJS | null };
-                        const spec = part.spec;
-                        const chartData = enhanceChartData(spec);
-                        const chartOptions = buildChartOptions(spec) as any;
-
-                        // Calculate adaptive height for bar charts
-                        let chartHeight = "h-80"; // default
-                        if (spec.type === "bar" && spec.data.labels) {
-                          const numItems = spec.data.labels.length;
-                          // For horizontal bar charts, give more height per item
-                          const isHorizontal = spec.options?.indexAxis === "y";
-                          if (isHorizontal) {
-                            if (numItems <= 3) chartHeight = "h-64";
-                            else if (numItems <= 5) chartHeight = "h-80";
-                            else if (numItems <= 8) chartHeight = "h-96";
-                            else chartHeight = "h-[32rem]";
-                          }
-                        }
-
-                        return (
-                          <div
-                            key={`chart-${partIdx}`}
-                            className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-sm p-5 -mx-2"
-                          >
-                            {spec.title ? (
-                              <p className="text-sm font-semibold text-white mb-2">{spec.title}</p>
-                            ) : null}
-                            {spec.description ? (
-                              <p className="text-xs text-slate-400 mb-3">{spec.description}</p>
-                            ) : null}
-                            <div className={chartHeight}>
-                              <Chart
-                                ref={(instance) => {
-                                  chartRef.current = instance ?? null;
-                                }}
-                                type={spec.type as any}
-                                data={chartData}
-                                options={chartOptions}
-                              />
-                            </div>
-                            <div className="mt-3 flex justify-end">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() =>
-                                  downloadChartImage(
-                                    chartRef.current,
-                                    (spec.title || "chart").toLowerCase().replace(/\s+/g, "-") + ".png"
-                                  )
-                                }
+                          <div className="flex flex-wrap justify-center gap-2">
+                            {(selectedGames.length > 1
+                              ? [...SUGGESTED_PROMPTS, ...COMPARE_SUGGESTED_PROMPTS]
+                              : SUGGESTED_PROMPTS
+                            ).map((prompt) => (
+                              <button
+                                key={prompt}
+                                onClick={() => sendMessage(prompt)}
+                                className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
                               >
-                                Download PNG
-                              </Button>
-                            </div>
+                                {prompt}
+                              </button>
+                            ))}
                           </div>
-                        );
-                      })}
-                    </div>
-                    {/* Citations for game-aware responses */}
-                    {showSources && msg.citations && msg.citations.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t('chat.sources')} ({msg.citations.length})</p>
-                        <div className="space-y-2">
-                          {msg.citations.slice(0, 3).map((citation, citIdx) => (
-                            <div
-                              key={citIdx}
-                              className="bg-slate-800/50 rounded-lg p-2 text-[11px]"
-                            >
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[rgb(0,255,255)]">#{citation.review_id}</span>
-                                <span className="text-slate-500">•</span>
-                                <span className="text-slate-400">{citation.game_name}</span>
-                                <span className="text-slate-500">•</span>
-                                <span className="text-slate-500">{citation.votes_up} helpful</span>
-                              </div>
-                              <p className="text-slate-300 line-clamp-2">&quot;{citation.snippet}&quot;</p>
-                            </div>
-                          ))}
-                          {msg.citations.length > 3 && (
-                            <p className="text-xs text-slate-500">
-                              +{msg.citations.length - 3} more citations
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {/* Source Reviews Widget */}
-                    {showSources && msg.sourceReviews && msg.sourceReviews.length > 0 && (
-                      <SourceReviewsWidget reviews={msg.sourceReviews} />
-                    )}
-                    {/* Suggested follow-up questions */}
-                    {msg.role === "assistant" && msg.suggestedQuestions && msg.suggestedQuestions.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.suggestedQuestions")}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {msg.suggestedQuestions.map((q, qIdx) => (
-                            <button
-                              key={qIdx}
-                              onClick={() => handleSuggestedQuestion(q)}
-                              className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
-                            >
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Clarification options */}
-                    {msg.role === "assistant" && msg.needsClarification && msg.clarificationOptions && msg.clarificationOptions.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.pleaseClarify")}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {msg.clarificationOptions.map((opt, optIdx) => (
-                            <button
-                              key={optIdx}
-                              onClick={() => handleClarificationOption(opt)}
-                              className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition"
-                            >
-                              {opt}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Search for game suggestion */}
-                    {msg.role === "assistant" && msg.suggestSearchGame && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <Link
-                          href="/"
-                          className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 transition"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                          {msg.searchGameName
-                            ? t("chat.searchFor").replace("{game}", `"${msg.searchGameName}"`)
-                            : t("chat.searchForGames")}
-                        </Link>
-                      </div>
-                    )}
-                    {/* Timestamp and message feedback */}
-                    <div className="flex items-center justify-between mt-2 gap-2">
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span>{formatTime(msg.timestamp)}</span>
-                        {msg.role === "assistant" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyAnswer(msg.content)}
-                              className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400"
-                            >
-                              {t("chat.copy")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRegenerate(idx)}
-                              disabled={loading}
-                              className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400 disabled:opacity-50"
-                            >
-                              {t("chat.regenerate")}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      {/* Message feedback buttons - only for assistant messages */}
-                      {msg.role === "assistant" && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleMessageFeedback(idx, true)}
-                            disabled={feedbackSubmitting === idx || messageFeedback[idx] !== undefined}
-                            className={`p-1.5 rounded-lg transition ${
-                              messageFeedback[idx] === true
-                                ? "text-green-400 bg-green-400/10"
-                                : messageFeedback[idx] === false
-                                ? "text-slate-600"
-                                : "text-slate-500 hover:text-green-400 hover:bg-green-400/10"
-                            }`}
-                            title="Helpful response"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleMessageFeedback(idx, false)}
-                            disabled={feedbackSubmitting === idx || messageFeedback[idx] !== undefined}
-                            className={`p-1.5 rounded-lg transition ${
-                              messageFeedback[idx] === false
-                                ? "text-red-400 bg-red-400/10"
-                                : messageFeedback[idx] === true
-                                ? "text-slate-600"
-                                : "text-slate-500 hover:text-red-400 hover:bg-red-400/10"
-                            }`}
-                            title="Not helpful"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
-                            </svg>
-                          </button>
+                          <p className="text-xs text-slate-500 mt-3 text-center">
+                            Pick one to start, or type your own question below.
+                          </p>
                         </div>
                       )}
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-slate-900/60 border border-white/10 rounded-2xl px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                ) : (
+                  messages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`${
+                          msg.role === "user" ? "max-w-[75%]" : "max-w-[95%]"
+                        } rounded-2xl px-4 py-3 ${
+                          msg.role === "user"
+                            ? "bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 text-white"
+                            : "bg-slate-900/60 border border-white/10 text-slate-100"
+                        }`}
+                      >
+                        <div className="text-sm text-slate-100 space-y-3">
+                          {splitChatContent(msg.content).map((part, partIdx) => {
+                            if (part.type === "text") {
+                              return (
+                                <ReactMarkdown
+                                  key={`text-${partIdx}`}
+                                  components={markdownComponents}
+                                  remarkPlugins={[remarkGfm]}
+                                  rehypePlugins={[rehypeSanitize]}
+                                >
+                                  {part.value}
+                                </ReactMarkdown>
+                              );
+                            }
+
+                            const chartRef = { current: null as ChartJS | null };
+                            const spec = part.spec;
+                            const chartData = enhanceChartData(spec);
+                            const chartOptions = buildChartOptions(spec) as any;
+
+                            // Calculate adaptive height for bar charts
+                            let chartHeight = "h-80"; // default
+                            if (spec.type === "bar" && spec.data.labels) {
+                              const numItems = spec.data.labels.length;
+                              // For horizontal bar charts, give more height per item
+                              const isHorizontal = spec.options?.indexAxis === "y";
+                              if (isHorizontal) {
+                                if (numItems <= 3) chartHeight = "h-64";
+                                else if (numItems <= 5) chartHeight = "h-80";
+                                else if (numItems <= 8) chartHeight = "h-96";
+                                else chartHeight = "h-[32rem]";
+                              }
+                            }
+
+                            return (
+                              <div
+                                key={`chart-${partIdx}`}
+                                className="rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-sm p-5 -mx-2"
+                              >
+                                {spec.title ? (
+                                  <p className="text-sm font-semibold text-white mb-2">{spec.title}</p>
+                                ) : null}
+                                {spec.description ? (
+                                  <p className="text-xs text-slate-400 mb-3">{spec.description}</p>
+                                ) : null}
+                                <div className={chartHeight}>
+                                  <Chart
+                                    ref={(instance) => {
+                                      chartRef.current = instance ?? null;
+                                    }}
+                                    type={spec.type as any}
+                                    data={chartData}
+                                    options={chartOptions}
+                                  />
+                                </div>
+                                <div className="mt-3 flex justify-end">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() =>
+                                      downloadChartImage(
+                                        chartRef.current,
+                                        (spec.title || "chart").toLowerCase().replace(/\s+/g, "-") + ".png"
+                                      )
+                                    }
+                                  >
+                                    Download PNG
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Citations for game-aware responses */}
+                        {showSources && msg.citations && msg.citations.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-white/10">
+                            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t('chat.sources')} ({msg.citations.length})</p>
+                            <div className="space-y-2">
+                              {msg.citations.slice(0, 3).map((citation, citIdx) => (
+                                <div
+                                  key={citIdx}
+                                  className="bg-slate-800/50 rounded-lg p-2 text-[11px]"
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[rgb(0,255,255)]">#{citation.review_id}</span>
+                                    <span className="text-slate-500">•</span>
+                                    <span className="text-slate-400">{citation.game_name}</span>
+                                    <span className="text-slate-500">•</span>
+                                    <span className="text-slate-500">{citation.votes_up} helpful</span>
+                                  </div>
+                                  <p className="text-slate-300 line-clamp-2">&quot;{citation.snippet}&quot;</p>
+                                </div>
+                              ))}
+                              {msg.citations.length > 3 && (
+                                <p className="text-xs text-slate-500">
+                                  +{msg.citations.length - 3} more citations
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {/* Source Reviews Widget */}
+                        {showSources && msg.sourceReviews && msg.sourceReviews.length > 0 && (
+                          <SourceReviewsWidget reviews={msg.sourceReviews} />
+                        )}
+                        {/* Suggested follow-up questions */}
+                        {msg.role === "assistant" && msg.suggestedQuestions && msg.suggestedQuestions.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-white/10">
+                            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.suggestedQuestions")}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {msg.suggestedQuestions.map((q, qIdx) => (
+                                <button
+                                  key={qIdx}
+                                  onClick={() => handleSuggestedQuestion(q)}
+                                  className="text-xs px-3 py-1.5 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/20 transition"
+                                >
+                                  {q}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* Clarification options */}
+                        {msg.role === "assistant" && msg.needsClarification && msg.clarificationOptions && msg.clarificationOptions.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-white/10">
+                            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wider">{t("chat.pleaseClarify")}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {msg.clarificationOptions.map((opt, optIdx) => (
+                                <button
+                                  key={optIdx}
+                                  onClick={() => handleClarificationOption(opt)}
+                                  className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition"
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* Search for game suggestion */}
+                        {msg.role === "assistant" && msg.suggestSearchGame && (
+                          <div className="mt-3 pt-3 border-t border-white/10">
+                            <Link
+                              href="/"
+                              className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 transition"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                              {msg.searchGameName
+                                ? t("chat.searchFor").replace("{game}", `"${msg.searchGameName}"`)
+                                : t("chat.searchForGames")}
+                            </Link>
+                          </div>
+                        )}
+                        {/* Timestamp and message feedback */}
+                        <div className="flex items-center justify-between mt-2 gap-2">
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <span>{formatTime(msg.timestamp)}</span>
+                            {msg.role === "assistant" && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyAnswer(msg.content)}
+                                  className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400"
+                                >
+                                  {t("chat.copy")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRegenerate(idx)}
+                                  disabled={loading}
+                                  className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-slate-400 disabled:opacity-50"
+                                >
+                                  {t("chat.regenerate")}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {/* Message feedback buttons - only for assistant messages */}
+                          {msg.role === "assistant" && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleMessageFeedback(idx, true)}
+                                disabled={feedbackSubmitting === idx || messageFeedback[idx] !== undefined}
+                                className={`p-1.5 rounded-lg transition ${
+                                  messageFeedback[idx] === true
+                                    ? "text-green-400 bg-green-400/10"
+                                    : messageFeedback[idx] === false
+                                    ? "text-slate-600"
+                                    : "text-slate-500 hover:text-green-400 hover:bg-green-400/10"
+                                }`}
+                                title="Helpful response"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleMessageFeedback(idx, false)}
+                                disabled={feedbackSubmitting === idx || messageFeedback[idx] !== undefined}
+                                className={`p-1.5 rounded-lg transition ${
+                                  messageFeedback[idx] === false
+                                    ? "text-red-400 bg-red-400/10"
+                                    : messageFeedback[idx] === true
+                                    ? "text-slate-600"
+                                    : "text-slate-500 hover:text-red-400 hover:bg-red-400/10"
+                                }`}
+                                title="Not helpful"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-xs text-slate-400">
-                      {chatStatus || (selectedGames.length > 0 ? "Searching reviews..." : "Thinking...")}
-                    </span>
+                  ))
+                )}
+                {loading && (
+                  <div className="flex justify-start">
+                    <div className="bg-slate-900/60 border border-white/10 rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-2 h-2 bg-[rgb(0,255,255)] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </div>
+                        <span className="text-xs text-slate-400">
+                          {chatStatus || (selectedGames.length > 0 ? "Searching reviews..." : "Thinking...")}
+                        </span>
+                      </div>
+                    </div>
                   </div>
+                )}
+                <div ref={messagesEndRef} />
                 </div>
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
 
-          {/* Input Area */}
-          <div className="border-t border-white/10 pt-4">
+            {/* Input Area */}
+            <div className="border-t border-white/10 pt-4">
             <div className="flex gap-3">
               <textarea
                 value={input}
@@ -1332,8 +1346,9 @@ export default function ChatPage() {
                 <>Select at least one game above to start chatting</>
               )}
             </p>
-          </div>
-        </Card>
+            </div>
+            </div>
+          </Card>
         </div>
       </div>
       </PageTransition>

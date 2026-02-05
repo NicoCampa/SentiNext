@@ -57,7 +57,13 @@ export function CreditBar({ compact = false }: CreditBarProps) {
     return "text-[rgb(0,255,255)]";
   };
 
-  const tierLabel = credits.tier.charAt(0).toUpperCase() + credits.tier.slice(1);
+  const tierLabelMap: Record<string, string> = {
+    free: "Free",
+    indie: "Indie",
+    pro: "Pro",
+    max: "Enterprise",
+  };
+  const tierLabel = tierLabelMap[credits.tier] ?? credits.tier;
 
   if (compact) {
     return (

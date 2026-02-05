@@ -1099,6 +1099,10 @@ function AnalysisResults({
   const [recentReviewsSummary, setRecentReviewsSummary] = useState<RecentReviewsSummaryResponse | null>(null);
   const [recentReviewsSummaryLoading, setRecentReviewsSummaryLoading] = useState(false);
   const [recentReviewsSummaryError, setRecentReviewsSummaryError] = useState<string | null>(null);
+  const [lastMonthOnly, setLastMonthOnly] = useState(false);
+  const [negativeOnly, setNegativeOnly] = useState(false);
+  const [highPlaytime, setHighPlaytime] = useState(false);
+  const [highHelpful, setHighHelpful] = useState(false);
   const [mounted, setMounted] = useState(false);
   const recentSummaryRequestIdRef = useRef(0);
 
@@ -1114,21 +1118,66 @@ function AnalysisResults({
 
   const reviewSample = analysis.reviews ?? EMPTY_REVIEWS;
   const filtersActive = useMemo(
-    () => dashboardFiltersActive(filters) || reviewQuery.trim().length > 0,
-    [filters, reviewQuery],
+    () => dashboardFiltersActive(filters) || reviewQuery.trim().length > 0 || lastMonthOnly || negativeOnly || highPlaytime || highHelpful,
+    [filters, reviewQuery, lastMonthOnly, negativeOnly, highPlaytime, highHelpful],
   );
+
+  // Helper to get last month's date range
+  const getLastMonthRange = useCallback(() => {
+    const now = new Date();
+    const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const month = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    const start = new Date(year, month, 1, 0, 0, 0, 0);
+    const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    return { start, end };
+  }, []);
+
   const filteredReviewSample = useMemo(() => {
-    const filtered = applyDashboardReviewFilters(reviewSample, filters);
+    let filtered = applyDashboardReviewFilters(reviewSample, filters);
+
+    // Apply "last month only" filter
+    if (lastMonthOnly) {
+      const { start, end } = getLastMonthRange();
+      filtered = filtered.filter((review) => {
+        const created = parseDate((review as { created_at?: unknown }).created_at);
+        if (!created) return false;
+        return created >= start && created <= end;
+      });
+    }
+
+    // Apply "negative only" filter
+    if (negativeOnly) {
+      filtered = filtered.filter((review) => !review.voted_up);
+    }
+
+    // Apply "20h+ playtime" filter
+    if (highPlaytime) {
+      filtered = filtered.filter((review) => {
+        const playtime = (review as { author_playtime_hours?: number; author_playtime_forever?: number }).author_playtime_hours
+          ?? ((review as { author_playtime_forever?: number }).author_playtime_forever || 0) / 60;
+        return playtime >= 20;
+      });
+    }
+
+    // Apply "10+ helpful" filter
+    if (highHelpful) {
+      filtered = filtered.filter((review) => ((review as { votes_up?: number }).votes_up || 0) >= 10);
+    }
+
     const query = reviewQuery.trim().toLowerCase();
     if (!query) return filtered;
     return filtered.filter((review) => {
       const text = (review.review ?? "").toLowerCase();
       return text.includes(query);
     });
-  }, [reviewSample, filters, reviewQuery]);
+  }, [reviewSample, filters, reviewQuery, lastMonthOnly, negativeOnly, highPlaytime, highHelpful, getLastMonthRange]);
   const resetFilters = useCallback(() => {
     setFilters({ ...DEFAULT_DASHBOARD_FILTERS });
     setReviewQuery("");
+    setLastMonthOnly(false);
+    setNegativeOnly(false);
+    setHighPlaytime(false);
+    setHighHelpful(false);
   }, []);
   const updateFilters = useCallback((patch: Partial<DashboardFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -1659,6 +1708,14 @@ function AnalysisResults({
 
   const filterScopeLabel = useMemo(() => {
     const parts: string[] = [];
+
+    // Quick filters
+    if (lastMonthOnly) parts.push("last month only");
+    if (negativeOnly) parts.push("negative only");
+    if (highPlaytime) parts.push("20h+ playtime");
+    if (highHelpful) parts.push("10+ helpful");
+
+    // Advanced filters
     if (filters.sentiment === "positive") parts.push("thumbs up only");
     if (filters.sentiment === "negative") parts.push("thumbs down only");
 
@@ -1686,7 +1743,7 @@ function AnalysisResults({
     if (query) parts.push(`search "${query}"`);
 
     return parts.length ? parts.join(" · ") : null;
-  }, [filters, reviewQuery]);
+  }, [filters, reviewQuery, lastMonthOnly, negativeOnly, highPlaytime, highHelpful]);
 
   const handleSummarize = async () => {
     if (!selectedSubcategory || !selectedGame || selectedReviews.length === 0) return;
@@ -1890,6 +1947,7 @@ function AnalysisResults({
       const result = await summarizeRecentReviews({
         app_id: selectedGame.appid,
         count: 100,
+        filter_context: filterScopeLabel ?? undefined,
       });
       if (recentSummaryRequestIdRef.current !== requestId) return;
       setRecentReviewsSummary(result);
@@ -1901,7 +1959,7 @@ function AnalysisResults({
       if (recentSummaryRequestIdRef.current !== requestId) return;
       setRecentReviewsSummaryLoading(false);
     }
-  }, [selectedGame, refreshCredits]);
+  }, [selectedGame, refreshCredits, filterScopeLabel]);
 
   return (
     <div className="space-y-8">
@@ -1957,6 +2015,47 @@ function AnalysisResults({
       </div>
 
         <div className="mt-4 flex items-center gap-3">
+          {/* Quick filter toggles */}
+          <button
+            onClick={() => setLastMonthOnly((prev) => !prev)}
+            className={`text-xs px-2 py-1 rounded border transition-colors ${
+              lastMonthOnly
+                ? "border-sky-500/50 bg-sky-500/20 text-sky-300"
+                : "border-white/10 text-slate-400 hover:text-sky-400 hover:border-sky-500/30"
+            }`}
+          >
+            {t('dashboard.lastMonthOnly')}
+          </button>
+          <button
+            onClick={() => setNegativeOnly((prev) => !prev)}
+            className={`text-xs px-2 py-1 rounded border transition-colors ${
+              negativeOnly
+                ? "border-rose-500/50 bg-rose-500/20 text-rose-300"
+                : "border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/30"
+            }`}
+          >
+            Negative only
+          </button>
+          <button
+            onClick={() => setHighPlaytime((prev) => !prev)}
+            className={`text-xs px-2 py-1 rounded border transition-colors ${
+              highPlaytime
+                ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
+                : "border-white/10 text-slate-400 hover:text-amber-400 hover:border-amber-500/30"
+            }`}
+          >
+            20h+ playtime
+          </button>
+          <button
+            onClick={() => setHighHelpful((prev) => !prev)}
+            className={`text-xs px-2 py-1 rounded border transition-colors ${
+              highHelpful
+                ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+                : "border-white/10 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30"
+            }`}
+          >
+            10+ helpful
+          </button>
           {filtersActive && (
             <button onClick={resetFilters} className="text-xs text-slate-500 hover:text-slate-300">
               {t('common.clearFilters')}
@@ -2582,8 +2681,12 @@ function AnalysisResults({
                 <p className="mt-1 text-sm text-slate-400">
                   {selectedMainLabel} · {selectedReviews.length.toLocaleString()} reviews
                   {selectedSubcategoryLanguageLabel ? ` · ${selectedSubcategoryLanguageLabel} only` : ""}
-                  {filtersActive ? " · filters applied" : ""}
                 </p>
+                {filterScopeLabel && (
+                  <p className="mt-1 text-xs text-sky-400">
+                    Filters: {filterScopeLabel}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -2858,8 +2961,12 @@ function AnalysisResults({
                   <h3 className="text-lg font-semibold text-white">Week of {formatTrendLabel(selectedTrendWeek.start)}</h3>
                   <p className="mt-1 text-sm text-slate-400">
                     {selectedTrendWeek.label} - {selectedWeekReviews.length.toLocaleString()} reviews
-                    {filtersActive ? " - filters applied" : ""}
                   </p>
+                  {filterScopeLabel && (
+                    <p className="mt-1 text-xs text-sky-400">
+                      Filters: {filterScopeLabel}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -3116,8 +3223,12 @@ function AnalysisResults({
                   </h3>
                   <p className="mt-1 text-sm text-slate-400">
                     {selectedSegment.description} - {selectedSegmentReviews.length.toLocaleString()} reviews
-                    {filtersActive ? " - filters applied" : ""}
                   </p>
+                  {filterScopeLabel && (
+                    <p className="mt-1 text-xs text-sky-400">
+                      Filters: {filterScopeLabel}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -3378,6 +3489,11 @@ function AnalysisResults({
                         ? ` · ${recentReviewsSummary.start_date} → ${recentReviewsSummary.end_date}`
                         : ""}
                     </p>
+                    {filterScopeLabel && (
+                      <p className="mt-1 text-xs text-sky-400">
+                        Filters: {filterScopeLabel}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="primary" onClick={handleSummarizeRecentReviews} disabled={recentReviewsSummaryLoading}>

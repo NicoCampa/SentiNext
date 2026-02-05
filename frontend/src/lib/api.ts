@@ -98,6 +98,26 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function throwIfInsufficientCredits(response: Response): Promise<void> {
+  if (response.status !== 402) return;
+  let message = "Insufficient credits";
+  try {
+    const error = await response.json();
+    message =
+      error?.detail?.message ||
+      error?.message ||
+      message;
+  } catch {
+    try {
+      const text = await response.text();
+      if (text) message = text;
+    } catch {
+      // ignore
+    }
+  }
+  throw new Error(message);
+}
+
 export async function searchGames(query: string): Promise<SearchResult[]> {
   const url = new URL(apiUrl("/search"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
   url.searchParams.set("query", query);
@@ -353,6 +373,7 @@ export async function chatWithInsights(payload: ChatRequestPayload): Promise<Cha
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfInsufficientCredits(response);
   return handleResponse<ChatResponse>(response);
 }
 
@@ -713,6 +734,7 @@ export async function sendEnhancedChat(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfInsufficientCredits(response);
   return handleResponse<EnhancedChatResponse>(response);
 }
 
@@ -1130,7 +1152,7 @@ export async function fetchUserSubscriptions(
 
 export interface UpdateTierPayload {
   user_id: string;
-  tier: "free" | "pro" | "max";
+  tier: "free" | "indie" | "pro" | "max";
 }
 
 export interface UpdateTierResponse {
@@ -1176,6 +1198,7 @@ export async function translateText(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfInsufficientCredits(response);
   return handleResponse<TranslateResponse>(response);
 }
 
@@ -1183,7 +1206,7 @@ export async function translateText(
 // Credit System API
 // ============================================================================
 
-export type SubscriptionTier = "free" | "pro" | "max";
+export type SubscriptionTier = "free" | "indie" | "pro" | "max";
 
 export interface CreditStatus {
   balance: number;
@@ -1252,7 +1275,7 @@ export async function fetchCreditEstimate(
  * Create a Stripe checkout session for subscription upgrade.
  */
 export async function createCheckoutSession(
-  tier: "pro" | "max",
+  tier: "indie" | "pro",
   successUrl: string,
   cancelUrl: string,
   billingPeriod: "monthly" | "annual" = "monthly"
@@ -1330,6 +1353,7 @@ export async function summarizeSubcategory(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfInsufficientCredits(response);
   return handleResponse<SubcategorySummaryResponse>(response);
 }
 
@@ -1372,6 +1396,7 @@ export async function summarizeWidget(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfInsufficientCredits(response);
   return handleResponse<WidgetSummaryResponse>(response);
 }
 
@@ -1382,6 +1407,7 @@ export async function summarizeWidget(
 export interface RecentReviewsSummaryPayload {
   app_id: number;
   count?: number;
+  filter_context?: string;
 }
 
 export interface RecentReviewsSummaryResponse {
@@ -1401,6 +1427,7 @@ export async function summarizeRecentReviews(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  await throwIfInsufficientCredits(response);
   return handleResponse<RecentReviewsSummaryResponse>(response);
 }
 

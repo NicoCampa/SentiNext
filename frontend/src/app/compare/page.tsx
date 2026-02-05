@@ -565,6 +565,9 @@ function ComparisonDashboard({
   const [filters, setFilters] = useState<CompareFilters>(() => ({ ...DEFAULT_COMPARE_FILTERS }));
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [negativeOnly, setNegativeOnly] = useState(false);
+  const [highPlaytime, setHighPlaytime] = useState(false);
+  const [highHelpful, setHighHelpful] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -578,9 +581,12 @@ function ComparisonDashboard({
   const resetFilters = () => {
     setFilters({ ...DEFAULT_COMPARE_FILTERS });
     setSearchQuery("");
+    setNegativeOnly(false);
+    setHighPlaytime(false);
+    setHighHelpful(false);
   };
 
-  const filtersActive = compareFiltersActive(filters) || searchQuery.trim().length > 0;
+  const filtersActive = compareFiltersActive(filters) || searchQuery.trim().length > 0 || negativeOnly || highPlaytime || highHelpful;
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -602,6 +608,20 @@ function ComparisonDashboard({
     return games.map((game) => {
       const sample = game.sample ?? [];
       let filteredSample = applyCompareFilters(sample, filters);
+
+      // Apply quick filters
+      if (negativeOnly) {
+        filteredSample = filteredSample.filter((review) => !isRecommended(review.voted_up));
+      }
+      if (highPlaytime) {
+        filteredSample = filteredSample.filter((review) => {
+          const minutes = Number(review.author_playtime_forever ?? 0);
+          return Number.isFinite(minutes) && minutes >= 1200; // 20h = 1200 minutes
+        });
+      }
+      if (highHelpful) {
+        filteredSample = filteredSample.filter((review) => (review.votes_up ?? 0) >= 10);
+      }
 
       // Apply text search filter
       const query = searchQuery.trim().toLowerCase();
@@ -640,7 +660,7 @@ function ComparisonDashboard({
         sample: filteredSample,
       };
     });
-  }, [games, filters, searchQuery]);
+  }, [games, filters, searchQuery, negativeOnly, highPlaytime, highHelpful]);
 
   const categories = useMemo(() => {
     let cats = CATEGORY_KEYS.map((key) => {
@@ -739,6 +759,20 @@ function ComparisonDashboard({
       // Otherwise use insights trend if available
       let filteredSample = applyCompareFilters(games[idx]?.sample ?? [], filters);
 
+      // Apply quick filters
+      if (negativeOnly) {
+        filteredSample = filteredSample.filter((review) => !isRecommended(review.voted_up));
+      }
+      if (highPlaytime) {
+        filteredSample = filteredSample.filter((review) => {
+          const minutes = Number(review.author_playtime_forever ?? 0);
+          return Number.isFinite(minutes) && minutes >= 1200;
+        });
+      }
+      if (highHelpful) {
+        filteredSample = filteredSample.filter((review) => (review.votes_up ?? 0) >= 10);
+      }
+
       // Apply text search filter
       const query = searchQuery.trim().toLowerCase();
       if (query) {
@@ -763,7 +797,7 @@ function ComparisonDashboard({
         color: TREND_COLORS[idx % TREND_COLORS.length],
       };
     });
-  }, [gameData, games, filters, filtersActive, searchQuery]);
+  }, [gameData, games, filters, filtersActive, searchQuery, negativeOnly, highPlaytime, highHelpful]);
 
   const trendKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -882,8 +916,39 @@ function ComparisonDashboard({
   // Radar chart data
   return (
     <div className="space-y-8">
-      {/* Filters Toggle */}
+      {/* Quick Filters and Filters Toggle */}
       <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => setNegativeOnly((prev) => !prev)}
+          className={`text-xs px-2 py-1 rounded border transition-colors ${
+            negativeOnly
+              ? "border-rose-500/50 bg-rose-500/20 text-rose-300"
+              : "border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/30"
+          }`}
+        >
+          Negative only
+        </button>
+        <button
+          onClick={() => setHighPlaytime((prev) => !prev)}
+          className={`text-xs px-2 py-1 rounded border transition-colors ${
+            highPlaytime
+              ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
+              : "border-white/10 text-slate-400 hover:text-amber-400 hover:border-amber-500/30"
+          }`}
+        >
+          20h+ playtime
+        </button>
+        <button
+          onClick={() => setHighHelpful((prev) => !prev)}
+          className={`text-xs px-2 py-1 rounded border transition-colors ${
+            highHelpful
+              ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+              : "border-white/10 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30"
+          }`}
+        >
+          10+ helpful
+        </button>
+
         <button
           onClick={() => setFiltersOpen((prev) => !prev)}
           className="text-xs text-slate-400 hover:text-white transition-colors"

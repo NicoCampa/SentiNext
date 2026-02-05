@@ -308,6 +308,20 @@ a:hover {
   opacity: 0;
 }
 
+/* Slide-up without opacity (prevents flicker) */
+@keyframes slideUpSoft {
+  from {
+    transform: translateY(12px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up-soft {
+  animation: slideUpSoft 0.4s ease-out;
+}
+
 /* Animation delay utilities for staggered effects */
 .animation-delay-100 { animation-delay: 100ms; }
 .animation-delay-200 { animation-delay: 200ms; }

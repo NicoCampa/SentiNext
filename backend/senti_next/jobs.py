@@ -87,9 +87,6 @@ def run_analysis_job(
                 game_context=game_context,
             )
 
-        # Analysis is free - no credit deduction for review classification
-        # Credits are only used for chat, summarize, and compare features
-
         df = build_reviews_dataframe(all_reviews)
         df = llm.apply_review_labels(df, llm_labels)
 
@@ -129,6 +126,23 @@ def run_analysis_job(
         if job_id:
             storage.update_job_registry(job_id, status="completed")
 
+    except credits.InsufficientCreditsError as exc:
+        logger.info("Analysis failed due to insufficient credits: %s", exc)
+        storage.save_analysis_result(
+            user_id=user_id,
+            app_id=app_id,
+            metadata=metadata_dict,
+            insights=None,
+            reviews=[],
+            status="failed",
+            error=str(exc),
+            run_id=run_id,
+            snapshot_hash=snapshot_hash,
+            context_hash=context_hash,
+        )
+        if job_id:
+            storage.update_job_registry(job_id, status="failed", error=str(exc))
+        return
     except Exception as exc:
         logger.exception("Analysis job failed: %s", exc)
         storage.save_analysis_result(

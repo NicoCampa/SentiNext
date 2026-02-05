@@ -10,19 +10,25 @@ logger = logging.getLogger(__name__)
 # Stripe configuration from environment
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_PRICE_INDIE = os.getenv("STRIPE_PRICE_INDIE")
 STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_MAX = os.getenv("STRIPE_PRICE_MAX")
 # Annual pricing
+STRIPE_PRICE_INDIE_ANNUAL = os.getenv("STRIPE_PRICE_INDIE_ANNUAL")
 STRIPE_PRICE_PRO_ANNUAL = os.getenv("STRIPE_PRICE_PRO_ANNUAL")
 STRIPE_PRICE_MAX_ANNUAL = os.getenv("STRIPE_PRICE_MAX_ANNUAL")
 
 # Map price IDs to tiers
 PRICE_TO_TIER = {}
+if STRIPE_PRICE_INDIE:
+    PRICE_TO_TIER[STRIPE_PRICE_INDIE] = "indie"
 if STRIPE_PRICE_PRO:
     PRICE_TO_TIER[STRIPE_PRICE_PRO] = "pro"
 if STRIPE_PRICE_MAX:
     PRICE_TO_TIER[STRIPE_PRICE_MAX] = "max"
 # Annual prices map to same tiers
+if STRIPE_PRICE_INDIE_ANNUAL:
+    PRICE_TO_TIER[STRIPE_PRICE_INDIE_ANNUAL] = "indie"
 if STRIPE_PRICE_PRO_ANNUAL:
     PRICE_TO_TIER[STRIPE_PRICE_PRO_ANNUAL] = "pro"
 if STRIPE_PRICE_MAX_ANNUAL:
@@ -56,7 +62,7 @@ def create_checkout_session(
 
     Args:
         user_id: User ID to associate with subscription
-        tier: Target tier ('pro' or 'max')
+        tier: Target tier ('indie' or 'pro')
         success_url: URL to redirect to on success
         cancel_url: URL to redirect to on cancel
         user_email: Optional email to prefill
@@ -71,19 +77,19 @@ def create_checkout_session(
 
     # Get price ID for tier and billing period
     if billing_period == "annual":
-        if tier == "pro":
+        if tier == "indie":
+            price_id = STRIPE_PRICE_INDIE_ANNUAL
+        elif tier == "pro":
             price_id = STRIPE_PRICE_PRO_ANNUAL
-        elif tier == "max":
-            price_id = STRIPE_PRICE_MAX_ANNUAL
         else:
             raise ValueError(f"Invalid tier for checkout: {tier}")
         if not price_id:
             raise ValueError(f"STRIPE_PRICE_{tier.upper()}_ANNUAL is not configured")
     else:
-        if tier == "pro":
+        if tier == "indie":
+            price_id = STRIPE_PRICE_INDIE
+        elif tier == "pro":
             price_id = STRIPE_PRICE_PRO
-        elif tier == "max":
-            price_id = STRIPE_PRICE_MAX
         else:
             raise ValueError(f"Invalid tier for checkout: {tier}")
         if not price_id:

@@ -40,33 +40,46 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
 
             <section className="py-24 w-full flex justify-center relative">
                 <div className="container px-4 md:px-6 mx-auto relative z-10">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-10 max-w-7xl mx-auto items-start">
-                        {/* Free */}
+                    <div className="flex items-center justify-center mb-8">
+                        <Button
+                            variant="outline"
+                            className="h-10 text-xs font-bold uppercase tracking-[0.2em] rounded-none border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10"
+                            asChild
+                        >
+                            <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}>
+                                {lang === 'it' ? 'Provalo gratis' : 'Try it for free'}
+                            </Link>
+                        </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 max-w-7xl mx-auto items-start">
+
+                        {/* Indie */}
                         <PricingCard
-                            name="Free"
-                            price="$0"
+                            name="Indie"
+                            price="$10"
                             period="/ month"
-                            description={lang === 'it' ? 'Per provare SENTINEXT con un limite di crediti.' : 'Try SENTINEXT with a limited monthly credit allowance.'}
+                            description={lang === 'it' ? 'Per team piccoli e dev indie.' : 'For small teams and indie developers.'}
                             features={[
-                                lang === 'it' ? "500 crediti / mese" : "500 credits / month",
-                                lang === 'it' ? "Fino a 2 giochi analizzati" : "Up to 2 analyzed games",
-                                lang === 'it' ? "Analisi recensioni (crediti applicati)" : "Review analysis (credits apply)",
-                                lang === 'it' ? "Chat agente e confronti (crediti applicati)" : "AI agent chat + comparisons (credits apply)",
+                                lang === 'it' ? "2.500 crediti / mese" : "2,500 credits / month",
+                                lang === 'it' ? "Fino a 10 giochi analizzati" : "Up to 10 analyzed games",
+                                lang === 'it' ? "Dashboard + Chat agente + Confronti" : "Dashboards + AI agent chat + Compare",
+                                lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
                                 lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
                             ]}
-                            cta={dict.common.initialize}
+                            cta={lang === 'it' ? 'Passa a Indie' : 'Upgrade to Indie'}
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
                         />
 
                         {/* Pro Tier (Highlighted) */}
                         <PricingCard
                             name="Pro"
-                            price="$19"
+                            price="$20"
                             period="/ month"
                             description={lang === 'it' ? 'Per studi che analizzano regolarmente.' : 'For teams that analyze reviews regularly.'}
                             features={[
                                 lang === 'it' ? "5.000 crediti / mese" : "5,000 credits / month",
-                                lang === 'it' ? "Giochi analizzati illimitati" : "Unlimited analyzed games",
+                                lang === 'it' ? "Fino a 25 giochi analizzati" : "Up to 25 analyzed games",
                                 lang === 'it' ? "Dashboard + Chat agente + Confronti" : "Dashboards + AI agent chat + Compare",
                                 lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
                                 lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
@@ -76,21 +89,20 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             popular
                         />
 
-                        {/* Max */}
+                        {/* Enterprise */}
                         <PricingCard
-                            name="Max"
-                            price="$49"
-                            period="/ month"
-                            description={lang === 'it' ? 'Per portfolio e uso intensivo di chat.' : 'For portfolios and heavy chat usage.'}
+                            name="Enterprise"
+                            price={lang === 'it' ? 'Personalizzato' : 'Custom'}
+                            description={lang === 'it' ? 'Per studi con esigenze avanzate.' : 'For studios with advanced needs.'}
                             features={[
-                                lang === 'it' ? "25.000 crediti / mese" : "25,000 credits / month",
-                                lang === 'it' ? "Giochi analizzati illimitati" : "Unlimited analyzed games",
-                                lang === 'it' ? "Ideale per confronti e report su più titoli" : "Best for comparisons across many titles",
-                                lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
+                                lang === 'it' ? "Crediti e limiti su misura" : "Custom credits & limits",
+                                lang === 'it' ? "Giochi illimitati" : "Unlimited games",
+                                lang === 'it' ? "Supporto prioritario" : "Priority support",
+                                lang === 'it' ? "Report su misura" : "Custom reporting",
                                 lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
                             ]}
-                            cta={lang === 'it' ? 'Passa a Max' : 'Upgrade to Max'}
-                            href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
+                            cta={lang === 'it' ? 'Contattaci' : 'Contact Us'}
+                            href={`${process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}/support`}
                         />
                     </div>
                 </div>
