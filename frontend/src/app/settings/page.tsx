@@ -12,6 +12,7 @@ import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useCredits } from "@/contexts/CreditsContext";
+import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 
 export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -27,6 +28,8 @@ export default function SettingsPage() {
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const { openUserProfile, signOut } = useClerk();
+  const { user } = useUser();
 
   useEffect(() => {
     setMounted(true);
@@ -233,8 +236,75 @@ export default function SettingsPage() {
               </div>
             </Card>
 
+            {/* Account Section - Mobile only (desktop has it in sidebar) */}
+            <SignedIn>
+              <Card variant="glass" className={`p-4 sm:p-6 lg:hidden ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
+                <div className="mb-4 sm:mb-5">
+                  <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                    <span className="text-sm sm:text-base">👤</span>
+                    <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
+                      {t('settings.account') || 'Account'}
+                    </p>
+                  </div>
+                  <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">Manage your account and sign out</p>
+                </div>
+
+                {/* User Info */}
+                <div className="flex items-center gap-3 p-3 sm:p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20 mb-3">
+                  {/* Avatar */}
+                  <div className="relative flex-shrink-0">
+                    {user?.imageUrl ? (
+                      <img
+                        src={user.imageUrl}
+                        alt="Profile"
+                        className="h-10 w-10 sm:h-12 sm:w-12 rounded-full border border-[rgb(0,255,255)]/30"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full border border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 flex items-center justify-center">
+                        <span className="text-[rgb(0,255,255)] text-base sm:text-lg font-bold">
+                          {user?.firstName?.[0] || user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() || '?'}
+                        </span>
+                      </div>
+                    )}
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-[rgb(0,255,136)] rounded-full border-2 border-[rgb(10,10,25)]" />
+                  </div>
+                  {/* User Details */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm sm:text-base text-white font-medium truncate">
+                      {user?.firstName || user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 'User'}
+                    </p>
+                    <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)] truncate">
+                      {user?.emailAddresses?.[0]?.emailAddress || ''}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Account Actions */}
+                <div className="space-y-2">
+                  <button
+                    onClick={() => openUserProfile()}
+                    className="w-full flex items-center justify-between p-3 bg-[rgb(10,10,25)] border border-[rgb(0,255,255)]/20 hover:border-[rgb(0,255,255)]/50 hover:bg-[rgb(0,255,255)]/5 transition-all active:scale-[0.98]"
+                  >
+                    <span className="text-xs sm:text-sm text-[rgb(200,200,210)]">Manage Account</span>
+                    <svg className="w-4 h-4 text-[rgb(0,255,255)]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => signOut()}
+                    className="w-full flex items-center justify-between p-3 bg-[rgb(10,10,25)] border border-rose-500/20 hover:border-rose-500/50 hover:bg-rose-500/5 transition-all active:scale-[0.98]"
+                  >
+                    <span className="text-xs sm:text-sm text-rose-400">Sign Out</span>
+                    <svg className="w-4 h-4 text-rose-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </button>
+                </div>
+              </Card>
+            </SignedIn>
+
             {/* System Status */}
-            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
+            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200 lg:animation-delay-100' : 'opacity-0'}`}>
               <div className="mb-4 sm:mb-5">
                 <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                   <span className="text-sm sm:text-base">📡</span>
@@ -295,7 +365,7 @@ export default function SettingsPage() {
             </Card>
 
             {/* Subscription & Credits */}
-            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300 lg:animation-delay-200' : 'opacity-0'}`}>
               <div className="mb-4 sm:mb-5">
                 <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                   <span className="text-sm sm:text-base">💎</span>
