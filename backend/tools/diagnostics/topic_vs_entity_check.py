@@ -1,8 +1,17 @@
-"""Test script for topic vs entity detection."""
-from senti_next.intent import classify_intent, ChatIntent, extract_topic_or_entity
+"""Topic vs entity detection diagnostic."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from backend.senti_next.intent import classify_intent, ChatIntent, extract_topic_or_entity
 
 
-def test_topic_vs_entity():
+def test_topic_vs_entity() -> None:
     """Test topic vs entity classification."""
     test_cases = [
         # TOPIC_EXAMPLES (use LLM subcategory labels)
@@ -74,7 +83,7 @@ def test_topic_vs_entity():
     print()
 
 
-def test_extraction():
+def test_extraction() -> None:
     """Test topic/entity extraction logic."""
     test_cases = [
         ('what do people think of "Sonic"?', "Sonic", True),
@@ -99,7 +108,12 @@ def test_extraction():
         print()
 
 
-if __name__ == "__main__":
+def main() -> int:
     test_extraction()
     print()
     test_topic_vs_entity()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

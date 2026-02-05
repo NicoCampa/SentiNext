@@ -1,64 +1,85 @@
-"""Test script to compare Gemini models for translation and other tasks.
+"""Compare Gemini models for translation and classification.
 
 Usage:
-    python -m backend.tests.test_llm_models
+    python scripts/llm_validation/compare_gemini_models.py --compare
+    python scripts/llm_validation/compare_gemini_models.py --translate
 
 Environment variables:
     GEMINI_API_KEY - Required for API access
     SENTINEXT_GEMINI_MODEL - Main model (default: gemini-flash-lite-latest)
     SENTINEXT_GEMINI_MODEL_CHEAP - Cheap model for translation (default: gemini-flash-lite-latest)
 """
+from __future__ import annotations
 
+import argparse
 import os
 import sys
 import time
+from pathlib import Path
 
-# Add parent to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-def test_models():
-    """Test different Gemini models and compare their responses."""
+def _ensure_repo_root_on_path() -> None:
+    root = Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
+
+def _require_api_key() -> bool:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        print(f"\nAPI Key: {api_key[:10]}...{api_key[-4:]}")
+        return True
+    print("\nERROR: GEMINI_API_KEY environment variable not set")
+    print("Set it with: export GEMINI_API_KEY='your-key-here'")
+    return False
+
+
+def test_models() -> int:
     print("=" * 60)
     print("GEMINI MODEL COMPARISON TEST")
     print("=" * 60)
 
-    # Check API key
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("\nERROR: GEMINI_API_KEY environment variable not set")
-        print("Set it with: export GEMINI_API_KEY='your-key-here'")
-        sys.exit(1)
+    if not _require_api_key():
+        return 1
 
-    print(f"\nAPI Key: {api_key[:10]}...{api_key[-4:]}")
-
-    # Import after path setup
     from backend.senti_next import llm
 
-    print(f"\n[Configuration]")
+    print("\n[Configuration]")
     print(f"  GEMINI_MODEL (main): {llm.GEMINI_MODEL}")
     print(f"  GEMINI_MODEL_CHEAP: {llm.GEMINI_MODEL_CHEAP}")
 
-    # Test models to compare
     models_to_test = [
         "gemini-flash-lite-latest",
         "gemini-2.0-flash",
         "gemini-2.5-flash",
     ]
 
-    # Test prompts
     test_prompts = [
         {
             "name": "Translation (English to Italian)",
-            "prompt": "Translate the following text to Italian.\nOnly output the translated text, nothing else.\n\nText to translate:\nThe game has excellent graphics but the loading times are too long.",
+            "prompt": (
+                "Translate the following text to Italian.\n"
+                "Only output the translated text, nothing else.\n\n"
+                "Text to translate:\n"
+                "The game has excellent graphics but the loading times are too long."
+            ),
         },
         {
             "name": "Translation (English to French)",
-            "prompt": "Translate the following text to French.\nOnly output the translated text, nothing else.\n\nText to translate:\nPlayers are complaining about server disconnections during multiplayer matches.",
+            "prompt": (
+                "Translate the following text to French.\n"
+                "Only output the translated text, nothing else.\n\n"
+                "Text to translate:\n"
+                "Players are complaining about server disconnections during multiplayer matches."
+            ),
         },
         {
             "name": "Simple classification",
-            "prompt": "Classify this game review into one category: positive, negative, or mixed.\n\nReview: The graphics are stunning but the gameplay gets repetitive after a few hours.\n\nOutput only the category name.",
+            "prompt": (
+                "Classify this game review into one category: positive, negative, or mixed.\n\n"
+                "Review: The graphics are stunning but the gameplay gets repetitive after a few hours.\n\n"
+                "Output only the category name."
+            ),
         },
     ]
 
@@ -66,7 +87,7 @@ def test_models():
     print("TESTING MODELS")
     print("=" * 60)
 
-    results = {}
+    results: dict[str, dict[str, list]] = {}
 
     for model in models_to_test:
         print(f"\n{'=' * 60}")
@@ -88,13 +109,11 @@ def test_models():
 
                 print(f"  Time: {elapsed:.2f}s")
                 print(f"  Output: {response.strip()[:100]}{'...' if len(response.strip()) > 100 else ''}")
-
-            except Exception as e:
-                print(f"  ERROR: {e}")
+            except Exception as exc:
+                print(f"  ERROR: {exc}")
                 results[model]["times"].append(None)
                 results[model]["outputs"].append(None)
 
-    # Summary
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
@@ -106,13 +125,13 @@ def test_models():
         valid_times = [t for t in data["times"] if t is not None]
         avg_time = sum(valid_times) / len(valid_times) if valid_times else 0
         success_rate = len(valid_times) / len(data["times"]) * 100 if data["times"] else 0
-
         print(f"{model:<30} {avg_time:.2f}s{'':<7} {success_rate:.0f}%")
 
     print("\n" + "=" * 60)
     print("RECOMMENDATION")
     print("=" * 60)
-    print("""
+    print(
+        """
 For translation tasks, gemini-flash-lite-latest is recommended because:
 - It's significantly cheaper than gemini-2.0-flash and gemini-2.5-flash
 - Translation is a simple task that doesn't need advanced reasoning
@@ -125,14 +144,18 @@ Current configuration:
 On Render, add these environment variables:
   SENTINEXT_GEMINI_MODEL=gemini-2.5-flash
   SENTINEXT_GEMINI_MODEL_CHEAP=gemini-flash-lite-latest
-""")
+"""
+    )
+    return 0
 
 
-def test_translation_function():
-    """Test the translate_text function directly."""
+def test_translation_function() -> int:
     print("\n" + "=" * 60)
     print("TESTING translate_text FUNCTION")
     print("=" * 60)
+
+    if not _require_api_key():
+        return 1
 
     from backend.senti_next import llm
 
@@ -154,23 +177,27 @@ def test_translation_function():
             print(f"  Output: {translated}")
             print(f"  Model: {model_id}")
             print(f"  Time: {elapsed:.2f}s")
-        except Exception as e:
-            print(f"  ERROR: {e}")
+        except Exception as exc:
+            print(f"  ERROR: {exc}")
+    return 0
 
 
-if __name__ == "__main__":
-    import argparse
-
+def main() -> int:
+    _ensure_repo_root_on_path()
     parser = argparse.ArgumentParser(description="Test Gemini models")
     parser.add_argument("--compare", action="store_true", help="Compare all models")
     parser.add_argument("--translate", action="store_true", help="Test translation function only")
     args = parser.parse_args()
 
     if args.translate:
-        test_translation_function()
-    elif args.compare:
-        test_models()
-    else:
-        # Default: run both
-        test_models()
-        test_translation_function()
+        return test_translation_function()
+    if args.compare:
+        return test_models()
+    result = test_models()
+    if result != 0:
+        return result
+    return test_translation_function()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

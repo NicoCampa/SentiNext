@@ -88,19 +88,19 @@ Question → ENTITY_EXAMPLES intent
    - Topic vs entity detection
    - Known topics list
 
-2. **`backend/test_intent_routing.py`** (60 lines)
+2. **`backend/tools/diagnostics/intent_routing_check.py`** (60 lines)
    - Test cases for intent classification
 
-3. **`backend/test_topic_vs_entity.py`** (100 lines)
+3. **`backend/tools/diagnostics/topic_vs_entity_check.py`** (100 lines)
    - Test cases for topic/entity detection
 
-4. **`INTENT_ROUTING_IMPLEMENTATION.md`**
+4. **`docs/INTENT_ROUTING_IMPLEMENTATION.md`**
    - Layer 1 documentation
 
-5. **`TOPIC_VS_ENTITY_LAYER.md`**
+5. **`docs/TOPIC_VS_ENTITY_LAYER.md`**
    - Layer 2 documentation
 
-6. **`COMPLETE_IMPLEMENTATION_SUMMARY.md`** (this file)
+6. **`docs/COMPLETE_IMPLEMENTATION_SUMMARY.md`** (this file)
    - Complete overview
 
 ### MODIFIED Files:

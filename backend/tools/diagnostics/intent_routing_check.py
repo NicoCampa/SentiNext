@@ -1,8 +1,17 @@
-"""Test script for intent-based chat routing."""
-from senti_next.intent import classify_intent, ChatIntent
+"""Intent-based chat routing diagnostic."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from backend.senti_next.intent import classify_intent, ChatIntent
 
 
-def test_intent_classification():
+def main() -> int:
     """Test intent classification with various questions."""
     test_cases = [
         # AGGREGATION
@@ -26,10 +35,10 @@ def test_intent_classification():
         ("what percentage complain about bugs? show examples", ChatIntent.MIXED),
     ]
 
-    print("Testing Intent Classification\n" + "="*60)
+    print("Testing Intent Classification\n" + "=" * 60)
 
     for question, expected_intent in test_cases:
-        detected_intent = classify_intent(question)
+        detected_intent, _term, _is_entity = classify_intent(question)
         status = "✓" if detected_intent == expected_intent else "✗"
         print(f"{status} '{question[:50]}...'")
         print(f"  Expected: {expected_intent.value}, Got: {detected_intent.value}")
@@ -37,6 +46,8 @@ def test_intent_classification():
             print("  ⚠️  MISMATCH!")
         print()
 
+    return 0
+
 
 if __name__ == "__main__":
-    test_intent_classification()
+    raise SystemExit(main())

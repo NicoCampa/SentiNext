@@ -62,9 +62,6 @@ FETCH_LIMIT = int(os.getenv("SENTINEXT_FETCH_LIMIT", "5000"))    # Max reviews t
 APP_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "tauri://localhost",
-    "http://tauri.localhost",
-    "https://tauri.localhost",
 ]
 
 def _parse_allowed_origins() -> list[str]:

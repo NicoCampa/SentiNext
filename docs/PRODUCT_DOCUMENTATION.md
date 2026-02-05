@@ -425,47 +425,26 @@ Steam API → Review Ingestion → LLM Classification → Storage → Analytics 
 
 ### Deployment Modes
 
-SentiNext supports 3 deployment configurations:
+SentiNext supports two deployment configurations:
 
-#### 1. Local Desktop App (Primary)
-**Target:** Indie developers, small teams
-**Stack:**
-- **Backend:** FastAPI bundled with PyInstaller
-- **Frontend:** Next.js static export (HTML/CSS/JS)
-- **Wrapper:** Tauri (Rust-based Electron alternative)
-- **Database:** Bundled PostgreSQL instance
-
-**Characteristics:**
-- Single executable, no cloud dependencies
-- Data stored locally, full privacy
-- No authentication required (`user_id="local"`)
-- Auto-starts backend on launch
-- System tray integration
-
-**Build Process:**
-```bash
-cd frontend && SENTINEXT_STATIC_EXPORT=true npm run build
-cd ../desktop && ./build.sh  # Creates .app/.exe
-```
-
-#### 2. Local Web (Development)
+#### 1. Local Development (Testing)
 **Target:** Development and testing
 **Stack:**
-- Backend: `uvicorn backend.local_app:app --reload --port 8000`
-- Frontend: Served as static files from `frontend/out/`
-- Single server at `http://localhost:8000`
+- Backend: `uvicorn backend.main:app --reload --port 8000`
+- Frontend: Next.js dev server (`cd frontend && npm run dev`)
+- Database: PostgreSQL (local or Render external URL)
 
 **Characteristics:**
-- Hot reload for backend changes
-- Frontend must be rebuilt for changes
-- Same features as desktop app
-- Faster iteration than full desktop builds
+- Hot reload for backend and frontend
+- Two processes (backend + frontend)
+- Uses `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`
 
-#### 3. Cloud/SaaS Deployment
+#### 2. Cloud/SaaS Deployment
 **Target:** Enterprise customers, SaaS offering
 **Stack:**
-- **Backend:** FastAPI on cloud server (AWS/GCP/Azure)
-- **Frontend:** Next.js server (separate domain)
+- **Backend:** FastAPI on Render (Docker)
+- **Frontend:** Next.js server on Render (Node runtime)
+- **Marketing:** Next.js site on Vercel (`web/`)
 - **Database:** Managed PostgreSQL (RDS/Cloud SQL)
 - **Authentication:** Clerk.dev integration
 - **Storage:** User data isolated by `user_id`
@@ -1468,7 +1447,6 @@ month_reviews = reviews where:
 - Transaction history
 
 ✅ **Desktop App**
-- Tauri wrapper
 - PyInstaller backend bundle
 - Static frontend export
 - Single executable

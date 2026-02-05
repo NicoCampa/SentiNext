@@ -85,7 +85,7 @@ python -c "from backend.senti_next import storage; storage.init_db()"
 **Backend won't start:**
 - Check DATABASE_URL is correct (External URL, not Internal)
 - Make sure .env.local exists and variables are set
-- Check PostgreSQL is reachable: `python backend/test_db.py`
+- Check PostgreSQL is reachable: `python backend/tools/diagnostics/db_check.py`
 
 **Frontend can't connect:**
 - Make sure backend is running on port 8000
@@ -93,5 +93,5 @@ python -c "from backend.senti_next import storage; storage.init_db()"
 - Check browser console for CORS errors
 
 **Database errors:**
-- Run diagnostic: `python backend/test_all.py`
-- Check PostgreSQL connection: `python backend/test_db.py`
+- Run diagnostic: `python backend/tools/diagnostics/backend_diagnostic.py`
+- Check PostgreSQL connection: `python backend/tools/diagnostics/db_check.py`

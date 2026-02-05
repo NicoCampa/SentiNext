@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
 import { fetchLogTail, createCheckoutSession, getBillingPortalUrl } from "@/lib/api";
-import { isTauriApp } from "@/lib/settings";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
@@ -15,7 +14,6 @@ import { useCredits } from "@/contexts/CreditsContext";
 import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 
 export default function SettingsPage() {
-  const [appVersion, setAppVersion] = useState<string | null>(null);
   const { health, refresh: refreshHealth } = useBackendHealth();
   const [logTail, setLogTail] = useState<string>("");
   const [logTailError, setLogTailError] = useState<string | null>(null);
@@ -56,34 +54,6 @@ export default function SettingsPage() {
     max: "text-purple-400",
   };
 
-  const backendBootError =
-    typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_BOOT_ERROR__ ?? null : null;
-  const backendBootLogFile =
-    typeof window !== "undefined" ? window.__SENTINEXT_BACKEND_LOG_FILE__ ?? null : null;
-
-  useEffect(() => {
-    let active = true;
-    if (!isTauriApp()) {
-      setAppVersion(null);
-      return () => {
-        active = false;
-      };
-    }
-    (async () => {
-      try {
-        const { getVersion } = await import("@tauri-apps/api/app");
-        const version = await getVersion();
-        if (active) setAppVersion(version);
-      } catch (err) {
-        console.error("Failed to read app version.", err);
-        if (active) setAppVersion("unknown");
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const loadLogTail = useCallback(async () => {
     try {
       const result = await fetchLogTail(20000);
@@ -98,16 +68,6 @@ export default function SettingsPage() {
   useEffect(() => {
     loadLogTail();
   }, [loadLogTail]);
-
- 
-
-  async function handleCopy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (err) {
-      console.error("Failed to copy text", err);
-    }
-  }
 
   async function handleUpgrade(tier: "indie" | "pro") {
     setUpgradeLoading(tier);
@@ -150,10 +110,7 @@ export default function SettingsPage() {
     try {
       const payload = {
         timestamp: new Date().toISOString(),
-        app_version: appVersion,
         api_base: typeof window !== "undefined" ? window.__SENTINEXT_API_BASE__ ?? null : null,
-        backend_boot_error: backendBootError,
-        backend_boot_log_file: backendBootLogFile,
         backend_health: health,
         log_tail: logTail ? logTail.slice(-20000) : "",
         user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
@@ -339,18 +296,6 @@ export default function SettingsPage() {
                     </span>
                   </div>
                 </div>
-
-                {/* App Version (if Tauri) */}
-                {isTauriApp() && (
-                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                    <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
-                      {t('settings.appVersion')}
-                    </span>
-                    <span className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
-                      {appVersion ?? t('common.loading')}
-                    </span>
-                  </div>
-                )}
 
                 {/* Frontend Version */}
                 <div className="flex items-center justify-between p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
@@ -562,24 +507,6 @@ export default function SettingsPage() {
 
                 {copyError && (
                   <p className="text-[10px] sm:text-xs text-rose-400 mb-3 sm:mb-4">{copyError}</p>
-                )}
-
-                {/* Backend Boot Error */}
-                {backendBootError && (
-                  <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 border border-rose-500/30 bg-rose-500/5 mb-4 sm:mb-5">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
-                      <p className="text-[10px] sm:text-xs uppercase tracking-[0.15em] sm:tracking-[0.2em] text-rose-400">
-                        Backend Error
-                      </p>
-                    </div>
-                    <pre className="max-h-24 sm:max-h-32 overflow-auto whitespace-pre-wrap rounded border border-rose-500/20 bg-[rgb(10,10,25)] p-2 sm:p-3 text-[10px] sm:text-[11px] text-rose-200 font-mono">
-                      {backendBootError}
-                    </pre>
-                    <Button size="sm" variant="secondary" onClick={() => handleCopy(backendBootError)} className="text-[10px] sm:text-xs">
-                      Copy Error
-                    </Button>
-                  </div>
                 )}
 
                 {/* Log Tail (Collapsible) */}

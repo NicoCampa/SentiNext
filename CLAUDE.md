@@ -14,27 +14,11 @@ conda env create -f environment.yml
 conda activate SentiNext
 ```
 
-### Local Development (Recommended)
-Build UI once, then run single server:
+### Local Development
+See `LOCAL_DEVELOPMENT.md` for full setup. Quick start:
 ```bash
-cd frontend && npm install && SENTINEXT_STATIC_EXPORT=true npm run build
-uvicorn backend.local_app:app --reload --port 8000
-# Open http://localhost:8000
-```
-
-### Dev Mode (Separate Services)
-```bash
-# Backend
-uvicorn backend.main:app --reload --port 8000
-
-# Frontend (separate terminal)
-cd frontend && npm run dev  # http://localhost:3000
-```
-
-### Desktop App Build
-```bash
-./desktop/build.sh        # macOS/Linux
-.\desktop\build.ps1       # Windows
+./run_backend_local.sh
+./run_frontend_local.sh
 ```
 
 ### Frontend Lint
@@ -45,13 +29,10 @@ cd frontend && npm run lint
 ## Architecture
 
 ### Deployment Modes
-1. **Local App** (`backend/local_app.py`): Single FastAPI server mounts API at `/api` and serves static UI from `frontend/out/`
-2. **Web Deployment**: Separate frontend (Next.js server) and backend (FastAPI) services
-3. **Desktop**: Tauri wraps PyInstaller-bundled backend + static frontend
+1. **Web Deployment**: Separate frontend (Next.js server) and backend (FastAPI) services
 
 ### Backend Structure (`backend/`)
 - `main.py` - FastAPI REST API (~25 endpoints)
-- `local_app.py` - Combined API + static UI server for desktop/local use
 - `senti_next/` - Core package:
   - `llm.py` - Google Gemini integration, review classification with batching (3 reviews/batch), taxonomy parsing
   - `storage.py` - PostgreSQL persistence (reviews, labels, starred games, analysis results)
@@ -64,7 +45,6 @@ cd frontend && npm run lint
 - `src/app/` - Pages: dashboard, reviews, chat, compare, database, settings
 - `src/lib/api.ts` - API client with auth token injection
 - `src/components/` - React components (charts, review explorer, filters)
-- Static export mode via `SENTINEXT_STATIC_EXPORT=true` for desktop builds
 
 ### Data Flow
 1. User searches game via Steam API
@@ -89,7 +69,7 @@ cd frontend && npm run lint
 - `SENTINEXT_ENABLE_DESTRUCTIVE` - Allow delete endpoints
 
 **Frontend:**
-- `NEXT_PUBLIC_API_BASE_URL` - Backend URL (default `/api` for local app)
+- `NEXT_PUBLIC_API_BASE_URL` - Backend URL (dev defaults to `http://localhost:8000`)
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk public key
 
 ## LLM Classification Taxonomy

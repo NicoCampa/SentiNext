@@ -4,13 +4,11 @@ SentiNext turns raw Steam reviews into clear, actionable insights. It ingests St
 
 ## Structure
 - `backend/` – FastAPI app (`backend/main.py`) and shared package (`senti_next/`)
-- `frontend/` – Next.js app (server for web, static export for desktop)
+- `frontend/` – Next.js SaaS app (Render Node runtime)
 - `data/` – Local runtime data (logs, caches; contents vary by deployment)
 - `web/` – Marketing site (landing, docs, download)
-- `src-tauri/` – Tauri desktop wrapper (builds macOS/Windows apps)
-
-## Local app (recommended)
-Build the UI once, then run a single local server that serves both UI and API.
+- `scripts/` – Developer utilities and diagnostics
+- `docs/` – Product + engineering documentation
 
 ## Python environment (Conda)
 This repo uses a Conda environment named `SentiNext` (no `venv`).
@@ -20,61 +18,26 @@ conda env create -f environment.yml
 conda activate SentiNext
 ```
 
-### Build UI
+## Local development
+See `LOCAL_DEVELOPMENT.md` for step-by-step setup. Quick start:
+
 ```bash
-cd frontend
-npm install
-SENTINEXT_STATIC_EXPORT=true npm run build
+./run_backend_local.sh
+./run_frontend_local.sh
 ```
 
-### Run local app server
+## Cleanup (optional)
+Remove local build artifacts:
+
 ```bash
-conda activate SentiNext
-uvicorn backend.local_app:app --reload --port 8000
-```
-
-Open `http://localhost:8000`.
-
-## Downloadable desktop app (build it)
-This project can be packaged into a desktop app that opens a window (no browser/localhost) and runs the local server in the background.
-
-Prereqs: Node.js + Conda (Python 3.11+).
-
-### macOS / Linux
-```bash
-./desktop/build.sh
-```
-
-### Windows (PowerShell)
-```powershell
-.\desktop\build.ps1
-```
-
-Output:
-- `dist/SentiNext/` (foldered build)
-
-## Dev mode (optional)
-Run backend and frontend separately.
-
-### Run backend
-```bash
-conda activate SentiNext
-uvicorn backend.main:app --reload --port 8000
-```
-
-### Run frontend
-```bash
-cd frontend
-npm install
-cp .env.example .env.local  # set NEXT_PUBLIC_API_BASE_URL if different
-npm run dev  # http://localhost:3000
+./scripts/clean_local.sh
 ```
 
 ## Deploy (web)
 Deploy the API and UI as separate services:
-- Frontend (recommended): use Render's **Node** runtime with `Root Directory=frontend`, `Build Command=npm install && npm run build`, `Start Command=npm run start`. Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL and add Clerk keys.
-- Frontend (Docker alternative): use `Dockerfile.frontend` (Next.js server) if you prefer Docker.
-- Backend: use `Dockerfile.backend` (FastAPI API-only). Set `DATABASE_URL` to your PostgreSQL database (Render internal URL recommended).
+- Marketing site: Vercel with `Root Directory=web`. Set `NEXT_PUBLIC_APP_URL` to the SaaS URL.
+- Frontend: Render **Node** runtime with `Root Directory=frontend`, `Build Command=npm install && npm run build`, `Start Command=npm run start`. Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL and add Clerk keys.
+- Backend: Render Docker with `Dockerfile.backend`. Set `DATABASE_URL` to your PostgreSQL database (Render internal URL recommended).
 
 ## Authentication (Clerk)
 Frontend (Next.js App Router, stored in `.env.local`):
