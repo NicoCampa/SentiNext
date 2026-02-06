@@ -313,6 +313,9 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     };
   }, [activeTaskIds, resetProgressStats, attachProgressEstimate]);
 
+  // Track in-flight API calls to prevent double-clicks
+  const pendingAnalysisRef = useRef<Set<number>>(new Set());
+
   const startAnalysis = useCallback(async (game: SearchResult, options: StartAnalysisOptions = {}) => {
     const appId = game.appid;
     const persist = options.persist ?? true;
@@ -323,9 +326,10 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const filter = options.filter ?? "recent";
     const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
     const dayRange = options.day_range ?? undefined;
-    // Check if already analyzing
+
+    // Check if already analyzing OR if an API call is already in-flight
     const existing = tasks.get(appId);
-    if (existing && existing.status === 'analyzing') {
+    if ((existing && existing.status === 'analyzing') || pendingAnalysisRef.current.has(appId)) {
       return;
     }
 
@@ -341,33 +345,55 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     // Reset progress stats before starting
     resetProgressStats(appId);
 
-    // Call API first — if it rejects (402/429), re-throw so the caller
-    // can show the error inline instead of flashing the AnalysisWidget.
-    saveDefaultAnalysisReviewCount(reviewCount);
-    const result = await analyzeGame({
-      app_id: appId,
-      review_count: reviewCount,
-      language,
-      languages,
-      filter,
-      day_range: dayRange,
-      persist,
-      refresh,
-      refresh_days: refreshDays,
-    });
-
-    // API accepted — now create the task so the widget appears
+    // Mark as pending IMMEDIATELY so the widget appears and button is disabled
+    pendingAnalysisRef.current.add(appId);
     setTasks((prev) => {
       const newTasks = new Map(prev);
       newTasks.set(appId, {
         game,
         status: 'analyzing',
         progress: null,
-        result: result,
+        result: null,
         error: null,
       });
       return newTasks;
     });
+
+    try {
+      // Call API — if it rejects (402/429), remove the pending task
+      saveDefaultAnalysisReviewCount(reviewCount);
+      const result = await analyzeGame({
+        app_id: appId,
+        review_count: reviewCount,
+        language,
+        languages,
+        filter,
+        day_range: dayRange,
+        persist,
+        refresh,
+        refresh_days: refreshDays,
+      });
+
+      // API accepted — update the task with the result (keeps status 'analyzing')
+      setTasks((prev) => {
+        const newTasks = new Map(prev);
+        const current = newTasks.get(appId);
+        if (current && current.status === 'analyzing') {
+          newTasks.set(appId, { ...current, result });
+        }
+        return newTasks;
+      });
+    } catch (err) {
+      // API rejected — remove the task so it doesn't stay as a ghost
+      setTasks((prev) => {
+        const newTasks = new Map(prev);
+        newTasks.delete(appId);
+        return newTasks;
+      });
+      throw err;
+    } finally {
+      pendingAnalysisRef.current.delete(appId);
+    }
   }, [tasks, resetProgressStats]);
 
   const getTask = useCallback(

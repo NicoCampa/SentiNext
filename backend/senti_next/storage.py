@@ -878,15 +878,18 @@ def update_progress(user_id: str, app_id: int, processed: int, total: Optional[i
     processed_int = int(processed)
 
     with db_module.get_connection() as conn:
-        # Use UPSERT with GREATEST to ensure progress only increases (monotonic)
+        # Use UPSERT with GREATEST to ensure progress only increases (monotonic).
+        # Also set phase to 'classifying' so it transitions from 'fetching' once
+        # classification progress starts flowing.
         conn.execute(
             text("""
-                INSERT INTO progress (user_id, app_id, total, processed, updated_at)
-                VALUES (:user_id, :app_id, COALESCE(:total, 0), :processed, :updated_at)
+                INSERT INTO progress (user_id, app_id, total, processed, phase, updated_at)
+                VALUES (:user_id, :app_id, COALESCE(:total, 0), :processed, 'classifying', :updated_at)
                 ON CONFLICT(user_id, app_id) DO UPDATE SET
                     processed = GREATEST(progress.processed, EXCLUDED.processed),
                     updated_at = EXCLUDED.updated_at,
-                    total = COALESCE(EXCLUDED.total, progress.total)
+                    total = COALESCE(EXCLUDED.total, progress.total),
+                    phase = 'classifying'
             """),
             {
                 "processed": processed_int,
