@@ -1177,13 +1177,11 @@ function AnalysisResults({
     [filters, reviewQuery, lastMonthOnly, negativeOnly, highPlaytime, highHelpful],
   );
 
-  // Helper to get last month's date range
+  // Helper to get rolling 30-day window
   const getLastMonthRange = useCallback(() => {
     const now = new Date();
-    const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    const month = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    const start = new Date(year, month, 1, 0, 0, 0, 0);
-    const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30, 0, 0, 0, 0);
+    const end = now;
     return { start, end };
   }, []);
 
@@ -1765,7 +1763,7 @@ function AnalysisResults({
     const parts: string[] = [];
 
     // Quick filters
-    if (lastMonthOnly) parts.push("last month only");
+    if (lastMonthOnly) parts.push("last 30 days");
     if (negativeOnly) parts.push("negative only");
     if (highPlaytime) parts.push("20h+ playtime");
     if (highHelpful) parts.push("10+ helpful");

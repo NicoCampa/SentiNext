@@ -358,10 +358,10 @@ def core_fan_disappointment(df: pd.DataFrame) -> float:
 
 
 def churn_signal_rate(df: pd.DataFrame, window_days: int = 7) -> float:
-    negatives = df[df["voted_up"] == False].dropna(subset=["created_at", "last_played_at"])  # noqa: E712
-    if negatives.empty:
+    valid = df.dropna(subset=["created_at", "last_played_at"])
+    if valid.empty:
         return 0.0
-    deltas = (negatives["created_at"] - negatives["last_played_at"]).dt.total_seconds() / 86400.0
+    deltas = (valid["created_at"] - valid["last_played_at"]).dt.total_seconds() / 86400.0
     mask = deltas.abs() <= window_days
     return float(mask.mean()) if len(mask) else 0.0
 

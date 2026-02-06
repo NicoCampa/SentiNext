@@ -1589,6 +1589,23 @@ def analyze(
     has_enough_cached = request.review_count > 0 and len(language_filtered_reviews) >= request.review_count
     should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
+    # --- Early credit pre-check before expensive fetching ---
+    # Use review_count as a rough upper bound (worst case: all reviews need labeling).
+    # The precise check happens later after we know cached vs new, but this catches
+    # obvious cases (e.g. 0 credits) before wasting time fetching from Steam.
+    if request.review_count and request.review_count > 0:
+        can_preflight, preflight_msg, preflight_status = credits.check_credits_available(user_id, request.review_count)
+        if not can_preflight:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "message": preflight_msg,
+                    "credits_needed": request.review_count,
+                    "credits_available": preflight_status.get("balance"),
+                    "tier": preflight_status.get("tier"),
+                },
+            )
+
     fetched_reviews: List[dict] = []
     if should_fetch:
         # Set up fetch progress tracking

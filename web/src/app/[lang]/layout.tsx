@@ -11,6 +11,10 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "SENTINEXT | Steam Review Intelligence",
   description: "Analyze Steam reviews with AI: label issues and feature requests, extract evidence quotes, and track what to fix next.",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/apple-icon.svg",
+  },
   openGraph: {
     title: "SENTINEXT | Steam Review Intelligence",
     description: "AI-assisted review analysis for Steam game teams.",

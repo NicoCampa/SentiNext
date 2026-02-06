@@ -384,13 +384,26 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         return newTasks;
       });
     } catch (err) {
-      // API rejected — remove the task so it doesn't stay as a ghost
+      // API rejected — show error in the widget instead of silently removing it
+      let errorMessage = 'Analysis failed';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      // Try to extract structured error detail (e.g. 402 credit errors)
+      try {
+        const parsed = JSON.parse(errorMessage);
+        if (parsed?.message) errorMessage = parsed.message;
+      } catch {
+        // Not JSON, use as-is
+      }
       setTasks((prev) => {
         const newTasks = new Map(prev);
-        newTasks.delete(appId);
+        const current = newTasks.get(appId);
+        if (current) {
+          newTasks.set(appId, { ...current, status: 'error', progress: null, error: errorMessage });
+        }
         return newTasks;
       });
-      throw err;
     } finally {
       pendingAnalysisRef.current.delete(appId);
     }
