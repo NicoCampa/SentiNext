@@ -125,6 +125,20 @@ export default function SupportPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
+              {/* Pinned developer welcome message */}
+              {!loading && (
+                <div className="flex justify-start animate-fade-in">
+                  <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-red-500/10 border border-red-500/30 text-slate-100">
+                    <p className="text-sm whitespace-pre-wrap">
+                      Welcome to SENTINEXT! I hope you enjoy the tool. Use this chat to reach me directly — whether it&apos;s a feature request, a bug report, or just feedback. I read every message.
+                    </p>
+                    <p className="text-[11px] text-red-400/70 mt-2">
+                      Nicolò (Developer)
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {loading ? (
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center">
@@ -138,11 +152,7 @@ export default function SupportPage() {
                 <div className="flex-1 flex items-center justify-center">
                   <p className="text-sm text-red-400">{error}</p>
                 </div>
-              ) : messages.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <p className="text-sm text-slate-400">No messages yet. Start the conversation below.</p>
-                </div>
-              ) : (
+              ) : messages.length > 0 ? (
                 messages.map((msg, index) => {
                   const isUser = msg.sender_role === "user";
                   return (
@@ -168,7 +178,7 @@ export default function SupportPage() {
                     </div>
                   );
                 })
-              )}
+              ) : null}
               <div ref={bottomRef} />
             </div>
 

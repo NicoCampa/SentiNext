@@ -143,8 +143,8 @@ export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: Sup
 	                                <CornerMarkers className="opacity-20" />
 	                                <p className="text-lg font-light mb-6 opacity-80 leading-relaxed">
 	                                    {lang === 'it'
-	                                        ? "Insight verificabili: ogni etichetta include citazioni testuali, così puoi controllare velocemente cosa stanno dicendo davvero i giocatori."
-	                                        : "Auditable insights: every label includes verbatim quotes, so you can verify what players are actually saying."}
+	                                        ? "Aspetto le tue recensioni :)"
+	                                        : "I wait for your reviews :)"}
 	                                </p>
 	                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">
 	                                    {lang === 'it' ? 'Citazioni di evidenza' : 'Evidence quotes'}
@@ -154,8 +154,8 @@ export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: Sup
 	                                <CornerMarkers className="opacity-20" />
 	                                <p className="text-lg font-light mb-6 opacity-80 leading-relaxed">
 	                                    {lang === 'it'
-	                                        ? "Dal quadro generale al dettaglio: dashboard, esplorazione recensioni, ricerca + export CSV/JSONL, confronto tra giochi e report PDF mensili."
-	                                        : "From overview to action: dashboards, review explorer, search + CSV/JSONL export, game comparisons, and monthly PDF reports."}
+	                                        ? "Aspetto le tue recensioni :)"
+	                                        : "I wait for your reviews :)"}
 	                                </p>
 	                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">
 	                                    {lang === 'it' ? 'Dashboard, export, report' : 'Dashboards, exports, reports'}

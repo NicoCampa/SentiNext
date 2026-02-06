@@ -55,22 +55,77 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                 ]}
                 align="left"
                 mockup={
-                    <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-8 flex flex-col gap-6 relative overflow-hidden backdrop-blur-md">
+                    <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-6 md:p-8 grid grid-cols-2 gap-4 md:gap-6 relative overflow-hidden backdrop-blur-md">
                         <CornerMarkers />
-                        <div className="h-12 bg-[#00F0FF]/5 border border-[#00F0FF]/20 rounded-sm flex items-center px-6 text-[#00F0FF] text-sm font-mono tracking-wider">
-                            {" > "} SEARCH ID: 413150
-                        </div>
+                        {/* Left: Search */}
                         <div className="space-y-3">
-                            <div className="flex justify-between text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest">
-                                <span>Fetching Steam reviews...</span>
-                                <span>74%</span>
+                            <div className="text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest mb-2">{lang === 'it' ? 'Ricerca Gioco' : 'Search Game'}</div>
+                            <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/20 rounded-sm p-3">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Search className="w-3.5 h-3.5 text-[#00F0FF]/50" />
+                                    <span className="text-[#00F0FF] text-xs font-mono">Stardew Valley</span>
+                                </div>
+                                {[{ name: 'Stardew Valley', id: '413150', selected: true }, { name: 'Stardew Valley Expanded', id: '1234567', selected: false }].map((game, i) => (
+                                    <motion.div
+                                        key={game.id}
+                                        initial={{ opacity: 0, y: 8 }}
+                                        whileInView={{ opacity: 1, y: 0 }}
+                                        viewport={{ once: true }}
+                                        transition={{ delay: 0.2 + i * 0.15 }}
+                                        className={`p-2 mb-1.5 flex items-center gap-2 rounded-sm ${game.selected ? 'bg-[#00F0FF]/10 border border-[#00F0FF]/30' : 'bg-black/20 border border-transparent'}`}
+                                    >
+                                        <div className="w-5 h-5 bg-[#00F0FF]/20 rounded-sm flex-shrink-0" />
+                                        <div className="min-w-0">
+                                            <span className="text-[11px] text-white block truncate">{game.name}</span>
+                                            <span className="text-[9px] text-[#00F0FF]/40 font-mono">{game.id}</span>
+                                        </div>
+                                    </motion.div>
+                                ))}
                             </div>
-                            <div className="h-2 w-full bg-[#00F0FF]/10 rounded-full overflow-hidden">
+                        </div>
+                        {/* Right: Progress */}
+                        <div className="space-y-3">
+                            <div className="text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest mb-2">{lang === 'it' ? 'Ingestione' : 'Ingestion'}</div>
+                            <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/20 rounded-sm p-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-[#00F0FF]/50 font-mono">{lang === 'it' ? 'Recupero recensioni...' : 'Fetching reviews...'}</span>
+                                    <span className="text-xs text-[#00F0FF] font-mono font-bold">847/1000</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-[#00F0FF]/10 rounded-full overflow-hidden">
+                                    <motion.div
+                                        initial={{ width: 0 }}
+                                        whileInView={{ width: "85%" }}
+                                        viewport={{ once: true }}
+                                        transition={{ duration: 1.2, delay: 0.5 }}
+                                        className="h-full bg-[#00F0FF]"
+                                    />
+                                </div>
+                                {[
+                                    { text: lang === 'it' ? 'Connessione a Steam API...' : 'Connecting to Steam API...', delay: 0.6 },
+                                    { text: lang === 'it' ? 'Recupero pagina 1/10...' : 'Fetching page 1/10...', delay: 0.9 },
+                                    { text: lang === 'it' ? '847 recensioni ingerite' : '847 reviews ingested', delay: 1.2 },
+                                ].map((log, i) => (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        whileInView={{ opacity: 1, x: 0 }}
+                                        viewport={{ once: true }}
+                                        transition={{ delay: log.delay }}
+                                        className="text-[10px] font-mono text-[#00F0FF]/50 flex items-center gap-1.5"
+                                    >
+                                        <span className="text-[#00F0FF]/30">{" > "}</span>{log.text}
+                                    </motion.div>
+                                ))}
                                 <motion.div
-                                    initial={{ width: 0 }}
-                                    whileInView={{ width: "74%" }}
-                                    className="h-full bg-[#00F0FF]"
-                                />
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    whileInView={{ opacity: 1, scale: 1 }}
+                                    viewport={{ once: true }}
+                                    transition={{ delay: 1.5 }}
+                                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-sm"
+                                >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider">PostgreSQL: {lang === 'it' ? 'persistenza' : 'persisting'}</span>
+                                </motion.div>
                             </div>
                         </div>
                     </div>
@@ -96,14 +151,61 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                 ]}
                 align="right"
                 mockup={
-                    <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-8 flex flex-col gap-6 font-mono text-sm leading-relaxed relative overflow-hidden backdrop-blur-md">
+                    <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-6 md:p-8 flex flex-col gap-4 font-mono text-sm leading-relaxed relative overflow-hidden backdrop-blur-md">
                         <CornerMarkers />
-                        <div className="p-4 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 italic text-[#00F0FF]/70">
-                            {lang === 'it' ? '"Il gioco continua a crashare all\'avvio dopo l\'aggiornamento."' : '"Game keeps crashing on launch since the update."'}
+                        {/* Review card */}
+                        <div className="bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 p-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">Review #847</span>
+                                <span className="px-2 py-0.5 bg-red-500/20 text-red-300 border border-red-500/30 text-[9px] font-bold uppercase tracking-wider rounded-sm">{lang === 'it' ? 'Negativa' : 'Negative'}</span>
+                            </div>
+                            <p className="italic text-[#00F0FF]/70 text-xs leading-relaxed">
+                                {lang === 'it'
+                                    ? '"Il gioco crasha costantemente in battaglia, e i menu dell\'inventario sono impossibili da navigare con il controller."'
+                                    : '"Game keeps crashing mid-battle since the last patch, and the inventory menus are impossible to navigate with a controller."'}
+                            </p>
                         </div>
-                        <div className="flex gap-3">
-                            <div className="px-3 py-1.5 rounded-sm bg-red-500/20 text-red-300 border border-red-500/30 text-[10px] font-bold uppercase tracking-wider">ISSUE: CRASH</div>
-                            <div className="px-3 py-1.5 rounded-sm bg-[#00F0FF]/20 text-[#00F0FF] border border-[#00F0FF]/30 text-[10px] font-bold uppercase tracking-wider">CONTEXT: LAUNCH</div>
+                        {/* Classification tags */}
+                        <div className="space-y-2">
+                            <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">{lang === 'it' ? 'Classificazione AI' : 'AI Classification'}</div>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { label: 'technical/stability_crashes', color: 'bg-red-500/20 text-red-300 border-red-500/30', type: 'ISSUE', delay: 0.3 },
+                                    { label: 'ui_ux_accessibility/menus_hud', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30', type: 'ISSUE', delay: 0.5 },
+                                    { label: 'technical/compatibility', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30', type: 'REQUEST', delay: 0.7 },
+                                ].map((tag) => (
+                                    <motion.div
+                                        key={tag.label}
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        whileInView={{ opacity: 1, scale: 1 }}
+                                        viewport={{ once: true }}
+                                        transition={{ type: "spring", stiffness: 300, damping: 20, delay: tag.delay }}
+                                        className={`px-2.5 py-1.5 rounded-sm border text-[10px] font-bold uppercase tracking-wider ${tag.color}`}
+                                    >
+                                        {tag.type}: {tag.label.split('/')[1].replaceAll('_', ' ')}
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </div>
+                        {/* Evidence quotes */}
+                        <div className="space-y-2">
+                            <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">{lang === 'it' ? 'Citazioni Evidenza' : 'Evidence Quotes'}</div>
+                            {[
+                                { quote: lang === 'it' ? '"crasha costantemente in battaglia"' : '"keeps crashing mid-battle"', tag: 'stability_crashes', color: 'border-red-500/50', delay: 0.9 },
+                                { quote: lang === 'it' ? '"menu dell\'inventario impossibili da navigare con il controller"' : '"inventory menus impossible to navigate with controller"', tag: 'menus_hud', color: 'border-amber-500/50', delay: 1.1 },
+                            ].map((ev) => (
+                                <motion.div
+                                    key={ev.tag}
+                                    initial={{ opacity: 0, x: -10 }}
+                                    whileInView={{ opacity: 1, x: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ delay: ev.delay }}
+                                    className={`border-l-2 ${ev.color} pl-3 py-1`}
+                                >
+                                    <p className="text-[11px] italic text-[#00F0FF]/60">{ev.quote}</p>
+                                    <p className="text-[9px] text-[#00F0FF]/30 mt-0.5">{" → "}{ev.tag}</p>
+                                </motion.div>
+                            ))}
                         </div>
                     </div>
                 }
@@ -128,29 +230,78 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                 ]}
                 align="left"
                 mockup={
-                    <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-8 grid grid-cols-2 gap-6 relative overflow-hidden backdrop-blur-md">
+                    <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-6 md:p-8 flex flex-col gap-4 relative overflow-hidden backdrop-blur-md">
                         <CornerMarkers />
-                        <div className="col-span-1 h-36 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 flex items-center justify-center">
-                            <div className="text-center">
-                                <div className="text-4xl font-bold text-[#00F0FF] tracking-tighter uppercase">142</div>
-                                <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest mt-2">{lang === 'it' ? 'Performance' : 'Performance'}</div>
+                        {/* KPI cards */}
+                        <div className="grid grid-cols-4 gap-2 md:gap-3">
+                            {[
+                                { label: lang === 'it' ? 'Raccomandazione' : 'Recommendation', value: '87%', color: 'text-emerald-400', border: 'border-l-emerald-500' },
+                                { label: lang === 'it' ? 'Tasso Issue' : 'Issue Rate', value: '23%', color: 'text-amber-400', border: 'border-l-amber-500' },
+                                { label: lang === 'it' ? 'Tasso Richieste' : 'Request Rate', value: '15%', color: 'text-sky-400', border: 'border-l-sky-500' },
+                                { label: lang === 'it' ? 'Recensioni' : 'Reviews', value: '1,000', color: 'text-[#00F0FF]', border: 'border-l-[#00F0FF]' },
+                            ].map((kpi, i) => (
+                                <motion.div
+                                    key={kpi.label}
+                                    initial={{ opacity: 0, y: 12 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ delay: 0.1 + i * 0.1 }}
+                                    className={`bg-[#00F0FF]/5 border border-[#00F0FF]/10 border-l-2 ${kpi.border} rounded-sm p-2.5`}
+                                >
+                                    <p className="text-[8px] md:text-[9px] uppercase tracking-wider text-[#00F0FF]/40 mb-0.5 truncate">{kpi.label}</p>
+                                    <p className={`text-sm md:text-base font-bold ${kpi.color}`}>{kpi.value}</p>
+                                </motion.div>
+                            ))}
+                        </div>
+                        {/* Trend chart */}
+                        <div className="space-y-2 flex-1">
+                            <div className="text-[10px] text-[#00F0FF]/50 font-mono uppercase tracking-widest">{lang === 'it' ? 'Trend Sentiment' : 'Sentiment Trend'}</div>
+                            <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/10 rounded-sm p-3 h-24 md:h-28">
+                                <div className="h-full flex items-end gap-1">
+                                    {[40, 45, 42, 55, 60, 58, 72, 75, 80, 85, 82, 87].map((value, i) => (
+                                        <motion.div
+                                            key={i}
+                                            initial={{ height: 0 }}
+                                            whileInView={{ height: `${value}%` }}
+                                            viewport={{ once: true }}
+                                            transition={{ duration: 0.5, delay: 0.5 + i * 0.05 }}
+                                            className="flex-1 bg-[#00F0FF]/50 border-x border-[#00F0FF]/20 rounded-t-sm"
+                                        />
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                        <div className="col-span-1 h-36 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 flex items-center justify-center">
-                            <div className="text-center">
-                                <div className="text-4xl font-bold text-[#00F0FF] tracking-tighter uppercase">86</div>
-                                <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest mt-2">{lang === 'it' ? 'Localizzazione' : 'Localization'}</div>
-                            </div>
-                        </div>
-                        <div className="col-span-2 h-28 bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 relative overflow-hidden">
-                            <div className="absolute inset-x-0 bottom-0 h-[70%] flex items-end justify-around px-8">
-                                {[40, 70, 50, 90, 60, 80].map((h, i) => (
+                        {/* Category breakdown */}
+                        <div className="space-y-2">
+                            <div className="text-[10px] text-[#00F0FF]/50 font-mono uppercase tracking-widest">{lang === 'it' ? 'Breakdown Categorie' : 'Category Breakdown'}</div>
+                            <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/10 rounded-sm p-3 space-y-2.5">
+                                {[
+                                    { name: 'Gameplay', value: 85, color: 'bg-emerald-500' },
+                                    { name: lang === 'it' ? 'Tecnico' : 'Technical', value: 62, color: 'bg-amber-500' },
+                                    { name: lang === 'it' ? 'Contenuti' : 'Content', value: 78, color: 'bg-sky-500' },
+                                    { name: lang === 'it' ? 'Valore' : 'Value', value: 71, color: 'bg-purple-500' },
+                                ].map((cat, i) => (
                                     <motion.div
-                                        key={i}
-                                        initial={{ height: 0 }}
-                                        whileInView={{ height: `${h}%` }}
-                                        className="w-6 bg-[#00F0FF]/40 border-x border-[#00F0FF]/20"
-                                    />
+                                        key={cat.name}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        whileInView={{ opacity: 1, x: 0 }}
+                                        viewport={{ once: true }}
+                                        transition={{ delay: 1.0 + i * 0.1 }}
+                                    >
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[11px] text-[#00F0FF]/60">{cat.name}</span>
+                                            <span className="text-[11px] text-white font-medium">{cat.value}%</span>
+                                        </div>
+                                        <div className="h-1.5 bg-[#00F0FF]/10 rounded-full overflow-hidden">
+                                            <motion.div
+                                                initial={{ width: 0 }}
+                                                whileInView={{ width: `${cat.value}%` }}
+                                                viewport={{ once: true }}
+                                                transition={{ duration: 0.8, delay: 1.1 + i * 0.1 }}
+                                                className={`h-full ${cat.color} rounded-full`}
+                                            />
+                                        </div>
+                                    </motion.div>
                                 ))}
                             </div>
                         </div>

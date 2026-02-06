@@ -202,7 +202,7 @@ export default function SettingsPage() {
 
             {/* Account Section - Mobile only (desktop has it in sidebar) */}
             <SignedIn>
-              <Card variant="glass" className={`p-4 sm:p-6 lg:hidden ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
+              <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
                 <div className="mb-4 sm:mb-5">
                   <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                     <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
