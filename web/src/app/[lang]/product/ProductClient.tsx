@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Search, BarChart2, Layers } from "lucide-react";
+import { Search, BarChart2, Layers, MessageSquare } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 import type { ReactNode } from "react";
 import type { Dictionary, SupportedLocale } from "@/lib/i18n";
@@ -305,6 +305,115 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                                 ))}
                             </div>
                         </div>
+                    </div>
+                }
+            />
+
+            {/* Feature 4: Agent Chat */}
+            <FeatureSection
+                id="chat"
+                icon={<MessageSquare className="h-7 w-7 text-[#00F0FF]" />}
+                title={lang === 'it' ? "4. Chat con l'Agente" : "4. Agent Chat"}
+                description={lang === 'it'
+                    ? "Fai domande in linguaggio naturale sui tuoi dati analizzati. L'agente risponde con grafici, evidenze e citazioni dalle recensioni reali."
+                    : "Ask natural-language questions about your analyzed data. The agent answers with charts, evidence, and quotes from real reviews."}
+                details={lang === 'it' ? [
+                    "Domande in linguaggio naturale — nessuna query da scrivere.",
+                    "Risposte con grafici inline e breakdown interattivi.",
+                    "Citazioni verbatim dalle recensioni come evidenza verificabile."
+                ] : [
+                    "Natural-language questions — no queries to write.",
+                    "Answers with inline charts and interactive breakdowns.",
+                    "Verbatim review quotes as auditable evidence."
+                ]}
+                align="right"
+                mockup={
+                    <div className="w-full h-full bg-black/40 border border-[#00F0FF]/20 rounded-sm p-6 md:p-8 flex flex-col gap-4 relative overflow-hidden backdrop-blur-md">
+                        <CornerMarkers />
+                        {/* Chat header */}
+                        <div className="flex items-center gap-2 pb-2 border-b border-[#00F0FF]/10">
+                            <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                            <span className="text-[10px] font-mono text-[#00F0FF]/50 uppercase tracking-widest">{lang === 'it' ? 'Agente AI — Online' : 'AI Agent — Online'}</span>
+                        </div>
+                        {/* User message */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: 0.2 }}
+                            className="flex justify-end"
+                        >
+                            <div className="max-w-[80%] bg-[#00F0FF]/10 border border-[#00F0FF]/30 rounded-sm p-3">
+                                <p className="text-xs text-white">
+                                    {lang === 'it' ? 'Quali sono i principali problemi tecnici?' : 'What are the top technical issues?'}
+                                </p>
+                            </div>
+                        </motion.div>
+                        {/* Agent response */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: 0.5 }}
+                            className="flex gap-3"
+                        >
+                            <div className="w-7 h-7 flex-shrink-0 bg-[#00F0FF]/20 border border-[#00F0FF]/30 rounded-sm flex items-center justify-center">
+                                <MessageSquare className="w-3.5 h-3.5 text-[#00F0FF]" />
+                            </div>
+                            <div className="flex-1 space-y-3">
+                                <p className="text-xs text-[#00F0FF]/70 leading-relaxed">
+                                    {lang === 'it'
+                                        ? 'Su 1.000 recensioni, i problemi tecnici più segnalati sono:'
+                                        : 'Across 1,000 reviews, the most reported technical issues are:'}
+                                </p>
+                                {/* Inline chart */}
+                                <div className="bg-black/30 border border-[#00F0FF]/10 rounded-sm p-3 space-y-2.5">
+                                    {[
+                                        { label: lang === 'it' ? 'Stabilità / Crash' : 'Stability / Crashes', value: 42, color: 'bg-red-500', delay: 0.7 },
+                                        { label: 'Performance', value: 31, color: 'bg-amber-500', delay: 0.85 },
+                                        { label: 'Networking', value: 18, color: 'bg-sky-500', delay: 1.0 },
+                                        { label: lang === 'it' ? 'Salvataggi' : 'Save Data', value: 9, color: 'bg-purple-500', delay: 1.15 },
+                                    ].map((item) => (
+                                        <motion.div
+                                            key={item.label}
+                                            initial={{ opacity: 0, x: -8 }}
+                                            whileInView={{ opacity: 1, x: 0 }}
+                                            viewport={{ once: true }}
+                                            transition={{ delay: item.delay }}
+                                        >
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[10px] text-[#00F0FF]/50">{item.label}</span>
+                                                <span className="text-[10px] text-white font-bold">{item.value}%</span>
+                                            </div>
+                                            <div className="h-1.5 bg-[#00F0FF]/10 rounded-full overflow-hidden">
+                                                <motion.div
+                                                    initial={{ width: 0 }}
+                                                    whileInView={{ width: `${item.value}%` }}
+                                                    viewport={{ once: true }}
+                                                    transition={{ duration: 0.6, delay: item.delay + 0.1 }}
+                                                    className={`h-full ${item.color} rounded-full`}
+                                                />
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                                {/* Evidence quote */}
+                                <motion.div
+                                    initial={{ opacity: 0, y: 6 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ delay: 1.3 }}
+                                    className="border-l-2 border-red-500/50 pl-3 py-1"
+                                >
+                                    <p className="text-[10px] text-[#00F0FF]/40 uppercase tracking-widest mb-1">{lang === 'it' ? 'Evidenza — stabilità' : 'Evidence — stability'}</p>
+                                    <p className="text-[11px] italic text-[#00F0FF]/60">
+                                        {lang === 'it'
+                                            ? '"Il gioco crasha ogni volta che entro nel terzo atto, ho perso ore di progresso."'
+                                            : '"Game crashes every time I enter the third act, lost hours of progress."'}
+                                    </p>
+                                </motion.div>
+                            </div>
+                        </motion.div>
                     </div>
                 }
             />

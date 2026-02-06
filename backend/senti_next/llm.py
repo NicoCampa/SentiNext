@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import contextvars
+import threading
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -51,6 +52,27 @@ _LLM_USAGE_CONTEXT: contextvars.ContextVar[Dict[str, Any]] = contextvars.Context
 )
 
 
+class CreditAccumulator:
+    """Thread-safe accumulator for tracking credits spent during an analysis job."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._total = 0
+
+    def add(self, amount: int) -> None:
+        with self._lock:
+            self._total += amount
+
+    def subtract(self, amount: int) -> None:
+        with self._lock:
+            self._total = max(self._total - amount, 0)
+
+    @property
+    def total(self) -> int:
+        with self._lock:
+            return self._total
+
+
 @contextmanager
 def llm_usage_context(
     *,
@@ -58,18 +80,19 @@ def llm_usage_context(
     operation: Optional[str] = None,
     app_id: Optional[int] = None,
     session_id: Optional[str] = None,
+    credit_accumulator: Optional[CreditAccumulator] = None,
 ) -> Any:
     """Attach context for LLM usage logging within the current task."""
     current = _LLM_USAGE_CONTEXT.get() or {}
-    merged = {
-        **current,
-        **{k: v for k, v in {
-            "user_id": user_id,
-            "operation": operation,
-            "app_id": app_id,
-            "session_id": session_id,
-        }.items() if v is not None},
-    }
+    updates: Dict[str, Any] = {k: v for k, v in {
+        "user_id": user_id,
+        "operation": operation,
+        "app_id": app_id,
+        "session_id": session_id,
+    }.items() if v is not None}
+    if credit_accumulator is not None:
+        updates["credit_accumulator"] = credit_accumulator
+    merged = {**current, **updates}
     token = _LLM_USAGE_CONTEXT.set(merged)
     try:
         yield
@@ -160,6 +183,12 @@ def _reserve_credits_for_operation(
         session_id=session_id if session_id is not None else ctx_session_id,
     )
 
+    # Track in accumulator if present in context
+    ctx = _LLM_USAGE_CONTEXT.get() or {}
+    accumulator = ctx.get("credit_accumulator")
+    if accumulator is not None:
+        accumulator.add(int(cost))
+
     return {
         "user_id": str(user_id),
         "amount": int(cost),
@@ -172,6 +201,13 @@ def _reserve_credits_for_operation(
 def _refund_reserved_credits(reservation: Optional[dict], reason: str) -> None:
     if not reservation:
         return
+
+    # Track refund in accumulator if present in context
+    ctx = _LLM_USAGE_CONTEXT.get() or {}
+    accumulator = ctx.get("credit_accumulator")
+    if accumulator is not None:
+        accumulator.subtract(reservation["amount"])
+
     credits.refund_credits(
         user_id=reservation["user_id"],
         amount=reservation["amount"],
@@ -4101,6 +4137,7 @@ __all__ = [
     "classify_review",
     "classify_review_single",
     "compare_games",
+    "CreditAccumulator",
     "ensure_review_labels",
     "LLMError",
     "LLMErrorType",

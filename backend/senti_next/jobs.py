@@ -78,8 +78,11 @@ def run_analysis_job(
     else:
         storage.clear_progress(user_id, app_id)
 
+    credit_tracker = llm.CreditAccumulator()
+    analysis_failed = False
+
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify", credit_accumulator=credit_tracker):
             llm_labels = llm.ensure_review_labels(
                 app_id,
                 all_reviews,
@@ -130,6 +133,7 @@ def run_analysis_job(
             storage.update_job_registry(job_id, status="completed")
 
     except credits.InsufficientCreditsError as exc:
+        analysis_failed = True
         logger.info("Analysis failed due to insufficient credits: %s", exc)
         storage.save_analysis_result(
             user_id=user_id,
@@ -147,6 +151,7 @@ def run_analysis_job(
             storage.update_job_registry(job_id, status="failed", error=str(exc))
         return
     except Exception as exc:
+        analysis_failed = True
         logger.exception("Analysis job failed: %s", exc)
         storage.save_analysis_result(
             user_id=user_id,
@@ -171,3 +176,17 @@ def run_analysis_job(
             # the final state.  The progress row is overwritten on the next
             # analysis via reset_progress().
             storage.update_progress(user_id, app_id, total_reviews, total_reviews)
+
+        # Refund credits if analysis failed and produced no usable result
+        if analysis_failed and credit_tracker.total > 0:
+            try:
+                credits.refund_credits(
+                    user_id=user_id,
+                    amount=credit_tracker.total,
+                    operation="classify_refund",
+                    description=f"Refund for failed analysis of app {app_id} ({credit_tracker.total} credits)",
+                    app_id=app_id,
+                )
+                logger.info(f"Refunded {credit_tracker.total} credits to user {user_id} for failed analysis of app {app_id}")
+            except Exception as refund_exc:
+                logger.error(f"Failed to refund {credit_tracker.total} credits for user {user_id}: {refund_exc}")
