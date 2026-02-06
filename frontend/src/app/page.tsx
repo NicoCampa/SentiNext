@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { SentiNextLogo } from '@/components/SentiNextLogo';
 
 const BOOT_MESSAGES = [
   '> INITIALIZING SYSTEM...',
@@ -86,15 +87,7 @@ export default function RootPage() {
         >
           {/* Icon */}
           <div className="mb-6">
-            <div className="mx-auto w-24 h-24 border-2 border-[rgb(0,255,255)] flex items-center justify-center relative">
-              {/* Corner decorations */}
-              <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
-              <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-[rgb(255,0,128)]" />
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-[rgb(255,0,128)]" />
-
-              <span className="text-4xl font-bold text-white">SN</span>
-            </div>
+            <SentiNextLogo size="lg" className="mx-auto" />
           </div>
 
           {/* Title */}

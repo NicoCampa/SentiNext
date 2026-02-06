@@ -471,7 +471,7 @@ function DashboardContent() {
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
-  const reviewCount = 1000; // Fixed at 1000 latest reviews
+  const [pendingAnalyzeGame, setPendingAnalyzeGame] = useState<SearchResult | null>(null);
   const fetchFilter = "recent"; // Fixed to recent (latest reviews)
   const { credits, refresh: refreshCredits } = useCredits();
   const [mounted, setMounted] = useState(false);
@@ -553,7 +553,8 @@ function DashboardContent() {
     }
   }
 
-  async function handleAnalyze(game: SearchResult) {
+  async function handleAnalyze(game: SearchResult, reviewCount: number) {
+    setPendingAnalyzeGame(null);
     setError(null);
     const existingGame = games.find((entry) => entry.app_id === game.appid);
     setTemporaryGame(game);
@@ -731,19 +732,39 @@ function DashboardContent() {
                               <div className="flex-1 min-w-0">
                                 <h3 className="font-semibold text-white truncate">{game.name}</h3>
                                 {game.price && <p className="mt-1 text-sm text-slate-400">{game.price}</p>}
-                                <Button
-                                  onClick={() => handleAnalyze(game)}
-                                  disabled={isAnalyzingGame}
-                                  variant={isAlreadyAnalyzed ? "update" : "primary"}
-                                  size="sm"
-                                  className="mt-3"
-                                >
-                                  {isAnalyzingGame
-                                    ? t('dashboard.analyzing')
-                                    : isAlreadyAnalyzed
-                                      ? t('dashboard.update')
-                                      : t('dashboard.analyze')}
-                                </Button>
+                                {pendingAnalyzeGame?.appid === game.appid && !isAnalyzingGame ? (
+                                  <div className="mt-3 flex items-center gap-2">
+                                    <span className="text-xs text-slate-400">Latest reviews:</span>
+                                    <Button
+                                      onClick={() => handleAnalyze(game, 1000)}
+                                      variant={isAlreadyAnalyzed ? "update" : "primary"}
+                                      size="sm"
+                                    >
+                                      1,000
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleAnalyze(game, 2000)}
+                                      variant={isAlreadyAnalyzed ? "update" : "primary"}
+                                      size="sm"
+                                    >
+                                      2,000
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => setPendingAnalyzeGame(game)}
+                                    disabled={isAnalyzingGame}
+                                    variant={isAlreadyAnalyzed ? "update" : "primary"}
+                                    size="sm"
+                                    className="mt-3"
+                                  >
+                                    {isAnalyzingGame
+                                      ? t('dashboard.analyzing')
+                                      : isAlreadyAnalyzed
+                                        ? t('dashboard.update')
+                                        : t('dashboard.analyze')}
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           );
@@ -935,7 +956,7 @@ function DashboardContent() {
               try {
                 await startAnalysis(selectedGame, {
                   refresh: true,
-                  review_count: reviewCount,
+                  review_count: analysis.metadata.requested ?? 1000,
                   language: "all",
                   languages: undefined,
                   filter: fetchFilter,
@@ -2019,6 +2040,42 @@ function AnalysisResults({
               <p className="text-[11px] sm:text-xs text-slate-500">
                 {analysis.metadata.retrieved.toLocaleString()} reviews
               </p>
+              {/* Compact metadata row: Developer · Release Date · Price */}
+              <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-1">
+                {gameDetailsLoading ? (
+                  <span className="animate-pulse">Loading details...</span>
+                ) : (
+                  <>
+                    {gameDetails?.developers && gameDetails.developers.length > 0 && (
+                      <span>{gameDetails.developers.join(', ')}</span>
+                    )}
+                    {gameDetails?.developers && gameDetails.developers.length > 0 && gameDetails?.release_date && (
+                      <span>·</span>
+                    )}
+                    {gameDetails?.coming_soon ? (
+                      <span className="text-amber-400">Coming Soon</span>
+                    ) : gameDetails?.release_date ? (
+                      <span>{gameDetails.release_date}</span>
+                    ) : null}
+                    {(gameDetails?.release_date || gameDetails?.coming_soon) && (gameDetails?.is_free || gameDetails?.price_final) && (
+                      <span>·</span>
+                    )}
+                    {gameDetails?.is_free ? (
+                      <span className="text-emerald-400">Free</span>
+                    ) : gameDetails?.price_final ? (
+                      <span className="inline-flex items-center gap-1">
+                        {gameDetails.price_discount > 0 && gameDetails.price_initial && (
+                          <>
+                            <span className="line-through">${gameDetails.price_initial.toFixed(2)}</span>
+                            <span className="text-[10px] px-1 rounded bg-emerald-500/20 text-emerald-400">-{gameDetails.price_discount}%</span>
+                          </>
+                        )}
+                        <span>${gameDetails.price_final.toFixed(2)}</span>
+                      </span>
+                    ) : null}
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2126,103 +2183,161 @@ function AnalysisResults({
           </Card>
         )}
 
-        {/* Two-column layout: KPIs list | News */}
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          {/* Column 1: KPIs as vertical list */}
+        {/* Hero KPI cards */}
+        <div className="mt-5 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
+          {/* Recommendation Rate */}
           <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
-            <div className="space-y-3">
-              {/* Recommendation */}
-              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
-                <span className="text-xs text-slate-400">{t('dashboard.recommendation')}</span>
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: getRecommendationColor(summaryRecommendationRate ?? 0) }}
-                >
-                  {formatPercentOrDash(summaryRecommendationRate)}
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-slate-400">{t('dashboard.recommendation')}</p>
+            <div className="mt-2 flex items-end justify-between">
+              <p
+                className="text-2xl sm:text-3xl font-semibold"
+                style={{ color: getRecommendationColor(summaryRecommendationRate ?? 0) }}
+              >
+                {formatPercentOrDash(summaryRecommendationRate)}
+              </p>
+              {recDelta !== null && (
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border border-white/10 ${recDeltaClass}`}>
+                  {recDeltaLabel}
                 </span>
-              </div>
-              {/* Issue Rate */}
-              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
-                <span className="text-xs text-slate-400">{t('dashboard.issueRate')}</span>
-                <span className="text-sm font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</span>
-              </div>
-              {/* Request Rate */}
-              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
-                <span className="text-xs text-slate-400">{t('dashboard.requestRate')}</span>
-                <span className="text-sm font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</span>
-              </div>
-              {/* Price - fetched live */}
-              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
-                <span className="text-xs text-slate-400">Price</span>
-                <div className="text-right">
-                  {gameDetailsLoading ? (
-                    <span className="text-sm text-slate-500 animate-pulse">Loading...</span>
-                  ) : gameDetails?.is_free ? (
-                    <span className="text-sm font-semibold text-emerald-400">Free</span>
-                  ) : gameDetails?.price_final ? (
-                    <div className="flex items-center gap-2">
-                      {gameDetails.price_discount > 0 && gameDetails.price_initial && (
-                        <>
-                          <span className="text-xs text-slate-500 line-through">
-                            ${gameDetails.price_initial.toFixed(2)}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-                            -{gameDetails.price_discount}%
-                          </span>
-                        </>
-                      )}
-                      <span className="text-sm font-semibold text-white">
-                        ${gameDetails.price_final.toFixed(2)}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-slate-500">—</span>
-                  )}
-                </div>
-              </div>
-              {/* Release Date */}
-              <div className="flex items-center justify-between py-1.5 border-b border-white/5">
-                <span className="text-xs text-slate-400">Release Date</span>
-                <span className="text-sm font-semibold text-white">
-                  {gameDetailsLoading ? (
-                    <span className="text-slate-500 animate-pulse">Loading...</span>
-                  ) : gameDetails?.coming_soon ? (
-                    <span className="text-amber-400">Coming Soon</span>
-                  ) : gameDetails?.release_date ? (
-                    gameDetails.release_date
-                  ) : (
-                    <span className="text-slate-500">—</span>
-                  )}
-                </span>
-              </div>
-              {/* Developer */}
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-xs text-slate-400">Developer</span>
-                <span className="text-sm font-semibold text-white truncate max-w-[180px]" title={gameDetails?.developers?.join(', ')}>
-                  {gameDetailsLoading ? (
-                    <span className="text-slate-500 animate-pulse">Loading...</span>
-                  ) : gameDetails?.developers && gameDetails.developers.length > 0 ? (
-                    gameDetails.developers.join(', ')
-                  ) : (
-                    <span className="text-slate-500">—</span>
-                  )}
-                </span>
-              </div>
+              )}
             </div>
           </div>
-
-          {/* Column 2: Recent Updates */}
-          {selectedGame && (
-            <div className={`${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
-              <NewsWithSummary appId={selectedGame.appid} count={5} />
+          {/* Issue Rate */}
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-fade-slide-up animation-delay-150' : 'opacity-0'}`}>
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-slate-400">{t('dashboard.issueRate')}</p>
+            <div className="mt-2 flex items-end justify-between">
+              <p className="text-2xl sm:text-3xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
+              {issueItems.length > 0 && (
+                <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.reduce((s, e) => s + Number(e.issue_count ?? 0), 0).toLocaleString()} issues</span>
+              )}
             </div>
-          )}
+          </div>
+          {/* Request Rate */}
+          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-slate-400">{t('dashboard.requestRate')}</p>
+            <div className="mt-2 flex items-end justify-between">
+              <p className="text-2xl sm:text-3xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
+              {requestItems.length > 0 && (
+                <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.reduce((s, e) => s + Number(e.request_count ?? 0), 0).toLocaleString()} requests</span>
+              )}
+            </div>
+          </div>
         </div>
       </Card>
 
       <div className="space-y-6">
 
-        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
+          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-250' : 'opacity-0'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topIssues')}</h4>
+                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most reported issues</p>
+              </div>
+              <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.length} items</span>
+            </div>
+            {issueItems.length === 0 ? (
+              <p className="mt-3 text-xs sm:text-sm text-slate-500">No issue tags found yet.</p>
+            ) : (
+              <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
+                {issueItems.map((entry) => {
+                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
+                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
+                  const issueCount = Number(entry.issue_count ?? 0);
+                  const totalCount = Number(entry.count ?? 0);
+                  const issuePercentage = totalCount > 0 ? Math.round((issueCount / totalCount) * 100) : 0;
+                  const snippet = entry.issue_snippets?.[0] ?? "";
+                  return (
+                    <button
+                      key={subcategoryKey}
+                      type="button"
+                      onClick={() => {
+                        openSubcategory(subcategoryKey, 'issue');
+                      }}
+                      className={`flex w-full items-start justify-between gap-2 rounded-lg sm:rounded-xl border px-2.5 sm:px-3 py-2 text-left active:scale-[0.99] ${
+                        selectedSubcategory === subcategoryKey
+                          ? "border-sky-400/50 bg-sky-500/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="min-w-0 space-y-0.5 sm:space-y-1 flex-1">
+                        <p className="truncate text-xs sm:text-sm text-slate-200">{label}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500">
+                          {issueCount.toLocaleString()} issues ({issuePercentage}%)
+                        </p>
+                        {snippet ? (
+                          <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2">{snippet}</p>
+                        ) : null}
+                      </div>
+                      <p
+                        className="text-xs sm:text-sm font-semibold flex-shrink-0"
+                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
+                      >
+                        {formatPercentOrDash(entry.recommendation_rate)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topRequests')}</h4>
+                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most requested features</p>
+              </div>
+              <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.length} items</span>
+            </div>
+            {requestItems.length === 0 ? (
+              <p className="mt-3 text-xs sm:text-sm text-slate-500">No feature requests tagged yet.</p>
+            ) : (
+              <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
+                {requestItems.map((entry) => {
+                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
+                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
+                  const requestCount = Number(entry.request_count ?? 0);
+                  const totalCount = Number(entry.count ?? 0);
+                  const requestPercentage = totalCount > 0 ? Math.round((requestCount / totalCount) * 100) : 0;
+                  const snippet = entry.request_snippets?.[0] ?? "";
+                  return (
+                    <button
+                      key={subcategoryKey}
+                      type="button"
+                      onClick={() => {
+                        openSubcategory(subcategoryKey, 'request');
+                      }}
+                      className={`flex w-full items-start justify-between gap-2 rounded-lg sm:rounded-xl border px-2.5 sm:px-3 py-2 text-left active:scale-[0.99] ${
+                        selectedSubcategory === subcategoryKey
+                          ? "border-sky-400/50 bg-sky-500/10"
+                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="min-w-0 space-y-0.5 sm:space-y-1 flex-1">
+                        <p className="truncate text-xs sm:text-sm text-slate-200">{label}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500">
+                          {requestCount.toLocaleString()} requests ({requestPercentage}%)
+                        </p>
+                        {snippet ? (
+                          <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2">{snippet}</p>
+                        ) : null}
+                      </div>
+                      <p
+                        className="text-xs sm:text-sm font-semibold flex-shrink-0"
+                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
+                      >
+                        {formatPercentOrDash(entry.recommendation_rate)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
           <div>
             <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
             <p className="mt-1 text-xs sm:text-sm text-slate-400">Recommendation rate by category</p>
@@ -2287,116 +2402,6 @@ function AnalysisResults({
             })}
           </div>
         </Card>
-
-        <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
-          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topIssues')}</h4>
-                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most reported issues</p>
-              </div>
-              <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.length} items</span>
-            </div>
-            {issueItems.length === 0 ? (
-              <p className="mt-3 text-xs sm:text-sm text-slate-500">No issue tags found yet.</p>
-            ) : (
-              <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
-                {issueItems.map((entry) => {
-                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
-                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
-                  const issueCount = Number(entry.issue_count ?? 0);
-                  const totalCount = Number(entry.count ?? 0);
-                  const issuePercentage = totalCount > 0 ? Math.round((issueCount / totalCount) * 100) : 0;
-                  const snippet = entry.issue_snippets?.[0] ?? "";
-                  return (
-                    <button
-                      key={subcategoryKey}
-                      type="button"
-                      onClick={() => {
-                        openSubcategory(subcategoryKey, 'issue');
-                      }}
-                      className={`flex w-full items-start justify-between gap-2 rounded-lg sm:rounded-xl border px-2.5 sm:px-3 py-2 text-left active:scale-[0.99] ${
-                        selectedSubcategory === subcategoryKey
-                          ? "border-sky-400/50 bg-sky-500/10"
-                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                      }`}
-                    >
-                      <div className="min-w-0 space-y-0.5 sm:space-y-1 flex-1">
-                        <p className="truncate text-xs sm:text-sm text-slate-200">{label}</p>
-                        <p className="text-[10px] sm:text-xs text-slate-500">
-                          {issueCount.toLocaleString()} issues ({issuePercentage}%)
-                        </p>
-                        {snippet ? (
-                          <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2">{snippet}</p>
-                        ) : null}
-                      </div>
-                      <p
-                        className="text-xs sm:text-sm font-semibold flex-shrink-0"
-                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
-                      >
-                        {formatPercentOrDash(entry.recommendation_rate)}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-
-          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topRequests')}</h4>
-                <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most requested features</p>
-              </div>
-              <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.length} items</span>
-            </div>
-            {requestItems.length === 0 ? (
-              <p className="mt-3 text-xs sm:text-sm text-slate-500">No feature requests tagged yet.</p>
-            ) : (
-              <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
-                {requestItems.map((entry) => {
-                  const subcategoryKey = entry.subcategory || entry.sub_category || "other/general";
-                  const label = toSubcategoryLabel(subcategoryKey, entry.sub_category) || "Other";
-                  const requestCount = Number(entry.request_count ?? 0);
-                  const totalCount = Number(entry.count ?? 0);
-                  const requestPercentage = totalCount > 0 ? Math.round((requestCount / totalCount) * 100) : 0;
-                  const snippet = entry.request_snippets?.[0] ?? "";
-                  return (
-                    <button
-                      key={subcategoryKey}
-                      type="button"
-                      onClick={() => {
-                        openSubcategory(subcategoryKey, 'request');
-                      }}
-                      className={`flex w-full items-start justify-between gap-2 rounded-lg sm:rounded-xl border px-2.5 sm:px-3 py-2 text-left active:scale-[0.99] ${
-                        selectedSubcategory === subcategoryKey
-                          ? "border-sky-400/50 bg-sky-500/10"
-                          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
-                      }`}
-                    >
-                      <div className="min-w-0 space-y-0.5 sm:space-y-1 flex-1">
-                        <p className="truncate text-xs sm:text-sm text-slate-200">{label}</p>
-                        <p className="text-[10px] sm:text-xs text-slate-500">
-                          {requestCount.toLocaleString()} requests ({requestPercentage}%)
-                        </p>
-                        {snippet ? (
-                          <p className="text-[10px] sm:text-xs text-slate-400 line-clamp-2">{snippet}</p>
-                        ) : null}
-                      </div>
-                      <p
-                        className="text-xs sm:text-sm font-semibold flex-shrink-0"
-                        style={{ color: getRecommendationColor(entry.recommendation_rate) }}
-                      >
-                        {formatPercentOrDash(entry.recommendation_rate)}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-        </div>
 
         <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-500' : 'opacity-0'}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2473,7 +2478,14 @@ function AnalysisResults({
           )}
         </Card>
 
-        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-600' : 'opacity-0'}`}>
+        {/* Recent Updates (News) */}
+        {selectedGame && (
+          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-600' : 'opacity-0'}`}>
+            <NewsWithSummary appId={selectedGame.appid} count={5} />
+          </Card>
+        )}
+
+        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-700' : 'opacity-0'}`}>
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-lg font-semibold text-white">Userbase segmentation</h4>

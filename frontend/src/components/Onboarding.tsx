@@ -6,8 +6,9 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { SentiNextLogo } from './SentiNextLogo';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 export function Onboarding() {
   const { showOnboarding, markOnboardingComplete } = useOnboarding();
@@ -102,7 +103,8 @@ export function Onboarding() {
             {currentStep === 0 && <StepWelcome />}
             {currentStep === 1 && <StepSearchAnalyze />}
             {currentStep === 2 && <StepInsights />}
-            {currentStep === 3 && <StepAIAgent />}
+            {currentStep === 3 && <StepAIFeatures />}
+            {currentStep === 4 && <StepPricing />}
           </div>
 
           {/* Navigation buttons */}
@@ -135,25 +137,7 @@ function StepWelcome() {
     <div className="flex flex-col items-center justify-center text-center flex-1 py-8">
       {/* Logo */}
       <div className="mb-8">
-        <div className="w-24 h-24 mx-auto mb-6 relative">
-          <div className="absolute inset-0 bg-[rgb(0,255,255)]/20 blur-xl" />
-          <svg viewBox="0 0 100 100" className="w-full h-full relative z-10">
-            <polygon
-              points="50,10 90,30 90,70 50,90 10,70 10,30"
-              fill="none"
-              stroke="rgb(0, 255, 255)"
-              strokeWidth="2"
-            />
-            <polygon
-              points="50,25 75,38 75,62 50,75 25,62 25,38"
-              fill="rgb(0, 255, 255)"
-              fillOpacity="0.2"
-              stroke="rgb(0, 255, 255)"
-              strokeWidth="1"
-            />
-            <circle cx="50" cy="50" r="8" fill="rgb(0, 255, 255)" />
-          </svg>
-        </div>
+        <SentiNextLogo size="xl" glow className="mx-auto" />
       </div>
 
       <h1 className="text-3xl font-bold text-white mb-3">
@@ -166,12 +150,12 @@ function StepWelcome() {
       {/* Feature highlights */}
       <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
         {[
-          { label: 'Reviews Analyzed', value: '1,000+' },
-          { label: 'AI Categories', value: '20+' },
-          { label: 'Languages', value: '29' },
+          { label: t('onboarding.stat.reviewsAnalyzed'), value: '1,000+' },
+          { label: t('onboarding.stat.aiCategories'), value: '20+' },
+          { label: t('onboarding.stat.languages'), value: '29' },
         ].map((stat, i) => (
           <div
-            key={stat.label}
+            key={i}
             className="p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 animate-fade-slide-up"
             style={{ animationDelay: `${i * 100}ms` }}
           >
@@ -303,7 +287,7 @@ function StepInsights() {
       <div className="flex-1 grid grid-cols-2 gap-4">
         {/* KPIs */}
         <div className="space-y-3">
-          <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70">Key Metrics</p>
+          <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70">{t('onboarding.step2.keyMetrics')}</p>
           <div className="grid grid-cols-2 gap-2">
             {[
               { label: 'Recommendation', value: '87%', color: 'text-emerald-400', border: 'border-l-emerald-500' },
@@ -325,7 +309,7 @@ function StepInsights() {
 
         {/* Trend chart */}
         <div className="space-y-3">
-          <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70">Sentiment Trend</p>
+          <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70">{t('onboarding.step2.sentimentTrend')}</p>
           <div className="bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 p-3 h-[100px]">
             <div className="h-full flex items-end gap-1">
               {trendPoints.map((value, i) => (
@@ -344,7 +328,7 @@ function StepInsights() {
 
         {/* Category breakdown */}
         <div className="col-span-2 space-y-3">
-          <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70">Category Breakdown</p>
+          <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70">{t('onboarding.step2.categoryBreakdown')}</p>
           <div className="bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 p-3">
             <div className="space-y-2">
               {categoryData.map((cat, i) => (
@@ -366,7 +350,7 @@ function StepInsights() {
   );
 }
 
-function StepAIAgent() {
+function StepAIFeatures() {
   const { t } = useLanguage();
 
   // Mini chart data for the response
@@ -374,16 +358,48 @@ function StepAIAgent() {
     { label: 'Performance', value: 45 },
     { label: 'Bugs', value: 28 },
     { label: 'Crashes', value: 15 },
-    { label: 'Network', value: 12 },
+  ];
+
+  const features = [
+    {
+      icon: (
+        <svg className="w-5 h-5 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      ),
+      title: t('onboarding.feature.chat'),
+      desc: t('onboarding.feature.chatDesc'),
+      borderColor: 'border-l-[rgb(0,255,255)]',
+    },
+    {
+      icon: (
+        <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+      title: t('onboarding.feature.summary'),
+      desc: t('onboarding.feature.summaryDesc'),
+      borderColor: 'border-l-emerald-500',
+    },
+    {
+      icon: (
+        <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+        </svg>
+      ),
+      title: t('onboarding.feature.compare'),
+      desc: t('onboarding.feature.compareDesc'),
+      borderColor: 'border-l-purple-500',
+    },
   ];
 
   return (
     <div className="flex flex-col flex-1">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-5">
         <div className="w-10 h-10 mb-4 flex items-center justify-center bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30">
           <svg className="w-5 h-5 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
         <h2 className="text-2xl font-bold text-white mb-2">
@@ -394,49 +410,167 @@ function StepAIAgent() {
         </p>
       </div>
 
-      {/* Chat preview with embedded chart */}
-      <div className="flex-1 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 p-4">
+      {/* Feature cards grid */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {features.map((feature, i) => (
+          <div
+            key={i}
+            className={`bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 border-l-2 ${feature.borderColor} p-3 animate-fade-slide-up`}
+            style={{ animationDelay: `${i * 80}ms` }}
+          >
+            <div className="mb-2">{feature.icon}</div>
+            <p className="text-xs font-semibold text-white mb-1">{feature.title}</p>
+            <p className="text-[10px] text-[rgb(100,100,120)] leading-snug">{feature.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Compact chat preview */}
+      <div className="flex-1 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 p-3">
         {/* User message */}
-        <div className="flex justify-end mb-4 animate-fade-slide-up">
-          <div className="max-w-[80%] bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 p-3">
-            <p className="text-sm text-white">What are the main technical issues players are reporting?</p>
+        <div className="flex justify-end mb-3 animate-fade-slide-up" style={{ animationDelay: '250ms' }}>
+          <div className="max-w-[75%] bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30 p-2.5">
+            <p className="text-xs text-white">What are the main technical issues?</p>
           </div>
         </div>
 
         {/* AI response with chart */}
-        <div className="flex gap-3 animate-fade-slide-up" style={{ animationDelay: '200ms' }}>
-          <div className="w-8 h-8 flex-shrink-0 bg-[rgb(0,255,255)]/20 border border-[rgb(0,255,255)]/30 flex items-center justify-center">
-            <svg className="w-4 h-4 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex gap-2.5 animate-fade-slide-up" style={{ animationDelay: '400ms' }}>
+          <div className="w-7 h-7 flex-shrink-0 bg-[rgb(0,255,255)]/20 border border-[rgb(0,255,255)]/30 flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <div className="flex-1 space-y-3">
-            <p className="text-sm text-[rgb(200,200,210)]">
-              Based on analyzing 1,000 reviews, here are the main technical issues:
+          <div className="flex-1 space-y-2">
+            <p className="text-xs text-[rgb(200,200,210)]">
+              Based on 1,000 reviews, the main technical issues:
             </p>
-
-            {/* Embedded bar chart */}
-            <div className="bg-[rgb(5,5,15)] border border-[rgb(0,255,255)]/10 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-[rgb(100,100,120)] mb-3">Technical Issues Distribution</p>
-              <div className="space-y-2">
+            <div className="bg-[rgb(5,5,15)] border border-[rgb(0,255,255)]/10 p-2.5">
+              <div className="space-y-1.5">
                 {issueData.map((item, i) => (
-                  <div key={item.label} className="animate-fade-slide-up" style={{ animationDelay: `${(i + 3) * 100}ms` }}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] text-[rgb(150,150,170)]">{item.label}</span>
-                      <span className="text-[11px] text-amber-400 font-medium">{item.value}%</span>
+                  <div key={item.label} className="animate-fade-slide-up" style={{ animationDelay: `${(i + 5) * 80}ms` }}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[10px] text-[rgb(150,150,170)]">{item.label}</span>
+                      <span className="text-[10px] text-amber-400 font-medium">{item.value}%</span>
                     </div>
-                    <div className="h-2 bg-[rgb(0,255,255)]/10">
+                    <div className="h-1.5 bg-[rgb(0,255,255)]/10">
                       <div className="h-full bg-amber-500/80" style={{ width: `${item.value}%` }} />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-
-            <p className="text-sm text-[rgb(200,200,210)]">
-              Performance issues are the most common complaint, particularly related to frame drops in busy areas.
-            </p>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepPricing() {
+  const { t } = useLanguage();
+
+  const tiers = [
+    {
+      name: t('onboarding.tier.free'),
+      price: '$0',
+      priceLabel: '',
+      games: '3',
+      credits: t('onboarding.tier.trialCredits'),
+      color: 'border-t-slate-400',
+      textColor: 'text-slate-300',
+      badge: null,
+    },
+    {
+      name: t('onboarding.tier.indie'),
+      price: '$10',
+      priceLabel: t('onboarding.tier.perMonth'),
+      games: '10',
+      credits: t('onboarding.tier.indieCredits'),
+      color: 'border-t-emerald-500',
+      textColor: 'text-emerald-400',
+      badge: null,
+    },
+    {
+      name: t('onboarding.tier.pro'),
+      price: '$20',
+      priceLabel: t('onboarding.tier.perMonth'),
+      games: '25',
+      credits: t('onboarding.tier.proCredits'),
+      color: 'border-t-sky-500',
+      textColor: 'text-sky-400',
+      badge: t('onboarding.tier.popular'),
+    },
+    {
+      name: t('onboarding.tier.enterprise'),
+      price: t('onboarding.tier.custom'),
+      priceLabel: '',
+      games: t('onboarding.tier.unlimited'),
+      credits: t('onboarding.tier.custom'),
+      color: 'border-t-purple-500',
+      textColor: 'text-purple-400',
+      badge: null,
+    },
+  ];
+
+  return (
+    <div className="flex flex-col flex-1">
+      {/* Header */}
+      <div className="mb-5">
+        <div className="w-10 h-10 mb-4 flex items-center justify-center bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30">
+          <svg className="w-5 h-5 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">
+          {t('onboarding.step4.title')}
+        </h2>
+        <p className="text-[rgb(150,150,170)] text-sm">
+          {t('onboarding.step4.desc')}
+        </p>
+      </div>
+
+      {/* Tier cards */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        {tiers.map((tier, i) => (
+          <div
+            key={i}
+            className={`relative bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 border-t-2 ${tier.color} p-3 animate-fade-slide-up`}
+            style={{ animationDelay: `${i * 80}ms` }}
+          >
+            {tier.badge && (
+              <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-sky-500 text-white text-[8px] uppercase tracking-wider px-2 py-0.5 font-semibold">
+                {tier.badge}
+              </div>
+            )}
+            <p className={`text-xs font-semibold ${tier.textColor} mb-2`}>{tier.name}</p>
+            <p className="text-lg font-bold text-white leading-tight">
+              {tier.price}
+              {tier.priceLabel && <span className="text-[10px] font-normal text-[rgb(100,100,120)]">/{tier.priceLabel}</span>}
+            </p>
+            <div className="mt-3 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-[rgb(100,100,120)]">{t('onboarding.tier.gamesLabel')}</span>
+                <span className="text-[10px] text-white font-medium ml-auto">{tier.games}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-[rgb(100,100,120)]">{t('onboarding.tier.creditsLabel')}</span>
+                <span className="text-[10px] text-white font-medium ml-auto">{tier.credits}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Credit cost hints */}
+      <div className="bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 p-3">
+        <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70 mb-2">{t('onboarding.tier.creditCosts')}</p>
+        <div className="flex items-center gap-4 text-[11px] text-[rgb(150,150,170)]">
+          <span>{t('onboarding.tier.classifyCost')}</span>
+          <span className="text-[rgb(0,255,255)]/20">|</span>
+          <span>{t('onboarding.tier.chatCost')}</span>
+          <span className="text-[rgb(0,255,255)]/20">|</span>
+          <span>{t('onboarding.tier.summaryCost')}</span>
         </div>
       </div>
     </div>

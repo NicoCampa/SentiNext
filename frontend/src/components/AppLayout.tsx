@@ -11,6 +11,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useSupportNotification } from "@/contexts/SupportNotificationContext";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
+import { SentiNextLogo } from "@/components/SentiNextLogo";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -94,14 +95,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
             {/* Logo Section */}
             <div className="mb-8">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 border border-[rgb(0,255,255)] flex items-center justify-center relative">
-                  {/* Corner decorations */}
-                  <div className="absolute -top-[2px] -left-[2px] w-2 h-2 border-t border-l border-[rgb(0,255,255)]" />
-                  <div className="absolute -top-[2px] -right-[2px] w-2 h-2 border-t border-r border-[rgb(0,255,255)]" />
-                  <div className="absolute -bottom-[2px] -left-[2px] w-2 h-2 border-b border-l border-[rgb(255,0,128)]" />
-                  <div className="absolute -bottom-[2px] -right-[2px] w-2 h-2 border-b border-r border-[rgb(255,0,128)]" />
-                  <span className="text-white text-xl font-bold">SN</span>
-                </div>
+                <SentiNextLogo size="sm" />
                 <div>
                   <h1 className="text-xl font-bold tracking-wider">
                     <span className="text-white">

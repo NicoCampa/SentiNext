@@ -284,6 +284,39 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.feature.summaryDesc': 'Get instant insights from reviews',
     'onboarding.feature.compare': 'Compare Games',
     'onboarding.feature.compareDesc': 'Benchmark against competitors',
+
+    // Onboarding - stat labels
+    'onboarding.stat.reviewsAnalyzed': 'Reviews Analyzed',
+    'onboarding.stat.aiCategories': 'AI Categories',
+    'onboarding.stat.languages': 'Languages',
+
+    // Onboarding - Step 2 section headers
+    'onboarding.step2.keyMetrics': 'Key Metrics',
+    'onboarding.step2.sentimentTrend': 'Sentiment Trend',
+    'onboarding.step2.categoryBreakdown': 'Category Breakdown',
+
+    // Onboarding - Step 4 (Pricing)
+    'onboarding.step4.title': 'Plans & Pricing',
+    'onboarding.step4.desc': 'Start free and scale as you grow. Every plan includes AI classification, chat, and summaries.',
+
+    // Onboarding - Tier labels
+    'onboarding.tier.free': 'Free',
+    'onboarding.tier.indie': 'Indie',
+    'onboarding.tier.pro': 'Pro',
+    'onboarding.tier.enterprise': 'Enterprise',
+    'onboarding.tier.perMonth': 'mo',
+    'onboarding.tier.custom': 'Custom',
+    'onboarding.tier.unlimited': 'Unlimited',
+    'onboarding.tier.popular': 'Popular',
+    'onboarding.tier.gamesLabel': 'Games',
+    'onboarding.tier.creditsLabel': 'Credits',
+    'onboarding.tier.trialCredits': '1,000 trial',
+    'onboarding.tier.indieCredits': '2,500/mo',
+    'onboarding.tier.proCredits': '5,000/mo',
+    'onboarding.tier.creditCosts': 'Credit Costs',
+    'onboarding.tier.classifyCost': 'Classify: 1 credit',
+    'onboarding.tier.chatCost': 'Chat: 3 credits',
+    'onboarding.tier.summaryCost': 'Summary: 2 credits',
   },
   it: {
     // Navigation
@@ -556,6 +589,39 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.feature.summaryDesc': 'Ottieni insights istantanei dalle recensioni',
     'onboarding.feature.compare': 'Confronta Giochi',
     'onboarding.feature.compareDesc': 'Benchmark contro i concorrenti',
+
+    // Onboarding - stat labels
+    'onboarding.stat.reviewsAnalyzed': 'Recensioni Analizzate',
+    'onboarding.stat.aiCategories': 'Categorie IA',
+    'onboarding.stat.languages': 'Lingue',
+
+    // Onboarding - Step 2 section headers
+    'onboarding.step2.keyMetrics': 'Metriche Chiave',
+    'onboarding.step2.sentimentTrend': 'Tendenza Sentiment',
+    'onboarding.step2.categoryBreakdown': 'Analisi Categorie',
+
+    // Onboarding - Step 4 (Pricing)
+    'onboarding.step4.title': 'Piani e Prezzi',
+    'onboarding.step4.desc': 'Inizia gratis e scala man mano che cresci. Ogni piano include classificazione IA, chat e riassunti.',
+
+    // Onboarding - Tier labels
+    'onboarding.tier.free': 'Gratuito',
+    'onboarding.tier.indie': 'Indie',
+    'onboarding.tier.pro': 'Pro',
+    'onboarding.tier.enterprise': 'Enterprise',
+    'onboarding.tier.perMonth': 'mese',
+    'onboarding.tier.custom': 'Personalizzato',
+    'onboarding.tier.unlimited': 'Illimitati',
+    'onboarding.tier.popular': 'Popolare',
+    'onboarding.tier.gamesLabel': 'Giochi',
+    'onboarding.tier.creditsLabel': 'Crediti',
+    'onboarding.tier.trialCredits': '1.000 prova',
+    'onboarding.tier.indieCredits': '2.500/mese',
+    'onboarding.tier.proCredits': '5.000/mese',
+    'onboarding.tier.creditCosts': 'Costi Crediti',
+    'onboarding.tier.classifyCost': 'Classifica: 1 credito',
+    'onboarding.tier.chatCost': 'Chat: 3 crediti',
+    'onboarding.tier.summaryCost': 'Riassunto: 2 crediti',
   },
   fr: {
     // Navigation
@@ -828,6 +894,39 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.feature.summaryDesc': 'Obtenez des insights instantanés des avis',
     'onboarding.feature.compare': 'Comparer les Jeux',
     'onboarding.feature.compareDesc': 'Benchmark contre les concurrents',
+
+    // Onboarding - stat labels
+    'onboarding.stat.reviewsAnalyzed': 'Avis Analysés',
+    'onboarding.stat.aiCategories': 'Catégories IA',
+    'onboarding.stat.languages': 'Langues',
+
+    // Onboarding - Step 2 section headers
+    'onboarding.step2.keyMetrics': 'Métriques Clés',
+    'onboarding.step2.sentimentTrend': 'Tendance du Sentiment',
+    'onboarding.step2.categoryBreakdown': 'Répartition par Catégorie',
+
+    // Onboarding - Step 4 (Pricing)
+    'onboarding.step4.title': 'Plans et Tarifs',
+    'onboarding.step4.desc': 'Commencez gratuitement et évoluez à votre rythme. Chaque plan inclut la classification IA, le chat et les résumés.',
+
+    // Onboarding - Tier labels
+    'onboarding.tier.free': 'Gratuit',
+    'onboarding.tier.indie': 'Indie',
+    'onboarding.tier.pro': 'Pro',
+    'onboarding.tier.enterprise': 'Enterprise',
+    'onboarding.tier.perMonth': 'mois',
+    'onboarding.tier.custom': 'Sur mesure',
+    'onboarding.tier.unlimited': 'Illimités',
+    'onboarding.tier.popular': 'Populaire',
+    'onboarding.tier.gamesLabel': 'Jeux',
+    'onboarding.tier.creditsLabel': 'Crédits',
+    'onboarding.tier.trialCredits': '1 000 essai',
+    'onboarding.tier.indieCredits': '2 500/mois',
+    'onboarding.tier.proCredits': '5 000/mois',
+    'onboarding.tier.creditCosts': 'Coûts des Crédits',
+    'onboarding.tier.classifyCost': 'Classifier : 1 crédit',
+    'onboarding.tier.chatCost': 'Chat : 3 crédits',
+    'onboarding.tier.summaryCost': 'Résumé : 2 crédits',
   },
   de: {
     // Navigation
@@ -1100,6 +1199,39 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.feature.summaryDesc': 'Sofortige Insights aus Bewertungen',
     'onboarding.feature.compare': 'Spiele vergleichen',
     'onboarding.feature.compareDesc': 'Benchmark gegen Wettbewerber',
+
+    // Onboarding - stat labels
+    'onboarding.stat.reviewsAnalyzed': 'Bewertungen analysiert',
+    'onboarding.stat.aiCategories': 'KI-Kategorien',
+    'onboarding.stat.languages': 'Sprachen',
+
+    // Onboarding - Step 2 section headers
+    'onboarding.step2.keyMetrics': 'Kennzahlen',
+    'onboarding.step2.sentimentTrend': 'Stimmungstrend',
+    'onboarding.step2.categoryBreakdown': 'Kategorieaufschlüsselung',
+
+    // Onboarding - Step 4 (Pricing)
+    'onboarding.step4.title': 'Pläne & Preise',
+    'onboarding.step4.desc': 'Starten Sie kostenlos und skalieren Sie mit Ihrem Wachstum. Jeder Plan enthält KI-Klassifizierung, Chat und Zusammenfassungen.',
+
+    // Onboarding - Tier labels
+    'onboarding.tier.free': 'Kostenlos',
+    'onboarding.tier.indie': 'Indie',
+    'onboarding.tier.pro': 'Pro',
+    'onboarding.tier.enterprise': 'Enterprise',
+    'onboarding.tier.perMonth': 'Monat',
+    'onboarding.tier.custom': 'Individuell',
+    'onboarding.tier.unlimited': 'Unbegrenzt',
+    'onboarding.tier.popular': 'Beliebt',
+    'onboarding.tier.gamesLabel': 'Spiele',
+    'onboarding.tier.creditsLabel': 'Credits',
+    'onboarding.tier.trialCredits': '1.000 Test',
+    'onboarding.tier.indieCredits': '2.500/Monat',
+    'onboarding.tier.proCredits': '5.000/Monat',
+    'onboarding.tier.creditCosts': 'Credit-Kosten',
+    'onboarding.tier.classifyCost': 'Klassifizieren: 1 Credit',
+    'onboarding.tier.chatCost': 'Chat: 3 Credits',
+    'onboarding.tier.summaryCost': 'Zusammenfassung: 2 Credits',
   },
 };
 

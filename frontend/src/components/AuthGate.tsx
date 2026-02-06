@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { SignedIn, SignedOut, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { SentiNextLogo } from "@/components/SentiNextLogo";
 
 export function AuthGate({ children }: { children: ReactNode }) {
   return (
@@ -18,18 +19,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           <div className="relative w-full max-w-lg space-y-8">
             {/* Logo and Title */}
             <div className="text-center space-y-6">
-              <div className="mx-auto w-20 h-20 border-2 border-[rgb(0,255,255)] flex items-center justify-center relative group">
-                {/* Corner accents */}
-                <div className="absolute -top-[2px] -left-[2px] w-3 h-3 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
-                <div className="absolute -top-[2px] -right-[2px] w-3 h-3 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
-                <div className="absolute -bottom-[2px] -left-[2px] w-3 h-3 border-b-2 border-l-2 border-[rgb(255,0,128)]" />
-                <div className="absolute -bottom-[2px] -right-[2px] w-3 h-3 border-b-2 border-r-2 border-[rgb(255,0,128)]" />
-
-                <span className="text-white text-2xl font-bold">SN</span>
-
-                {/* Glow on hover */}
-                <div className="absolute inset-0 bg-[rgb(0,255,255)] opacity-0 group-hover:opacity-10 blur-xl transition-opacity" />
-              </div>
+              <SentiNextLogo size="md" glow className="mx-auto" />
 
               <div className="space-y-3">
                 <h1 className="text-4xl font-bold tracking-wider">
