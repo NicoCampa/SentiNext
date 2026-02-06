@@ -22,7 +22,7 @@ export default function SupportPage() {
   const { t } = useLanguage();
   const router = useRouter();
   const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
-  const { refresh: refreshNotification } = useSupportNotification();
+  const { refresh: refreshNotification, markWelcomeSeen } = useSupportNotification();
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -43,6 +43,7 @@ export default function SupportPage() {
       setMessages(data);
       // Refresh notification count since viewing marks messages as read
       void refreshNotification();
+      markWelcomeSeen();
     } catch (err) {
       console.error("Failed to load support thread", err);
       setError((err as Error).message || "Failed to load support messages.");

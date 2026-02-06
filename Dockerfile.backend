@@ -33,4 +33,6 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-keep-alive", "5", "--timeout-graceful-shutdown", "30"]
+# Workers = 2 * CPU + 1 (capped at 4 for typical 1-2 vCPU containers).
+# Override via WEB_CONCURRENCY env var on Render / Railway.
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --timeout-keep-alive 5 --timeout-graceful-shutdown 30"]

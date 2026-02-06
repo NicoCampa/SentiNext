@@ -2100,6 +2100,10 @@ def search_reviews_with_date_filter(
     Returns:
         List of review dicts ordered by votes_up DESC
     """
+    _ALLOWED_ORDER_BY = {"votes_up", "timestamp_created"}
+    if order_by not in _ALLOWED_ORDER_BY:
+        raise ValueError(f"Invalid order_by value: {order_by!r}")
+
     from . import db as db_module
     import time
 
@@ -2821,6 +2825,10 @@ def get_reviews_by_subcategory(
         >>> get_reviews_by_subcategory(1091500, "bugs", "30d", 10)
         # Returns reviews labeled with technical/bugs from last 30 days
     """
+    _ALLOWED_ORDER_BY = {"votes_up", "timestamp_created"}
+    if order_by not in _ALLOWED_ORDER_BY:
+        raise ValueError(f"Invalid order_by value: {order_by!r}")
+
     from . import db as db_module
     import time
 
@@ -3704,7 +3712,7 @@ def delete_user_data(user_id: str) -> Dict[str, int]:
     from . import db as db_module
 
     deleted: Dict[str, int] = {}
-    tables = [
+    _DELETABLE_TABLES = frozenset({
         "starred_games",
         "chat_messages",
         "chat_sessions",
@@ -3719,12 +3727,19 @@ def delete_user_data(user_id: str) -> Dict[str, int]:
         "comparison_summaries",
         "api_requests",
         "llm_usage",
-    ]
+    })
+    tables = list(_DELETABLE_TABLES)
+
+    # Pre-built queries keyed by table name — avoids f-string SQL interpolation
+    _DELETE_QUERIES = {
+        t: text(f"DELETE FROM {t} WHERE user_id = :user_id")
+        for t in _DELETABLE_TABLES
+    }
 
     with db_module.get_connection() as conn:
         for table in tables:
             result = conn.execute(
-                text(f"DELETE FROM {table} WHERE user_id = :user_id"),
+                _DELETE_QUERIES[table],
                 {"user_id": user_id},
             )
             deleted[table] = result.rowcount

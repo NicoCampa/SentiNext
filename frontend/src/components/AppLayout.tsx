@@ -35,7 +35,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { user } = useUser();
   const { isAdmin } = useAdminStatus();
   const { credits } = useCredits();
-  const { userUnreadCount, adminUnreadCount } = useSupportNotification();
+  const { userUnreadCount, adminUnreadCount, showWelcomeBadge } = useSupportNotification();
   const compact = density === "compact";
   const tierLabelMap: Record<string, string> = {
     free: "Free",
@@ -52,8 +52,9 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
     : "border-slate-500/30 bg-slate-500/10 text-slate-300";
 
-  // Get notification count for support/inbox
+  // Get notification count for support/inbox (include welcome badge for first-time users)
   const supportNotificationCount = isAdmin ? adminUnreadCount : userUnreadCount;
+  const effectiveSupportCount = supportNotificationCount + (showWelcomeBadge ? 1 : 0);
 
   const navItems = useMemo(() => {
     const items: Array<{ href: string; label: string; mobileLabel?: string; code: string; hasNotification?: boolean }> = [
@@ -116,7 +117,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                 {sidebarNavItems.map((item) => {
                   const restricted = !!("restricted" in item && item.restricted);
                   const active = isActiveRoute(item.href);
-                  const showNotification = item.hasNotification && supportNotificationCount > 0;
+                  const showNotification = item.hasNotification && effectiveSupportCount > 0;
                   const activeClasses = restricted
                     ? "bg-orange-500/15 border-l-2 border-orange-400 text-orange-300"
                     : "bg-[rgb(0,255,255)]/10 border-l-2 border-[rgb(0,255,255)] text-[rgb(0,255,255)]";
@@ -142,7 +143,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                     <span className="text-xs uppercase tracking-[0.2em]">{item.label}</span>
                     {showNotification && (
                       <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[rgb(255,0,128)] px-1.5 text-[10px] font-medium text-white">
-                        {supportNotificationCount > 99 ? "99+" : supportNotificationCount}
+                        {effectiveSupportCount > 99 ? "99+" : effectiveSupportCount}
                       </span>
                     )}
                     {active && !showNotification && (
@@ -277,7 +278,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                 >
                   {showNotification && (
                     <span className="absolute top-0.5 right-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[rgb(255,0,128)] px-1 text-[8px] font-medium text-white">
-                      {supportNotificationCount > 9 ? "9+" : supportNotificationCount}
+                      {effectiveSupportCount > 9 ? "9+" : effectiveSupportCount}
                     </span>
                   )}
                   <span className="text-[10px] uppercase tracking-[0.1em] font-medium">{item.mobileLabel || item.label}</span>

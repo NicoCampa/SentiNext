@@ -527,11 +527,9 @@ export default function ChatPage() {
     async function loadSessions() {
       try {
         // Load all sessions
-        console.log("Loading chat sessions from:", apiUrl("/chat/sessions"));
         const sessionsResponse = await authFetch(apiUrl("/chat/sessions"));
         if (sessionsResponse.ok) {
           const sessionsList = await sessionsResponse.json();
-          console.log("Loaded chat sessions:", sessionsList.length);
           setSessions(sessionsList);
         } else {
           console.error("Failed to load chat sessions, status:", sessionsResponse.status);
@@ -754,7 +752,6 @@ export default function ChatPage() {
     setCurrentSessionId(null);
     setMessages([]);
     setSelectedGames([]);
-    console.log("Started new conversation");
   }
 
   async function reloadSessions() {
@@ -771,7 +768,6 @@ export default function ChatPage() {
 
   async function loadSession(sessionId: string) {
     try {
-      console.log("Loading session:", sessionId);
       const response = await authFetch(apiUrl(`/chat/history?session_id=${sessionId}`));
       if (response.ok) {
         const history = await response.json();

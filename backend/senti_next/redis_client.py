@@ -36,12 +36,23 @@ def get_queue(name: str = "default") -> "rq.Queue":
     return _queue
 
 
-def enqueue_job(func, *args, job_timeout: int = 3600, **kwargs) -> Optional[str]:
-    """Enqueue a job and return the job ID, or None if Redis is not configured."""
+def enqueue_job(func, *args, job_timeout: int = 3600, retry: int = 2, **kwargs) -> Optional[str]:
+    """Enqueue a job and return the job ID, or None if Redis is not configured.
+
+    Args:
+        retry: Number of automatic retries on failure (default 2).
+    """
     if not is_redis_configured():
         return None
+    from rq import Retry
     queue = get_queue()
-    job = queue.enqueue(func, *args, job_timeout=job_timeout, **kwargs)
+    job = queue.enqueue(
+        func,
+        *args,
+        job_timeout=job_timeout,
+        retry=Retry(max=retry, interval=[30, 120]),
+        **kwargs,
+    )
     return job.id
 
 

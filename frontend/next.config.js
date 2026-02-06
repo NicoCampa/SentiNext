@@ -4,7 +4,16 @@ const isDev = process.env.NODE_ENV !== "production";
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.cloudflare.steamstatic.com",
+      },
+      {
+        protocol: "https",
+        hostname: "shared.akamai.steamstatic.com",
+      },
+    ],
   },
   async headers() {
     return [

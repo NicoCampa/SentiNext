@@ -1,19 +1,25 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useState, useRef, ReactNode } from "react";
+import { useUser } from "@clerk/nextjs";
 import { fetchSupportUnreadCount, fetchAdminSupportUnreadCount } from "@/lib/api";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 
 // Polling interval for unread count updates (60 seconds)
 const POLL_INTERVAL = 60000;
+const WELCOME_SEEN_KEY_PREFIX = "sentinext_support_welcomed_v1";
 
 interface SupportNotificationContextType {
   /** Unread count for regular users (admin replies) */
   userUnreadCount: number;
   /** Unread count for admins (user messages) */
   adminUnreadCount: number;
+  /** Whether to show a badge for the hardcoded welcome message (first-time users) */
+  showWelcomeBadge: boolean;
   /** Mark as read (resets count locally, actual read happens on page visit) */
   markAsRead: () => void;
+  /** Mark the welcome message as seen (called when user visits support page) */
+  markWelcomeSeen: () => void;
   /** Force refresh the unread count */
   refresh: () => Promise<void>;
 }
@@ -21,10 +27,26 @@ interface SupportNotificationContextType {
 const SupportNotificationContext = createContext<SupportNotificationContextType | null>(null);
 
 export function SupportNotificationProvider({ children }: { children: ReactNode }) {
+  const { user } = useUser();
   const { isAdmin } = useAdminStatus();
   const [userUnreadCount, setUserUnreadCount] = useState(0);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
+  const [welcomeSeen, setWelcomeSeen] = useState(true); // default true to avoid flash
   const refreshingRef = useRef(false);
+
+  // Load welcome-seen flag scoped to user
+  useEffect(() => {
+    if (!user?.id) return;
+    const seen = window.localStorage.getItem(`${WELCOME_SEEN_KEY_PREFIX}_${user.id}`) === "true";
+    setWelcomeSeen(seen);
+  }, [user?.id]);
+
+  const markWelcomeSeen = useCallback(() => {
+    setWelcomeSeen(true);
+    if (user?.id) {
+      window.localStorage.setItem(`${WELCOME_SEEN_KEY_PREFIX}_${user.id}`, "true");
+    }
+  }, [user?.id]);
 
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -75,8 +97,10 @@ export function SupportNotificationProvider({ children }: { children: ReactNode 
     return () => window.removeEventListener("focus", handleFocus);
   }, [refresh]);
 
+  const showWelcomeBadge = !isAdmin && !welcomeSeen;
+
   return (
-    <SupportNotificationContext.Provider value={{ userUnreadCount, adminUnreadCount, markAsRead, refresh }}>
+    <SupportNotificationContext.Provider value={{ userUnreadCount, adminUnreadCount, showWelcomeBadge, markAsRead, markWelcomeSeen, refresh }}>
       {children}
     </SupportNotificationContext.Provider>
   );
@@ -88,7 +112,9 @@ export function useSupportNotification(): SupportNotificationContextType {
     return {
       userUnreadCount: 0,
       adminUnreadCount: 0,
+      showWelcomeBadge: false,
       markAsRead: () => {},
+      markWelcomeSeen: () => {},
       refresh: async () => {},
     };
   }

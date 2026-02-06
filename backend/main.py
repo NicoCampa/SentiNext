@@ -266,13 +266,26 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["content-type", "authorization", "x-admin-token"],
     expose_headers=["Content-Disposition"],
 )
 
+
 # ---------------------------------------------------------------------------
-# Rate limiting (in-memory, keyed by user_id or IP)
+# Global exception handler — prevent stack traces from leaking to clients
+# ---------------------------------------------------------------------------
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error."},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting (Redis-backed with in-memory fallback)
 # ---------------------------------------------------------------------------
 import collections
 
@@ -286,7 +299,15 @@ _RATE_LIMITS: Dict[str, int] = {
     "/credits/stripe-webhook": 30,
 }
 _DEFAULT_RATE_LIMIT = 60
+_RATE_WINDOW_SECONDS = 60
 _RATE_EXEMPT = {"/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
+
+_TRUSTED_PROXIES: set[str] = set(
+    p.strip()
+    for p in os.getenv("SENTINEXT_TRUSTED_PROXIES", "").split(",")
+    if p.strip()
+)
+
 
 def _get_rate_key(request: Request) -> str:
     user_payload = getattr(request.state, "user", None)
@@ -294,11 +315,41 @@ def _get_rate_key(request: Request) -> str:
         uid = user_payload.get("sub") or user_payload.get("user_id")
         if uid:
             return f"user:{uid}"
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return f"ip:{forwarded.split(',')[0].strip()}"
+    # Only trust X-Forwarded-For when the direct client is a known proxy
     client = request.client
-    return f"ip:{client.host}" if client else "ip:unknown"
+    client_ip = client.host if client else None
+    if client_ip and client_ip in _TRUSTED_PROXIES:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return f"ip:{forwarded.split(',')[0].strip()}"
+    return f"ip:{client_ip}" if client_ip else "ip:unknown"
+
+
+def _check_rate_limit_redis(key: str, limit: int) -> bool:
+    """Check rate limit via Redis INCR + EXPIRE. Returns True if allowed."""
+    try:
+        r = redis_client.get_redis()
+        redis_key = f"rl:{key}"
+        count = r.incr(redis_key)
+        if count == 1:
+            r.expire(redis_key, _RATE_WINDOW_SECONDS)
+        return count <= limit
+    except Exception:
+        # Redis error — fall through to in-memory
+        return _check_rate_limit_memory(key, limit)
+
+
+def _check_rate_limit_memory(key: str, limit: int) -> bool:
+    """Fallback in-memory rate limiter (per-worker, lost on restart)."""
+    now = time.time()
+    bucket = _rate_limit_buckets.setdefault(key, collections.deque())
+    while bucket and bucket[0] < now - _RATE_WINDOW_SECONDS:
+        bucket.popleft()
+    if len(bucket) >= limit:
+        return False
+    bucket.append(now)
+    return True
+
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -314,21 +365,19 @@ async def rate_limit_middleware(request: Request, call_next):
             break
 
     key = f"{_get_rate_key(request)}:{path.split('/')[1] if '/' in path[1:] else path}"
-    now = time.time()
-    bucket = _rate_limit_buckets.setdefault(key, collections.deque())
 
-    # Evict entries older than 60s
-    while bucket and bucket[0] < now - 60:
-        bucket.popleft()
+    if redis_client.is_redis_configured():
+        allowed = _check_rate_limit_redis(key, limit)
+    else:
+        allowed = _check_rate_limit_memory(key, limit)
 
-    if len(bucket) >= limit:
+    if not allowed:
         return JSONResponse(
             status_code=429,
             content={"detail": "Rate limit exceeded. Please try again shortly."},
             headers={"Retry-After": "60"},
         )
 
-    bucket.append(now)
     return await call_next(request)
 
 AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/credits/stripe-webhook"}

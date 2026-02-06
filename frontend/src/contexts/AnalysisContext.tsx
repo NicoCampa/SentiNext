@@ -326,7 +326,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     // Check if already analyzing
     const existing = tasks.get(appId);
     if (existing && existing.status === 'analyzing') {
-      console.log(`Already analyzing ${game.name}`);
       return;
     }
 
