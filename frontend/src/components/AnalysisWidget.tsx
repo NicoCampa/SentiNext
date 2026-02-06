@@ -127,8 +127,6 @@ export function AnalysisWidget() {
                               cacheDetail = `All ${cachedReviews.toLocaleString()} reviews already labeled (cached).`;
                             } else if (cachedReviews > 0 && llmReviews > 0) {
                               cacheDetail = `Using cached labels for ${cachedReviews.toLocaleString()} reviews; ${llmReviews.toLocaleString()} need new labels.`;
-                            } else if (llmReviews > 0) {
-                              cacheDetail = `All ${llmReviews.toLocaleString()} reviews need new labels.`;
                             }
                           }
                         } else if (phase === 'building_insights') {
