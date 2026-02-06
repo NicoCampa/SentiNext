@@ -8,22 +8,25 @@ export function getSteamImageUrl(appId: number, variant: "capsule" | "header" = 
 }
 
 export function getSteamImageFallbacks(appId: number, variant: "capsule" | "header" = "capsule"): string[] {
-  const baseUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}`;
+  const oldCdn = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}`;
+  const newCdn = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${appId}`;
 
   if (variant === "header") {
     return [
-      `${baseUrl}/header.jpg`,
-      `${baseUrl}/capsule_616x353.jpg`,
-      `${baseUrl}/library_600x900.jpg`,
-      `${baseUrl}/capsule_231x87.jpg`,
+      `${oldCdn}/header.jpg`,
+      `${newCdn}/header.jpg`,
+      `${oldCdn}/capsule_616x353.jpg`,
+      `${oldCdn}/library_600x900.jpg`,
+      `${oldCdn}/capsule_231x87.jpg`,
     ];
   }
 
   return [
-    `${baseUrl}/capsule_184x69.jpg`,
-    `${baseUrl}/capsule_sm_120.jpg`,
-    `${baseUrl}/capsule_231x87.jpg`,
-    `${baseUrl}/header.jpg`,
+    `${oldCdn}/capsule_184x69.jpg`,
+    `${newCdn}/capsule_184x69.jpg`,
+    `${oldCdn}/capsule_sm_120.jpg`,
+    `${oldCdn}/capsule_231x87.jpg`,
+    `${oldCdn}/header.jpg`,
   ];
 }
 

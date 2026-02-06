@@ -25,7 +25,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.clerk.dev https://*.clerk.accounts.dev",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: blob: https://cdn.cloudflare.steamstatic.com https://img.clerk.com",
+              "img-src 'self' data: blob: https://cdn.cloudflare.steamstatic.com https://shared.akamai.steamstatic.com https://img.clerk.com",
               "connect-src 'self' " + (process.env.NEXT_PUBLIC_API_BASE_URL || "") + " https://api.clerk.dev https://*.clerk.accounts.dev",
               "frame-src 'self' https://accounts.clerk.dev https://*.clerk.accounts.dev",
             ].join("; "),
