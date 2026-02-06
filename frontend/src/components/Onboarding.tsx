@@ -151,7 +151,7 @@ function StepWelcome() {
       <div className="grid grid-cols-3 gap-4 w-full max-w-lg">
         {[
           { label: t('onboarding.stat.reviewsAnalyzed'), value: '1,000+' },
-          { label: t('onboarding.stat.aiCategories'), value: '20+' },
+          { label: t('onboarding.stat.aiCategories'), value: '60+' },
           { label: t('onboarding.stat.languages'), value: '29' },
         ].map((stat, i) => (
           <div
