@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Load .env.local if it exists (same logic as main.py)
 from dotenv import load_dotenv
 
-_env_path = Path(__file__).resolve().parents[1] / ".env.local"
+_env_path = Path(__file__).resolve().parents[2] / ".env.local"
 if _env_path.exists():
     load_dotenv(_env_path)
 
