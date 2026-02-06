@@ -749,6 +749,13 @@ function DashboardContent() {
                                     >
                                       2,000
                                     </Button>
+                                    <Button
+                                      onClick={() => handleAnalyze(game, 3000)}
+                                      variant={isAlreadyAnalyzed ? "update" : "primary"}
+                                      size="sm"
+                                    >
+                                      3,000
+                                    </Button>
                                   </div>
                                 ) : (
                                   <Button
