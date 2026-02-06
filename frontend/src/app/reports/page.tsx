@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchReportMonths, downloadExecutiveSummary, type ReportMonth } from '@/lib/api';
-import type { StarredGameDTO } from '@/types';
+import { fetchReportMonths, downloadExecutiveSummary, fetchAnalysisResult, type ReportMonth } from '@/lib/api';
+import type { StarredGameDTO, RiskMetrics } from '@/types';
 import { AppLayout } from '@/components/AppLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,11 +23,31 @@ export default function ReportsPage() {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null);
+  const [riskMetrics, setRiskMetrics] = useState<RiskMetrics | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Load risk metrics when game is selected
+  useEffect(() => {
+    if (!selectedGame) {
+      setRiskMetrics(null);
+      return;
+    }
+    const appId = selectedGame.app_id;
+    setRiskLoading(true);
+    fetchAnalysisResult(appId)
+      .then((result) => {
+        setRiskMetrics(result.insights?.risk ?? null);
+      })
+      .catch(() => {
+        setRiskMetrics(null);
+      })
+      .finally(() => setRiskLoading(false));
+  }, [selectedGame]);
 
   // Load available months when game is selected
   useEffect(() => {
@@ -276,6 +296,46 @@ export default function ReportsPage() {
                   <CurrentPlayersWidget appId={selectedGame.app_id} />
                 </div>
                 <AchievementsWidget appId={selectedGame.app_id} limit={20} />
+
+                {/* Risk Indicators */}
+                <div className="mt-5 pt-5 border-t border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">
+                    Risk Indicators
+                  </p>
+                  {riskLoading ? (
+                    <div className="grid grid-cols-3 gap-3 animate-pulse">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-16 bg-white/5 rounded" />
+                      ))}
+                    </div>
+                  ) : riskMetrics ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-3 bg-slate-950/40 border border-white/10 rounded-lg">
+                        <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500 leading-tight">Refund Risk</p>
+                        <p className="font-mono text-sm text-amber-300 mt-1">
+                          {(riskMetrics.refund_risk * 100).toFixed(1)}%
+                        </p>
+                        <p className="text-[10px] text-slate-600 mt-0.5">neg reviews &lt;2h playtime</p>
+                      </div>
+                      <div className="p-3 bg-slate-950/40 border border-white/10 rounded-lg">
+                        <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500 leading-tight">Core Fan Disappoint.</p>
+                        <p className="font-mono text-sm text-amber-300 mt-1">
+                          {(riskMetrics.core_fan_disappointment * 100).toFixed(1)}%
+                        </p>
+                        <p className="text-[10px] text-slate-600 mt-0.5">neg reviews 50h+ playtime</p>
+                      </div>
+                      <div className="p-3 bg-slate-950/40 border border-white/10 rounded-lg">
+                        <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500 leading-tight">Churn Signal</p>
+                        <p className="font-mono text-sm text-amber-300 mt-1">
+                          {(riskMetrics.churn_rate * 100).toFixed(1)}%
+                        </p>
+                        <p className="text-[10px] text-slate-600 mt-0.5">quit within 7d of review</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">No risk data available. Run an analysis first.</p>
+                  )}
+                </div>
               </Card>
 
               {/* News Widget with AI Summary */}

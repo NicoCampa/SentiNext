@@ -61,8 +61,7 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             period="/ month"
                             description={lang === 'it' ? 'Per team piccoli e dev indie.' : 'For small teams and indie developers.'}
                             features={[
-                                lang === 'it' ? "2.500 crediti / mese" : "2,500 credits / month",
-                                lang === 'it' ? "Fino a 10 giochi analizzati" : "Up to 10 analyzed games",
+                                lang === 'it' ? "5.000 crediti / mese" : "5,000 credits / month",
                                 lang === 'it' ? "Dashboard + Chat agente + Confronti" : "Dashboards + AI agent chat + Compare",
                                 lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
                                 lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
@@ -78,8 +77,7 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             period="/ month"
                             description={lang === 'it' ? 'Per studi che analizzano regolarmente.' : 'For teams that analyze reviews regularly.'}
                             features={[
-                                lang === 'it' ? "5.000 crediti / mese" : "5,000 credits / month",
-                                lang === 'it' ? "Fino a 25 giochi analizzati" : "Up to 25 analyzed games",
+                                lang === 'it' ? "15.000 crediti / mese" : "15,000 credits / month",
                                 lang === 'it' ? "Dashboard + Chat agente + Confronti" : "Dashboards + AI agent chat + Compare",
                                 lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
                                 lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
@@ -96,7 +94,6 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             description={lang === 'it' ? 'Per studi con esigenze avanzate.' : 'For studios with advanced needs.'}
                             features={[
                                 lang === 'it' ? "Crediti e limiti su misura" : "Custom credits & limits",
-                                lang === 'it' ? "Giochi illimitati" : "Unlimited games",
                                 lang === 'it' ? "Supporto prioritario" : "Priority support",
                                 lang === 'it' ? "Report su misura" : "Custom reporting",
                                 lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",

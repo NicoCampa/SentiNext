@@ -2358,7 +2358,6 @@ def ensure_review_labels(
         if not review_text:
             if cached is not None and not needs_refresh:
                 payload = cached["payload"]
-                cached_reuse_count += 1
             else:
                 payload = _DEFAULT_LABEL.copy()
                 payload["_label_source"] = "empty_review"
@@ -2381,7 +2380,6 @@ def ensure_review_labels(
         if _review_word_count(review_text) < MIN_REVIEW_WORDS:
             if cached is not None and not needs_refresh:
                 payload = cached["payload"]
-                cached_reuse_count += 1
             else:
                 payload = _DEFAULT_LABEL.copy()
                 payload["_label_source"] = "short_review"

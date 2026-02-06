@@ -1,6 +1,7 @@
 'use client';
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import clsx from "clsx";
 import {
@@ -707,7 +708,16 @@ function DashboardContent() {
                     </Button>
                   </div>
 
-                  {error && searchResults.length === 0 && <p className="text-sm text-rose-400">{error}</p>}
+                  {error && searchResults.length === 0 && (
+                    <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 flex items-center justify-between gap-3">
+                      <p className="text-sm text-rose-400">{error}</p>
+                      {(/credit|insufficient/i.test(error)) && (
+                        <Link href="/settings" className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition-colors">
+                          Upgrade Plan
+                        </Link>
+                      )}
+                    </div>
+                  )}
 
                   {searchResults.length > 0 && (
                     <div className="mt-6 space-y-3">
@@ -741,20 +751,6 @@ function DashboardContent() {
                                       size="sm"
                                     >
                                       1,000
-                                    </Button>
-                                    <Button
-                                      onClick={() => handleAnalyze(game, 2000)}
-                                      variant={isAlreadyAnalyzed ? "update" : "primary"}
-                                      size="sm"
-                                    >
-                                      2,000
-                                    </Button>
-                                    <Button
-                                      onClick={() => handleAnalyze(game, 3000)}
-                                      variant={isAlreadyAnalyzed ? "update" : "primary"}
-                                      size="sm"
-                                    >
-                                      3,000
                                     </Button>
                                   </div>
                                 ) : (
@@ -2093,8 +2089,13 @@ function AnalysisResults({
         )}
 
         {error && (
-          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 sm:p-3">
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 sm:p-3 flex items-center justify-between gap-3">
             <p className="text-xs sm:text-sm text-rose-400">{error}</p>
+            {(/credit|insufficient/i.test(error)) && (
+              <Link href="/settings" className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition-colors">
+                Upgrade Plan
+              </Link>
+            )}
           </div>
         )}
 
@@ -2103,7 +2104,7 @@ function AnalysisResults({
             <button
               onClick={handleSummarizeRecentReviews}
               disabled={!selectedGame}
-              className="text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
+              className="text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -2819,7 +2820,7 @@ function AnalysisResults({
                 <button
                   onClick={handleSummarize}
                   disabled={summaryLoading || selectedReviews.length === 0}
-                  className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
                   {summaryLoading ? (
                     <>
@@ -3114,7 +3115,7 @@ function AnalysisResults({
                   <button
                     onClick={handleSummarizeTrendWeek}
                     disabled={trendWeekSummaryLoading || selectedWeekReviews.length === 0}
-                    className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                   >
                     {trendWeekSummaryLoading ? (
                       <>
@@ -3391,7 +3392,7 @@ function AnalysisResults({
                   <button
                     onClick={handleSummarizeSegment}
                     disabled={segmentSummaryLoading || selectedSegmentReviews.length === 0}
-                    className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                   >
                     {segmentSummaryLoading ? (
                       <>
@@ -3671,7 +3672,7 @@ function AnalysisResults({
                     <button
                       onClick={handleSummarizeRecentReviews}
                       disabled={recentReviewsSummaryLoading}
-                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                     >
                       {recentReviewsSummaryLoading ? (
                         <>

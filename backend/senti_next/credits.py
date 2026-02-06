@@ -9,23 +9,15 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-# Free trial configuration
+# Free trial configuration (one-time, no monthly renewal)
 TRIAL_CREDITS = 1000
 
-# Tier configuration - GAME LIMITS (primary billing model)
-TIER_GAME_LIMITS = {
-    "free": 3,        # 3 games max
-    "indie": 10,      # 10 games max
-    "pro": 25,        # 25 games max
-    "max": None,      # Enterprise = unlimited games
-}
-
-# Legacy credit limits (kept for backwards compatibility during migration)
+# Monthly credit limits per tier
 TIER_LIMITS = {
-    "free": 0,
-    "indie": 2500,
-    "pro": 5000,
-    "max": 25000,
+    "free": 0,          # Trial only — no monthly renewal
+    "indie": 5000,
+    "pro": 15000,
+    "max": 50000,
 }
 
 # Pricing (used for admin dashboard MRR estimates)
@@ -51,19 +43,19 @@ CREDIT_COSTS = {
     "classify_cached": 1,  # Per cached review reuse
 
     # Chat
-    "chat_simple": 3,      # Per non-agent chat message
-    "chat_insights": 3,    # Per insights chat message
-    "chat_agent": 3,       # Per agent iteration
+    "chat_simple": 2,      # Per non-agent chat message
+    "chat_insights": 2,    # Per insights chat message
+    "chat_agent": 2,       # Per agent iteration
 
     # Summaries & utilities
-    "summarize": 2,        # Per summary generation
-    "report_summary": 2,   # Executive report LLM summary
+    "summarize": 1,        # Per summary generation
+    "report_summary": 1,   # Executive report LLM summary
     "translate": 1,        # Per translation call
 
     # Compare (billed at endpoint level)
-    "compare_overview": 5,
-    "compare_category": 3,
-    "compare_subcategory": 2,
+    "compare_overview": 3,
+    "compare_category": 2,
+    "compare_subcategory": 1,
 }
 
 # Soft limit buffer (10% overage allowed)
@@ -736,7 +728,7 @@ def estimate_analysis_cost(new_reviews: int, cached_reviews: int = 0) -> int:
 
 
 def get_user_game_count(user_id: str) -> int:
-    """Get count of games analyzed by user."""
+    """Get count of games analyzed by user (informational only, no limit enforced)."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
@@ -748,83 +740,49 @@ def get_user_game_count(user_id: str) -> int:
         return row[0] if row else 0
 
 
-def check_game_limit(user_id: str) -> Tuple[bool, str]:
-    """Check if user can analyze another game.
-
-    Returns:
-        Tuple of (can_analyze, message)
-        - can_analyze: True if user can add another game
-        - message: Error message if blocked, empty string if allowed
-    """
-    subscription = get_user_subscription(user_id)
-    tier = subscription["tier"]
-    game_limit = TIER_GAME_LIMITS.get(tier)
-
-    # No limit for this tier (Enterprise)
-    if game_limit is None:
-        return (True, "")
-
-    current_games = get_user_game_count(user_id)
-
-    if current_games >= game_limit:
-        return (
-            False,
-            f"You've reached your game limit ({game_limit} games). "
-            f"Upgrade to analyze more games.",
-        )
-
-    return (True, "")
-
-
 def get_credit_status(user_id: str) -> Dict[str, Any]:
     """Get current subscription status for display in UI.
 
     Returns:
         Dict with:
         - tier: Subscription tier
-        - games_used: Number of games analyzed
-        - games_limit: Max games allowed (null = unlimited)
-        - games_remaining: Games remaining (null = unlimited)
-        - at_game_limit: True if at game limit
+        - balance: Current credit balance
+        - limit: Monthly credit limit (0 for free/trial)
+        - used: Credits used this period
+        - percent_used: Usage percentage
+        - approaching_limit: True if 80-99% used
+        - warning: True if at/over limit or balance exhausted
+        - blocked: True if credits exhausted
+        - games_used: Number of games analyzed (informational)
+        - games_limit: Always null (no game limit)
+        - games_remaining: Always null
+        - at_game_limit: Always false
         - stripe_customer_id: Stripe customer ID (if any)
-
-        Legacy fields (for backwards compatibility):
-        - balance, limit, used, percent_used, approaching_limit, warning, blocked
     """
     subscription = get_user_subscription(user_id)
     tier = subscription["tier"]
 
-    # Game limits (new primary model)
     games_used = get_user_game_count(user_id)
-    games_limit = TIER_GAME_LIMITS.get(tier)
-    games_remaining = None if games_limit is None else max(0, games_limit - games_used)
-    at_game_limit = games_limit is not None and games_used >= games_limit
 
-    # Legacy credit fields (kept for backwards compatibility)
     limit = subscription["credits_monthly_limit"]
     used = subscription["credits_used_this_period"]
     balance = subscription["credits_balance"]
-    hard_limit = calculate_hard_limit(limit, used, balance)
+
     if limit and limit > 0:
         percent_used = (used / limit * 100) if limit > 0 else 0
         approaching_limit = percent_used >= 80 and percent_used < 100
         warning = used >= limit
+        blocked = used >= calculate_hard_limit(limit, used, balance)
     else:
+        # Trial / wallet-only mode
         total = max(int(used or 0) + int(balance or 0), 0)
         percent_used = (used / total * 100) if total > 0 else 100
         approaching_limit = total > 0 and int(balance or 0) <= max(1, int(total * 0.2))
         warning = int(balance or 0) <= 0
+        blocked = int(balance or 0) <= 0
 
     return {
-        # New game-based model
         "tier": tier,
-        "games_used": games_used,
-        "games_limit": games_limit,
-        "games_remaining": games_remaining,
-        "at_game_limit": at_game_limit,
-        "stripe_customer_id": subscription.get("stripe_customer_id"),
-
-        # Legacy credit fields (for backwards compatibility during migration)
         "balance": balance,
         "limit": limit,
         "used": used,
@@ -832,7 +790,14 @@ def get_credit_status(user_id: str) -> Dict[str, Any]:
         "percent_used": round(percent_used, 1),
         "approaching_limit": approaching_limit,
         "warning": warning,
-        "blocked": at_game_limit,  # Now based on game limit, not credits
+        "blocked": blocked,
+        "stripe_customer_id": subscription.get("stripe_customer_id"),
+
+        # Game fields (no limit enforced, kept for frontend compatibility)
+        "games_used": games_used,
+        "games_limit": None,
+        "games_remaining": None,
+        "at_game_limit": False,
     }
 
 
@@ -853,7 +818,6 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> Optional[str]:
 __all__ = [
     "TRIAL_CREDITS",
     "TIER_LIMITS",
-    "TIER_GAME_LIMITS",
     "TIER_PRICES",
     "CREDIT_COSTS",
     "InsufficientCreditsError",
@@ -861,7 +825,6 @@ __all__ = [
     "maybe_reset_billing_period",
     "get_user_subscription",
     "check_credits_available",
-    "check_game_limit",
     "get_user_game_count",
     "deduct_credits",
     "refund_credits",

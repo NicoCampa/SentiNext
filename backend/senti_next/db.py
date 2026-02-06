@@ -490,6 +490,28 @@ def init_postgresql_schema() -> None:
             ON llm_usage(operation, created_at DESC)
         """))
 
+        # API request logging table for usage tracking
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS api_requests (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT,
+                method TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status_code INTEGER,
+                duration_ms INTEGER,
+                app_id INTEGER,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_api_requests_user
+            ON api_requests(user_id, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_api_requests_path
+            ON api_requests(path, created_at DESC)
+        """))
+
         # Chat context table for conversation memory
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS chat_context (
@@ -570,7 +592,25 @@ def init_postgresql_schema() -> None:
             ON comparison_summaries(user_id)
         """))
 
+        # Processed Stripe events for webhook idempotency
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS processed_stripe_events (
+                event_id TEXT PRIMARY KEY,
+                processed_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+
         logger.info("PostgreSQL schema initialized and migrated")
+
+
+def check_db_health() -> bool:
+    """Check if the database is reachable by executing SELECT 1."""
+    try:
+        with get_connection() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
 
 
 def close_engine() -> None:

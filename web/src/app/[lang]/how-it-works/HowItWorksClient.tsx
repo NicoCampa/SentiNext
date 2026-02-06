@@ -46,8 +46,8 @@ export default function HowItWorksClient({ dict, lang }: { dict: Dictionary; lan
                             icon={<Zap className="h-10 w-10 text-[#00F0FF]" />}
                             title={lang === 'it' ? "CLASSIFICAZIONE" : "CLASSIFICATION"}
                             description={lang === 'it'
-                                ? "Google Gemini etichetta ogni recensione con una tassonomia coerente e salva citazioni di evidenza per ogni tag."
-                                : "Google Gemini labels each review with a consistent taxonomy and stores evidence quotes for every tag."}
+                                ? "L'IA etichetta ogni recensione con una tassonomia coerente e salva citazioni di evidenza per ogni tag."
+                                : "AI labels each review with a consistent taxonomy and stores evidence quotes for every tag."}
                             delay={0.3}
                         />
                         <PipelineStep

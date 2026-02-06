@@ -728,9 +728,16 @@ export default function ChatPage() {
     } catch (error) {
       console.error("Chat error:", error);
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      const lowerMsg = errorMsg.toLowerCase();
+      let tip = "";
+      if (lowerMsg.includes("rate limit") || lowerMsg.includes("too quickly")) {
+        tip = "\n\nPlease wait a moment before sending another message.";
+      } else if (lowerMsg.includes("credit") || lowerMsg.includes("insufficient")) {
+        tip = "\n\nYou can upgrade your plan or wait for your credits to reset.";
+      }
       const errorMessage: Message = {
         role: "assistant",
-        content: `Error: ${errorMsg}\n\nTip: Make sure GEMINI_API_KEY is set in your .env.local file.`,
+        content: `Error: ${errorMsg}${tip}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);

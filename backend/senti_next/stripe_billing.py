@@ -165,6 +165,7 @@ def handle_webhook_event(payload: bytes, signature: str) -> dict:
         Dict with event handling result
     """
     from . import credits
+    from . import storage
 
     stripe = _get_stripe()
 
@@ -180,6 +181,13 @@ def handle_webhook_event(payload: bytes, signature: str) -> dict:
         logger.error(f"Webhook signature verification failed: {e}")
         raise ValueError("Invalid webhook signature")
 
+    event_id = event["id"]
+
+    # Idempotency check: skip already-processed events
+    if storage.is_stripe_event_processed(event_id):
+        logger.info(f"Skipping already-processed Stripe event: {event_id}")
+        return {"status": "duplicate", "event_id": event_id}
+
     event_type = event["type"]
     data = event["data"]["object"]
 
@@ -187,23 +195,27 @@ def handle_webhook_event(payload: bytes, signature: str) -> dict:
 
     # Handle different event types
     if event_type == "checkout.session.completed":
-        return _handle_checkout_completed(data)
+        result = _handle_checkout_completed(data)
 
     elif event_type == "customer.subscription.updated":
-        return _handle_subscription_updated(data)
+        result = _handle_subscription_updated(data)
 
     elif event_type == "customer.subscription.deleted":
-        return _handle_subscription_deleted(data)
+        result = _handle_subscription_deleted(data)
 
     elif event_type == "invoice.paid":
-        return _handle_invoice_paid(data)
+        result = _handle_invoice_paid(data)
 
     elif event_type == "invoice.payment_failed":
-        return _handle_payment_failed(data)
+        result = _handle_payment_failed(data)
 
     else:
         logger.debug(f"Ignoring webhook event type: {event_type}")
         return {"status": "ignored", "event_type": event_type}
+
+    # Mark event as processed after successful handling
+    storage.mark_stripe_event_processed(event_id)
+    return result
 
 
 def _handle_checkout_completed(session: dict) -> dict:

@@ -4,6 +4,7 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import re
 import secrets
 import csv
 import io
@@ -11,6 +12,7 @@ from datetime import datetime
 import hashlib
 from pathlib import Path
 import asyncio
+import time
 from typing import Any, Dict, List, Optional, Union
 
 # Load environment variables from .env.local (for local development)
@@ -59,8 +61,54 @@ from .senti_next import jobs as job_runner
 from .senti_next import logging_config
 from .senti_next import credits
 from .senti_next import stripe_billing
+from .senti_next import db as db_module
+
+# ---------------------------------------------------------------------------
+# Sentry error monitoring (no-op if SENTRY_DSN is not set)
+# ---------------------------------------------------------------------------
+_sentry_dsn = os.getenv("SENTRY_DSN")
+if _sentry_dsn:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=_sentry_dsn,
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        )
+    except Exception:
+        pass  # Sentry is optional; don't block startup
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Startup environment validation
+# ---------------------------------------------------------------------------
+def _validate_startup_env() -> None:
+    """Fail fast if critical environment variables are missing."""
+    errors: list[str] = []
+
+    # At least one LLM key must be configured
+    has_gemini = bool(os.getenv("GEMINI_API_KEY"))
+    has_xai = bool(os.getenv("XAI_API_KEY"))
+    if not has_gemini and not has_xai:
+        errors.append("At least one LLM API key is required (GEMINI_API_KEY or XAI_API_KEY).")
+
+    # If auth is enabled, JWKS URL is required
+    auth_enabled = os.getenv("SENTINEXT_AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}
+    if auth_enabled:
+        jwks_url = os.getenv("SENTINEXT_AUTH_JWKS_URL") or os.getenv("SENTINEXT_CLERK_JWKS_URL")
+        if not jwks_url:
+            errors.append(
+                "Auth is enabled but SENTINEXT_CLERK_JWKS_URL is not set. "
+                "Set SENTINEXT_CLERK_JWKS_URL or disable auth."
+            )
+
+    if errors:
+        for err in errors:
+            logger.error("Startup validation failed: %s", err)
+        raise RuntimeError("Startup validation failed:\n  - " + "\n  - ".join(errors))
+
+_validate_startup_env()
 
 # Review limits - configurable via environment
 SAMPLE_LIMIT = int(os.getenv("SENTINEXT_SAMPLE_LIMIT", "1000"))  # Reviews to sample for analysis
@@ -191,7 +239,29 @@ def _configure_file_logging() -> None:
 
 _configure_file_logging()
 
-app = FastAPI(title="SENTINEXT API", version="0.1.0")
+# ---------------------------------------------------------------------------
+# Graceful shutdown via lifespan
+# ---------------------------------------------------------------------------
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    # Startup
+    logger.info("SentiNext API starting up")
+    yield
+    # Shutdown
+    logger.info("SentiNext API shutting down")
+    try:
+        if redis_client.is_redis_configured():
+            redis_client.get_redis().close()
+            logger.info("Redis connection closed")
+    except Exception as exc:
+        logger.warning("Error closing Redis: %s", exc)
+    db_module.close_engine()
+    logger.info("Database engine closed")
+
+
+app = FastAPI(title="SENTINEXT API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -200,6 +270,66 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
 )
+
+# ---------------------------------------------------------------------------
+# Rate limiting (in-memory, keyed by user_id or IP)
+# ---------------------------------------------------------------------------
+import collections
+
+_rate_limit_buckets: Dict[str, collections.deque] = {}
+
+# Per-path rate limits (max requests per 60-second window)
+_RATE_LIMITS: Dict[str, int] = {
+    "/analyze": 5,
+    "/chat": 20,
+    "/chat/simple": 20,
+    "/credits/stripe-webhook": 30,
+}
+_DEFAULT_RATE_LIMIT = 60
+_RATE_EXEMPT = {"/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
+
+def _get_rate_key(request: Request) -> str:
+    user_payload = getattr(request.state, "user", None)
+    if user_payload and isinstance(user_payload, dict):
+        uid = user_payload.get("sub") or user_payload.get("user_id")
+        if uid:
+            return f"user:{uid}"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return f"ip:{forwarded.split(',')[0].strip()}"
+    client = request.client
+    return f"ip:{client.host}" if client else "ip:unknown"
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    path = request.url.path
+    if path in _RATE_EXEMPT or request.method == "OPTIONS":
+        return await call_next(request)
+
+    # Find the matching limit
+    limit = _DEFAULT_RATE_LIMIT
+    for prefix, max_req in _RATE_LIMITS.items():
+        if path == prefix or path.startswith(prefix + "/"):
+            limit = max_req
+            break
+
+    key = f"{_get_rate_key(request)}:{path.split('/')[1] if '/' in path[1:] else path}"
+    now = time.time()
+    bucket = _rate_limit_buckets.setdefault(key, collections.deque())
+
+    # Evict entries older than 60s
+    while bucket and bucket[0] < now - 60:
+        bucket.popleft()
+
+    if len(bucket) >= limit:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please try again shortly."},
+            headers={"Retry-After": "60"},
+        )
+
+    bucket.append(now)
+    return await call_next(request)
 
 AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/credits/stripe-webhook"}
 SSE_PATHS = {"/progress/{app_id}/stream"}  # SSE endpoints get token from query param
@@ -278,6 +408,65 @@ async def auth_middleware(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "Invalid or expired token."})
     request.state.user = payload
     return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# API request logging middleware (placed after auth so request.state.user exists)
+# ---------------------------------------------------------------------------
+
+_USAGE_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
+
+# Regex to replace numeric path segments with {id}
+_NUMERIC_SEGMENT_RE = re.compile(r"/(\d+)(?=/|$)")
+
+def _normalize_api_path(path: str) -> str:
+    """Replace numeric path segments with {id} for meaningful aggregation."""
+    return _NUMERIC_SEGMENT_RE.sub("/{id}", path)
+
+_APP_ID_RE = re.compile(
+    r"(?:/analysis|/progress|/starred|/steam|/reviews|/export|/chat)"
+    r"/(\d+)"
+)
+
+def _extract_app_id(path: str) -> Optional[int]:
+    """Extract the first app_id-like numeric segment after known prefixes."""
+    m = _APP_ID_RE.search(path)
+    return int(m.group(1)) if m else None
+
+
+@app.middleware("http")
+async def usage_logging_middleware(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = int((time.time() - start) * 1000)
+
+    if request.url.path in _USAGE_SKIP_PATHS:
+        return response
+
+    user_id: Optional[str] = None
+    if not AUTH_ENABLED:
+        user_id = "local"
+    else:
+        payload = getattr(request.state, "user", None) or {}
+        if payload:
+            user_id = payload.get("sub") or payload.get("user_id") or payload.get("id")
+
+    path = _normalize_api_path(request.url.path)
+    app_id = _extract_app_id(request.url.path)
+
+    try:
+        storage.log_api_request(
+            user_id=user_id,
+            method=request.method,
+            path=path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            app_id=app_id,
+        )
+    except Exception:
+        pass
+
+    return response
 
 
 def _resolve_user_id(request: Request) -> str:
@@ -650,6 +839,33 @@ class AdminDashboardResponse(BaseModel):
     llm: LLMCostSummary
 
 
+class ApiEndpointUsage(BaseModel):
+    path: str
+    count: int = 0
+    avg_ms: int = 0
+
+
+class ApiUserUsage(BaseModel):
+    user_id: str
+    count: int = 0
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
+
+
+class ApiDailyCount(BaseModel):
+    date: str
+    count: int = 0
+
+
+class ApiUsageResponse(BaseModel):
+    period_days: int
+    total_requests: int = 0
+    unique_users: int = 0
+    by_endpoint: List[ApiEndpointUsage] = Field(default_factory=list)
+    by_user: List[ApiUserUsage] = Field(default_factory=list)
+    daily: List[ApiDailyCount] = Field(default_factory=list)
+
+
 class ChatCitation(BaseModel):
     review_id: str
     subcategory: str
@@ -893,8 +1109,12 @@ def require_license() -> None:
 
 
 @app.get("/health")
-def healthcheck() -> dict:
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
+def healthcheck(response: Response) -> dict:
+    db_ok = db_module.check_db_health()
+    if not db_ok:
+        response.status_code = 503
+        return {"status": "unhealthy", "database": "unreachable", "timestamp": datetime.utcnow().isoformat() + "Z"}
+    return {"status": "ok", "database": "connected", "timestamp": datetime.utcnow().isoformat() + "Z"}
 
 
 @app.get("/languages")
@@ -1389,22 +1609,6 @@ def analyze(
                     "credits_needed": credits_needed,
                     "credits_available": credit_status.get("balance"),
                     "tier": credit_status.get("tier"),
-                },
-            )
-
-    # Check game limit for all tiers
-    is_new_game = not storage.user_has_game(user_id, request.app_id)
-    if is_new_game:
-        can_add_game, limit_message = credits.check_game_limit(user_id)
-        if not can_add_game:
-            status = credits.get_credit_status(user_id)
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "message": limit_message,
-                    "games_used": status["games_used"],
-                    "games_limit": status["games_limit"],
-                    "tier": status["tier"],
                 },
             )
 
@@ -2708,6 +2912,21 @@ def get_admin_llm_usage_summary(
     except Exception as exc:
         logger.exception("Failed to load LLM usage summary: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load LLM usage summary.") from exc
+
+
+@app.get("/admin/usage", response_model=ApiUsageResponse)
+def get_admin_usage(
+    days: int = 30,
+    user_id: Optional[str] = None,
+    _: None = Depends(require_admin),
+) -> ApiUsageResponse:
+    """Get aggregated API request usage metrics (admin only)."""
+    try:
+        summary = storage.get_api_usage_summary(days=days, user_id=user_id)
+        return ApiUsageResponse(**summary)
+    except Exception as exc:
+        logger.exception("Failed to load API usage summary: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load API usage summary.") from exc
 
 
 @app.get("/admin/dashboard", response_model=AdminDashboardResponse)
@@ -4239,6 +4458,29 @@ def get_steam_game_context(
     except Exception as exc:
         logger.exception("Unexpected error fetching context for app %s", app_id)
         raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+
+# ---------------------------------------------------------------------------
+# GDPR: Account / data deletion
+# ---------------------------------------------------------------------------
+
+@app.delete("/account")
+def delete_account(user_id: str = Depends(require_user_id)) -> dict:
+    """Delete all user-owned data (GDPR right to erasure).
+
+    Removes starred games, chat history, support messages, credit records,
+    analysis results, and other user-specific data. Shared data (reviews,
+    labels) is not affected.
+    """
+    deleted = storage.delete_user_data(user_id)
+    total = sum(deleted.values())
+    logger.info("GDPR deletion for user %s: %d rows across %d tables", user_id, total, len(deleted))
+    return {
+        "status": "deleted",
+        "user_id": user_id,
+        "deleted": deleted,
+        "total_rows": total,
+    }
 
 
 if __name__ == "__main__":

@@ -233,7 +233,7 @@ function StepSearchAnalyze() {
               {[
                 { cat: 'gameplay/difficulty', count: 234 },
                 { cat: 'technical/performance', count: 156 },
-                { cat: 'content/bosses', count: 98 },
+                { cat: 'content_design/narrative_characters', count: 98 },
               ].map((item, i) => (
                 <div
                   key={item.cat}
@@ -475,7 +475,6 @@ function StepPricing() {
       name: t('onboarding.tier.free'),
       price: '$0',
       priceLabel: '',
-      games: '3',
       credits: t('onboarding.tier.trialCredits'),
       color: 'border-t-slate-400',
       textColor: 'text-slate-300',
@@ -485,7 +484,6 @@ function StepPricing() {
       name: t('onboarding.tier.indie'),
       price: '$10',
       priceLabel: t('onboarding.tier.perMonth'),
-      games: '10',
       credits: t('onboarding.tier.indieCredits'),
       color: 'border-t-emerald-500',
       textColor: 'text-emerald-400',
@@ -495,7 +493,6 @@ function StepPricing() {
       name: t('onboarding.tier.pro'),
       price: '$20',
       priceLabel: t('onboarding.tier.perMonth'),
-      games: '25',
       credits: t('onboarding.tier.proCredits'),
       color: 'border-t-sky-500',
       textColor: 'text-sky-400',
@@ -505,7 +502,6 @@ function StepPricing() {
       name: t('onboarding.tier.enterprise'),
       price: t('onboarding.tier.custom'),
       priceLabel: '',
-      games: t('onboarding.tier.unlimited'),
       credits: t('onboarding.tier.custom'),
       color: 'border-t-purple-500',
       textColor: 'text-purple-400',
@@ -549,10 +545,6 @@ function StepPricing() {
               {tier.priceLabel && <span className="text-[10px] font-normal text-[rgb(100,100,120)]">/{tier.priceLabel}</span>}
             </p>
             <div className="mt-3 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[rgb(100,100,120)]">{t('onboarding.tier.gamesLabel')}</span>
-                <span className="text-[10px] text-white font-medium ml-auto">{tier.games}</span>
-              </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] text-[rgb(100,100,120)]">{t('onboarding.tier.creditsLabel')}</span>
                 <span className="text-[10px] text-white font-medium ml-auto">{tier.credits}</span>

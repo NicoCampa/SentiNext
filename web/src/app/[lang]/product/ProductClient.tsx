@@ -83,8 +83,8 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                 icon={<Layers className="h-7 w-7 text-[#00F0FF]" />}
                 title={lang === 'it' ? "2. Classificazione" : "2. Classification"}
                 description={lang === 'it'
-                    ? "Google Gemini etichetta ogni recensione con una tassonomia coerente ed estrae citazioni di evidenza."
-                    : "Google Gemini labels each review with a consistent taxonomy and extracts evidence quotes."}
+                    ? "L'IA etichetta ogni recensione con una tassonomia coerente ed estrae citazioni di evidenza."
+                    : "AI labels each review with a consistent taxonomy and extracts evidence quotes."}
                 details={lang === 'it' ? [
                     "Assegna 1–6 tag (es. technical/performance, ui_ux_accessibility/quality_of_life).",
                     "Separa problemi (issue) e richieste di feature (request).",

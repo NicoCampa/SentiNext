@@ -330,61 +330,36 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Start new analysis
+    // Reset progress stats before starting
     resetProgressStats(appId);
+
+    // Call API first — if it rejects (402/429), re-throw so the caller
+    // can show the error inline instead of flashing the AnalysisWidget.
+    saveDefaultAnalysisReviewCount(reviewCount);
+    const result = await analyzeGame({
+      app_id: appId,
+      review_count: reviewCount,
+      language,
+      languages,
+      filter,
+      day_range: dayRange,
+      persist,
+      refresh,
+      refresh_days: refreshDays,
+    });
+
+    // API accepted — now create the task so the widget appears
     setTasks((prev) => {
       const newTasks = new Map(prev);
       newTasks.set(appId, {
         game,
         status: 'analyzing',
         progress: null,
-        result: null,
+        result: result,
         error: null,
       });
       return newTasks;
-      });
-
-    try {
-      saveDefaultAnalysisReviewCount(reviewCount);
-      const result = await analyzeGame({
-        app_id: appId,
-        review_count: reviewCount,
-        language,
-        languages,
-        filter,
-        day_range: dayRange,
-        persist,
-        refresh,
-        refresh_days: refreshDays,
-      });
-
-      // Update task metadata but leave status as analyzing (LLM runs in background)
-      setTasks((prev) => {
-        const newTasks = new Map(prev);
-        newTasks.set(appId, {
-          game,
-          status: 'analyzing',
-          progress: null,
-          result: result,
-          error: null,
-        });
-        return newTasks;
-      });
-    } catch (err) {
-      resetProgressStats(appId);
-      const error = (err as Error).message || 'Analysis failed';
-      setTasks((prev) => {
-        const newTasks = new Map(prev);
-        newTasks.set(appId, {
-          game,
-          status: 'error',
-          progress: null,
-          result: null,
-          error,
-        });
-        return newTasks;
-      });
-    }
+    });
   }, [tasks, resetProgressStats]);
 
   const getTask = useCallback(

@@ -1,15 +1,31 @@
+"use client";
+
+import { use } from "react";
 import Link from "next/link";
 import { Terminal, Rocket } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 import type { ReactNode } from "react";
 import { normalizeLocale } from "@/lib/i18n";
 
-export default async function GettingStartedPage({ params }: { params: Promise<{ lang: string }> }) {
-    const { lang } = await params;
+const fadeSlideUp = (delay: number): React.CSSProperties => ({
+    opacity: 0,
+    animation: 'fadeSlideUp 0.5s ease-out forwards',
+    animationDelay: `${delay}ms`,
+});
+
+export default function GettingStartedPage({ params }: { params: Promise<{ lang: string }> }) {
+    const { lang } = use(params);
     const locale = normalizeLocale(lang);
 
     return (
         <div className="space-y-12 pb-20">
+            <style>{`
+                @keyframes fadeSlideUp {
+                    from { opacity: 0; transform: translateY(12px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
+
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">
                     {locale === 'it' ? 'Guida Rapida' : locale === 'fr' ? 'Démarrage Rapide' : locale === 'de' ? 'Schnellstart' : 'Getting Started'}
@@ -79,11 +95,11 @@ export default async function GettingStartedPage({ params }: { params: Promise<{
                             </li>
                             <li className="flex items-start gap-4">
                                 <span className="text-[#00F0FF] font-bold font-mono">{" > "}</span>
-                                <div><strong>{locale === 'it' ? 'Avvia l’analisi' : 'Start the analysis'}</strong>: {locale === 'it' ? 'la dashboard usa per default le ultime 1.000 recensioni.' : 'the dashboard uses the latest 1,000 reviews by default.'}</div>
+                                <div><strong>{locale === 'it' ? 'Avvia l\u2019analisi' : 'Start the analysis'}</strong>: {locale === 'it' ? 'la dashboard usa per default le ultime 1.000 recensioni.' : 'the dashboard uses the latest 1,000 reviews by default.'}</div>
                             </li>
                             <li className="flex items-start gap-4">
                                 <span className="text-[#00F0FF] font-bold font-mono">{" > "}</span>
-                                <div><strong>{locale === 'it' ? 'Attendi il completamento' : 'Wait for completion'}</strong>: {locale === 'it' ? 'vedrai il progresso e poi la dashboard con insight e citazioni.' : 'you’ll see progress, then a dashboard with insights and quotes.'}</div>
+                                <div><strong>{locale === 'it' ? 'Attendi il completamento' : 'Wait for completion'}</strong>: {locale === 'it' ? 'vedrai il progresso e poi la dashboard con insight e citazioni.' : 'you\u2019ll see progress, then a dashboard with insights and quotes.'}</div>
                             </li>
                             <li className="flex items-start gap-4">
                                 <span className="text-[#00F0FF] font-bold font-mono">{" > "}</span>
@@ -97,6 +113,36 @@ export default async function GettingStartedPage({ params }: { params: Promise<{
                         </div>
                     </div>
                 </StepSection>
+            </div>
+
+            {/* Pipeline visual */}
+            <div className="space-y-6 mt-8">
+                <div className="p-6 bg-[rgb(10,10,25)]/50 border border-[#00F0FF]/10 rounded-sm space-y-4" style={fadeSlideUp(0)}>
+                    <div className="flex items-center justify-between">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{locale === 'it' ? 'Progresso Analisi' : 'Analysis Progress'}</div>
+                        <div className="font-mono text-xs text-[#00F0FF]">847 / 1,000 reviews</div>
+                    </div>
+                    <div className="h-2 bg-[#00F0FF]/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#00F0FF]/60 rounded-full" style={{ width: '85%' }} />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                    {[
+                        { label: locale === 'it' ? 'Raccomandazione' : 'Recommendation', value: "87%", color: "border-l-emerald-500", delay: 80 },
+                        { label: locale === 'it' ? 'Tasso Problemi' : 'Issue Rate', value: "23%", color: "border-l-amber-500", delay: 160 },
+                        { label: locale === 'it' ? 'Recensioni' : 'Reviews', value: "1,000", color: "border-l-cyan-500", delay: 240 },
+                    ].map((kpi) => (
+                        <div
+                            key={kpi.label}
+                            className={`p-4 bg-[rgb(10,10,25)]/50 border border-[#00F0FF]/10 border-l-2 ${kpi.color} rounded-sm`}
+                            style={fadeSlideUp(kpi.delay)}
+                        >
+                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{kpi.label}</div>
+                            <div className="text-2xl font-bold font-mono mt-1">{kpi.value}</div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

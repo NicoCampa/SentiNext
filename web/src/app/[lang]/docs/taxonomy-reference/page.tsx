@@ -1,7 +1,9 @@
 "use client";
 
+import { use } from "react";
 import { Tag } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
+import { normalizeLocale } from "@/lib/i18n";
 import type { ReactNode } from "react";
 
 const TAXONOMY: Array<{ main: string; subs: string[] }> = [
@@ -30,6 +32,19 @@ const MAIN_LABELS: Record<string, string> = {
     other: "Other",
 };
 
+const CATEGORY_FREQUENCY: Record<string, number> = {
+    gameplay: 85,
+    technical: 72,
+    content_design: 65,
+    ui_ux_accessibility: 45,
+    onboarding: 20,
+    presentation: 58,
+    online_community: 35,
+    developer_updates: 28,
+    monetization_value: 40,
+    other: 15,
+};
+
 function titleize(value: string): string {
     return value
         .replace(/_/g, " ")
@@ -47,13 +62,20 @@ function titleize(value: string): string {
         .join(" ");
 }
 
-export default function TaxonomyReferencePage() {
+export default function TaxonomyReferencePage({ params }: { params: Promise<{ lang: string }> }) {
+    const { lang } = use(params);
+    const locale = normalizeLocale(lang);
+
     return (
         <div className="space-y-12 pb-20">
             <section className="space-y-4">
-                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Taxonomy Reference</h1>
+                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">
+                    {locale === "it" ? "Riferimento Tassonomia" : "Taxonomy Reference"}
+                </h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    This is the taxonomy currently used by the SENTINEXT classifier. Tags are formatted as <code>{"<main>/<sub>"}</code>, e.g. <code>technical/performance</code>.
+                    {locale === "it"
+                        ? <>Questa è la tassonomia attualmente utilizzata dal classificatore SENTINEXT. I tag sono formattati come <code>{"<main>/<sub>"}</code>, es. <code>technical/performance</code>.</>
+                        : <>This is the taxonomy currently used by the SENTINEXT classifier. Tags are formatted as <code>{"<main>/<sub>"}</code>, e.g. <code>technical/performance</code>.</>}
                 </p>
             </section>
 
@@ -63,6 +85,8 @@ export default function TaxonomyReferencePage() {
                         key={group.main}
                         title={MAIN_LABELS[group.main] ?? titleize(group.main)}
                         icon={<Tag className="h-6 w-6" />}
+                        frequency={CATEGORY_FREQUENCY[group.main] ?? 0}
+                        locale={locale}
                     >
                         <p className="mb-8 opacity-70">
                             <span className="font-mono text-xs uppercase tracking-[0.2em]">Main:</span>{" "}
@@ -87,10 +111,12 @@ export default function TaxonomyReferencePage() {
 type RefSectionProps = {
     title: string;
     icon: ReactNode;
+    frequency: number;
+    locale: string;
     children: ReactNode;
 };
 
-function RefSection({ title, icon, children }: RefSectionProps) {
+function RefSection({ title, icon, frequency, locale, children }: RefSectionProps) {
     return (
         <section className="space-y-8">
             <div className="flex items-center gap-6">
@@ -99,6 +125,14 @@ function RefSection({ title, icon, children }: RefSectionProps) {
                 </div>
                 <h2 className="text-3xl font-bold tracking-widest uppercase m-0">{title}</h2>
                 <div className="h-px flex-1 bg-gradient-to-r from-[#00F0FF]/20 to-transparent" />
+            </div>
+            <div className="flex items-center gap-3">
+                <div className="flex-1 h-1.5 bg-[#00F0FF]/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#00F0FF]/40 rounded-full" style={{ width: `${frequency}%` }} />
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                    {locale === "it" ? `~${frequency}% delle recensioni menziona questa categoria` : `~${frequency}% of reviews mention this category`}
+                </div>
             </div>
             <div className="pl-16">
                 {children}
@@ -114,7 +148,7 @@ type TaxonomyLabelProps = {
 
 function TaxonomyLabel({ name, description }: TaxonomyLabelProps) {
     return (
-        <div className="relative p-6 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm hover:bg-[#00F0FF]/10 transition-all group">
+        <div className="relative p-6 border border-[#00F0FF]/10 bg-[rgb(10,10,25)]/50 rounded-sm hover:bg-[rgb(10,10,25)]/70 transition-all group">
             <CornerMarkers className="opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex gap-6 items-center">
                 <div className="text-[#00F0FF] font-mono font-bold leading-none">{">"}</div>

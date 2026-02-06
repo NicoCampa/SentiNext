@@ -91,31 +91,39 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
+  if (response.status === 401) {
+    // Token expired or invalid — redirect to sign-in
+    if (typeof window !== "undefined") {
+      window.location.href = "/sign-in";
+    }
+    throw new Error("Session expired. Please sign in again.");
+  }
+  if (response.status === 429) {
+    throw new Error("You're making requests too quickly. Please wait a moment and try again.");
+  }
+  if (response.status === 402) {
+    let message = "Insufficient credits";
+    try {
+      const body = await response.json();
+      message = body?.detail?.message || body?.detail || body?.message || message;
+      if (typeof message !== "string") message = "Insufficient credits";
+    } catch { /* use default */ }
+    throw new Error(message);
+  }
   if (!response.ok) {
-    const detail = await response.text();
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      const d = body?.detail;
+      detail = typeof d === "string" ? d : d?.message || JSON.stringify(d);
+    } catch {
+      try {
+        detail = await response.text();
+      } catch { /* ignore */ }
+    }
     throw new Error(detail || `Request failed with status ${response.status}`);
   }
   return (await response.json()) as T;
-}
-
-async function throwIfInsufficientCredits(response: Response): Promise<void> {
-  if (response.status !== 402) return;
-  let message = "Insufficient credits";
-  try {
-    const error = await response.json();
-    message =
-      error?.detail?.message ||
-      error?.message ||
-      message;
-  } catch {
-    try {
-      const text = await response.text();
-      if (text) message = text;
-    } catch {
-      // ignore
-    }
-  }
-  throw new Error(message);
 }
 
 export async function searchGames(query: string): Promise<SearchResult[]> {
@@ -373,7 +381,6 @@ export async function chatWithInsights(payload: ChatRequestPayload): Promise<Cha
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  await throwIfInsufficientCredits(response);
   return handleResponse<ChatResponse>(response);
 }
 
@@ -468,31 +475,7 @@ export async function generateComparisonSummary(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   });
-
-  if (!response.ok) {
-    if (response.status === 402) {
-      const error = await response.json();
-      throw new Error(error.detail?.message || 'Insufficient credits');
-    }
-
-    // Get detailed error message
-    let errorMessage = `Failed to generate comparison (${response.status})`;
-    try {
-      const errorData = await response.json();
-      if (errorData.detail) {
-        errorMessage = typeof errorData.detail === 'string'
-          ? errorData.detail
-          : errorData.detail.message || JSON.stringify(errorData.detail);
-      }
-    } catch {
-      const errorText = await response.text();
-      if (errorText) errorMessage = errorText;
-    }
-
-    throw new Error(errorMessage);
-  }
-
-  return response.json();
+  return handleResponse<ComparisonSummary>(response);
 }
 
 function optionalAdminHeaders(): HeadersInit {
@@ -734,7 +717,6 @@ export async function sendEnhancedChat(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  await throwIfInsufficientCredits(response);
   return handleResponse<EnhancedChatResponse>(response);
 }
 
@@ -1099,6 +1081,51 @@ export async function fetchAdminLlmUsageSummary(params: {
   return handleResponse<AdminLlmUsageSummary>(response);
 }
 
+// ============================================================================
+// Admin API Usage
+// ============================================================================
+
+export interface ApiEndpointUsage {
+  path: string;
+  count: number;
+  avg_ms: number;
+}
+
+export interface ApiUserUsage {
+  user_id: string;
+  count: number;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+export interface ApiDailyCount {
+  date: string;
+  count: number;
+}
+
+export interface ApiUsageSummary {
+  period_days: number;
+  total_requests: number;
+  unique_users: number;
+  by_endpoint: ApiEndpointUsage[];
+  by_user: ApiUserUsage[];
+  daily: ApiDailyCount[];
+}
+
+export async function fetchAdminApiUsage(params: {
+  days?: number;
+  user_id?: string;
+} = {}): Promise<ApiUsageSummary> {
+  const url = new URL(apiUrl("/admin/usage"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (params.days) url.searchParams.set("days", String(params.days));
+  if (params.user_id) url.searchParams.set("user_id", params.user_id);
+  const response = await authFetch(url.toString(), {
+    headers: optionalAdminHeaders(),
+    cache: "no-store",
+  });
+  return handleResponse<ApiUsageSummary>(response);
+}
+
 export interface GrantCreditsPayload {
   user_id: string;
   amount: number;
@@ -1198,7 +1225,6 @@ export async function translateText(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  await throwIfInsufficientCredits(response);
   return handleResponse<TranslateResponse>(response);
 }
 
@@ -1353,7 +1379,6 @@ export async function summarizeSubcategory(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  await throwIfInsufficientCredits(response);
   return handleResponse<SubcategorySummaryResponse>(response);
 }
 
@@ -1396,7 +1421,6 @@ export async function summarizeWidget(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  await throwIfInsufficientCredits(response);
   return handleResponse<WidgetSummaryResponse>(response);
 }
 
@@ -1427,7 +1451,6 @@ export async function summarizeRecentReviews(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  await throwIfInsufficientCredits(response);
   return handleResponse<RecentReviewsSummaryResponse>(response);
 }
 
@@ -1775,6 +1798,5 @@ export async function summarizeNews(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  await throwIfInsufficientCredits(response);
   return handleResponse<SummarizeNewsResponse>(response);
 }

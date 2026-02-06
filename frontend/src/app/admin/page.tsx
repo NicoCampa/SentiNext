@@ -45,6 +45,8 @@ import {
   fetchUserSubscriptions,
   updateUserTier,
   UserSubscriptionInfo,
+  fetchAdminApiUsage,
+  ApiUsageSummary,
 } from "@/lib/api";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useSupportNotification } from "@/contexts/SupportNotificationContext";
@@ -353,6 +355,10 @@ export default function AdminPage() {
   const [tierUpdateError, setTierUpdateError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // API usage state
+  const [apiUsage, setApiUsage] = useState<ApiUsageSummary | null>(null);
+  const [apiUsageLoading, setApiUsageLoading] = useState(false);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -413,15 +419,24 @@ export default function AdminPage() {
   async function loadAdminDashboard(days: number = adminDashboardDays) {
     if (!isAdmin) return;
     setAdminDashboardLoading(true);
+    setApiUsageLoading(true);
     try {
-      const summary = await fetchAdminDashboardSummary({ days });
+      const [summary, usage] = await Promise.all([
+        fetchAdminDashboardSummary({ days }),
+        fetchAdminApiUsage({ days }).catch((err) => {
+          console.error("Failed to load API usage", err);
+          return null;
+        }),
+      ]);
       setAdminDashboard(summary);
+      setApiUsage(usage);
       setAdminDashboardError(null);
     } catch (err) {
       console.error("Failed to load admin dashboard", err);
       setAdminDashboardError("Failed to load admin dashboard.");
     } finally {
       setAdminDashboardLoading(false);
+      setApiUsageLoading(false);
     }
   }
 
@@ -832,6 +847,144 @@ export default function AdminPage() {
             </>
           ) : (
             <p className="text-xs text-rose-400">{adminDashboardError ?? "No dashboard data available."}</p>
+          )}
+        </Card>
+
+        {/* API Activity Section */}
+        <Card variant="glass" className={`mb-4 p-6 ${mounted ? 'animate-fade-slide-up animation-delay-50' : 'opacity-0'}`}>
+          <div className="mb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base">📡</span>
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-300/70">
+                API Activity
+              </p>
+            </div>
+            <p className="text-sm text-slate-400">Request metrics for the last {apiUsage?.period_days ?? adminDashboardDays} days</p>
+          </div>
+
+          {apiUsageLoading ? (
+            <div className="space-y-3 animate-pulse">
+              <div className="h-10 bg-white/5 rounded" />
+              <div className="h-3 bg-white/5 rounded w-2/3" />
+              <div className="h-10 bg-white/5 rounded" />
+            </div>
+          ) : apiUsage ? (
+            <>
+              {/* Summary grid */}
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total Requests</p>
+                  <p className="font-mono text-xs text-cyan-300">{apiUsage.total_requests.toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-950/40 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Unique Users</p>
+                  <p className="font-mono text-xs text-cyan-300">{apiUsage.unique_users.toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* Daily Activity Chart */}
+              {apiUsage.daily.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">
+                    Daily Activity
+                  </p>
+                  <div className="h-48">
+                    <Chart
+                      type="line"
+                      data={{
+                        labels: apiUsage.daily.map((d) => d.date),
+                        datasets: [
+                          {
+                            label: "Requests",
+                            data: apiUsage.daily.map((d) => d.count),
+                            borderColor: "rgba(103, 232, 249, 1)",
+                            backgroundColor: "rgba(103, 232, 249, 0.15)",
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 2,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: "rgba(103, 232, 249, 1)",
+                            fill: true,
+                          },
+                        ],
+                      }}
+                      options={buildChartOptions({
+                        type: "line",
+                        data: { datasets: [] },
+                      }) as any}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Top Endpoints Bar Chart */}
+              {apiUsage.by_endpoint.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">
+                    Top Endpoints
+                  </p>
+                  <div className="h-64 mb-4">
+                    <Chart
+                      type="bar"
+                      data={{
+                        labels: apiUsage.by_endpoint.slice(0, 10).map((e) => e.path),
+                        datasets: [
+                          {
+                            label: "Requests",
+                            data: apiUsage.by_endpoint.slice(0, 10).map((e) => e.count),
+                            backgroundColor: "rgba(103, 232, 249, 0.6)",
+                            borderColor: "rgba(103, 232, 249, 1)",
+                            borderWidth: 1,
+                          },
+                        ],
+                      }}
+                      options={buildChartOptions({
+                        type: "bar",
+                        data: { datasets: [] },
+                        options: { indexAxis: "y" as const },
+                      }) as any}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    {apiUsage.by_endpoint.map((ep, idx) => (
+                      <div key={`${ep.path}-${idx}`} className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400 truncate mr-4">{ep.path}</span>
+                        <div className="flex items-center gap-4 flex-shrink-0">
+                          <span className="font-mono text-cyan-300">{ep.count.toLocaleString()}</span>
+                          <span className="font-mono text-slate-500">{ep.avg_ms}ms</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* User Activity */}
+              {apiUsage.by_user.length > 0 && (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                    User Activity
+                  </p>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {apiUsage.by_user.map((u, idx) => (
+                      <div key={`${u.user_id}-${idx}`} className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400 truncate mr-4">{u.user_id}</span>
+                        <div className="flex items-center gap-4 flex-shrink-0">
+                          <span className="font-mono text-cyan-300">{u.count.toLocaleString()}</span>
+                          <span className="text-slate-500">
+                            {u.first_seen ? new Date(u.first_seen).toLocaleDateString() : "—"}
+                            {" - "}
+                            {u.last_seen ? new Date(u.last_seen).toLocaleDateString() : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-slate-500">No API usage data available.</p>
           )}
         </Card>
 

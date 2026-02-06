@@ -112,6 +112,140 @@ def log_llm_usage(
         logger.debug("Failed to log LLM usage: %s", exc)
 
 
+def log_api_request(
+    *,
+    user_id: Optional[str],
+    method: str,
+    path: str,
+    status_code: Optional[int],
+    duration_ms: Optional[int],
+    app_id: Optional[int] = None,
+) -> None:
+    """Persist an API request log entry (best-effort, never raises)."""
+    from . import db as db_module
+
+    try:
+        with db_module.get_connection() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO api_requests
+                    (user_id, method, path, status_code, duration_ms, app_id, created_at)
+                    VALUES (:user_id, :method, :path, :status_code, :duration_ms, :app_id, NOW())
+                """),
+                {
+                    "user_id": user_id,
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "duration_ms": duration_ms,
+                    "app_id": app_id,
+                },
+            )
+    except Exception as exc:
+        logger.debug("Failed to log API request: %s", exc)
+
+
+def get_api_usage_summary(
+    *,
+    days: int = 30,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Aggregate API request metrics over a time window (admin use)."""
+    from . import db as db_module
+
+    safe_days = max(1, min(int(days or 30), 365))
+    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
+
+    base_where = "WHERE created_at >= :since"
+    params: Dict[str, Any] = {"since": since}
+    if user_id:
+        base_where += " AND user_id = :user_id"
+        params["user_id"] = user_id
+
+    with db_module.get_connection() as conn:
+        # Total requests and unique users
+        totals = conn.execute(
+            text(f"""
+                SELECT
+                    COUNT(*) as total_requests,
+                    COUNT(DISTINCT user_id) as unique_users
+                FROM api_requests
+                {base_where}
+            """),
+            params,
+        ).mappings().fetchone()
+
+        # Top endpoints by count with avg response time
+        by_endpoint = conn.execute(
+            text(f"""
+                SELECT
+                    method || ' ' || path as path,
+                    COUNT(*) as count,
+                    COALESCE(ROUND(AVG(duration_ms)), 0) as avg_ms
+                FROM api_requests
+                {base_where}
+                GROUP BY method, path
+                ORDER BY count DESC
+                LIMIT 30
+            """),
+            params,
+        ).mappings().fetchall()
+
+        # By user breakdown
+        by_user = conn.execute(
+            text(f"""
+                SELECT
+                    user_id,
+                    COUNT(*) as count,
+                    MIN(created_at) as first_seen,
+                    MAX(created_at) as last_seen
+                FROM api_requests
+                {base_where}
+                  AND user_id IS NOT NULL
+                GROUP BY user_id
+                ORDER BY count DESC
+            """),
+            params,
+        ).mappings().fetchall()
+
+        # Daily request counts
+        daily = conn.execute(
+            text(f"""
+                SELECT
+                    DATE(created_at) as date,
+                    COUNT(*) as count
+                FROM api_requests
+                {base_where}
+                GROUP BY DATE(created_at)
+                ORDER BY date
+            """),
+            params,
+        ).mappings().fetchall()
+
+    return {
+        "period_days": safe_days,
+        "total_requests": int(totals["total_requests"] or 0) if totals else 0,
+        "unique_users": int(totals["unique_users"] or 0) if totals else 0,
+        "by_endpoint": [
+            {"path": row["path"], "count": int(row["count"]), "avg_ms": int(row["avg_ms"])}
+            for row in by_endpoint
+        ],
+        "by_user": [
+            {
+                "user_id": row["user_id"],
+                "count": int(row["count"]),
+                "first_seen": row["first_seen"].isoformat() if row["first_seen"] else None,
+                "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
+            }
+            for row in by_user
+        ],
+        "daily": [
+            {"date": str(row["date"]), "count": int(row["count"])}
+            for row in daily
+        ],
+    }
+
+
 def get_llm_usage_summary(
     *,
     days: int = 30,
@@ -3518,3 +3652,81 @@ def load_comparison_summary(cache_key: str) -> Optional[Dict[str, Any]]:
 
         summary_data = _parse_json_field(row["summary_data"])
         return summary_data
+
+
+# ---------------------------------------------------------------------------
+# Stripe webhook idempotency
+# ---------------------------------------------------------------------------
+
+def is_stripe_event_processed(event_id: str) -> bool:
+    """Check if a Stripe webhook event has already been processed."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM processed_stripe_events WHERE event_id = :event_id"),
+            {"event_id": event_id},
+        ).fetchone()
+        return row is not None
+
+
+def mark_stripe_event_processed(event_id: str) -> None:
+    """Record a Stripe webhook event as processed."""
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO processed_stripe_events (event_id, processed_at)
+                VALUES (:event_id, NOW())
+                ON CONFLICT (event_id) DO NOTHING
+            """),
+            {"event_id": event_id},
+        )
+
+
+# ---------------------------------------------------------------------------
+# GDPR: User data deletion
+# ---------------------------------------------------------------------------
+
+def delete_user_data(user_id: str) -> Dict[str, int]:
+    """Delete all user-owned data for GDPR compliance.
+
+    Deletes: starred_games, chat_messages, chat_sessions, chat_context,
+    citation_feedback, support_messages, credit_transactions,
+    user_subscriptions, analysis_results, progress, job_registry,
+    comparison_summaries, api_requests, llm_usage.
+
+    Reviews/labels are shared game data and not user-owned, so excluded.
+
+    Returns dict with count of deleted rows per table.
+    """
+    from . import db as db_module
+
+    deleted: Dict[str, int] = {}
+    tables = [
+        "starred_games",
+        "chat_messages",
+        "chat_sessions",
+        "chat_context",
+        "citation_feedback",
+        "support_messages",
+        "credit_transactions",
+        "user_subscriptions",
+        "analysis_results",
+        "progress",
+        "job_registry",
+        "comparison_summaries",
+        "api_requests",
+        "llm_usage",
+    ]
+
+    with db_module.get_connection() as conn:
+        for table in tables:
+            result = conn.execute(
+                text(f"DELETE FROM {table} WHERE user_id = :user_id"),
+                {"user_id": user_id},
+            )
+            deleted[table] = result.rowcount
+
+    return deleted
