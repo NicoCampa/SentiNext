@@ -231,10 +231,12 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             return newTasks;
           });
 
-          // Check if completed - improved condition
+          // Check if completed: require total > 0 and either not active or fully processed.
+          // The active flag from the backend accounts for the analysis_result status,
+          // so active=false with total=0 during the "fetching" phase is not completion.
           const isComplete =
-            (!progressWithEstimate.active && progressWithEstimate.total > 0) ||
-            (progressWithEstimate.processed >= progressWithEstimate.total && progressWithEstimate.total > 0);
+            progressWithEstimate.total > 0 &&
+            (!progressWithEstimate.active || progressWithEstimate.processed >= progressWithEstimate.total);
 
           if (isComplete) {
             await handleCompletion(appId, task);
@@ -281,8 +283,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
 
             // Also check for completion in SSE progress updates
             const isComplete =
-              (!active && total > 0) ||
-              (processed >= total && total > 0);
+              total > 0 && (!active || processed >= total);
             if (isComplete) {
               handleCompletion(appId, task);
             }

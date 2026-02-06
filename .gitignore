@@ -57,3 +57,9 @@ data/*.pdf
 
 # Generated reports (repo-local, root level only)
 /reports/
+
+# Benchmarks
+/benchmarks/results/
+/benchmarks/.cache/
+/benchmarks/datasets/steam_*/
+/benchmarks/datasets/steam-*/

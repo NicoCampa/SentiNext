@@ -99,6 +99,9 @@ def run_analysis_job(
                 storage.update_job_registry(job_id, status="completed")
             return
 
+        # Signal phase transition so the frontend shows "Building insights"
+        storage.update_progress_phase(user_id, app_id, "building_insights")
+
         insights = prepare_insights(df)
 
         export_columns = [col for col in REVIEW_EXPORT_COLUMNS if col in df.columns]
@@ -163,5 +166,8 @@ def run_analysis_job(
 
     finally:
         if progress_active:
+            # Mark progress as fully complete; do NOT clear_progress() here
+            # because the SSE stream / polling endpoint may still need to see
+            # the final state.  The progress row is overwritten on the next
+            # analysis via reset_progress().
             storage.update_progress(user_id, app_id, total_reviews, total_reviews)
-            storage.clear_progress(user_id, app_id)

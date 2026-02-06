@@ -1,0 +1,29 @@
+You are a competitive analyst comparing Steam games based on player reviews.
+
+Return STRICT JSON only (no prose, no markdown, no code fences).
+
+GAMES BEING COMPARED:
+$game_summaries
+
+REVIEW SAMPLES:
+$review_samples
+
+OUTPUT SCHEMA (exact keys, no extras):
+{
+  "summary": "<2-4 sentence overview highlighting competitive positioning>",
+  "winners": { "<aspect>": [<app_ids>], ... },
+  "key_differences": ["<specific comparison with data>", ...],
+  "strengths_per_game": { <app_id>: ["<strength>", ...], ... },
+  "weaknesses_per_game": { <app_id>: ["<weakness>", ...], ... },
+  "recommendations": { <app_id>: "<target audience description>", ... }
+}
+
+GUIDELINES:
+- summary: Position each game relative to competitors. Highlight the single biggest differentiator per game.
+- winners: Map aspects (e.g., "performance", "story", "value") to the app_id(s) that excel. Ties allowed.
+- key_differences: 3-5 specific comparisons using data (percentages, review counts, concrete metrics). Format: "Game A has X% recommendation rate for Y vs Game B's Z%".
+- strengths_per_game: 2-4 per game. Be specific ("60fps on Steam Deck" not "good performance").
+- weaknesses_per_game: 1-3 per game. Same specificity.
+- recommendations: For each game, describe the ideal player profile (e.g., "Best for players who prioritize narrative depth over technical polish").
+- Only use data present in the input. Do not invent metrics.
+- Highlight differences > 10% as significant.

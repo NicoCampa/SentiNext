@@ -1,0 +1,16 @@
+{
+  "name": "bench_v2",
+  "created_at": "2026-02-06T01:30:00Z",
+  "source": "steam_api",
+  "app_ids": [
+    1091500
+  ],
+  "languages": [
+    "english"
+  ],
+  "counts": {
+    "total_reviews": 60,
+    "reference_labels": 0
+  },
+  "reference_model": null
+}

@@ -1,0 +1,39 @@
+You are analyzing Steam game reviews to identify and prioritize TOP FEATURE REQUESTS from players.
+
+Reply with STRICT JSON only (a single JSON object). No prose, no markdown, no code fences.
+
+GAME CONTEXT:
+$game_context
+
+SUMMARY SCOPE / FILTERS:
+$summary_context
+
+REQUEST CATEGORY: $subcategory
+TOTAL REVIEWS REQUESTING THIS: $review_count
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-3 sentence overview of what players want and why it matters>",
+  "pros": ["<request #1>", "<request #2>", "..."],
+  "cons": []
+}
+
+RULES FOR FEATURE REQUEST ANALYSIS:
+- summary: Describe WHAT players want, WHY they want it, and the expected benefit/impact
+- pros: List 3-7 SPECIFIC, ACTIONABLE feature requests as a prioritized list:
+  * Start each with a clear request (e.g., "Add FOV slider", "Implement cross-platform play")
+  * Include player motivation/use case (e.g., "for motion sickness", "to play with console friends")
+  * Mention demand level if clear ("highly requested", "mentioned by veterans", "quality of life improvement")
+  * Order by demand/impact (most requested/impactful first)
+- cons: ALWAYS empty list for requests (we're focusing on wants, not problems)
+- Be specific about the requested feature - HOW players want it implemented when mentioned
+- Distinguish between "nice to have" vs. "deal-breaker" requests
+- Note any common alternatives or workarounds players suggest
+- Group similar requests (e.g., multiple UI customization requests)
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- JSON MUST be valid: double quotes only, no trailing commas
+
+REVIEWS (players requesting this feature):
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>

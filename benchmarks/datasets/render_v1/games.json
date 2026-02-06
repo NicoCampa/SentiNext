@@ -1,0 +1,73 @@
+{
+  "1091500": {
+    "name": "Cyberpunk 2077",
+    "type": "game",
+    "genres": [
+      "RPG"
+    ],
+    "categories": [
+      "Single-player",
+      "Steam Achievements",
+      "Full controller support",
+      "Steam Trading Cards",
+      "Adjustable Text Size",
+      "Camera Comfort",
+      "Color Alternatives",
+      "Custom Volume Controls",
+      "Adjustable Difficulty",
+      "Playable without Timed Input",
+      "Save Anytime",
+      "Stereo Sound",
+      "Subtitle Options",
+      "Surround Sound",
+      "Steam Cloud",
+      "HDR available",
+      "Family Sharing"
+    ],
+    "short_description": ""
+  },
+  "299970": {
+    "name": "Project Motor Racing",
+    "type": "game",
+    "genres": [
+      "Racing",
+      "Simulation"
+    ],
+    "categories": [
+      "Single-player",
+      "Multi-player",
+      "Co-op",
+      "Online Co-op",
+      "Cross-Platform Multiplayer",
+      "Steam Achievements",
+      "Full controller support",
+      "Steam Cloud",
+      "Family Sharing"
+    ],
+    "short_description": ""
+  },
+  "3194360": {
+    "name": "Formula Legends",
+    "type": "game",
+    "genres": [
+      "Action",
+      "Casual",
+      "Indie",
+      "Racing",
+      "Sports"
+    ],
+    "categories": [
+      "Single-player",
+      "Steam Achievements",
+      "Full controller support",
+      "Camera Comfort",
+      "Custom Volume Controls",
+      "Adjustable Difficulty",
+      "Keyboard Only Option",
+      "Playable without Timed Input",
+      "Steam Cloud",
+      "Family Sharing"
+    ],
+    "short_description": ""
+  }
+}

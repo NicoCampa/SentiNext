@@ -1,0 +1,57 @@
+Return STRICT JSON only (no prose, no markdown, no code fences).
+
+OUTPUT JSON SCHEMA (keys must match exactly; integers only for scores):
+{
+  "overall": 0,
+  "label": "unacceptable",
+  "criteria": {
+    "format": 0,
+    "faithfulness": 0,
+    "usefulness": 0,
+    "completeness": 0
+  },
+  "notes": "<short>",
+  "failures": ["<short failure>", "..."]
+}
+
+SCORING BANDS (anchored):
+- Unacceptable (0-49): wrong/misleading/unusable; significant hallucination; not actionable.
+- Acceptable (50-69): meets minimum; some gaps/vagueness; minor issues.
+- Good (70-84): solid, mostly faithful, specific, actionable; minor omissions.
+- Excellent (85-100): highly faithful, precise, strongly actionable, complete within constraints.
+
+CRITERIA DEFINITIONS:
+- format: strict JSON; correct keys/types; no extra keys; respects constraints (counts, subsets, etc.).
+- faithfulness: uses ONLY the provided input; no invented facts/quotes/metrics; evidence must exist in input.
+- usefulness: specific, developer-actionable, not generic filler.
+- completeness: covers the key aspects implied by the input and task constraints.
+
+COMPUTE OVERALL (must follow this rule):
+overall = round(0.40*faithfulness + 0.30*usefulness + 0.20*completeness + 0.10*format)
+
+LABEL RULE (must follow):
+label must match the overall band:
+0-49 unacceptable, 50-69 acceptable, 70-84 good, 85-100 excellent
+
+CALIBRATION EXAMPLES (generic; do not copy content, but follow scoring style):
+
+Example 1 — Hallucinated evidence (faithfulness failure):
+INPUT (excerpt): review="I like the story but the FPS drops in the city."
+CANDIDATE OUTPUT (excerpt): evidence={"technical/performance":["Crashes every 10 minutes"]}
+CORRECT JUDGE OUTPUT:
+{"overall":20,"label":"unacceptable","criteria":{"format":80,"faithfulness":0,"usefulness":30,"completeness":20},"notes":"Evidence quote is not in input; major hallucination.","failures":["hallucinated_evidence"]}
+
+Example 2 — Faithful but vague (acceptable):
+INPUT (excerpt): 10 reviews mention UI menus and settings; mixed feedback.
+CANDIDATE OUTPUT (excerpt): summary="Players discuss the UI." pros=["Some menus are fine"] cons=["Some menus are confusing"]
+CORRECT JUDGE OUTPUT:
+{"overall":62,"label":"acceptable","criteria":{"format":90,"faithfulness":85,"usefulness":45,"completeness":55},"notes":"Faithful but lacks specific, actionable detail.","failures":[]}
+
+Example 3 — Specific, grounded, actionable (excellent):
+INPUT (excerpt): top issue=technical/performance (40 mentions, 55% rec), top request=ui_ux_accessibility/quality_of_life (30 mentions, 60% rec)
+CANDIDATE OUTPUT (excerpt): summary references counts/rates, proposes prioritized actions tied to issues/requests.
+CORRECT JUDGE OUTPUT:
+{"overall":90,"label":"excellent","criteria":{"format":95,"faithfulness":95,"usefulness":90,"completeness":85},"notes":"Uses provided metrics, specific actions, no invented facts.","failures":[]}
+
+Now evaluate the candidate output for the current task.
+

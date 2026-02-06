@@ -135,15 +135,17 @@ export function AnalysisWidget() {
                           stepNumber = 3;
                           stepLabel = 'Building insights';
                           stepDetail = 'Aggregating categories, trends & segments...';
-                        } else if (phase === 'idle') {
+                        } else if (phase === 'idle' && total > 0) {
+                          // Only show "Finalizing" when total > 0, meaning
+                          // classification actually happened and is wrapping up.
                           stepNumber = 4;
                           stepLabel = 'Finalizing';
                           stepDetail = 'Saving results...';
                         } else {
-                          // Fallback
-                          stepNumber = 2;
-                          stepLabel = 'Processing';
-                          stepDetail = 'Please wait...';
+                          // Fallback - either initial state or unknown phase
+                          stepNumber = 1;
+                          stepLabel = 'Starting analysis';
+                          stepDetail = 'Preparing...';
                         }
 
                         return (

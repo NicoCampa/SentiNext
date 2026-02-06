@@ -1,0 +1,73 @@
+{
+  "1030300": {
+    "name": "Hollow Knight: Silksong",
+    "type": "game",
+    "genres": [
+      "Action",
+      "Adventure",
+      "Indie"
+    ],
+    "categories": [
+      "Single-player",
+      "Steam Achievements",
+      "Full controller support",
+      "Steam Trading Cards",
+      "Camera Comfort",
+      "Keyboard Only Option",
+      "Playable without Timed Input",
+      "Save Anytime",
+      "Stereo Sound",
+      "Steam Cloud",
+      "Remote Play on TV",
+      "Family Sharing"
+    ],
+    "short_description": "Discover a vast, haunted kingdom in Hollow Knight: Silksong! Explore, fight and survive as you ascend to the peak of a land ruled by silk and song."
+  },
+  "1091500": {
+    "name": "Cyberpunk 2077",
+    "type": "game",
+    "genres": [
+      "RPG"
+    ],
+    "categories": [
+      "Single-player",
+      "Steam Achievements",
+      "Full controller support",
+      "Steam Trading Cards",
+      "Adjustable Text Size",
+      "Camera Comfort",
+      "Color Alternatives",
+      "Custom Volume Controls",
+      "Adjustable Difficulty",
+      "Playable without Timed Input",
+      "Save Anytime",
+      "Stereo Sound",
+      "Subtitle Options",
+      "Surround Sound",
+      "Steam Cloud",
+      "HDR available",
+      "Family Sharing"
+    ],
+    "short_description": "Cyberpunk 2077 is an open-world, action-adventure RPG set in the dark future of Night City \u2014 a dangerous megalopolis obsessed with power, glamor, and ceaseless body modification."
+  },
+  "299970": {
+    "name": "Project Motor Racing",
+    "type": "game",
+    "genres": [
+      "Racing",
+      "Simulation"
+    ],
+    "categories": [
+      "Single-player",
+      "Multi-player",
+      "Co-op",
+      "Online Co-op",
+      "Cross-Platform Multiplayer",
+      "Steam Achievements",
+      "Full controller support",
+      "Steam Cloud",
+      "Family Sharing"
+    ],
+    "short_description": "All the passion, beauty & intensity of pro motorsport merging the most iconic cars & circuits with a new benchmark in handling performance."
+  }
+}

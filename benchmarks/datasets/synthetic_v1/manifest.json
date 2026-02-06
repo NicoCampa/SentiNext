@@ -1,0 +1,7 @@
+{
+  "name": "synthetic_v1",
+  "created_at": "2026-02-05T00:00:00Z",
+  "source": "synthetic",
+  "notes": "Tiny synthetic dataset for offline tests and smoke runs. Not Steam-sourced."
+}
+

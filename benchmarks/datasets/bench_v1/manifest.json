@@ -1,0 +1,44 @@
+{
+  "name": "bench_v1",
+  "created_at": "2026-02-05T23:03:05Z",
+  "source": "render_db",
+  "app_ids": [
+    1030300,
+    1091500,
+    299970
+  ],
+  "languages": [
+    "brazilian",
+    "bulgarian",
+    "czech",
+    "danish",
+    "dutch",
+    "english",
+    "finnish",
+    "french",
+    "german",
+    "greek",
+    "hungarian",
+    "italian",
+    "japanese",
+    "koreana",
+    "latam",
+    "norwegian",
+    "polish",
+    "portuguese",
+    "romanian",
+    "russian",
+    "schinese",
+    "spanish",
+    "swedish",
+    "tchinese",
+    "thai",
+    "turkish",
+    "ukrainian"
+  ],
+  "counts": {
+    "total_reviews": 3000,
+    "reference_labels": 2167
+  },
+  "reference_model": "google:gemini-2.5-flash"
+}

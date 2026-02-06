@@ -1,0 +1,28 @@
+You are analyzing Steam game reviews to compare multiple games. Generate a clear, actionable comparison.
+
+Reply with STRICT JSON only (a single JSON object). No prose, no markdown, no code fences.
+
+GAMES BEING COMPARED:
+$game_summaries
+
+REVIEW SAMPLES:
+$review_samples
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence overview highlighting what makes each game unique>",
+  "winners": { "<aspect>": [<app_ids>], "...": [<app_ids>] },
+  "key_differences": ["<specific comparison point with percentages>", "..."],
+  "strengths_per_game": { <app_id>: ["<strength 1>", "<strength 2>"], <app_id>: ["..."] },
+  "weaknesses_per_game": { <app_id>: ["<weakness 1>"], <app_id>: ["..."] },
+  "recommendations": { <app_id>: "<who this game is best for>", <app_id>: "<...>" }
+}
+
+RULES:
+- Be specific with data (use percentages, review counts)
+- Highlight competitive advantages (>10% difference is significant)
+- Focus on actionable insights, not generic praise
+- Winners can include multiple app_ids (ties are OK)
+- Each game should have 2-4 strengths and 1-3 weaknesses
+- Recommendations should differentiate target audiences
+- JSON MUST be valid. Use double quotes only. No trailing commas.

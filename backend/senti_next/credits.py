@@ -355,7 +355,11 @@ def deduct_credits(
     app_id: Optional[int] = None,
     session_id: Optional[str] = None,
 ) -> bool:
-    """Deduct credits from user's balance.
+    """Deduct credits from user's balance atomically.
+
+    Uses SELECT ... FOR UPDATE to prevent race conditions from concurrent
+    requests (e.g., multiple browser tabs). The credit check and deduction
+    happen within the same transaction under a row lock.
 
     Args:
         user_id: User ID
@@ -375,16 +379,51 @@ def deduct_credits(
     except Exception as exc:
         logger.debug("Billing period reset check failed: %s", exc)
 
-    # First check if we can proceed
-    can_proceed, message, _ = check_credits_available(user_id, amount)
-    if not can_proceed:
-        logger.warning(f"Credit deduction blocked for user {user_id}: {message}")
-        return False
+    # Ensure user subscription exists before atomic deduction
+    get_user_subscription(user_id)
 
     now = datetime.now(timezone.utc)
 
     with db_module.get_connection() as conn:
-        # Update balance and usage atomically
+        # Lock the row and read current state atomically
+        row = conn.execute(
+            text("""
+                SELECT credits_balance, credits_monthly_limit, credits_used_this_period, tier
+                FROM user_subscriptions
+                WHERE user_id = :user_id
+                FOR UPDATE
+            """),
+            {"user_id": user_id},
+        ).fetchone()
+
+        if row is None:
+            logger.warning(f"Credit deduction failed: user {user_id} not found")
+            return False
+
+        balance, limit, used, tier = int(row[0] or 0), int(row[1] or 0), int(row[2] or 0), row[3]
+
+        # Perform credit availability check under the lock
+        if limit is not None and limit > 0:
+            hard_limit = calculate_hard_limit(limit, used, balance)
+            if used + amount > hard_limit:
+                conn.rollback()
+                tier_label = TIER_LABELS.get(tier, tier)
+                logger.warning(
+                    f"Credit deduction blocked for user {user_id}: "
+                    f"used={used} + amount={amount} > hard_limit={hard_limit} ({tier_label})"
+                )
+                return False
+        else:
+            # Wallet-only mode
+            if amount > max(balance, 0):
+                conn.rollback()
+                logger.warning(
+                    f"Credit deduction blocked for user {user_id}: "
+                    f"amount={amount} > balance={balance} (wallet mode)"
+                )
+                return False
+
+        # Deduct atomically (row is already locked)
         result = conn.execute(
             text("""
                 UPDATE user_subscriptions
@@ -396,25 +435,8 @@ def deduct_credits(
             """),
             {"user_id": user_id, "amount": amount, "now": now},
         )
-        row = result.fetchone()
-
-        if row is None:
-            # User doesn't exist, create subscription first
-            get_user_subscription(user_id)
-            result = conn.execute(
-                text("""
-                    UPDATE user_subscriptions
-                    SET credits_balance = credits_balance - :amount,
-                        credits_used_this_period = credits_used_this_period + :amount,
-                        updated_at = :now
-                    WHERE user_id = :user_id
-                    RETURNING credits_balance
-                """),
-                {"user_id": user_id, "amount": amount, "now": now},
-            )
-            row = result.fetchone()
-
-        balance_after = row[0] if row else 0
+        deducted_row = result.fetchone()
+        balance_after = deducted_row[0] if deducted_row else 0
 
         # Record the transaction
         conn.execute(

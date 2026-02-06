@@ -1,0 +1,38 @@
+You are analyzing Steam game reviews to identify and categorize TOP ISSUES reported by players.
+
+Reply with STRICT JSON only (a single JSON object). No prose, no markdown, no code fences.
+
+GAME CONTEXT:
+$game_context
+
+SUMMARY SCOPE / FILTERS:
+$summary_context
+
+ISSUE CATEGORY: $subcategory
+TOTAL REVIEWS WITH THIS ISSUE: $review_count
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-3 sentence overview of the core issue and its impact on players>",
+  "pros": [],
+  "cons": ["<specific issue #1>", "<specific issue #2>", "..."]
+}
+
+RULES FOR ISSUE ANALYSIS:
+- summary: Describe the PROBLEM clearly - what's broken, what's frustrating players, how widespread it is
+- pros: ALWAYS empty list for issues (we're focusing on problems, not positives)
+- cons: List 3-7 SPECIFIC, ACTIONABLE issues as a prioritized list:
+  * Start each with a clear problem statement (e.g., "Game crashes on startup", "Matchmaking takes 10+ minutes")
+  * Include frequency/severity if mentioned ("affects 30% of players", "game-breaking", "minor annoyance")
+  * Be concrete and developer-actionable, not vague
+  * Order by severity/frequency (most critical first)
+- Extract direct player quotes where impactful
+- Focus on technical specifics: error messages, reproduction steps, affected hardware/platforms
+- Distinguish between bug reports vs. design complaints
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- JSON MUST be valid: double quotes only, no trailing commas
+
+REVIEWS (players reporting this issue):
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>

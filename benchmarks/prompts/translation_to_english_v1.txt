@@ -1,0 +1,6 @@
+Translate the following text to English.
+Only output the translated text, nothing else. Preserve the original formatting and tone.
+If the text is already in English, return it unchanged.
+
+Text to translate:
+$text

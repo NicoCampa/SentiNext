@@ -1,0 +1,24 @@
+{
+  "1001": {
+    "name": "Neon Drift",
+    "type": "game",
+    "genres": ["Racing", "Arcade"],
+    "categories": ["Single-player"],
+    "short_description": "A fast-paced arcade racer with neon visuals and tight handling."
+  },
+  "1002": {
+    "name": "Castle Siege",
+    "type": "game",
+    "genres": ["Strategy", "Simulation"],
+    "categories": ["Single-player", "Multiplayer"],
+    "short_description": "Build defenses, manage resources, and survive relentless sieges."
+  },
+  "1003": {
+    "name": "Star Harvest",
+    "type": "game",
+    "genres": ["Survival", "Crafting"],
+    "categories": ["Single-player", "Co-op"],
+    "short_description": "Explore hostile planets, craft tools, and automate your base."
+  }
+}
+

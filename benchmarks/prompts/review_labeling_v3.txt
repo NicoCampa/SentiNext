@@ -1,0 +1,45 @@
+Label a Steam review for developer analytics. Return STRICT JSON only.
+
+GAME: $game_context
+
+REVIEWER: Language=$review_language | Playtime=$reviewer_playtime hrs | Rec=$reviewer_recommendation
+
+TASK: Classify the review into 1-6 taxonomy labels and extract verbatim evidence.
+
+JSON OUTPUT (exact keys):
+{
+  "subcategories": ["main/sub", ...],
+  "issue_subcategories": ["main/sub", ...],
+  "request_subcategories": ["main/sub", ...],
+  "evidence": {"main/sub": ["verbatim quote", ...]}
+}
+
+RULES:
+1. subcategories[0] = primary/dominant theme. 1-6 unique labels from taxonomy.
+2. issue_subcategories = subset of subcategories where player reports a problem.
+3. request_subcategories = subset of subcategories where player explicitly asks for something ("please add", "I wish", "needs X").
+4. evidence: for each subcategory, 1-3 EXACT copy-paste quotes from the review (<=160 chars). Must be character-for-character substrings. Non-English reviews: quote in original language, never translate.
+5. Vague/generic/meme review -> subcategories=["other/general"], empty issues/requests, one short quote.
+
+TAXONOMY:
+gameplay: mechanics | controls | balance | difficulty | progression | ai
+technical: performance | bugs | stability_crashes | compatibility | networking | installation | save_data
+content_design: amount_variety | level_design | quests_modes | narrative_characters | replayability | pacing | customization
+ui_ux_accessibility: menus_hud | readability | quality_of_life | controller_support | accessibility_options
+onboarding: tutorial | learning_curve | clarity | tooltips
+presentation: visuals_art_style | animation | audio_music | voice_acting | atmosphere | localization
+online_community: multiplayer_experience | matchmaking | social_features | toxicity_moderation | mods_ugc | cheating_anti_cheat
+developer_updates: patch_quality | update_frequency | roadmap_events | communication | customer_support | response_time
+monetization_value: pricing | regional_pricing | dlc | microtransactions | battle_pass_fomo | pay_to_win_grind | value_for_money
+other: general | mixed | meta | unclear | off_topic | meme
+
+DISAMBIGUATION:
+- DLC pricing -> monetization_value/dlc (NOT content_design)
+- Patch quality -> developer_updates/patch_quality (NOT technical)
+- Save issues -> technical/save_data (NOT gameplay)
+- Multiplayer -> online_community/multiplayer_experience (NOT gameplay)
+- Translation -> presentation/localization (NOT ui_ux_accessibility)
+
+<<<BEGIN REVIEW>>>
+$review_text
+<<<END REVIEW>>>

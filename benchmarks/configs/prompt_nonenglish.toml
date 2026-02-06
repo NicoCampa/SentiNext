@@ -1,0 +1,39 @@
+# Non-English review classification: v1 vs v2 single-pass
+# Uses bench_v1 dataset, core suite (60 reviews, balanced across languages)
+# This will include ~40 non-English reviews due to the balanced selection
+
+[run]
+dataset = "benchmarks/datasets/bench_v1"
+suite = "core"
+seed = 42
+max_concurrency = 4
+timeout_s = 90
+retries = 2
+cache_db = "benchmarks/.cache/cache.sqlite"
+results_dir = "benchmarks/results"
+pricing_table = "benchmarks/pricing/prices.example.json"
+tasks = [
+    "review_labeling",
+    "review_labeling_v2",
+]
+
+[providers.openai]
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+
+[providers.xai]
+api_key_env = "XAI_API_KEY"
+
+[judge]
+provider = "openai"
+model = "gpt-5.1"
+temperature = 0.0
+max_tokens = 8192
+
+[[models]]
+id = "xai:grok-4-1-fast-non-reasoning"
+provider = "openai"
+model = "grok-4-1-fast-non-reasoning"
+base_url = "https://api.x.ai/v1"
+api_key_env = "XAI_API_KEY"
+temperature = 0.2

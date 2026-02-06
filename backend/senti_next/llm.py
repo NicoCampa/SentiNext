@@ -18,9 +18,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from string import Template
 from textwrap import dedent
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
+from pydantic import BaseModel, Field
 
 import requests
 
@@ -32,6 +33,11 @@ logger = logging.getLogger(__name__)
 # LLM Provider configuration
 GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
 GEMINI_MODEL_CHEAP = os.getenv("SENTINEXT_GEMINI_MODEL_CHEAP", "gemini-flash-lite-latest")
+
+# xAI (Grok) configuration for review classification
+XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+XAI_MODEL = os.getenv("SENTINEXT_XAI_MODEL", "grok-4-1-fast-non-reasoning")
+XAI_MODEL_REASONING = os.getenv("SENTINEXT_XAI_MODEL_REASONING", "grok-4-1-fast-reasoning")
 
 # Timeout and retry configuration
 LLM_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_LLM_TIMEOUT", "30"))
@@ -84,6 +90,7 @@ def _record_llm_usage(
     response: Any,
     model_name: str,
     *,
+    provider: str = "google",
     prompt_tokens: Optional[int] = None,
     response_tokens: Optional[int] = None,
     total_tokens: Optional[int] = None,
@@ -102,7 +109,7 @@ def _record_llm_usage(
         storage.log_llm_usage(
             user_id=str(user_id),
             operation=str(ctx.get("operation") or "unknown"),
-            model=_model_id("google", model_name),
+            model=_model_id(provider, model_name),
             prompt_tokens=prompt_tokens if prompt_tokens is not None else _safe_int(getattr(usage, "prompt_token_count", None)),
             response_tokens=response_tokens if response_tokens is not None else _safe_int(getattr(usage, "response_token_count", None)),
             total_tokens=total_tokens if total_tokens is not None else _safe_int(getattr(usage, "total_token_count", None)),
@@ -325,8 +332,10 @@ _PROMPT_TEMPLATE = Template(
         - Put the primary label first: subcategories[0] MUST be the dominant theme of the review.
         - issue_subcategories: only problems/complaints (subset of subcategories).
         - request_subcategories: only explicit requests (subset of subcategories; e.g., "please add", "can you", "I wish").
-        - evidence: for EVERY tag in subcategories, include 1-3 short verbatim quotes from the review (<=160 chars).
-          Do not invent quotes. Use double quotes in JSON strings and escape as needed.
+        - evidence: for EVERY tag in subcategories, include 1-3 EXACT COPY-PASTE quotes from the review (<=160 chars each).
+          Each quote MUST be a character-for-character substring of the review. Do NOT rephrase, reorder words, or change punctuation.
+          If a quote exceeds 160 characters, extract a shorter fragment that is still verbatim.
+        - For non-English reviews: quote in the ORIGINAL language exactly as written. Do NOT translate quotes to English.
         - If review is vague/generic: subcategories=["other/general"], issue_subcategories=[], request_subcategories=[],
           evidence={"other/general":["short quote from review"]}.
         - JSON MUST be valid: double quotes only, no trailing commas, no comments, no code fences.
@@ -369,6 +378,13 @@ _PROMPT_TEMPLATE = Template(
           response_time (ONLY explicit wait/time-to-fix is mentioned)
         - monetization_value: pricing, regional_pricing, dlc, microtransactions, battle_pass_fomo, pay_to_win_grind, value_for_money
         - other: general, mixed, meta, unclear, off_topic, meme
+
+        DISAMBIGUATION (common errors — use the CORRECT category):
+        - DLC content/pricing → monetization_value/dlc (NOT content_design)
+        - Patch/update quality → developer_updates/patch_quality (NOT technical)
+        - Save data issues → technical/save_data (NOT gameplay)
+        - Multiplayer experience → online_community/multiplayer_experience (NOT gameplay)
+        - Localization/translation → presentation/localization (NOT ui_ux_accessibility)
 
         REVIEW TEXT (verbatim):
         <<<BEGIN REVIEW>>>
@@ -418,8 +434,10 @@ _BATCH_PROMPT_TEMPLATE = Template(
         - Put the primary label first: subcategories[0] MUST be the dominant theme of the review.
         - issue_subcategories: only problems/complaints (subset of subcategories).
         - request_subcategories: only explicit requests (subset of subcategories; e.g., "please add", "can you", "I wish").
-        - evidence: for EVERY tag in subcategories, include 1-3 short verbatim quotes from THAT SAME review (<=160 chars).
-          Do not invent quotes. Use double quotes in JSON strings and escape as needed.
+        - evidence: for EVERY tag in subcategories, include 1-3 EXACT COPY-PASTE quotes from THAT SAME review (<=160 chars each).
+          Each quote MUST be a character-for-character substring of the review. Do NOT rephrase, reorder words, or change punctuation.
+          If a quote exceeds 160 characters, extract a shorter fragment that is still verbatim.
+        - For non-English reviews: quote in the ORIGINAL language exactly as written. Do NOT translate quotes to English.
         - If review is vague/generic: subcategories=["other/general"], issue_subcategories=[], request_subcategories=[],
           evidence={"other/general":["short quote from review"]}.
         - JSON MUST be valid: double quotes only, no trailing commas, no comments, no code fences.
@@ -440,6 +458,13 @@ _BATCH_PROMPT_TEMPLATE = Template(
         - monetization_value: pricing, regional_pricing, dlc, microtransactions, battle_pass_fomo, pay_to_win_grind, value_for_money
         - other: general, mixed, meta, unclear, off_topic, meme
 
+        DISAMBIGUATION (common errors — use the CORRECT category):
+        - DLC content/pricing → monetization_value/dlc (NOT content_design)
+        - Patch/update quality → developer_updates/patch_quality (NOT technical)
+        - Save data issues → technical/save_data (NOT gameplay)
+        - Multiplayer experience → online_community/multiplayer_experience (NOT gameplay)
+        - Localization/translation → presentation/localization (NOT ui_ux_accessibility)
+
         REVIEWS (each block is independent; do not mix evidence across blocks):
         <<<BEGIN REVIEWS>>>
         $reviews_text
@@ -456,6 +481,8 @@ _DEFAULT_LABEL = {
     "request_subcategories": [],
     "evidence": {},
 }
+
+
 _ALLOWED_MAIN_CATEGORIES = {
     "gameplay",
     "technical",
@@ -513,6 +540,79 @@ _ALLOWED_SUBCATEGORIES = {
 _ALLOWED_SUBCATEGORY_KEYS = {
     f"{main}/{sub}" for main, subs in _ALLOWED_SUBCATEGORIES.items() for sub in subs
 }
+_SUBCATEGORY_ENUM = sorted(_ALLOWED_SUBCATEGORY_KEYS)
+
+# Literal type for Pydantic models — enables xAI chat.parse() to enforce valid subcategories.
+_SubcategoryLiteral = Literal[tuple(_SUBCATEGORY_ENUM)]
+
+
+class ReviewClassification(BaseModel):
+    """Pydantic model for xAI structured output (chat.parse)."""
+    subcategories: list[_SubcategoryLiteral] = Field(description="1-6 unique subcategory labels in 'main/sub' format")
+    issue_subcategories: list[_SubcategoryLiteral] = Field(default_factory=list, description="Subset of subcategories that are issues/complaints")
+    request_subcategories: list[_SubcategoryLiteral] = Field(default_factory=list, description="Subset of subcategories that are explicit requests")
+    evidence: dict[str, list[str]] = Field(default_factory=dict, description="Verbatim quotes keyed by subcategory")
+
+
+class ReportSummary(BaseModel):
+    """Structured output for monthly report and widget summaries."""
+    summary: str = Field(description="Executive summary paragraph")
+    key_points: list[str] = Field(default_factory=list, description="Top key points")
+    actions: list[str] = Field(default_factory=list, description="Suggested actions")
+
+
+class SubcategorySummary(BaseModel):
+    """Structured output for subcategory review summaries."""
+    summary: str = Field(description="Summary paragraph of reviews in this subcategory")
+    pros: list[str] = Field(default_factory=list, description="Positive aspects mentioned")
+    cons: list[str] = Field(default_factory=list, description="Negative aspects mentioned")
+
+
+class GameComparison(BaseModel):
+    """Structured output for game comparison."""
+    summary: str = Field(description="Overview highlighting what makes each game unique")
+    winners: dict[str, list[int]] = Field(default_factory=dict, description="Aspect to winning app_ids mapping")
+    key_differences: list[str] = Field(default_factory=list, description="Specific comparison points with percentages")
+    strengths_per_game: dict[str, list[str]] = Field(default_factory=dict, description="Per app_id strengths")
+    weaknesses_per_game: dict[str, list[str]] = Field(default_factory=dict, description="Per app_id weaknesses")
+    recommendations: dict[str, str] = Field(default_factory=dict, description="Per app_id target audience")
+
+
+class NewsUpdateSummary(BaseModel):
+    """Structured output for news/patch summary."""
+    summary: str = Field(description="Brief 2-3 sentence overview of recent update activity")
+    key_updates: list[str] = Field(default_factory=list, description="3-5 most important updates/changes")
+    potential_impacts: list[str] = Field(default_factory=list, description="2-4 areas that might affect player experience")
+    correlation_insights: Optional[str] = Field(default=None, description="Correlation between updates and sentiment, or null")
+
+# JSON schema for a single review classification entry with enum-constrained subcategories.
+_REVIEW_CLASSIFICATION_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "subcategories": {"type": "array", "items": {"type": "string", "enum": _SUBCATEGORY_ENUM}},
+        "issue_subcategories": {"type": "array", "items": {"type": "string", "enum": _SUBCATEGORY_ENUM}},
+        "request_subcategories": {"type": "array", "items": {"type": "string", "enum": _SUBCATEGORY_ENUM}},
+        "evidence": {
+            "type": "object",
+            "additionalProperties": {"type": "array", "items": {"type": "string"}},
+        },
+    },
+    "required": ["subcategories", "issue_subcategories", "request_subcategories", "evidence"],
+}
+
+
+def _build_batch_json_schema(review_ids: list[str]) -> dict:
+    """Build a JSON schema for batch classification with review IDs as fixed properties.
+
+    Uses enum constraints on subcategory fields to prevent models from
+    inventing invalid subcategory names.
+    """
+    return {
+        "type": "object",
+        "properties": {rid: _REVIEW_CLASSIFICATION_SCHEMA for rid in review_ids},
+        "required": review_ids,
+    }
+
 _SUBCATEGORY_SEPARATORS = ("/", ":", ".")
 
 _MAIN_CATEGORY_ALIASES: dict[str, str] = {
@@ -1097,14 +1197,43 @@ def _build_prompt(
 
 
 
-def _run_gemini(prompt: str, model: str) -> str:
+def _strip_schema_enums(schema: dict) -> dict:
+    """Deep-copy a JSON schema and remove all 'enum' keys from string items.
+
+    Gemini's constrained decoding can reject schemas with large enums
+    (e.g. 60-value enum repeated across batch properties exceeds state limits).
+    """
+    import copy
+
+    def _walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "string" and "enum" in node:
+            del node["enum"]
+        for v in node.values():
+            if isinstance(v, dict):
+                _walk(v)
+            elif isinstance(v, list):
+                for item in v:
+                    _walk(item)
+
+    result = copy.deepcopy(schema)
+    _walk(result)
+    return result
+
+
+def _run_gemini(
+    prompt: str,
+    model: str,
+    *,
+    response_schema: Optional[type] = None,
+    response_json_schema: Optional[dict] = None,
+) -> str:
     """Run Gemini API call with timeout and retry handling.
 
-    Features:
-    - Configurable timeout (default 30s)
-    - Exponential backoff for transient errors (500-504)
-    - Longer delays for rate limits (429)
-    - No retry for bad requests (400)
+    When response_schema is set (a Pydantic BaseModel subclass), enables structured
+    output via response_json_schema so the API guarantees valid JSON matching the schema.
+    Alternatively, pass response_json_schema directly as a dict for dynamic schemas.
     """
     _maybe_load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -1126,15 +1255,27 @@ def _run_gemini(prompt: str, model: str) -> str:
 
         attempt = 0
         last_error: Optional[Exception] = None
+        schema_stripped = False
 
         while attempt < LLM_MAX_RETRIES:
             attempt += 1
             try:
                 # Direct API call - SDK has default 60s timeout
-                response = client.models.generate_content(
-                    model=model,
-                    contents=prompt
-                )
+                generate_kwargs: Dict[str, Any] = {
+                    "model": model,
+                    "contents": prompt,
+                }
+                schema_dict = None
+                if response_schema is not None:
+                    schema_dict = response_schema.model_json_schema()
+                elif response_json_schema is not None:
+                    schema_dict = response_json_schema
+                if schema_dict is not None:
+                    generate_kwargs["config"] = {
+                        "response_mime_type": "application/json",
+                        "response_json_schema": schema_dict,
+                    }
+                response = client.models.generate_content(**generate_kwargs)
 
                 content = response.text
                 elapsed = time.time() - start_time
@@ -1154,6 +1295,18 @@ def _run_gemini(prompt: str, model: str) -> str:
                     f"Gemini API error (status={status_code}, type={error_type.value}): {e} "
                     f"(attempt {attempt}/{LLM_MAX_RETRIES})"
                 )
+
+                # Schema too complex — strip enums and retry without consuming a retry attempt
+                if not schema_stripped and "too many states" in str(e).lower():
+                    logger.warning("Gemini schema too complex; stripping enum constraints and retrying")
+                    if response_json_schema is not None:
+                        response_json_schema = _strip_schema_enums(response_json_schema)
+                    elif response_schema is not None:
+                        response_json_schema = _strip_schema_enums(response_schema.model_json_schema())
+                        response_schema = None
+                    schema_stripped = True
+                    attempt -= 1  # don't count this as a retry
+                    continue
 
                 if not retryable:
                     raise LLMError(
@@ -1201,6 +1354,120 @@ def _run_gemini(prompt: str, model: str) -> str:
 
 def _model_id(provider: str, model: str) -> str:
     return f"{provider}:{model}"
+
+
+def _run_xai(prompt: str, model: str, *, parse_model: Optional[type] = None) -> str:
+    """Run xAI (Grok) API call via xai_sdk with timeout and retry handling.
+
+    When parse_model is set, uses chat.parse() for structured output (Pydantic schema
+    enforced by the API). Otherwise falls back to chat.sample() with json_object format.
+    """
+    _maybe_load_dotenv()
+    api_key = XAI_API_KEY or os.getenv("XAI_API_KEY", "")
+    if not api_key:
+        raise LLMError(
+            "XAI_API_KEY is not set.",
+            LLMErrorType.BAD_REQUEST,
+            retryable=False,
+        )
+
+    try:
+        from xai_sdk import Client as XaiClient
+        from xai_sdk.chat import user as xai_user
+    except ImportError:
+        raise LLMError(
+            "xai-sdk package not installed. Run: pip install xai-sdk",
+            LLMErrorType.BAD_REQUEST,
+            retryable=False,
+        )
+
+    start_time = time.time()
+    logger.info(f"Starting xAI API call with model {model}")
+
+    attempt = 0
+    last_error: Optional[Exception] = None
+
+    while attempt < LLM_MAX_RETRIES:
+        attempt += 1
+        try:
+            client = XaiClient(api_key=api_key, timeout=LLM_TIMEOUT_SECONDS)
+            create_kwargs: Dict[str, Any] = {
+                "model": model,
+                "temperature": 0.1,
+                "max_tokens": 8192,
+            }
+            if parse_model is None:
+                create_kwargs["response_format"] = "json_object"
+            chat = client.chat.create(**create_kwargs)
+            chat.append(xai_user(prompt))
+
+            if parse_model is not None:
+                response, _parsed = chat.parse(parse_model)
+            else:
+                response = chat.sample()
+
+            content = response.content
+            elapsed = time.time() - start_time
+            logger.info(f"xAI API call completed in {elapsed:.2f}s (attempt {attempt})")
+
+            if not content or not content.strip():
+                raise LLMError("Empty response from xAI.", LLMErrorType.UNKNOWN, retryable=False)
+
+            # Record token usage
+            usage = response.usage
+            if usage is not None:
+                _record_llm_usage(
+                    None,
+                    model,
+                    provider="xai",
+                    prompt_tokens=_safe_int(getattr(usage, "prompt_tokens", None)),
+                    response_tokens=_safe_int(getattr(usage, "completion_tokens", None)),
+                    total_tokens=_safe_int(getattr(usage, "total_tokens", None)),
+                )
+
+            return content
+
+        except LLMError:
+            raise
+        except Exception as e:
+            last_error = e
+            error_str = str(e).lower()
+            is_transient = any(
+                token in error_str
+                for token in ("timeout", "429", "rate", "temporar", "unavailable", "503", "502", "500")
+            )
+
+            logger.warning(
+                f"xAI API error: {e} (attempt {attempt}/{LLM_MAX_RETRIES})"
+            )
+
+            if not is_transient:
+                raise LLMError(
+                    f"xAI API error (non-retryable): {str(e)}",
+                    LLMErrorType.BAD_REQUEST,
+                    retryable=False,
+                )
+
+            if attempt < LLM_MAX_RETRIES:
+                if "429" in str(e) or "rate" in error_str:
+                    retry_delay = _calculate_retry_delay(attempt, LLMErrorType.RATE_LIMITED)
+                else:
+                    retry_delay = _calculate_retry_delay(attempt, LLMErrorType.SERVER_ERROR)
+                logger.info(f"Retrying in {retry_delay:.1f}s...")
+                time.sleep(retry_delay)
+                continue
+
+            raise LLMError(
+                f"xAI API error after {LLM_MAX_RETRIES} attempts: {str(e)}",
+                LLMErrorType.SERVER_ERROR,
+                retryable=False,
+            )
+
+    raise LLMError(
+        f"xAI API call failed after {LLM_MAX_RETRIES} attempts",
+        LLMErrorType.UNKNOWN,
+        retryable=False,
+    )
 
 
 @dataclass
@@ -1952,6 +2219,70 @@ def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Option
         return results, model_used
 
 
+def classify_review_single(
+    item: Dict[str, Any],
+    *,
+    game_context: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], str]:
+    """Classify a single review using two-tier xAI (Grok) strategy.
+
+    Tier 1: XAI_MODEL (fast, non-reasoning) — ~75% valid rate
+    Tier 2: XAI_MODEL_REASONING (reasoning fallback) — ~89% valid rate
+    Tier 3: _DEFAULT_LABEL if both fail
+    """
+    review_text = (item.get("review_text") or "").strip()
+    if not review_text:
+        return _DEFAULT_LABEL.copy(), _model_id("xai", XAI_MODEL)
+
+    prompt = _build_prompt(
+        review_text,
+        game_context,
+        item.get("reviewer_playtime", 0),
+        item.get("reviewer_voted_up", True),
+        item.get("review_language"),
+    )
+
+    reservation: Optional[dict] = None
+    try:
+        reservation = _reserve_credits_for_operation(
+            "classify",
+            amount=credits.CREDIT_COSTS["classify"],
+            description="Classify single review (xai two-tier)",
+        )
+    except credits.InsufficientCreditsError:
+        raise
+
+    # Tier 1: fast non-reasoning model
+    try:
+        raw = _run_xai(prompt, XAI_MODEL, parse_model=ReviewClassification)
+        payload = _load_json_mapping(raw)
+        validated = _parse_payload_mapping(payload)
+        logger.debug(f"Tier 1 ({XAI_MODEL}) succeeded for review {item.get('review_id')}")
+        return validated, _model_id("xai", XAI_MODEL)
+    except (ValueError, LLMError) as tier1_err:
+        logger.info(
+            f"Tier 1 ({XAI_MODEL}) failed for review {item.get('review_id')}: {tier1_err}, "
+            f"trying Tier 2 ({XAI_MODEL_REASONING})"
+        )
+
+    # Tier 2: reasoning model fallback
+    try:
+        raw = _run_xai(prompt, XAI_MODEL_REASONING, parse_model=ReviewClassification)
+        payload = _load_json_mapping(raw)
+        validated = _parse_payload_mapping(payload)
+        logger.debug(f"Tier 2 ({XAI_MODEL_REASONING}) succeeded for review {item.get('review_id')}")
+        return validated, _model_id("xai", XAI_MODEL_REASONING)
+    except (ValueError, LLMError) as tier2_err:
+        logger.warning(
+            f"Tier 2 ({XAI_MODEL_REASONING}) also failed for review {item.get('review_id')}: {tier2_err}, "
+            f"using default label"
+        )
+        _refund_reserved_credits(reservation, "Refund: both tiers failed for review classification")
+
+    # Tier 3: default label
+    return _DEFAULT_LABEL.copy(), _model_id("xai", XAI_MODEL)
+
+
 def classify_review(
     review_text: str,
     game_context: Optional[Dict[str, Any]] = None,
@@ -1959,25 +2290,14 @@ def classify_review(
     reviewer_voted_up: bool = True,
     review_language: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], str]:
-    clean_text = (review_text or "").strip()
-    if not clean_text:
-        raise ValueError("Empty review text.")
-    prompt = _build_prompt(clean_text, game_context, reviewer_playtime, reviewer_voted_up, review_language)
-    reservation: Optional[dict] = None
-    try:
-        reservation = _reserve_credits_for_operation(
-            "classify",
-            amount=credits.CREDIT_COSTS["classify"],
-            description="Classify single review",
-        )
-        raw, model_used = _run_llm(prompt)
-        payload = _parse_payload(raw)
-        return payload, model_used
-    except credits.InsufficientCreditsError:
-        raise
-    except Exception:
-        _refund_reserved_credits(reservation, "Refund: single review classification failed")
-        raise
+    """Legacy single-review classification. Delegates to classify_review_single."""
+    item = {
+        "review_text": review_text,
+        "reviewer_playtime": reviewer_playtime,
+        "reviewer_voted_up": reviewer_voted_up,
+        "review_language": review_language,
+    }
+    return classify_review_single(item, game_context=game_context)
 
 
 def ensure_review_labels(
@@ -1994,21 +2314,23 @@ def ensure_review_labels(
         return {}
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    expected_llm_model_id = _model_id("google", GEMINI_MODEL)
-    valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
+    # Accept labels from both current xAI models and old Gemini models
+    valid_cached_models = {
+        _model_id("xai", XAI_MODEL),
+        _model_id("xai", XAI_MODEL_REASONING),
+        _model_id("google", GEMINI_MODEL),
+        "short_review",
+        "empty_review",
+    }
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
     processed_count = 0
     cached_reuse_count = 0
 
-    # Group reviews by language before batching
-    from collections import defaultdict
-    pending_by_language: Dict[str, list[Dict[str, Any]]] = defaultdict(list)
+    pending_reviews: list[Dict[str, Any]] = []
 
     if progress_callback is not None:
         progress_callback(0, total_reviews)
-
-    all_batches: list[list[Dict[str, Any]]] = []
 
     for review in reviews:
         review_id_value = review.get("recommendationid") or review.get("review_id")
@@ -2090,7 +2412,7 @@ def ensure_review_labels(
                     review_id,
                     review_hash,
                     payload,
-                    str(cached.get("model") or expected_llm_model_id),
+                    str(cached.get("model") or _model_id("xai", XAI_MODEL)),
                     ACTIVE_PROMPT_VERSION,
                 )
             results[review_id] = payload
@@ -2105,8 +2427,7 @@ def ensure_review_labels(
         reviewer_voted_up = review.get("voted_up", True)
         review_language = review.get("language", "english")
 
-        # Group by language for better batching
-        pending_by_language[review_language].append(
+        pending_reviews.append(
             {
                 "review_id": review_id,
                 "review_text": review_text,
@@ -2117,16 +2438,7 @@ def ensure_review_labels(
             }
         )
 
-    # Create batches within each language group
-    for language, lang_reviews in pending_by_language.items():
-        for i in range(0, len(lang_reviews), BATCH_SIZE):
-            batch = lang_reviews[i:i + BATCH_SIZE]
-            all_batches.append(batch)
-
-    logger.info(
-        f"Created {len(all_batches)} batches from {len(pending_by_language)} languages "
-        f"({sum(len(v) for v in pending_by_language.values())} reviews to classify)"
-    )
+    logger.info(f"{len(pending_reviews)} reviews to classify via xAI two-tier strategy")
 
     # Charge for cached label reuse (no LLM call, still billed)
     if cached_reuse_count > 0:
@@ -2137,60 +2449,66 @@ def ensure_review_labels(
             app_id=app_id,
         )
 
-    # Process all batches in parallel
-    if all_batches:
-        # Default to 5 workers (good for paid Gemini API)
-        # Set SENTINEXT_MAX_PARALLEL_BATCHES=2 for free tier (10 req/min limit)
-        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "5"))
-        logger.info(f"Processing {len(all_batches)} batches in parallel (max_workers={max_workers})")
+    # Process reviews in parallel (one xAI call per review, two-tier fallback)
+    if pending_reviews:
+        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "10"))
+        logger.info(f"Processing {len(pending_reviews)} reviews in parallel (max_workers={max_workers})")
 
-        def process_batch(batch_items: list[Dict[str, Any]]) -> tuple[Dict[str, Dict[str, Any]], str]:
-            return classify_reviews(batch_items, game_context=game_context)
+        # Bulk write buffer
+        BULK_WRITE_SIZE = 20
+        label_write_buffer: list[dict] = []
+
+        def _flush_label_buffer(buf: list[dict]) -> None:
+            if buf and cache_enabled:
+                storage.bulk_upsert_review_labels(list(buf))
+                buf.clear()
+
+        def _process_single(item: Dict[str, Any]) -> Tuple[Dict[str, Any], str, Dict[str, Any]]:
+            payload, model_used = classify_review_single(item, game_context=game_context)
+            return payload, model_used, item
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_batch = {}
-            for batch in all_batches:
+            future_to_item = {}
+            for item in pending_reviews:
                 ctx = contextvars.copy_context()
-                future = executor.submit(ctx.run, process_batch, batch)
-                future_to_batch[future] = batch
+                future = executor.submit(ctx.run, _process_single, item)
+                future_to_item[future] = item
 
-            for future in as_completed(future_to_batch):
-                batch = future_to_batch[future]
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
                 try:
-                    batch_labels, model_used = future.result()
-                    batch_label_items = []  # Collect for bulk write
+                    payload, model_used, _ = future.result()
+                    review_id = str(item["review_id"])
+                    review_hash = str(item["review_hash"])
 
-                    for item in batch:
-                        review_id = str(item["review_id"])
-                        review_hash = str(item["review_hash"])
-                        payload = batch_labels[review_id]
-                        payload["_label_source"] = "llm"
-                        payload["_label_model"] = model_used
+                    payload["_label_source"] = "llm"
+                    payload["_label_model"] = model_used
 
-                        # Collect for bulk write instead of individual writes
-                        batch_label_items.append({
-                            "app_id": app_id,
-                            "review_id": review_id,
-                            "review_hash": review_hash,
-                            "payload": payload,
-                            "model": model_used,
-                            "prompt_version": ACTIVE_PROMPT_VERSION,
-                        })
+                    label_write_buffer.append({
+                        "app_id": app_id,
+                        "review_id": review_id,
+                        "review_hash": review_hash,
+                        "payload": payload,
+                        "model": model_used,
+                        "prompt_version": ACTIVE_PROMPT_VERSION,
+                    })
 
-                        results[review_id] = payload
-                        processed_count += 1
+                    results[review_id] = payload
+                    processed_count += 1
 
-                    # Bulk write all labels for this batch (single transaction)
-                    if cache_enabled and batch_label_items:
-                        storage.bulk_upsert_review_labels(batch_label_items)
+                    # Bulk write periodically
+                    if len(label_write_buffer) >= BULK_WRITE_SIZE:
+                        _flush_label_buffer(label_write_buffer)
 
-                    # Update progress ONCE per batch (not per review)
                     if progress_callback is not None:
                         progress_callback(processed_count, total_reviews)
 
                 except Exception as exc:
-                    logger.error(f"Batch processing failed: {exc}")
+                    logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
                     raise
+
+        # Flush remaining labels
+        _flush_label_buffer(label_write_buffer)
 
     if progress_callback is not None and processed_count < total_reviews:
         progress_callback(total_reviews, total_reviews)
@@ -2220,12 +2538,17 @@ def estimate_review_labeling(
             "reasons": {},
             "prompt_version": ACTIVE_PROMPT_VERSION,
             "model_id": "",
-            "labeling_strategy": "gemini",
+            "labeling_strategy": "xai_two_tier",
         }
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    expected_llm_model_id = _model_id("google", GEMINI_MODEL)
-    valid_cached_models = {expected_llm_model_id, "short_review", "empty_review"}
+    valid_cached_models = {
+        _model_id("xai", XAI_MODEL),
+        _model_id("xai", XAI_MODEL_REASONING),
+        _model_id("google", GEMINI_MODEL),
+        "short_review",
+        "empty_review",
+    }
 
     counts = {
         "total_reviews": len(reviews),
@@ -2284,8 +2607,8 @@ def estimate_review_labeling(
         **counts,
         "reasons": reasons,
         "prompt_version": ACTIVE_PROMPT_VERSION,
-        "model_id": expected_llm_model_id,
-        "labeling_strategy": "gemini",
+        "model_id": _model_id("xai", XAI_MODEL),
+        "labeling_strategy": "xai_two_tier",
     }
 
 
@@ -2846,22 +3169,12 @@ def summarize_monthly_report(
             app_id=ctx_app_id,
             session_id=ctx_session_id,
         )
-        raw, _model_used = _run_llm(prompt)
-        payload = _load_json_mapping(raw)
-        summary = str(payload.get("summary", "")).strip()
-        key_points = payload.get("key_points", [])
-        actions = payload.get("actions", [])
-
-        if not isinstance(key_points, list):
-            key_points = []
-        key_points = [str(item).strip() for item in key_points if item][:3]
-
-        if not isinstance(actions, list):
-            actions = []
-        actions = [str(item).strip() for item in actions if item][:3]
-
-        if not summary:
-            summary = "Unable to generate summary."
+        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=ReportSummary)
+        _model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+        parsed = ReportSummary.model_validate_json(raw)
+        summary = parsed.summary.strip() or "Unable to generate summary."
+        key_points = [s.strip() for s in parsed.key_points if s][:3]
+        actions = [s.strip() for s in parsed.actions if s][:3]
 
         return {
             "summary": summary,
@@ -3019,24 +3332,15 @@ def summarize_subcategory_reviews(
             app_id=ctx_app_id,
             session_id=ctx_session_id,
         )
-        raw, model_used = _run_llm(prompt)
-        payload = _load_json_mapping(raw)
-
-        summary = str(payload.get("summary", "")).strip()
-        pros = payload.get("pros", [])
-        cons = payload.get("cons", [])
-
-        # Validate and clean
-        if not isinstance(pros, list):
-            pros = []
-        if not isinstance(cons, list):
-            cons = []
-
-        pros = [str(p).strip() for p in pros if p][:5]
-        cons = [str(c).strip() for c in cons if c][:5]
+        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=SubcategorySummary)
+        model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+        parsed = SubcategorySummary.model_validate_json(raw)
+        summary = parsed.summary.strip() or "Unable to generate summary."
+        pros = [s.strip() for s in parsed.pros if s][:5]
+        cons = [s.strip() for s in parsed.cons if s][:5]
 
         return {
-            "summary": summary or "Unable to generate summary.",
+            "summary": summary,
             "pros": pros,
             "cons": cons,
         }
@@ -3305,23 +3609,12 @@ def summarize_widget_reviews(
             app_id=ctx_app_id,
             session_id=ctx_session_id,
         )
-        raw, _model_used = _run_llm(prompt)
-        payload = _load_json_mapping(raw)
-
-        summary = str(payload.get("summary", "")).strip()
-        key_points = payload.get("key_points", [])
-        actions = payload.get("actions", [])
-
-        if not isinstance(key_points, list):
-            key_points = []
-        if not isinstance(actions, list):
-            actions = []
-
-        key_points = [str(item).strip() for item in key_points if item][:6]
-        actions = [str(item).strip() for item in actions if item][:3]
-
-        if not summary:
-            summary = "Unable to generate summary."
+        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=ReportSummary)
+        _model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+        parsed = ReportSummary.model_validate_json(raw)
+        summary = parsed.summary.strip() or "Unable to generate summary."
+        key_points = [s.strip() for s in parsed.key_points if s][:6]
+        actions = [s.strip() for s in parsed.actions if s][:3]
 
         return {
             "summary": summary,
@@ -3612,7 +3905,7 @@ REVIEW SAMPLES (filtered for {subcategory}):
                 retryable=False
             )
 
-        model_name = GEMINI_MODEL
+        model_name = GEMINI_MODEL_CHEAP
 
         try:
             from google import genai
@@ -3632,6 +3925,7 @@ REVIEW SAMPLES (filtered for {subcategory}):
             config={
                 "temperature": 0.3,
                 "response_mime_type": "application/json",
+                "response_json_schema": GameComparison.model_json_schema(),
             },
         )
 
@@ -3785,32 +4079,13 @@ def summarize_news_updates(
     """).strip()
 
     try:
-        response = _call_gemini_api(prompt, model=GEMINI_MODEL_CHEAP, max_tokens=800)
-        response_text = response.content.strip()
-
-        # Clean JSON from markdown if present
-        json_text = response_text
-        if "```json" in json_text:
-            json_text = json_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in json_text:
-            json_text = json_text.split("```")[1].split("```")[0].strip()
-
-        result = json.loads(json_text)
-
+        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=NewsUpdateSummary)
+        result = NewsUpdateSummary.model_validate_json(raw)
         return {
-            "summary": result.get("summary", "Unable to generate summary."),
-            "key_updates": result.get("key_updates", []),
-            "potential_impacts": result.get("potential_impacts", []),
-            "correlation_insights": result.get("correlation_insights"),
-        }
-
-    except json.JSONDecodeError as exc:
-        logger.warning(f"Failed to parse news summary JSON: {exc}")
-        return {
-            "summary": "Failed to parse update summary.",
-            "key_updates": [],
-            "potential_impacts": [],
-            "correlation_insights": None,
+            "summary": result.summary,
+            "key_updates": result.key_updates,
+            "potential_impacts": result.potential_impacts,
+            "correlation_insights": result.correlation_insights,
         }
     except Exception as exc:
         logger.exception(f"Failed to summarize news: {exc}")
@@ -3826,6 +4101,7 @@ __all__ = [
     "apply_review_labels",
     "call_llm_with_tools",
     "classify_review",
+    "classify_review_single",
     "compare_games",
     "ensure_review_labels",
     "LLMError",

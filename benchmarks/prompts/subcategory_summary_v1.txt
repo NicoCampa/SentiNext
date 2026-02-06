@@ -1,0 +1,34 @@
+You are analyzing Steam game reviews for a specific subcategory. Generate a concise, actionable summary.
+
+Reply with STRICT JSON only (a single JSON object). No prose, no markdown, no code fences.
+
+GAME CONTEXT:
+$game_context
+
+SUMMARY SCOPE / FILTERS:
+$summary_context
+
+SUBCATEGORY: $subcategory
+TOTAL REVIEWS IN CATEGORY: $review_count
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence overview of what players are saying about this aspect>",
+  "pros": ["<positive point 1>", "<positive point 2>", "..."],
+  "cons": ["<negative point 1>", "<negative point 2>", "..."]
+}
+
+RULES:
+- summary: A concise 2-4 sentence overview capturing recommendation (thumbs up/down) and key points
+- pros: 2-5 specific positive aspects mentioned by players (empty list if none)
+- cons: 2-5 specific issues or complaints mentioned by players (empty list if none)
+- Be specific and actionable, not generic
+- Use player language where appropriate
+- Focus on patterns across multiple reviews, not single opinions
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- JSON MUST be valid: double quotes only, no trailing commas
+
+REVIEWS (sample from this subcategory):
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>

@@ -80,6 +80,24 @@ def _parse_allowed_origins() -> list[str]:
 
 ALLOWED_ORIGINS = _parse_allowed_origins()
 
+
+def _validate_redirect_url(url: str, label: str = "URL") -> None:
+    """Validate that a redirect URL belongs to an allowed origin (prevents open redirects)."""
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Invalid {label}.")
+    if not parsed.scheme or not parsed.netloc:
+        raise HTTPException(status_code=400, detail=f"Invalid {label}: must be an absolute URL.")
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    if origin not in ALLOWED_ORIGINS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {label}: redirect must point to an allowed origin.",
+        )
+
+
 ADMIN_TOKEN = os.getenv("SENTINEXT_ADMIN_TOKEN")
 DESTRUCTIVE_ENABLED = os.getenv("SENTINEXT_ENABLE_DESTRUCTIVE", "false").lower() in {"1", "true", "yes"}
 AUTH_ENABLED = os.getenv("SENTINEXT_AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}
@@ -220,7 +238,9 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     # SSE endpoints: token validation is optional, endpoint has its own auth
-    is_sse = "/stream" in request.url.path
+    # Use exact suffix matching to avoid accidentally bypassing auth for paths
+    # that happen to contain "/stream" (e.g. a path parameter value).
+    is_sse = request.url.path.endswith("/stream")
 
     auth_header = request.headers.get("authorization", "")
     token = None
@@ -887,7 +907,7 @@ def get_available_languages() -> dict:
     }
 
 
-@app.get("/settings/storage")
+@app.get("/settings/storage", dependencies=[Depends(require_admin)])
 def storage_paths() -> dict:
     from platformdirs import user_data_dir
     data_dir = Path(user_data_dir("SentiNext", "SentiNext"))
@@ -899,7 +919,7 @@ def storage_paths() -> dict:
         "log_file": str(log_file),
     }
 
-@app.get("/settings/llm")
+@app.get("/settings/llm", dependencies=[Depends(require_admin)])
 def llm_settings() -> dict:
     """Return current LLM provider and model configuration."""
     from .senti_next import llm as llm_module
@@ -910,7 +930,7 @@ def llm_settings() -> dict:
         "api_key_configured": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
     }
 
-@app.get("/logs/tail")
+@app.get("/logs/tail", dependencies=[Depends(require_admin)])
 def logs_tail(bytes: int = 20000) -> dict:
     """Return the last N bytes of the backend log file (best-effort)."""
     limit = max(0, min(int(bytes or 0), 200000))
@@ -1023,6 +1043,10 @@ def create_checkout(
     if not stripe_billing.is_stripe_configured():
         raise HTTPException(status_code=503, detail="Stripe is not configured.")
 
+    # Validate redirect URLs to prevent open-redirect attacks
+    _validate_redirect_url(request.success_url, "success_url")
+    _validate_redirect_url(request.cancel_url, "cancel_url")
+
     # Get user email from JWT if available
     payload = getattr(http_request.state, "user", None) or {}
     user_email = payload.get("email")
@@ -1052,6 +1076,9 @@ def get_billing_portal(
     """Get a Stripe Customer Portal URL for subscription management."""
     if not stripe_billing.is_stripe_configured():
         raise HTTPException(status_code=503, detail="Stripe is not configured.")
+
+    # Validate redirect URL to prevent open-redirect attacks
+    _validate_redirect_url(return_url, "return_url")
 
     try:
         portal_url = stripe_billing.create_customer_portal_session(
@@ -1235,8 +1262,11 @@ def _run_analysis_job(
         )
     finally:
         if progress_active:
+            # Mark progress as fully complete; do NOT clear_progress() here
+            # because the SSE stream / polling endpoint may still need to see
+            # the final state.  The progress row is overwritten on the next
+            # analysis via reset_progress().
             storage.update_progress(user_id, app_id, total_reviews, total_reviews)
-            storage.clear_progress(user_id, app_id)
 
 
 @app.post("/analyze", response_model=AnalyzeResponse, status_code=202, dependencies=[Depends(require_license)])
@@ -1381,20 +1411,20 @@ def analyze(
     # Check if there's already a running analysis for this game
     existing_result = storage.load_analysis_result(user_id, request.app_id)
     if existing_result and existing_result.get("status") == "running":
-        # Check if there's active progress (job is actually running)
+        # The analysis result is marked as running - check if the job is still active.
+        # A progress row existing (even with total=0 in early "fetching" phase) means
+        # the job was initialized and hasn't completed yet.
         progress = storage.load_progress(user_id, request.app_id)
-        if progress and progress.get("total", 0) > 0:
+        if progress is not None:
             processed = progress.get("processed", 0)
             total = progress.get("total", 0)
-            if processed < total:
-                # Job is actively running - don't start another
-                logger.info(f"Analysis already running for app {request.app_id} ({processed}/{total})")
-                # Return the existing metadata
-                return AnalyzeResponse(
-                    metadata=AnalyzeMetadata(**existing_result.get("metadata", {})),
-                    insights=None,
-                    reviews=[],
-                )
+            # Job is actively running - don't start another
+            logger.info(f"Analysis already running for app {request.app_id} ({processed}/{total})")
+            return AnalyzeResponse(
+                metadata=AnalyzeMetadata(**existing_result.get("metadata", {})),
+                insights=None,
+                reviews=[],
+            )
 
     game_context = fetch_app_details(request.app_id)
     header_image = None
@@ -1423,7 +1453,10 @@ def analyze(
         snapshot_hash=None,
         stale=False,
     )
-    storage.clear_progress(user_id, request.app_id)
+    # Initialize progress in "fetching" phase immediately so the frontend
+    # never sees an empty progress row between the /analyze response and
+    # the background job starting (fixes progress bar flicker bug).
+    storage.reset_progress(user_id, request.app_id, total=0, phase="fetching")
 
     if game_context:
         logger.info(f"Fetched game context for {game_context.get('name', request.app_id)}")
@@ -1458,7 +1491,7 @@ def analyze(
     return AnalyzeResponse(metadata=metadata, insights=None, reviews=[], label_estimate=label_estimate)
 
 @app.post("/analyze/estimate", response_model=AnalyzeEstimateResponse, dependencies=[Depends(require_license)])
-def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
+def analyze_estimate(request: AnalyzeRequest, user_id: str = Depends(require_user_id)) -> AnalyzeEstimateResponse:
     """Estimate how many labels will be reused vs require new work (no LLM calls)."""
     filter_type = (request.filter or "recent").lower()
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
@@ -3306,6 +3339,19 @@ def classification_progress(
 ) -> dict:
     progress = storage.load_progress(user_id, app_id)
     if not progress:
+        # No progress row: check if an analysis is still marked as running
+        # (covers the window after clear_progress but before result is updated)
+        result = storage.load_analysis_result(user_id, app_id)
+        if result and result.get("status") == "running":
+            return {
+                "app_id": app_id,
+                "total": 0,
+                "processed": 0,
+                "active": True,
+                "updated_at": None,
+                "phase": "fetching",
+                "fetched_count": 0,
+            }
         return {
             "app_id": app_id,
             "total": 0,
@@ -3380,6 +3426,12 @@ async def progress_stream(
                             error = result.get("error", "Analysis failed")
                             yield f"event: error\ndata: {json.dumps({'status': 'failed', 'error': error})}\n\n"
                             return
+                        elif status == "running":
+                            # Job is still running but progress was cleared/not yet initialized
+                            yield f"event: progress\ndata: {json.dumps({'processed': 0, 'total': 0, 'active': True, 'phase': 'fetching', 'fetched_count': 0})}\n\n"
+                            idle_count += 1
+                            await asyncio.sleep(0.5)
+                            continue
 
                     # No progress and no result - send empty state
                     yield f"event: progress\ndata: {json.dumps({'processed': 0, 'total': 0, 'active': False, 'phase': 'idle', 'fetched_count': 0})}\n\n"

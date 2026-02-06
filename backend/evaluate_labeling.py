@@ -343,6 +343,7 @@ def main() -> None:
             )
             if persist and reviews:
                 storage.upsert_reviews(app_id, reviews)
+                storage.enforce_review_limit(app_id)
             print(f"Fetched {len(reviews)} reviews from Steam.")
 
         dataset_meta = {

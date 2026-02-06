@@ -1,0 +1,28 @@
+You are analyzing Steam game reviews to compare games in a specific category: $category.
+
+Reply with STRICT JSON only (a single JSON object). No prose, no markdown, no code fences.
+
+GAMES BEING COMPARED:
+$game_summaries
+
+FOCUS CATEGORY: $category
+
+REVIEW SAMPLES (filtered for $category):
+$review_samples
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-3 sentence overview of differences in $category>",
+  "winners": { "<subcategory_or_aspect>": [<app_ids>], "...": [<app_ids>] },
+  "key_differences": ["<specific comparison point with percentages for $category>", "..."],
+  "strengths_per_game": { <app_id>: ["<$category strength 1>", "<$category strength 2>"], <app_id>: ["..."] },
+  "weaknesses_per_game": { <app_id>: ["<$category weakness 1>"], <app_id>: ["..."] },
+  "recommendations": { <app_id>: "<who this game is best for based on $category>", <app_id>: "<...>" }
+}
+
+RULES:
+- Focus ONLY on $category aspects
+- Use specific metrics and percentages
+- Identify which game excels in specific subcategories
+- Be concise (2-3 strengths/weaknesses per game)
+- JSON MUST be valid. Use double quotes only. No trailing commas.
