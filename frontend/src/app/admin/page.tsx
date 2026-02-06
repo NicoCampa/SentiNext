@@ -47,6 +47,8 @@ import {
   UserSubscriptionInfo,
   fetchAdminApiUsage,
   ApiUsageSummary,
+  fetchAdminAnalytics,
+  EventsSummary,
 } from "@/lib/api";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useSupportNotification } from "@/contexts/SupportNotificationContext";
@@ -307,11 +309,14 @@ export default function AdminPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "positive" | "negative">("all");
-  const [activePanel, setActivePanel] = useState<"chat" | "support">(() => {
+  const [activePanel, setActivePanel] = useState<"chat" | "support" | "analytics">(() => {
     // Initialize from URL if available (client-side only)
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      return params.get("tab") === "inbox" ? "support" : "chat";
+      const tab = params.get("tab");
+      if (tab === "inbox") return "support";
+      if (tab === "analytics") return "analytics";
+      return "chat";
     }
     return "chat";
   });
@@ -358,6 +363,11 @@ export default function AdminPage() {
   // API usage state
   const [apiUsage, setApiUsage] = useState<ApiUsageSummary | null>(null);
   const [apiUsageLoading, setApiUsageLoading] = useState(false);
+
+  // User analytics state
+  const [analytics, setAnalytics] = useState<EventsSummary | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsHours, setAnalyticsHours] = useState(24);
 
   useEffect(() => {
     setMounted(true);
@@ -440,10 +450,24 @@ export default function AdminPage() {
     }
   }
 
+  async function loadAnalytics(hours: number = analyticsHours) {
+    if (!isAdmin) return;
+    setAnalyticsLoading(true);
+    try {
+      const data = await fetchAdminAnalytics(hours);
+      setAnalytics(data);
+    } catch (err) {
+      console.error("Failed to load analytics", err);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!isAdminLoading && isAdmin) {
       loadAdminDashboard(adminDashboardDays);
       loadUserSubscriptions();
+      loadAnalytics(analyticsHours);
     }
   }, [isAdmin, isAdminLoading, adminDashboardDays]);
 
@@ -1161,11 +1185,21 @@ export default function AdminPage() {
               >
                 Inbox
               </Button>
+              <Button
+                variant={activePanel === "analytics" ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => { setActivePanel("analytics"); loadAnalytics(analyticsHours); }}
+                className="text-xs"
+              >
+                User Analytics
+              </Button>
             </div>
             <div className="text-xs text-slate-500">
               {activePanel === "chat"
                 ? `${filteredSessions.length} sessions`
-                : `${supportThreads.length} threads${supportUnreadCount ? ` | ${supportUnreadCount} unread` : ""}`}
+                : activePanel === "support"
+                ? `${supportThreads.length} threads${supportUnreadCount ? ` | ${supportUnreadCount} unread` : ""}`
+                : analytics ? `${analytics.total_events.toLocaleString()} events | ${analytics.unique_users} users` : "Loading..."}
             </div>
           </div>
           {activePanel === "chat" ? (
@@ -1416,7 +1450,7 @@ export default function AdminPage() {
             )}
           </Card>
             </div>
-          ) : (
+          ) : activePanel === "support" ? (
             <div className="flex-1 flex gap-4 overflow-hidden">
               <Card variant="glass" className={`w-96 flex-shrink-0 flex flex-col overflow-hidden ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -1603,7 +1637,194 @@ export default function AdminPage() {
                 )}
               </Card>
             </div>
-          )}
+          ) : activePanel === "analytics" ? (
+            /* ─── User Analytics Panel ─── */
+            <div className="flex-1 flex flex-col gap-4 overflow-y-auto">
+              {/* Time range selector */}
+              <div className="flex items-center gap-2">
+                {[1, 6, 24, 72, 168].map((h) => (
+                  <button
+                    key={h}
+                    onClick={() => { setAnalyticsHours(h); loadAnalytics(h); }}
+                    className={`px-2 py-1 text-xs uppercase tracking-[0.2em] border ${
+                      analyticsHours === h
+                        ? "border-emerald-400 text-emerald-300"
+                        : "border-white/10 text-slate-400 hover:border-white/20"
+                    }`}
+                  >
+                    {h < 24 ? `${h}h` : `${h / 24}d`}
+                  </button>
+                ))}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => loadAnalytics(analyticsHours)}
+                  disabled={analyticsLoading}
+                >
+                  {analyticsLoading ? "Loading..." : "Refresh"}
+                </Button>
+              </div>
+
+              {analyticsLoading && !analytics ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-20 bg-white/5 rounded" />
+                  <div className="h-48 bg-white/5 rounded" />
+                  <div className="h-32 bg-white/5 rounded" />
+                </div>
+              ) : analytics ? (
+                <>
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <Card variant="glass" className="p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total Events</p>
+                      <p className="font-mono text-lg text-emerald-300">{analytics.total_events.toLocaleString()}</p>
+                    </Card>
+                    <Card variant="glass" className="p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Unique Users</p>
+                      <p className="font-mono text-lg text-emerald-300">{analytics.unique_users.toLocaleString()}</p>
+                    </Card>
+                  </div>
+
+                  {/* Events Over Time Chart */}
+                  {analytics.events_over_time.length > 0 && (
+                    <Card variant="glass" className="p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">Events Over Time</p>
+                      <div className="h-48">
+                        <Chart
+                          type="line"
+                          data={{
+                            labels: analytics.events_over_time.map((d) => {
+                              const date = new Date(d.hour);
+                              return analyticsHours <= 24
+                                ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                                : date.toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit" });
+                            }),
+                            datasets: [
+                              {
+                                label: "Events",
+                                data: analytics.events_over_time.map((d) => d.count),
+                                borderColor: "rgba(52, 211, 153, 1)",
+                                backgroundColor: "rgba(52, 211, 153, 0.15)",
+                                borderWidth: 2,
+                                tension: 0.3,
+                                pointRadius: 2,
+                                pointHoverRadius: 5,
+                                pointBackgroundColor: "rgba(52, 211, 153, 1)",
+                                fill: true,
+                              },
+                            ],
+                          }}
+                          options={buildChartOptions({
+                            type: "line",
+                            data: { datasets: [] },
+                          }) as any}
+                        />
+                      </div>
+                    </Card>
+                  )}
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Top Events */}
+                    <Card variant="glass" className="p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">Top Events</p>
+                      {analytics.top_events.length === 0 ? (
+                        <p className="text-xs text-slate-500">No events recorded yet.</p>
+                      ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {analytics.top_events.map((ev, idx) => (
+                            <div key={`${ev.event_name}-${idx}`} className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-slate-300 truncate">{ev.event_name}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 text-[10px] flex-shrink-0">
+                                  {ev.event_category}
+                                </span>
+                              </div>
+                              <span className="font-mono text-emerald-300 flex-shrink-0 ml-2">{ev.count.toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+
+                    {/* Top Pages */}
+                    <Card variant="glass" className="p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">Top Pages</p>
+                      {analytics.top_pages.length === 0 ? (
+                        <p className="text-xs text-slate-500">No page views recorded yet.</p>
+                      ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {analytics.top_pages.map((pg, idx) => (
+                            <div key={`${pg.page}-${idx}`} className="flex items-center justify-between text-xs">
+                              <span className="text-slate-300 truncate">{pg.page}</span>
+                              <span className="font-mono text-emerald-300 flex-shrink-0 ml-2">{pg.count.toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  </div>
+
+                  {/* Active Users */}
+                  <Card variant="glass" className="p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">Active Users</p>
+                    {analytics.active_users.length === 0 ? (
+                      <p className="text-xs text-slate-500">No active users in this period.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {analytics.active_users.map((u, idx) => (
+                          <div key={`${u.user_id}-${idx}`} className="flex items-center justify-between text-xs">
+                            <span className="text-slate-300 truncate mr-4">{u.user_id}</span>
+                            <div className="flex items-center gap-4 flex-shrink-0">
+                              <span className="font-mono text-emerald-300">{u.event_count} events</span>
+                              <span className="text-slate-500">
+                                {new Date(u.last_active).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Recent Events Feed */}
+                  <Card variant="glass" className="p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-3">Recent Events</p>
+                    {analytics.recent_events.length === 0 ? (
+                      <p className="text-xs text-slate-500">No recent events.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {analytics.recent_events.map((ev, idx) => (
+                          <div
+                            key={`${ev.created_at}-${idx}`}
+                            className="p-2 bg-slate-950/40 border border-white/5 rounded text-xs"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-emerald-300 font-medium">{ev.event_name}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 text-[10px]">
+                                  {ev.event_category}
+                                </span>
+                              </div>
+                              <span className="text-slate-500 text-[10px]">
+                                {new Date(ev.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-slate-500">
+                              <span className="truncate">{ev.user_id}</span>
+                              {ev.page && <span>on {ev.page}</span>}
+                              {ev.target && <span className="text-slate-400">→ {ev.target}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">No analytics data available.</p>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </PageTransition>

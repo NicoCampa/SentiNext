@@ -1800,3 +1800,49 @@ export async function summarizeNews(
   });
   return handleResponse<SummarizeNewsResponse>(response);
 }
+
+// ---------------------------------------------------------------------------
+// User event tracking
+// ---------------------------------------------------------------------------
+
+export interface TrackEventPayload {
+  event_name: string;
+  event_category?: string;
+  page?: string;
+  target?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Fire-and-forget event tracking — never throws, never blocks UI. */
+export function trackEvent(payload: TrackEventPayload): void {
+  authFetch(apiUrl("/track"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
+
+export interface EventsSummary {
+  total_events: number;
+  unique_users: number;
+  top_events: { event_name: string; event_category: string; count: number }[];
+  top_pages: { page: string; count: number }[];
+  events_over_time: { hour: string; count: number }[];
+  active_users: { user_id: string; event_count: number; last_active: string }[];
+  recent_events: {
+    user_id: string;
+    event_name: string;
+    event_category: string;
+    page: string | null;
+    target: string | null;
+    metadata: Record<string, unknown>;
+    created_at: string;
+  }[];
+}
+
+export async function fetchAdminAnalytics(hours: number = 24): Promise<EventsSummary> {
+  const response = await authFetch(apiUrl(`/admin/analytics?hours=${hours}`), {
+    headers: optionalAdminHeaders(),
+  });
+  return handleResponse<EventsSummary>(response);
+}

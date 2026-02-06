@@ -3745,3 +3745,187 @@ def delete_user_data(user_id: str) -> Dict[str, int]:
             deleted[table] = result.rowcount
 
     return deleted
+
+
+# ---------------------------------------------------------------------------
+# User event tracking
+# ---------------------------------------------------------------------------
+
+def track_event(
+    *,
+    user_id: str,
+    event_name: str,
+    event_category: str = "interaction",
+    page: Optional[str] = None,
+    target: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Record a frontend user event (best-effort)."""
+    from . import db as db_module
+
+    try:
+        with db_module.get_connection() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO user_events
+                    (user_id, event_name, event_category, page, target, metadata)
+                    VALUES (:user_id, :event_name, :event_category, :page, :target, :metadata)
+                """),
+                {
+                    "user_id": user_id,
+                    "event_name": event_name,
+                    "event_category": event_category,
+                    "page": page,
+                    "target": target,
+                    "metadata": json.dumps(metadata or {}),
+                },
+            )
+    except Exception as exc:
+        logger.warning("Failed to track event: %s", exc)
+
+
+def get_events_summary(
+    *,
+    since_hours: int = 24,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get aggregated event analytics."""
+    from . import db as db_module
+
+    params: Dict[str, Any] = {"since_hours": since_hours}
+    user_filter = ""
+    if user_id:
+        user_filter = "AND user_id = :user_id"
+        params["user_id"] = user_id
+
+    with db_module.get_connection() as conn:
+        # Total events
+        row = conn.execute(
+            text(f"""
+                SELECT COUNT(*) FROM user_events
+                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
+                {user_filter}
+            """),
+            params,
+        ).fetchone()
+        total_events = row[0] if row else 0
+
+        # Unique users
+        row = conn.execute(
+            text(f"""
+                SELECT COUNT(DISTINCT user_id) FROM user_events
+                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
+                {user_filter}
+            """),
+            params,
+        ).fetchone()
+        unique_users = row[0] if row else 0
+
+        # Top events
+        rows = conn.execute(
+            text(f"""
+                SELECT event_name, event_category, COUNT(*) as count
+                FROM user_events
+                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
+                {user_filter}
+                GROUP BY event_name, event_category
+                ORDER BY count DESC
+                LIMIT 20
+            """),
+            params,
+        ).fetchall()
+        top_events = [
+            {"event_name": r[0], "event_category": r[1], "count": r[2]}
+            for r in rows
+        ]
+
+        # Top pages
+        rows = conn.execute(
+            text(f"""
+                SELECT page, COUNT(*) as count
+                FROM user_events
+                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
+                AND page IS NOT NULL
+                {user_filter}
+                GROUP BY page
+                ORDER BY count DESC
+                LIMIT 15
+            """),
+            params,
+        ).fetchall()
+        top_pages = [{"page": r[0], "count": r[1]} for r in rows]
+
+        # Events over time (hourly buckets)
+        rows = conn.execute(
+            text(f"""
+                SELECT date_trunc('hour', created_at) as hour, COUNT(*) as count
+                FROM user_events
+                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
+                {user_filter}
+                GROUP BY hour
+                ORDER BY hour
+            """),
+            params,
+        ).fetchall()
+        events_over_time = [
+            {"hour": r[0].isoformat() if r[0] else None, "count": r[1]}
+            for r in rows
+        ]
+
+        # Active users list (with event counts)
+        rows = conn.execute(
+            text(f"""
+                SELECT user_id, COUNT(*) as event_count,
+                       MAX(created_at) as last_active
+                FROM user_events
+                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
+                {user_filter}
+                GROUP BY user_id
+                ORDER BY event_count DESC
+                LIMIT 20
+            """),
+            params,
+        ).fetchall()
+        active_users = [
+            {
+                "user_id": r[0],
+                "event_count": r[1],
+                "last_active": r[2].isoformat() if r[2] else None,
+            }
+            for r in rows
+        ]
+
+        # Recent events (last 50)
+        rows = conn.execute(
+            text(f"""
+                SELECT user_id, event_name, event_category, page, target, metadata, created_at
+                FROM user_events
+                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
+                {user_filter}
+                ORDER BY created_at DESC
+                LIMIT 50
+            """),
+            params,
+        ).fetchall()
+        recent_events = [
+            {
+                "user_id": r[0],
+                "event_name": r[1],
+                "event_category": r[2],
+                "page": r[3],
+                "target": r[4],
+                "metadata": _parse_json_field(r[5], {}),
+                "created_at": r[6].isoformat() if r[6] else None,
+            }
+            for r in rows
+        ]
+
+    return {
+        "total_events": total_events,
+        "unique_users": unique_users,
+        "top_events": top_events,
+        "top_pages": top_pages,
+        "events_over_time": events_over_time,
+        "active_users": active_users,
+        "recent_events": recent_events,
+    }

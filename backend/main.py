@@ -3247,6 +3247,42 @@ def admin_list_user_subscriptions(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+# ---------------------------------------------------------------------------
+# Frontend event tracking
+# ---------------------------------------------------------------------------
+
+class TrackEventRequest(BaseModel):
+    event_name: str = Field(..., min_length=1, max_length=100)
+    event_category: str = Field("interaction", max_length=50)
+    page: Optional[str] = Field(None, max_length=200)
+    target: Optional[str] = Field(None, max_length=200)
+    metadata: Optional[Dict[str, Any]] = None
+
+
+@app.post("/track", status_code=204)
+def track_event(request: TrackEventRequest, user_id: str = Depends(require_user_id)):
+    """Record a frontend user interaction event."""
+    storage.track_event(
+        user_id=user_id,
+        event_name=request.event_name,
+        event_category=request.event_category,
+        page=request.page,
+        target=request.target,
+        metadata=request.metadata,
+    )
+
+
+@app.get("/admin/analytics")
+def admin_analytics(
+    hours: int = 24,
+    user_id: Optional[str] = None,
+    _: None = Depends(require_admin),
+):
+    """Get user event analytics (admin only)."""
+    hours = min(max(hours, 1), 720)  # clamp 1h - 30d
+    return storage.get_events_summary(since_hours=hours, user_id=user_id)
+
+
 @app.get("/chat/export/{session_id}")
 def export_chat_session(
     session_id: str,

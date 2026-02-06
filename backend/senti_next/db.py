@@ -600,6 +600,32 @@ def init_postgresql_schema() -> None:
             )
         """))
 
+        # User event tracking for frontend analytics
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS user_events (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                event_name TEXT NOT NULL,
+                event_category TEXT NOT NULL DEFAULT 'interaction',
+                page TEXT,
+                target TEXT,
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_user_events_user
+            ON user_events(user_id, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_user_events_name
+            ON user_events(event_name, created_at DESC)
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_user_events_created
+            ON user_events(created_at DESC)
+        """))
+
         logger.info("PostgreSQL schema initialized and migrated")
 
 
