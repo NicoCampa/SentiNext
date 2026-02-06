@@ -37,19 +37,6 @@ export function DocsSidebar({ dict, lang }: { dict: Dictionary; lang: SupportedL
             ],
         },
         {
-            title: dict.docs.sidebar.configuration,
-            items: [
-                {
-                    title: dict.docs.sidebar.authentication,
-                    href: `/${lang}/docs/authentication`,
-                },
-                {
-                    title: dict.docs.sidebar.adminData,
-                    href: `/${lang}/docs/admin-and-data`,
-                },
-            ],
-        },
-        {
             title: dict.docs.sidebar.support,
             items: [
                 {
@@ -69,16 +56,16 @@ export function DocsSidebar({ dict, lang }: { dict: Dictionary; lang: SupportedL
                             <h4 className="font-mono text-[10px] font-bold tracking-[0.3em] text-[#00F0FF] uppercase opacity-70 border-b border-[#00F0FF]/10 pb-2">
                                 {group.title}
                             </h4>
-                            <div className="flex flex-col gap-3">
+                            <div className="flex flex-col gap-1">
                                 {group.items.map((item, itemIndex) => (
                                     <Link
                                         key={itemIndex}
                                         href={item.href}
                                         className={cn(
-                                            "text-xs font-bold uppercase tracking-widest transition-all hover:text-[#00F0FF] hover:translate-x-1",
+                                            "block px-3 py-2.5 rounded-sm text-xs font-bold uppercase tracking-widest transition-all hover:text-[#00F0FF] hover:bg-[#00F0FF]/5",
                                             pathname === item.href
-                                                ? "text-[#00F0FF] shadow-[0_0_10px_rgba(0,240,255,0.2)]"
-                                                : "text-muted-foreground/60"
+                                                ? "text-[#00F0FF] bg-[#00F0FF]/10 border border-[#00F0FF]/20"
+                                                : "text-muted-foreground/60 border border-transparent"
                                         )}
                                     >
                                         <span className={cn("mr-2", pathname === item.href ? "inline" : "hidden")}>{" > "}</span>
