@@ -750,7 +750,7 @@ function DashboardContent() {
                                       variant={isAlreadyAnalyzed ? "update" : "primary"}
                                       size="sm"
                                     >
-                                      1,000
+                                      Analyze 1,000 reviews
                                     </Button>
                                   </div>
                                 ) : (
