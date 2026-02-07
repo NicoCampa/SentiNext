@@ -200,19 +200,13 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                       {t('upgrade.unlockMore')}
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div>
                     <button
                       onClick={() => handleSidebarUpgrade("indie")}
                       disabled={sidebarUpgradeLoading !== null}
-                      className="py-1.5 border border-emerald-500/30 text-[10px] uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50"
+                      className="w-full py-1.5 border border-emerald-500/30 text-[10px] uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50"
                     >
                       {sidebarUpgradeLoading === "indie" ? "..." : "Indie $8/mo"}
-                    </button>
-                    <button
-                      disabled
-                      className="py-1.5 border border-sky-500/20 text-[10px] uppercase tracking-wider text-sky-400/40 transition-all cursor-not-allowed"
-                    >
-                      Pro — Coming Soon
                     </button>
                   </div>
                 </div>

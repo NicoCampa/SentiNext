@@ -509,14 +509,6 @@ export default function SettingsPage() {
                           </button>
                         )}
                         {(credits.tier === "free" || credits.tier === "indie") && (
-                          <div
-                            className="p-2.5 sm:p-3 border border-sky-500/20 bg-[rgb(10,10,25)] cursor-not-allowed opacity-50"
-                          >
-                            <p className="text-xs sm:text-sm font-bold text-sky-400/40">Pro</p>
-                            <p className="text-[10px] sm:text-xs text-sky-400/30 mt-0.5 sm:mt-1">Coming Soon</p>
-                          </div>
-                        )}
-                        {(credits.tier === "free" || credits.tier === "indie" || credits.tier === "pro") && (
                           <Link
                             href="/support"
                             className="p-2.5 sm:p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all active:scale-[0.98]"

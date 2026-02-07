@@ -516,17 +516,6 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
       action: 'indie' as const,
     },
     {
-      name: t('onboarding.tier.pro'),
-      price: t('onboarding.tier.comingSoon') || 'Coming Soon',
-      priceLabel: '',
-      credits: t('onboarding.tier.proCredits'),
-      color: 'border-t-sky-500',
-      textColor: 'text-sky-400/40',
-      btnClass: 'border-sky-500/20 text-sky-400/40 cursor-not-allowed',
-      badge: null,
-      action: 'pro' as const,
-    },
-    {
       name: t('onboarding.tier.enterprise'),
       price: t('onboarding.tier.custom'),
       priceLabel: '',
@@ -557,7 +546,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
       </div>
 
       {/* Tier cards */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         {tiers.map((tier, i) => (
           <div
             key={i}
@@ -583,7 +572,6 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
             {/* Action button */}
             <button
               onClick={() => {
-                if (tier.action === 'pro') return;
                 if (tier.action === 'free') {
                   onComplete();
                 } else if (tier.action === 'enterprise') {
@@ -593,12 +581,10 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
                   handleSubscribe(tier.action);
                 }
               }}
-              disabled={upgradeLoading !== null || tier.action === 'pro'}
+              disabled={upgradeLoading !== null}
               className={`mt-auto pt-3 w-full py-1.5 border text-[10px] uppercase tracking-wider transition-all disabled:opacity-50 ${tier.btnClass}`}
             >
-              {tier.action === 'pro'
-                ? (t('onboarding.tier.comingSoon') || 'Coming Soon')
-                : upgradeLoading === tier.action
+              {upgradeLoading === tier.action
                 ? '...'
                 : tier.action === 'free'
                 ? t('onboarding.tier.tryFree')
