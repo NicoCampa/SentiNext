@@ -59,7 +59,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.noData': 'No data',
 
     // Filters
-    'filters.allSentiment': 'All sentiment',
+    'filters.allSentiment': 'All',
     'filters.allTime': 'All time',
     'filters.last30Days': 'Last 30 days',
     'filters.last90Days': 'Last 90 days',
@@ -222,7 +222,7 @@ const translations: Record<Language, Record<string, string>> = {
     'database.subcategory': 'Subcategory',
     'database.allSubcategories': 'All subcategories',
     'database.quickFilters': 'Quick filters',
-    'database.allSentiment': 'All sentiment',
+    'database.allSentiment': 'All',
     'database.allLabels': 'All labels',
     'database.downloadCSV': 'Download CSV',
     'database.downloadJSON': 'Download JSONL',
@@ -231,7 +231,7 @@ const translations: Record<Language, Record<string, string>> = {
     'database.categories': 'Categories',
     'database.metadata': 'Metadata',
     'database.export': 'Export',
-    'database.sentiment': 'Sentiment',
+    'database.sentiment': 'Recommendation',
     'database.type': 'Type',
     'database.previewExport': 'Preview export',
     'database.preparingExport': 'Preparing…',
@@ -271,7 +271,7 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.step1.title': 'Search & Analyze',
     'onboarding.step1.desc': 'Search for any Steam game and analyze up to 1,000 reviews with our AI classification system.',
     'onboarding.step2.title': 'Insights Dashboard',
-    'onboarding.step2.desc': 'Get KPIs, sentiment trends, player segmentation, and category breakdowns at a glance.',
+    'onboarding.step2.desc': 'Get KPIs, recommendation trends, player segmentation, and category breakdowns at a glance.',
     'onboarding.step3.title': 'AI-Powered Features',
     'onboarding.step3.desc': 'Chat with an AI agent, generate summaries, and compare games side by side.',
     'onboarding.skip': 'Skip',
@@ -292,7 +292,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Onboarding - Step 2 section headers
     'onboarding.step2.keyMetrics': 'Key Metrics',
-    'onboarding.step2.sentimentTrend': 'Sentiment Trend',
+    'onboarding.step2.sentimentTrend': 'Recommendation Trend',
     'onboarding.step2.categoryBreakdown': 'Category Breakdown',
 
     // Onboarding - Step 4 (Pricing)
@@ -368,7 +368,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.noData': 'Nessun dato',
 
     // Filters
-    'filters.allSentiment': 'Tutti i sentimenti',
+    'filters.allSentiment': 'Tutti',
     'filters.allTime': 'Sempre',
     'filters.last30Days': 'Ultimi 30 giorni',
     'filters.last90Days': 'Ultimi 90 giorni',
@@ -531,7 +531,7 @@ const translations: Record<Language, Record<string, string>> = {
     'database.subcategory': 'Sottocategoria',
     'database.allSubcategories': 'Tutte le sottocategorie',
     'database.quickFilters': 'Filtri rapidi',
-    'database.allSentiment': 'Tutti i sentimenti',
+    'database.allSentiment': 'Tutti',
     'database.allLabels': 'Tutte le etichette',
     'database.downloadCSV': 'Scarica CSV',
     'database.downloadJSON': 'Scarica JSONL',
@@ -540,7 +540,7 @@ const translations: Record<Language, Record<string, string>> = {
     'database.categories': 'Categorie',
     'database.metadata': 'Metadati',
     'database.export': 'Esporta',
-    'database.sentiment': 'Sentimento',
+    'database.sentiment': 'Raccomandazione',
     'database.type': 'Tipo',
     'database.previewExport': 'Anteprima export',
     'database.preparingExport': 'Preparazione…',
@@ -580,7 +580,7 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.step1.title': 'Cerca e Analizza',
     'onboarding.step1.desc': 'Cerca qualsiasi gioco Steam e analizza fino a 1.000 recensioni con il nostro sistema di classificazione IA.',
     'onboarding.step2.title': 'Dashboard Insights',
-    'onboarding.step2.desc': 'Ottieni KPI, tendenze del sentiment, segmentazione dei giocatori e analisi delle categorie a colpo d\'occhio.',
+    'onboarding.step2.desc': 'Ottieni KPI, tendenze della raccomandazione, segmentazione dei giocatori e analisi delle categorie a colpo d\'occhio.',
     'onboarding.step3.title': 'Funzionalità IA',
     'onboarding.step3.desc': 'Chatta con un agente IA, genera riassunti e confronta i giochi fianco a fianco.',
     'onboarding.skip': 'Salta',
@@ -601,7 +601,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Onboarding - Step 2 section headers
     'onboarding.step2.keyMetrics': 'Metriche Chiave',
-    'onboarding.step2.sentimentTrend': 'Tendenza Sentiment',
+    'onboarding.step2.sentimentTrend': 'Tendenza Raccomandazione',
     'onboarding.step2.categoryBreakdown': 'Analisi Categorie',
 
     // Onboarding - Step 4 (Pricing)
@@ -677,7 +677,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.noData': 'Aucune donnée',
 
     // Filters
-    'filters.allSentiment': 'Tous les sentiments',
+    'filters.allSentiment': 'Tous',
     'filters.allTime': 'Tout le temps',
     'filters.last30Days': '30 derniers jours',
     'filters.last90Days': '90 derniers jours',
@@ -840,7 +840,7 @@ const translations: Record<Language, Record<string, string>> = {
     'database.subcategory': 'Sous-catégorie',
     'database.allSubcategories': 'Toutes les sous-catégories',
     'database.quickFilters': 'Filtres rapides',
-    'database.allSentiment': 'Tous les sentiments',
+    'database.allSentiment': 'Tous',
     'database.allLabels': 'Toutes les étiquettes',
     'database.downloadCSV': 'Télécharger CSV',
     'database.downloadJSON': 'Télécharger JSONL',
@@ -849,9 +849,9 @@ const translations: Record<Language, Record<string, string>> = {
     'database.categories': 'Catégories',
     'database.metadata': 'Métadonnées',
     'database.export': 'Exporter',
-    'database.sentiment': 'Sentiment',
+    'database.sentiment': 'Recommandation',
     'database.type': 'Type',
-    'database.previewExport': 'Aperçu de l’export',
+    'database.previewExport': 'Aperçu de l\'export',
     'database.preparingExport': 'Préparation…',
     'database.applyFilters': 'Appliquer les filtres',
     'database.scope': 'Portée',
@@ -889,7 +889,7 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.step1.title': 'Rechercher et Analyser',
     'onboarding.step1.desc': 'Recherchez n\'importe quel jeu Steam et analysez jusqu\'à 1 000 avis avec notre système de classification IA.',
     'onboarding.step2.title': 'Tableau de Bord',
-    'onboarding.step2.desc': 'Obtenez des KPI, des tendances de sentiment, une segmentation des joueurs et une analyse des catégories en un coup d\'œil.',
+    'onboarding.step2.desc': 'Obtenez des KPI, des tendances de recommandation, une segmentation des joueurs et une analyse des catégories en un coup d\'œil.',
     'onboarding.step3.title': 'Fonctionnalités IA',
     'onboarding.step3.desc': 'Discutez avec un agent IA, générez des résumés et comparez les jeux côte à côte.',
     'onboarding.skip': 'Passer',
@@ -910,7 +910,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Onboarding - Step 2 section headers
     'onboarding.step2.keyMetrics': 'Métriques Clés',
-    'onboarding.step2.sentimentTrend': 'Tendance du Sentiment',
+    'onboarding.step2.sentimentTrend': 'Tendance de Recommandation',
     'onboarding.step2.categoryBreakdown': 'Répartition par Catégorie',
 
     // Onboarding - Step 4 (Pricing)
@@ -986,7 +986,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.noData': 'Keine Daten',
 
     // Filters
-    'filters.allSentiment': 'Alle Stimmungen',
+    'filters.allSentiment': 'Alle',
     'filters.allTime': 'Gesamter Zeitraum',
     'filters.last30Days': 'Letzte 30 Tage',
     'filters.last90Days': 'Letzte 90 Tage',
@@ -1149,7 +1149,7 @@ const translations: Record<Language, Record<string, string>> = {
     'database.subcategory': 'Unterkategorie',
     'database.allSubcategories': 'Alle Unterkategorien',
     'database.quickFilters': 'Schnellfilter',
-    'database.allSentiment': 'Alle Stimmungen',
+    'database.allSentiment': 'Alle',
     'database.allLabels': 'Alle Etiketten',
     'database.downloadCSV': 'CSV herunterladen',
     'database.downloadJSON': 'JSONL herunterladen',
@@ -1158,7 +1158,7 @@ const translations: Record<Language, Record<string, string>> = {
     'database.categories': 'Kategorien',
     'database.metadata': 'Metadaten',
     'database.export': 'Exportieren',
-    'database.sentiment': 'Stimmung',
+    'database.sentiment': 'Empfehlung',
     'database.type': 'Typ',
     'database.previewExport': 'Exportvorschau',
     'database.preparingExport': 'Wird vorbereitet…',
@@ -1198,7 +1198,7 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.step1.title': 'Suchen & Analysieren',
     'onboarding.step1.desc': 'Suchen Sie nach jedem Steam-Spiel und analysieren Sie bis zu 1.000 Bewertungen mit unserem KI-Klassifizierungssystem.',
     'onboarding.step2.title': 'Insights Dashboard',
-    'onboarding.step2.desc': 'Erhalten Sie KPIs, Stimmungstrends, Spielersegmentierung und Kategorieanalysen auf einen Blick.',
+    'onboarding.step2.desc': 'Erhalten Sie KPIs, Empfehlungstrends, Spielersegmentierung und Kategorieanalysen auf einen Blick.',
     'onboarding.step3.title': 'KI-Funktionen',
     'onboarding.step3.desc': 'Chatten Sie mit einem KI-Agenten, generieren Sie Zusammenfassungen und vergleichen Sie Spiele nebeneinander.',
     'onboarding.skip': 'Überspringen',
@@ -1219,7 +1219,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Onboarding - Step 2 section headers
     'onboarding.step2.keyMetrics': 'Kennzahlen',
-    'onboarding.step2.sentimentTrend': 'Stimmungstrend',
+    'onboarding.step2.sentimentTrend': 'Empfehlungstrend',
     'onboarding.step2.categoryBreakdown': 'Kategorieaufschlüsselung',
 
     // Onboarding - Step 4 (Pricing)

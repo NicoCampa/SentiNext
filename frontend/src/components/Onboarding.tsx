@@ -506,7 +506,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
     },
     {
       name: t('onboarding.tier.indie'),
-      price: '$10',
+      price: '$8',
       priceLabel: t('onboarding.tier.perMonth'),
       credits: t('onboarding.tier.indieCredits'),
       color: 'border-t-emerald-500',
@@ -517,13 +517,13 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
     },
     {
       name: t('onboarding.tier.pro'),
-      price: '$20',
-      priceLabel: t('onboarding.tier.perMonth'),
+      price: t('onboarding.tier.comingSoon') || 'Coming Soon',
+      priceLabel: '',
       credits: t('onboarding.tier.proCredits'),
       color: 'border-t-sky-500',
-      textColor: 'text-sky-400',
-      btnClass: 'border-sky-500/40 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20',
-      badge: t('onboarding.tier.popular'),
+      textColor: 'text-sky-400/40',
+      btnClass: 'border-sky-500/20 text-sky-400/40 cursor-not-allowed',
+      badge: null,
       action: 'pro' as const,
     },
     {
@@ -583,6 +583,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
             {/* Action button */}
             <button
               onClick={() => {
+                if (tier.action === 'pro') return;
                 if (tier.action === 'free') {
                   onComplete();
                 } else if (tier.action === 'enterprise') {
@@ -592,10 +593,12 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
                   handleSubscribe(tier.action);
                 }
               }}
-              disabled={upgradeLoading !== null}
+              disabled={upgradeLoading !== null || tier.action === 'pro'}
               className={`mt-auto pt-3 w-full py-1.5 border text-[10px] uppercase tracking-wider transition-all disabled:opacity-50 ${tier.btnClass}`}
             >
-              {upgradeLoading === tier.action
+              {tier.action === 'pro'
+                ? (t('onboarding.tier.comingSoon') || 'Coming Soon')
+                : upgradeLoading === tier.action
                 ? '...'
                 : tier.action === 'free'
                 ? t('onboarding.tier.tryFree')
@@ -607,17 +610,6 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
         ))}
       </div>
 
-      {/* Credit cost hints */}
-      <div className="bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-[rgb(0,255,255)]/70 mb-2">{t('onboarding.tier.creditCosts')}</p>
-        <div className="flex items-center gap-4 text-[11px] text-[rgb(150,150,170)]">
-          <span>{t('onboarding.tier.classifyCost')}</span>
-          <span className="text-[rgb(0,255,255)]/20">|</span>
-          <span>{t('onboarding.tier.chatCost')}</span>
-          <span className="text-[rgb(0,255,255)]/20">|</span>
-          <span>{t('onboarding.tier.summaryCost')}</span>
-        </div>
-      </div>
     </div>
   );
 }

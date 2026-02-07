@@ -206,14 +206,13 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                       disabled={sidebarUpgradeLoading !== null}
                       className="py-1.5 border border-emerald-500/30 text-[10px] uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50"
                     >
-                      {sidebarUpgradeLoading === "indie" ? "..." : "Indie $10/mo"}
+                      {sidebarUpgradeLoading === "indie" ? "..." : "Indie $8/mo"}
                     </button>
                     <button
-                      onClick={() => handleSidebarUpgrade("pro")}
-                      disabled={sidebarUpgradeLoading !== null}
-                      className="py-1.5 border border-sky-500/30 text-[10px] uppercase tracking-wider text-sky-400 hover:bg-sky-500/10 transition-all disabled:opacity-50"
+                      disabled
+                      className="py-1.5 border border-sky-500/20 text-[10px] uppercase tracking-wider text-sky-400/40 transition-all cursor-not-allowed"
                     >
-                      {sidebarUpgradeLoading === "pro" ? "..." : "Pro $20/mo"}
+                      Pro — Coming Soon
                     </button>
                   </div>
                 </div>

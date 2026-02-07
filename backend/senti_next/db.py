@@ -443,6 +443,16 @@ def init_postgresql_schema() -> None:
             )
         """))
 
+        # Add cancel_at_period_end and payment_failed columns (migration)
+        conn.execute(text("""
+            ALTER TABLE user_subscriptions
+            ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT FALSE
+        """))
+        conn.execute(text("""
+            ALTER TABLE user_subscriptions
+            ADD COLUMN IF NOT EXISTS payment_failed BOOLEAN DEFAULT FALSE
+        """))
+
         # Credit transactions table for tracking usage
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS credit_transactions (

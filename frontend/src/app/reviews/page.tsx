@@ -308,7 +308,7 @@ function ReviewsContent() {
                       }`}
                       type="button"
                     >
-                      {value === "all" ? "All sentiment" : value === "positive" ? "Recommended" : "Not recommended"}
+                      {value === "all" ? "All" : value === "positive" ? "Recommended" : "Not recommended"}
                     </button>
                   ))}
                   {(["all", "issue", "request"] as const).map((value) => (

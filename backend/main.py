@@ -1002,6 +1002,8 @@ class CreditStatusResponse(BaseModel):
     warning: bool
     blocked: bool
     stripe_customer_id: Optional[str] = None
+    cancel_at_period_end: bool = False
+    payment_failed: bool = False
 
 
 class CreditEstimateResponse(BaseModel):
@@ -1397,6 +1399,20 @@ def sync_credits(user_id: str = Depends(require_user_id)) -> dict:
     if result is None:
         return {"synced": False, "message": "No Stripe customer found"}
     return result
+
+
+@app.get("/credits/invoices")
+def get_invoices(user_id: str = Depends(require_user_id)) -> list:
+    """Get billing invoice history from Stripe."""
+    if not stripe_billing.is_stripe_configured():
+        raise HTTPException(status_code=503, detail="Stripe is not configured.")
+
+    subscription = credits.get_user_subscription(user_id)
+    customer_id = subscription.get("stripe_customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=404, detail="No billing account found.")
+
+    return stripe_billing.get_invoices(customer_id)
 
 
 @app.get("/search", response_model=List[SearchResult])

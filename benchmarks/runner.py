@@ -21,6 +21,7 @@ from .pricing import PriceTable
 from .providers import GoogleGenAIProvider, MockProvider, OpenAICompatProvider, Provider, ProviderError, XaiSdkProvider
 from .reporting import summarize_results
 from .tasks import (
+    ChatAnswerTask,
     CompareGamesOverviewTask,
     MonthlyReportSummaryTask,
     ReviewLabelingBatchTask,
@@ -211,6 +212,9 @@ def run_benchmark(cfg: BenchmarkConfig) -> Path:
         "monthly_report_summary_v2": lambda **kw: MonthlyReportSummaryTask(prompt_version="v2", **kw),
         "compare_games_overview": CompareGamesOverviewTask,
         "translation_to_english": TranslationToEnglishTask,
+        "chat_answer": ChatAnswerTask,
+        "chat_answer_v2": lambda **kw: ChatAnswerTask(prompt_version="v2", **kw),
+        "chat_answer_v3": lambda **kw: ChatAnswerTask(prompt_version="v3", **kw),
     }
     tasks = []
     for tname in tasks_config:

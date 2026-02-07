@@ -1252,11 +1252,24 @@ export interface CreditStatus {
   warning: boolean;            // True if 100%+ of limit used
   blocked: boolean;            // Now based on game limit
   stripe_customer_id: string | null;
+  cancel_at_period_end: boolean;
+  payment_failed: boolean;
   // Game-based limits (new system)
   games_used: number;
   games_limit: number | null;  // null = unlimited
   games_remaining: number | null;  // null = unlimited
   at_game_limit: boolean;
+}
+
+export interface InvoiceItem {
+  id: string;
+  date: number;
+  amount_due: number;
+  amount_paid: number;
+  currency: string;
+  status: string;
+  invoice_pdf: string | null;
+  hosted_invoice_url: string | null;
 }
 
 export interface CreditEstimate {
@@ -1342,6 +1355,14 @@ export async function syncCreditStatus(): Promise<{ synced: boolean; tier?: stri
     method: "POST",
   });
   return handleResponse<{ synced: boolean; tier?: string; message?: string }>(response);
+}
+
+/**
+ * Fetch billing invoice history from Stripe.
+ */
+export async function fetchInvoices(): Promise<InvoiceItem[]> {
+  const response = await authFetch(apiUrl("/credits/invoices"), { cache: "no-store" });
+  return handleResponse<InvoiceItem[]>(response);
 }
 
 // ============================================================================

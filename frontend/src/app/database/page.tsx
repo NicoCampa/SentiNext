@@ -484,7 +484,7 @@ export default function DatabasePage() {
     if (quickSentiment !== 'all') {
       pills.push({
         key: 'sentiment',
-        label: 'Sentiment',
+        label: 'Recommendation',
         value: quickSentiment === 'positive' ? 'Recommended' : 'Not recommended',
         onRemove: () => {
           setQuickSentiment('all');

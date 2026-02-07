@@ -362,7 +362,7 @@ export function NewsWithSummary({
 
           {summary.correlation_insights && (
             <div className="pt-2 border-t border-slate-700/50">
-              <p className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">Sentiment Correlation</p>
+              <p className="text-[10px] uppercase tracking-wider text-emerald-400/70 mb-1">Recommendation Correlation</p>
               <p className="text-xs text-slate-300">{summary.correlation_insights}</p>
             </div>
           )}

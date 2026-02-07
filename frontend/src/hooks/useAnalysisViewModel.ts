@@ -247,8 +247,8 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
       }
       if (recommendationRate >= 0.55) {
         return topIssue
-          ? `Sentiment is mixed; watch ${topIssueLabel}`
-          : `Sentiment is mixed across recent reviews`;
+          ? `Reception is mixed; watch ${topIssueLabel}`
+          : `Reception is mixed across recent reviews`;
       }
       return `Players are signalling risk (${Math.round(recommendationRate * 100)}% recommend)`;
     })();

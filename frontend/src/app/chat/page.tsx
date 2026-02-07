@@ -210,21 +210,15 @@ const CHART_BORDER_COLORS = [
 ];
 
 const SUGGESTED_PROMPTS = [
-  "Give me the review count and recommendation rate overview.",
-  "Show the top issues by subcategory (with example reviews).",
-  "Show the top praises by subcategory.",
-  "What feature requests show up most often?",
-  "Which review topics/subcategories are available?",
-  "Show the recommendation rate trend over time.",
-  "Show stats for the subcategory technical/bugs.",
-  "Show example reviews about technical/performance.",
-  "Compare the last 30 days vs the previous 30 days for key topics.",
+  "Summarize me the game's reception.",
+  "What are the top issues players complain about?",
+  "What features are players requesting the most?",
+  "Plot the recommendation rate trend over time.",
+  "Chart the top issues by category.",
 ];
 
 const COMPARE_SUGGESTED_PROMPTS = [
-  "Compare the two games on recommendation rate and key issues.",
-  "Compare recommendation rate trends between the two games.",
-  "Compare top issues between the two games.",
+  "Compare the two games on recommendation rate and top issues.",
 ];
 
 function normalizeChartData(spec: ChartSpec): ChartSpec["data"] {

@@ -6,7 +6,8 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, createCheckoutSession, getBillingPortalUrl } from "@/lib/api";
+import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, fetchInvoices } from "@/lib/api";
+import type { InvoiceItem } from "@/lib/api";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
@@ -26,6 +27,9 @@ export default function SettingsPage() {
   const { credits, loading: creditsLoading } = useCredits();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [showInvoices, setShowInvoices] = useState(false);
+  const [invoices, setInvoices] = useState<InvoiceItem[] | null>(null);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { openUserProfile, signOut } = useClerk();
   const { user } = useUser();
@@ -68,8 +72,8 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    loadLogTail();
-  }, [loadLogTail]);
+    if (isAdmin) loadLogTail();
+  }, [isAdmin, loadLogTail]);
 
   async function handleUpgrade(tier: "indie" | "pro") {
     setUpgradeLoading(tier);
@@ -105,6 +109,26 @@ export default function SettingsPage() {
       alert("Failed to open billing portal. Please try again.");
     } finally {
       setPortalLoading(false);
+    }
+  }
+
+  async function handleToggleInvoices() {
+    if (showInvoices) {
+      setShowInvoices(false);
+      return;
+    }
+    setShowInvoices(true);
+    if (invoices === null) {
+      setInvoicesLoading(true);
+      try {
+        const data = await fetchInvoices();
+        setInvoices(data);
+      } catch (err) {
+        console.error("Failed to load invoices", err);
+        setInvoices([]);
+      } finally {
+        setInvoicesLoading(false);
+      }
     }
   }
 
@@ -360,6 +384,42 @@ export default function SettingsPage() {
                     </p>
                   </div>
 
+                  {/* Cancellation Warning */}
+                  {credits.cancel_at_period_end && (
+                    <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-amber-500/10 border border-amber-500/30">
+                      <p className="text-[10px] sm:text-xs text-amber-400 font-medium mb-1">Subscription Cancelled</p>
+                      <p className="text-[10px] sm:text-xs text-amber-400/70">
+                        You&apos;ll retain access to your current plan until{" "}
+                        {credits.period_end
+                          ? new Date(credits.period_end).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
+                          : "the end of your billing period"}
+                        . After that, you&apos;ll be moved to the Free tier.
+                      </p>
+                      <button
+                        onClick={handleManageSubscription}
+                        className="mt-2 text-[10px] sm:text-xs text-amber-400 underline hover:text-amber-300 transition-colors"
+                      >
+                        Resubscribe
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Payment Failure Warning */}
+                  {credits.payment_failed && (
+                    <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-rose-500/10 border border-rose-500/30">
+                      <p className="text-[10px] sm:text-xs text-rose-400 font-medium mb-1">Payment Failed</p>
+                      <p className="text-[10px] sm:text-xs text-rose-400/70">
+                        Your last payment could not be processed. Please update your payment method to avoid losing access to your plan.
+                      </p>
+                      <button
+                        onClick={handleManageSubscription}
+                        className="mt-2 text-[10px] sm:text-xs text-rose-400 underline hover:text-rose-300 transition-colors"
+                      >
+                        Update Payment Method
+                      </button>
+                    </div>
+                  )}
+
                   {/* Credits */}
                   <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
                     {(() => {
@@ -420,6 +480,12 @@ export default function SettingsPage() {
                               One-time trial credits (no monthly reset).
                             </p>
                           )}
+
+                          {!isWallet && credits.balance > credits.limit && !credits.cancel_at_period_end && (
+                            <p className="mt-2 text-[10px] sm:text-[11px] text-sky-400/70">
+                              You have {(credits.balance - credits.limit).toLocaleString()} bonus credits from a previous plan. These won&apos;t renew next cycle.
+                            </p>
+                          )}
                         </>
                       );
                     })()}
@@ -443,14 +509,12 @@ export default function SettingsPage() {
                           </button>
                         )}
                         {(credits.tier === "free" || credits.tier === "indie") && (
-                          <button
-                            onClick={() => handleUpgrade("pro")}
-                            disabled={upgradeLoading !== null}
-                            className="p-2.5 sm:p-3 border border-sky-500/30 bg-[rgb(10,10,25)] hover:bg-sky-500/10 hover:border-sky-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                          <div
+                            className="p-2.5 sm:p-3 border border-sky-500/20 bg-[rgb(10,10,25)] cursor-not-allowed opacity-50"
                           >
-                            <p className="text-xs sm:text-sm font-bold text-sky-400">Pro</p>
-                            <p className="text-[10px] sm:text-xs text-sky-400/50 mt-0.5 sm:mt-1">15,000 credits / month</p>
-                          </button>
+                            <p className="text-xs sm:text-sm font-bold text-sky-400/40">Pro</p>
+                            <p className="text-[10px] sm:text-xs text-sky-400/30 mt-0.5 sm:mt-1">Coming Soon</p>
+                          </div>
                         )}
                         {(credits.tier === "free" || credits.tier === "indie" || credits.tier === "pro") && (
                           <Link
@@ -467,15 +531,66 @@ export default function SettingsPage() {
 
                   {/* Manage Subscription (for paid users) */}
                   {credits.stripe_customer_id && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={handleManageSubscription}
-                      disabled={portalLoading}
-                      className="w-full"
-                    >
-                      {portalLoading ? "Loading..." : "Manage Subscription"}
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleManageSubscription}
+                        disabled={portalLoading}
+                        className="w-full"
+                      >
+                        {portalLoading ? "Loading..." : "Manage Subscription"}
+                      </Button>
+
+                      {/* Billing History */}
+                      <div className="mt-3 sm:mt-4">
+                        <button
+                          onClick={handleToggleInvoices}
+                          className="flex items-center gap-1.5 text-[10px] sm:text-xs text-[rgb(150,150,170)] hover:text-[rgb(0,255,255)] transition-colors uppercase tracking-wider"
+                        >
+                          <span className="transition-transform" style={{ display: "inline-block", transform: showInvoices ? "rotate(90deg)" : "rotate(0deg)" }}>
+                            &#9654;
+                          </span>
+                          Billing History
+                        </button>
+
+                        {showInvoices && (
+                          <div className="mt-2 space-y-1">
+                            {invoicesLoading ? (
+                              <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)] animate-pulse">Loading invoices...</p>
+                            ) : invoices && invoices.length > 0 ? (
+                              <div className="border border-[rgb(0,255,255)]/10 divide-y divide-[rgb(0,255,255)]/10">
+                                {invoices.map((inv) => (
+                                  <div key={inv.id} className="flex items-center justify-between px-3 py-2 text-[10px] sm:text-xs">
+                                    <span className="text-[rgb(150,150,170)]">
+                                      {new Date(inv.date * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                    </span>
+                                    <span className="font-mono text-[rgb(0,255,255)]">
+                                      ${(inv.amount_paid / 100).toFixed(2)}
+                                    </span>
+                                    <span className={`uppercase tracking-wider ${inv.status === "paid" ? "text-emerald-400" : "text-amber-400"}`}>
+                                      {inv.status}
+                                    </span>
+                                    {inv.invoice_pdf && (
+                                      <a
+                                        href={inv.invoice_pdf}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[rgb(0,255,255)]/60 hover:text-[rgb(0,255,255)] transition-colors"
+                                      >
+                                        PDF
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)]">No invoices found.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </>
               ) : (

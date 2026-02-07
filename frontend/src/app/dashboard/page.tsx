@@ -2602,7 +2602,7 @@ function AnalysisResults({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h4 className="text-lg font-semibold text-white">Trends</h4>
-              <p className="mt-1 text-sm text-slate-400">How sentiment and volume shift over time</p>
+              <p className="mt-1 text-sm text-slate-400">How recommendation rate and volume shift over time</p>
             </div>
             {latestTrend && (
               <div className="flex flex-wrap items-center gap-3 text-xs">

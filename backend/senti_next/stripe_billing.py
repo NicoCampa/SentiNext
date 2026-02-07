@@ -251,7 +251,7 @@ def _handle_checkout_completed(session: dict) -> dict:
 
 
 def _handle_subscription_updated(subscription: dict) -> dict:
-    """Handle subscription update (tier change, renewal, etc.)."""
+    """Handle subscription update (tier change, renewal, cancellation scheduling)."""
     from . import credits
 
     customer_id = subscription.get("customer")
@@ -263,6 +263,10 @@ def _handle_subscription_updated(subscription: dict) -> dict:
     if not user_id:
         logger.warning(f"Subscription updated for unknown customer {customer_id}")
         return {"status": "ignored", "message": "Unknown customer"}
+
+    # Track cancel_at_period_end (set when user cancels via portal)
+    cancel_at_period_end = subscription.get("cancel_at_period_end", False)
+    credits.set_cancel_at_period_end(user_id, cancel_at_period_end)
 
     # Get current price/tier
     items = subscription.get("items", {}).get("data", [])
@@ -278,8 +282,8 @@ def _handle_subscription_updated(subscription: dict) -> dict:
 
     if status == "active":
         credits.update_tier(user_id, tier, subscription_id, price_id)
-        logger.info(f"Updated subscription for user {user_id} to {tier}")
-        return {"status": "success", "user_id": user_id, "tier": tier}
+        logger.info(f"Updated subscription for user {user_id} to {tier} (cancel_at_period_end={cancel_at_period_end})")
+        return {"status": "success", "user_id": user_id, "tier": tier, "cancel_at_period_end": cancel_at_period_end}
 
     return {"status": "ignored", "message": f"Subscription status: {status}"}
 
@@ -295,8 +299,9 @@ def _handle_subscription_deleted(subscription: dict) -> dict:
         logger.warning(f"Subscription deleted for unknown customer {customer_id}")
         return {"status": "ignored", "message": "Unknown customer"}
 
-    # Downgrade to free tier
+    # Downgrade to free tier and clear cancellation flag
     credits.update_tier(user_id, "free")
+    credits.set_cancel_at_period_end(user_id, False)
     logger.info(f"Downgraded user {user_id} to free tier after subscription deletion")
 
     return {"status": "success", "user_id": user_id, "tier": "free"}
@@ -318,26 +323,30 @@ def _handle_invoice_paid(invoice: dict) -> dict:
         logger.warning(f"Invoice paid for unknown customer {customer_id}")
         return {"status": "ignored", "message": "Unknown customer"}
 
-    # Reset monthly credits
+    # Reset monthly credits and clear any payment failure flag
     credits.reset_monthly_credits(user_id)
+    credits.set_payment_failed(user_id, False)
     logger.info(f"Reset monthly credits for user {user_id} after invoice payment")
 
     return {"status": "success", "user_id": user_id, "action": "credits_reset"}
 
 
 def _handle_payment_failed(invoice: dict) -> dict:
-    """Handle failed payment."""
+    """Handle failed payment - flag user so UI can show a warning."""
     customer_id = invoice.get("customer")
 
     from . import credits
     user_id = credits.get_user_by_stripe_customer(customer_id)
 
+    if user_id:
+        credits.set_payment_failed(user_id, True)
+
     logger.warning(f"Payment failed for customer {customer_id}, user {user_id}")
 
-    # We don't immediately downgrade on payment failure - Stripe will retry
-    # and eventually send subscription.deleted if all retries fail
+    # We don't immediately downgrade - Stripe will retry and eventually
+    # send subscription.deleted if all retries fail
 
-    return {"status": "logged", "user_id": user_id, "action": "payment_failed"}
+    return {"status": "flagged", "user_id": user_id, "action": "payment_failed"}
 
 
 def sync_subscription_status(user_id: str) -> Optional[dict]:
@@ -384,10 +393,30 @@ def sync_subscription_status(user_id: str) -> Optional[dict]:
         return None
 
 
+def get_invoices(customer_id: str, limit: int = 12) -> list:
+    """Fetch recent invoices for a Stripe customer."""
+    stripe = _get_stripe()
+    invoices = stripe.Invoice.list(customer=customer_id, limit=limit)
+    return [
+        {
+            "id": inv.id,
+            "date": inv.created,
+            "amount_due": inv.amount_due,
+            "amount_paid": inv.amount_paid,
+            "currency": inv.currency,
+            "status": inv.status,
+            "invoice_pdf": inv.invoice_pdf,
+            "hosted_invoice_url": inv.hosted_invoice_url,
+        }
+        for inv in invoices.data
+    ]
+
+
 __all__ = [
     "is_stripe_configured",
     "create_checkout_session",
     "create_customer_portal_session",
     "handle_webhook_event",
     "sync_subscription_status",
+    "get_invoices",
 ]

@@ -124,7 +124,7 @@ export function ReviewFilters({
 
       <div className="mt-4 space-y-4 text-xs uppercase tracking-[0.2em] text-slate-300">
         <FilterGroup
-          title="Sentiment"
+          title="Recommendation"
           options={sentimentOptions}
           active={sentimentFilter}
           onSelect={onSentimentChange}
@@ -206,7 +206,7 @@ export function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper
           <thead className="bg-white/5 text-xs uppercase tracking-[0.2em] text-slate-300">
             <tr>
               <th className="px-4 py-3">Review</th>
-              <th className="px-4 py-3">Sentiment</th>
+              <th className="px-4 py-3">Recommendation</th>
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Issue Subcategories</th>
               <th className="px-4 py-3">Request Subcategories</th>

@@ -57,7 +57,7 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                         {/* Indie */}
                         <PricingCard
                             name="Indie"
-                            price="$10"
+                            price="$8"
                             period="/ month"
                             description={lang === 'it' ? 'Per team piccoli e dev indie.' : 'For small teams and indie developers.'}
                             features={[
@@ -70,11 +70,10 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
                         />
 
-                        {/* Pro Tier (Highlighted) */}
+                        {/* Pro Tier (Coming Soon) */}
                         <PricingCard
                             name="Pro"
-                            price="$20"
-                            period="/ month"
+                            price={lang === 'it' ? 'Prossimamente' : 'Coming Soon'}
                             description={lang === 'it' ? 'Per studi che analizzano regolarmente.' : 'For teams that analyze reviews regularly.'}
                             features={[
                                 lang === 'it' ? "15.000 crediti / mese" : "15,000 credits / month",
@@ -82,9 +81,8 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                                 lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
                                 lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
                             ]}
-                            cta={lang === 'it' ? 'Passa a Pro' : 'Upgrade to Pro'}
-                            href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
-                            popular
+                            cta={lang === 'it' ? 'Prossimamente' : 'Coming Soon'}
+                            href="#"
                         />
 
                         {/* Enterprise */}

@@ -1,0 +1,475 @@
+[
+  {
+    "id": "overview_general_1",
+    "category": "overview",
+    "question": "How is this game doing overall based on player reviews?",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "overview_general_2",
+    "category": "overview",
+    "question": "Give me a summary of player feedback for this game",
+    "app_id": 1030300,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "overview_general_3",
+    "category": "overview",
+    "question": "What's the overall reception of this game?",
+    "app_id": 299970,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 6,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "overview_general_4",
+    "category": "overview",
+    "question": "Can you give me a quick overview of what players think?",
+    "app_id": 1091500,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": false,
+      "review_sample_size": 6,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "overview_general_5",
+    "category": "overview",
+    "question": "What are the main themes in player reviews?",
+    "app_id": 1030300,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 12,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "issues_top_1",
+    "category": "issues",
+    "question": "What are the biggest complaints about this game?",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 12,
+      "review_selection": "negative"
+    }
+  },
+  {
+    "id": "issues_top_2",
+    "category": "issues",
+    "question": "What bugs are players reporting?",
+    "app_id": 299970,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "keyword",
+      "keywords": ["bug", "glitch", "crash", "broken", "error"]
+    }
+  },
+  {
+    "id": "issues_top_3",
+    "category": "issues",
+    "question": "Why are players leaving negative reviews?",
+    "app_id": 1030300,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 12,
+      "review_selection": "negative"
+    }
+  },
+  {
+    "id": "issues_top_4",
+    "category": "issues",
+    "question": "What are the most common technical problems?",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "keyword",
+      "keywords": ["fps", "lag", "crash", "performance", "stutter", "freeze", "loading"]
+    }
+  },
+  {
+    "id": "issues_top_5",
+    "category": "issues",
+    "question": "What's broken in this game according to players?",
+    "app_id": 299970,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 8,
+      "review_selection": "negative"
+    }
+  },
+  {
+    "id": "requests_feature_1",
+    "category": "requests",
+    "question": "What features are players asking for?",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "keyword",
+      "keywords": ["wish", "should", "need", "want", "add", "please", "hope"]
+    }
+  },
+  {
+    "id": "requests_feature_2",
+    "category": "requests",
+    "question": "What quality of life improvements do players want?",
+    "app_id": 1030300,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 8,
+      "review_selection": "keyword",
+      "keywords": ["qol", "quality of life", "settings", "option", "toggle", "menu"]
+    }
+  },
+  {
+    "id": "requests_feature_3",
+    "category": "requests",
+    "question": "What are the most requested additions to this game?",
+    "app_id": 299970,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "topic_search_1",
+    "category": "topic",
+    "question": "What do players say about the combat system?",
+    "app_id": 1030300,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 12,
+      "review_selection": "keyword",
+      "keywords": ["combat", "fight", "attack", "weapon", "boss", "dodge", "hit"]
+    }
+  },
+  {
+    "id": "topic_search_2",
+    "category": "topic",
+    "question": "Tell me about multiplayer feedback",
+    "app_id": 299970,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "keyword",
+      "keywords": ["multiplayer", "online", "coop", "co-op", "friend", "lobby", "server"]
+    }
+  },
+  {
+    "id": "topic_search_3",
+    "category": "topic",
+    "question": "What are players saying about difficulty?",
+    "app_id": 1030300,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "keyword",
+      "keywords": ["hard", "easy", "difficulty", "challenging", "casual", "souls", "tough"]
+    }
+  },
+  {
+    "id": "topic_search_4",
+    "category": "topic",
+    "question": "How do players feel about the UI and menus?",
+    "app_id": 1091500,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 8,
+      "review_selection": "keyword",
+      "keywords": ["ui", "menu", "interface", "hud", "settings", "inventory"]
+    }
+  },
+  {
+    "id": "topic_search_5",
+    "category": "topic",
+    "question": "What do reviews say about the music and soundtrack?",
+    "app_id": 1030300,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": false,
+      "review_sample_size": 8,
+      "review_selection": "keyword",
+      "keywords": ["music", "soundtrack", "ost", "song", "audio", "sound"]
+    }
+  },
+  {
+    "id": "trend_sentiment_1",
+    "category": "trend",
+    "question": "How has player sentiment changed over time?",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "balanced",
+      "include_time_buckets": true
+    }
+  },
+  {
+    "id": "trend_sentiment_2",
+    "category": "trend",
+    "question": "Is this game getting better or worse reviews over time?",
+    "app_id": 299970,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": false,
+      "review_sample_size": 10,
+      "review_selection": "balanced",
+      "include_time_buckets": true
+    }
+  },
+  {
+    "id": "trend_sentiment_3",
+    "category": "trend",
+    "question": "What's the recent trend in player feedback?",
+    "app_id": 1030300,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": false,
+      "review_sample_size": 6,
+      "review_selection": "balanced",
+      "include_time_buckets": true
+    }
+  },
+  {
+    "id": "comparison_1",
+    "category": "comparison",
+    "question": "Compare reviews from the last 30 days with older reviews",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "balanced",
+      "include_period_comparison": true
+    }
+  },
+  {
+    "id": "comparison_2",
+    "category": "comparison",
+    "question": "How do recent reviews compare to earlier ones?",
+    "app_id": 1030300,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "balanced",
+      "include_period_comparison": true
+    }
+  },
+  {
+    "id": "comparison_3",
+    "category": "comparison",
+    "question": "Has anything changed in player complaints recently?",
+    "app_id": 299970,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 8,
+      "review_selection": "balanced",
+      "include_period_comparison": true
+    }
+  },
+  {
+    "id": "segment_positive_vs_negative_1",
+    "category": "segment",
+    "question": "How do positive and negative reviews differ in what they focus on?",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 12,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "segment_positive_vs_negative_2",
+    "category": "segment",
+    "question": "What topics do negative reviewers care about most?",
+    "app_id": 1030300,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "negative"
+    }
+  },
+  {
+    "id": "segment_language_3",
+    "category": "segment",
+    "question": "Do different language communities have different opinions?",
+    "app_id": 299970,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "chart_request_1",
+    "category": "chart",
+    "question": "Show me a pie chart of the recommendation breakdown",
+    "app_id": 1091500,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": false,
+      "review_sample_size": 0,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "chart_request_2",
+    "category": "chart",
+    "question": "Create a bar chart of the top issues by frequency",
+    "app_id": 299970,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 0,
+      "review_selection": "balanced"
+    }
+  },
+  {
+    "id": "subcategory_deep_1",
+    "category": "subcategory",
+    "question": "Give me a deep dive into performance issues",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 15,
+      "review_selection": "keyword",
+      "keywords": ["fps", "performance", "lag", "frame", "stutter", "slow", "optimization"]
+    }
+  },
+  {
+    "id": "subcategory_deep_2",
+    "category": "subcategory",
+    "question": "What's the monetization and pricing situation for this game?",
+    "app_id": 299970,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 10,
+      "review_selection": "keyword",
+      "keywords": ["price", "expensive", "cheap", "worth", "value", "dlc", "microtransaction", "money"]
+    }
+  },
+  {
+    "id": "praise_positive_1",
+    "category": "praise",
+    "question": "What do players love about this game?",
+    "app_id": 1030300,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 12,
+      "review_selection": "positive"
+    }
+  },
+  {
+    "id": "praise_positive_2",
+    "category": "praise",
+    "question": "What are the biggest strengths according to reviews?",
+    "app_id": 1091500,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": true,
+      "review_sample_size": 8,
+      "review_selection": "positive"
+    }
+  },
+  {
+    "id": "edge_case_1",
+    "category": "edge",
+    "question": "What are non-English speaking players saying about this game?",
+    "app_id": 1091500,
+    "complexity": "complex",
+    "context_recipe": {
+      "include_stats": true,
+      "include_subcategory_breakdown": false,
+      "review_sample_size": 10,
+      "review_selection": "non_english"
+    }
+  },
+  {
+    "id": "edge_case_2",
+    "category": "edge",
+    "question": "Are there any reviews mentioning the save system?",
+    "app_id": 1030300,
+    "complexity": "simple",
+    "context_recipe": {
+      "include_stats": false,
+      "include_subcategory_breakdown": false,
+      "review_sample_size": 10,
+      "review_selection": "keyword",
+      "keywords": ["save", "save system", "autosave", "checkpoint", "progress"]
+    }
+  }
+]

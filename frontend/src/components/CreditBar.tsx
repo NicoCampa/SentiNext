@@ -187,16 +187,15 @@ export function CreditBar({ compact = false }: CreditBarProps) {
               disabled={upgradeLoading !== null}
               className="py-1.5 border border-emerald-500/30 text-[10px] uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50"
             >
-              {upgradeLoading === "indie" ? "..." : "Indie $10"}
+              {upgradeLoading === "indie" ? "..." : "Indie $8"}
             </button>
           )}
           {(credits.tier === "free" || credits.tier === "indie") && (
             <button
-              onClick={() => handleUpgrade("pro")}
-              disabled={upgradeLoading !== null}
-              className="py-1.5 border border-sky-500/30 text-[10px] uppercase tracking-wider text-sky-400 hover:bg-sky-500/10 transition-all disabled:opacity-50"
+              disabled
+              className="py-1.5 border border-sky-500/20 text-[10px] uppercase tracking-wider text-sky-400/40 cursor-not-allowed"
             >
-              {upgradeLoading === "pro" ? "..." : "Pro $20"}
+              Pro — Soon
             </button>
           )}
         </div>

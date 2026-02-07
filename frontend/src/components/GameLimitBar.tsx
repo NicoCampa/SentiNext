@@ -76,7 +76,7 @@ export function GameLimitBar() {
 
   const getUpgradeMessage = () => {
     if (tier === "free") return "Upgrade to Indie to analyze more games";
-    if (tier === "indie") return "Upgrade to Pro for more games";
+    if (tier === "indie") return "Pro plan coming soon";
     if (tier === "pro") return "Upgrade to Enterprise for unlimited games";
     return "You're on the Enterprise plan";
   };
@@ -84,7 +84,7 @@ export function GameLimitBar() {
   const getButtonText = () => {
     if (isAtGameLimit) return "Upgrade Now";
     if (tier === "free") return "Upgrade to Indie";
-    if (tier === "indie") return "Upgrade to Pro";
+    if (tier === "indie") return "Coming Soon";
     if (tier === "pro") return "Contact Sales";
     return "Manage Plan";
   };

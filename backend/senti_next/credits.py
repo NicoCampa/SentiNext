@@ -23,7 +23,7 @@ TIER_LIMITS = {
 # Pricing (used for admin dashboard MRR estimates)
 TIER_PRICES = {
     "free": 0,
-    "indie": 10,
+    "indie": 8,
     "pro": 20,
     "max": 0,
 }
@@ -45,7 +45,7 @@ CREDIT_COSTS = {
     # Chat
     "chat_simple": 2,      # Per non-agent chat message
     "chat_insights": 2,    # Per insights chat message
-    "chat_agent": 2,       # Per agent iteration
+    "chat_agent": 4,       # Per agent iteration (~4x classify cost)
 
     # Summaries & utilities
     "summarize": 1,        # Per summary generation
@@ -53,8 +53,8 @@ CREDIT_COSTS = {
     "translate": 1,        # Per translation call
 
     # Compare (billed at endpoint level)
-    "compare_overview": 3,
-    "compare_category": 2,
+    "compare_overview": 2,  # ~2x classify cost
+    "compare_category": 1,  # ~1.4x classify cost
     "compare_subcategory": 1,
 }
 
@@ -232,7 +232,9 @@ def get_user_subscription(user_id: str) -> Dict[str, Any]:
             text("""
                 SELECT tier, credits_balance, credits_monthly_limit, credits_used_this_period,
                        current_period_start, current_period_end, stripe_customer_id,
-                       stripe_subscription_id, stripe_price_id, created_at, updated_at
+                       stripe_subscription_id, stripe_price_id, created_at, updated_at,
+                       COALESCE(cancel_at_period_end, FALSE) AS cancel_at_period_end,
+                       COALESCE(payment_failed, FALSE) AS payment_failed
                 FROM user_subscriptions
                 WHERE user_id = :user_id
             """),
@@ -273,6 +275,8 @@ def get_user_subscription(user_id: str) -> Dict[str, Any]:
                 "stripe_customer_id": None,
                 "stripe_subscription_id": None,
                 "stripe_price_id": None,
+                "cancel_at_period_end": False,
+                "payment_failed": False,
             }
 
         return {
@@ -285,6 +289,8 @@ def get_user_subscription(user_id: str) -> Dict[str, Any]:
             "stripe_customer_id": row[6],
             "stripe_subscription_id": row[7],
             "stripe_price_id": row[8],
+            "cancel_at_period_end": bool(row[11]),
+            "payment_failed": bool(row[12]),
         }
 
 
@@ -812,6 +818,8 @@ def get_credit_status(user_id: str) -> Dict[str, Any]:
         "warning": warning,
         "blocked": blocked,
         "stripe_customer_id": subscription.get("stripe_customer_id"),
+        "cancel_at_period_end": subscription.get("cancel_at_period_end", False),
+        "payment_failed": subscription.get("payment_failed", False),
 
         # Game fields (no limit enforced, kept for frontend compatibility)
         "games_used": games_used,
@@ -819,6 +827,48 @@ def get_credit_status(user_id: str) -> Dict[str, Any]:
         "games_remaining": None,
         "at_game_limit": False,
     }
+
+
+def set_cancel_at_period_end(user_id: str, value: bool) -> None:
+    """Set or clear the cancel_at_period_end flag for a user."""
+    from . import db as db_module
+
+    now = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                UPDATE user_subscriptions
+                SET cancel_at_period_end = :value,
+                    updated_at = :now
+                WHERE user_id = :user_id
+            """),
+            {"user_id": user_id, "value": value, "now": now},
+        )
+        conn.commit()
+
+    logger.info(f"Set cancel_at_period_end={value} for user {user_id}")
+
+
+def set_payment_failed(user_id: str, value: bool) -> None:
+    """Set or clear the payment_failed flag for a user."""
+    from . import db as db_module
+
+    now = datetime.now(timezone.utc)
+
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                UPDATE user_subscriptions
+                SET payment_failed = :value,
+                    updated_at = :now
+                WHERE user_id = :user_id
+            """),
+            {"user_id": user_id, "value": value, "now": now},
+        )
+        conn.commit()
+
+    logger.info(f"Set payment_failed={value} for user {user_id}")
 
 
 def get_user_by_stripe_customer(stripe_customer_id: str) -> Optional[str]:
