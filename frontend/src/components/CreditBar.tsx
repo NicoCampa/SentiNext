@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from "react";
 import { useCredits } from "@/contexts/CreditsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { createCheckoutSession } from "@/lib/api";
 import Link from "next/link";
 
 interface CreditBarProps {
@@ -11,6 +13,27 @@ interface CreditBarProps {
 export function CreditBar({ compact = false }: CreditBarProps) {
   const { credits, loading } = useCredits();
   const { t } = useLanguage();
+  const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
+
+  async function handleUpgrade(tier: "indie" | "pro") {
+    setUpgradeLoading(tier);
+    try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const result = await createCheckoutSession(
+        tier,
+        `${baseUrl}/settings?upgrade=success`,
+        `${baseUrl}/settings?upgrade=cancelled`,
+        "monthly"
+      );
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      }
+    } catch (err) {
+      console.error("Failed to create checkout session", err);
+    } finally {
+      setUpgradeLoading(null);
+    }
+  }
 
   if (loading && !credits) {
     return (
@@ -155,20 +178,28 @@ export function CreditBar({ compact = false }: CreditBarProps) {
         </div>
       )}
 
-      {/* Upgrade Link */}
-      {(isWarning || credits.tier === "free") && (
-        <Link
-          href="/settings"
-          className={`mt-2 block text-center text-[10px] uppercase tracking-wider py-1.5 border transition-colors ${
-            isBlocked
-              ? "border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
-              : isWarning
-              ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-              : "border-[rgb(0,255,255)]/30 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/10"
-          }`}
-        >
-          {isBlocked || isWarning ? "Upgrade Now" : "Upgrade Plan"}
-        </Link>
+      {/* Upgrade Options */}
+      {(isWarning || isBlocked || credits.tier === "free") && credits.tier !== "max" && (
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+          {credits.tier === "free" && (
+            <button
+              onClick={() => handleUpgrade("indie")}
+              disabled={upgradeLoading !== null}
+              className="py-1.5 border border-emerald-500/30 text-[10px] uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50"
+            >
+              {upgradeLoading === "indie" ? "..." : "Indie $10"}
+            </button>
+          )}
+          {(credits.tier === "free" || credits.tier === "indie") && (
+            <button
+              onClick={() => handleUpgrade("pro")}
+              disabled={upgradeLoading !== null}
+              className="py-1.5 border border-sky-500/30 text-[10px] uppercase tracking-wider text-sky-400 hover:bg-sky-500/10 transition-all disabled:opacity-50"
+            >
+              {upgradeLoading === "pro" ? "..." : "Pro $20"}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

@@ -1150,6 +1150,14 @@ function AnalysisResults({
   const [segmentSummary, setSegmentSummary] = useState<WidgetSummaryResponse | null>(null);
   const [segmentSummaryLoading, setSegmentSummaryLoading] = useState(false);
   const [segmentSummaryError, setSegmentSummaryError] = useState<string | null>(null);
+  const [topIssuesModalOpen, setTopIssuesModalOpen] = useState(false);
+  const [topIssuesSummary, setTopIssuesSummary] = useState<WidgetSummaryResponse | null>(null);
+  const [topIssuesSummaryLoading, setTopIssuesSummaryLoading] = useState(false);
+  const [topIssuesSummaryError, setTopIssuesSummaryError] = useState<string | null>(null);
+  const [topRequestsModalOpen, setTopRequestsModalOpen] = useState(false);
+  const [topRequestsSummary, setTopRequestsSummary] = useState<WidgetSummaryResponse | null>(null);
+  const [topRequestsSummaryLoading, setTopRequestsSummaryLoading] = useState(false);
+  const [topRequestsSummaryError, setTopRequestsSummaryError] = useState<string | null>(null);
   const [recentReviewsModalOpen, setRecentReviewsModalOpen] = useState(false);
   const [recentReviewsSummary, setRecentReviewsSummary] = useState<RecentReviewsSummaryResponse | null>(null);
   const [recentReviewsSummaryLoading, setRecentReviewsSummaryLoading] = useState(false);
@@ -1683,12 +1691,34 @@ function AnalysisResults({
     setRecentReviewsSummaryLoading(false);
   }, []);
 
-  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek || selectedSegment || recentReviewsModalOpen);
+  const closeTopIssuesModal = useCallback(() => {
+    setTopIssuesModalOpen(false);
+    setTopIssuesSummary(null);
+    setTopIssuesSummaryError(null);
+    setTopIssuesSummaryLoading(false);
+  }, []);
+
+  const closeTopRequestsModal = useCallback(() => {
+    setTopRequestsModalOpen(false);
+    setTopRequestsSummary(null);
+    setTopRequestsSummaryError(null);
+    setTopRequestsSummaryLoading(false);
+  }, []);
+
+  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek || selectedSegment || recentReviewsModalOpen || topIssuesModalOpen || topRequestsModalOpen);
 
   useEffect(() => {
     if (!hasOverlay) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (topIssuesModalOpen) {
+          closeTopIssuesModal();
+          return;
+        }
+        if (topRequestsModalOpen) {
+          closeTopRequestsModal();
+          return;
+        }
         if (recentReviewsModalOpen) {
           closeRecentReviewsModal();
           return;
@@ -1716,7 +1746,11 @@ function AnalysisResults({
     selectedSubcategory,
     selectedSegment,
     recentReviewsModalOpen,
+    topIssuesModalOpen,
+    topRequestsModalOpen,
     closeRecentReviewsModal,
+    closeTopIssuesModal,
+    closeTopRequestsModal,
     clearSelectedSubcategory,
   ]);
 
@@ -1742,6 +1776,17 @@ function AnalysisResults({
     setSegmentSummaryError(null);
     setSegmentSummaryLoading(false);
   }, [selectedSegment]);
+
+  useEffect(() => {
+    setTopIssuesModalOpen(false);
+    setTopIssuesSummary(null);
+    setTopIssuesSummaryError(null);
+    setTopIssuesSummaryLoading(false);
+    setTopRequestsModalOpen(false);
+    setTopRequestsSummary(null);
+    setTopRequestsSummaryError(null);
+    setTopRequestsSummaryLoading(false);
+  }, [analysis]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -1983,6 +2028,122 @@ function AnalysisResults({
       setSegmentSummaryError((err as Error).message || "Failed to generate summary");
     } finally {
       setSegmentSummaryLoading(false);
+    }
+  };
+
+  const handleSummarizeTopIssues = async () => {
+    if (!selectedGame || issueItems.length === 0) return;
+
+    setTopIssuesModalOpen(true);
+    setTopIssuesSummaryLoading(true);
+    setTopIssuesSummaryError(null);
+
+    // Collect the top issue subcategory keys
+    const topSubcatKeys = issueItems.map((e) => e.subcategory || e.sub_category || "other/general");
+
+    // Filter reviews that have at least one matching issue subcategory
+    const relevantReviews = reviewSample.filter((r) => {
+      const issueSubs = listifyStrings(r.llm_issue_subcategories);
+      return issueSubs.some((s) => topSubcatKeys.includes(s));
+    });
+
+    if (relevantReviews.length === 0) {
+      setTopIssuesSummaryError("No reviews with matching issue tags found.");
+      setTopIssuesSummaryLoading(false);
+      return;
+    }
+
+    try {
+      const result = await summarizeWidget({
+        app_id: selectedGame.appid,
+        widget_kind: "top_issues",
+        widget_label: `Top ${issueItems.length} reported issues`,
+        context: {
+          top_subcategories: issueItems.map((e) => ({
+            subcategory: e.subcategory || e.sub_category,
+            issue_count: Number(e.issue_count ?? 0),
+          })),
+          filters: filterScopeLabel ?? "None",
+        },
+        reviews: relevantReviews.slice(0, 50).map((r) => ({
+          review_id: String(r.review_id ?? ""),
+          review: r.review ?? "",
+          voted_up: r.voted_up,
+          votes_up: r.votes_up ?? 0,
+          votes_funny: r.votes_funny ?? 0,
+          language: r.language ?? "",
+          created_at: r.created_at,
+          llm_subcategories: r.llm_subcategories ?? [],
+          llm_issue_subcategories: r.llm_issue_subcategories ?? [],
+          llm_request_subcategories: r.llm_request_subcategories ?? [],
+          llm_subcategory_evidence: r.llm_subcategory_evidence ?? {},
+        })),
+      });
+
+      setTopIssuesSummary(result);
+      refreshCredits();
+    } catch (err) {
+      setTopIssuesSummaryError((err as Error).message || "Failed to generate summary");
+    } finally {
+      setTopIssuesSummaryLoading(false);
+    }
+  };
+
+  const handleSummarizeTopRequests = async () => {
+    if (!selectedGame || requestItems.length === 0) return;
+
+    setTopRequestsModalOpen(true);
+    setTopRequestsSummaryLoading(true);
+    setTopRequestsSummaryError(null);
+
+    // Collect the top request subcategory keys
+    const topSubcatKeys = requestItems.map((e) => e.subcategory || e.sub_category || "other/general");
+
+    // Filter reviews that have at least one matching request subcategory
+    const relevantReviews = reviewSample.filter((r) => {
+      const requestSubs = listifyStrings(r.llm_request_subcategories);
+      return requestSubs.some((s) => topSubcatKeys.includes(s));
+    });
+
+    if (relevantReviews.length === 0) {
+      setTopRequestsSummaryError("No reviews with matching request tags found.");
+      setTopRequestsSummaryLoading(false);
+      return;
+    }
+
+    try {
+      const result = await summarizeWidget({
+        app_id: selectedGame.appid,
+        widget_kind: "top_requests",
+        widget_label: `Top ${requestItems.length} feature requests`,
+        context: {
+          top_subcategories: requestItems.map((e) => ({
+            subcategory: e.subcategory || e.sub_category,
+            request_count: Number(e.request_count ?? 0),
+          })),
+          filters: filterScopeLabel ?? "None",
+        },
+        reviews: relevantReviews.slice(0, 50).map((r) => ({
+          review_id: String(r.review_id ?? ""),
+          review: r.review ?? "",
+          voted_up: r.voted_up,
+          votes_up: r.votes_up ?? 0,
+          votes_funny: r.votes_funny ?? 0,
+          language: r.language ?? "",
+          created_at: r.created_at,
+          llm_subcategories: r.llm_subcategories ?? [],
+          llm_issue_subcategories: r.llm_issue_subcategories ?? [],
+          llm_request_subcategories: r.llm_request_subcategories ?? [],
+          llm_subcategory_evidence: r.llm_subcategory_evidence ?? {},
+        })),
+      });
+
+      setTopRequestsSummary(result);
+      refreshCredits();
+    } catch (err) {
+      setTopRequestsSummaryError((err as Error).message || "Failed to generate summary");
+    } finally {
+      setTopRequestsSummaryLoading(false);
     }
   };
 
@@ -2240,7 +2401,21 @@ function AnalysisResults({
                 <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topIssues')}</h4>
                 <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most reported issues</p>
               </div>
-              <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.length} items</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.length} items</span>
+                {issueItems.length > 0 && (
+                  <button
+                    onClick={handleSummarizeTopIssues}
+                    disabled={topIssuesSummaryLoading}
+                    className="text-[10px] sm:text-xs px-2 py-1 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    AI Summary
+                  </button>
+                )}
+              </div>
             </div>
             {issueItems.length === 0 ? (
               <p className="mt-3 text-xs sm:text-sm text-slate-500">No issue tags found yet.</p>
@@ -2294,7 +2469,21 @@ function AnalysisResults({
                 <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.topRequests')}</h4>
                 <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most requested features</p>
               </div>
-              <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.length} items</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.length} items</span>
+                {requestItems.length > 0 && (
+                  <button
+                    onClick={handleSummarizeTopRequests}
+                    disabled={topRequestsSummaryLoading}
+                    className="text-[10px] sm:text-xs px-2 py-1 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    AI Summary
+                  </button>
+                )}
+              </div>
             </div>
             {requestItems.length === 0 ? (
               <p className="mt-3 text-xs sm:text-sm text-slate-500">No feature requests tagged yet.</p>
@@ -3633,6 +3822,236 @@ function AnalysisResults({
                   })}
                 </div>
               )}
+              </div>
+            </div>
+          </div>
+        </Portal>
+      ) : null}
+
+      {topIssuesModalOpen ? (
+        <Portal>
+          <div
+            className="fixed inset-0 z-[9996] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
+            onClick={closeTopIssuesModal}
+            style={{ WebkitBackdropFilter: "blur(12px)" }}
+          >
+            <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
+              <div
+                className="w-full max-w-4xl rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base sm:text-lg font-semibold text-white">Top Issues Summary</h3>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-400">
+                      Cross-category analysis of the top {issueItems.length} reported issues
+                    </p>
+                    {filterScopeLabel && (
+                      <p className="mt-1 text-[11px] sm:text-xs text-sky-400 line-clamp-2">
+                        Filters: {filterScopeLabel}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={handleSummarizeTopIssues}
+                      disabled={topIssuesSummaryLoading}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      {topIssuesSummaryLoading ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Summarizing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          {topIssuesSummary ? "Refresh" : "AI Summary"}
+                        </>
+                      )}
+                    </button>
+                    <Button variant="secondary" onClick={closeTopIssuesModal} className="flex-1 sm:flex-none text-xs sm:text-sm">
+                      Close
+                    </Button>
+                  </div>
+                </div>
+
+                {topIssuesSummaryError && (
+                  <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
+                    <p className="text-sm text-rose-400">{topIssuesSummaryError}</p>
+                  </div>
+                )}
+
+                {topIssuesSummary ? (
+                  <div className="mt-4 space-y-4 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-sky-400 mb-2">Summary</h4>
+                      <p className="text-sm text-slate-200 leading-relaxed">{topIssuesSummary.summary}</p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {topIssuesSummary.key_points.length > 0 && (
+                        <div>
+                          <h4 className="text-xs uppercase tracking-wider text-white/80 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-white/70" />
+                            Key points
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {topIssuesSummary.key_points.map((item, idx) => (
+                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                                <span className="text-sky-300 mt-1">•</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {topIssuesSummary.actions.length > 0 && (
+                        <div>
+                          <h4 className="text-xs uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-emerald-400" />
+                            Actions
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {topIssuesSummary.actions.map((item, idx) => (
+                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                                <span className="text-emerald-400 mt-1">&rarr;</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
+                      Based on {Math.min(reviewSample.filter((r) => listifyStrings(r.llm_issue_subcategories).some((s) => issueItems.some((e) => (e.subcategory || e.sub_category) === s))).length, 50)} reviews
+                    </p>
+                  </div>
+                ) : topIssuesSummaryLoading ? (
+                  <p className="mt-4 text-sm text-slate-500">Generating summary...</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </Portal>
+      ) : null}
+
+      {topRequestsModalOpen ? (
+        <Portal>
+          <div
+            className="fixed inset-0 z-[9996] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
+            onClick={closeTopRequestsModal}
+            style={{ WebkitBackdropFilter: "blur(12px)" }}
+          >
+            <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
+              <div
+                className="w-full max-w-4xl rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base sm:text-lg font-semibold text-white">Top Feature Requests Summary</h3>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-400">
+                      Cross-category analysis of the top {requestItems.length} feature requests
+                    </p>
+                    {filterScopeLabel && (
+                      <p className="mt-1 text-[11px] sm:text-xs text-sky-400 line-clamp-2">
+                        Filters: {filterScopeLabel}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={handleSummarizeTopRequests}
+                      disabled={topRequestsSummaryLoading}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      {topRequestsSummaryLoading ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Summarizing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          {topRequestsSummary ? "Refresh" : "AI Summary"}
+                        </>
+                      )}
+                    </button>
+                    <Button variant="secondary" onClick={closeTopRequestsModal} className="flex-1 sm:flex-none text-xs sm:text-sm">
+                      Close
+                    </Button>
+                  </div>
+                </div>
+
+                {topRequestsSummaryError && (
+                  <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
+                    <p className="text-sm text-rose-400">{topRequestsSummaryError}</p>
+                  </div>
+                )}
+
+                {topRequestsSummary ? (
+                  <div className="mt-4 space-y-4 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-sky-400 mb-2">Summary</h4>
+                      <p className="text-sm text-slate-200 leading-relaxed">{topRequestsSummary.summary}</p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {topRequestsSummary.key_points.length > 0 && (
+                        <div>
+                          <h4 className="text-xs uppercase tracking-wider text-white/80 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-white/70" />
+                            Key points
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {topRequestsSummary.key_points.map((item, idx) => (
+                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                                <span className="text-sky-300 mt-1">•</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {topRequestsSummary.actions.length > 0 && (
+                        <div>
+                          <h4 className="text-xs uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-emerald-400" />
+                            Actions
+                          </h4>
+                          <ul className="space-y-1.5">
+                            {topRequestsSummary.actions.map((item, idx) => (
+                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                                <span className="text-emerald-400 mt-1">&rarr;</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
+                      Based on {Math.min(reviewSample.filter((r) => listifyStrings(r.llm_request_subcategories).some((s) => requestItems.some((e) => (e.subcategory || e.sub_category) === s))).length, 50)} reviews
+                    </p>
+                  </div>
+                ) : topRequestsSummaryLoading ? (
+                  <p className="mt-4 text-sm text-slate-500">Generating summary...</p>
+                ) : null}
               </div>
             </div>
           </div>

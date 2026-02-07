@@ -15,6 +15,14 @@ def test_calculate_hard_limit_wallet_mode():
     assert credits.calculate_hard_limit(-1, used=10, balance=5) == 15
 
 
+def test_calculate_hard_limit_no_buffer():
+    """Hard limit equals monthly limit (no overage buffer)."""
+    # 5000 limit, 0 used, 5000 balance → no bonus credits, hard limit = 5000
+    assert credits.calculate_hard_limit(5000, used=0, balance=5000) == 5000
+    # 5000 limit, 4000 used, 5000 balance → 4000 bonus, hard limit = 9000
+    assert credits.calculate_hard_limit(5000, used=4000, balance=5000) == 9000
+
+
 def test_check_credits_available_wallet_mode(monkeypatch):
     monkeypatch.setattr(credits, "maybe_reset_billing_period", lambda _user_id: None)
     monkeypatch.setattr(

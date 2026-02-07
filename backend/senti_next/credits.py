@@ -58,8 +58,46 @@ CREDIT_COSTS = {
     "compare_subcategory": 1,
 }
 
-# Soft limit buffer (10% overage allowed)
-SOFT_LIMIT_BUFFER = 0.10
+# ---------------------------------------------------------------------------
+# LLM pricing (USD per 1M tokens) — used for admin dashboard cost estimates
+# ---------------------------------------------------------------------------
+# Format: model_id -> (input_per_1m, output_per_1m)
+LLM_MODEL_PRICING = {
+    "xai:grok-4-1-fast-non-reasoning": (0.20, 0.50),
+    "xai:grok-4-1-fast-reasoning": (0.20, 0.50),
+    "google:gemini-flash-lite-latest": (0.10, 0.40),
+    "google:gemini-2.5-flash-lite": (0.10, 0.40),
+    "google:gemini-2.5-flash": (0.30, 2.50),
+}
+
+# Default pricing for unknown models (Gemini flash lite)
+DEFAULT_LLM_PRICING = (0.10, 0.40)
+
+# Operation -> pricing when model isn't known (deterministic mapping)
+OPERATION_LLM_PRICING = {
+    "classify": (0.20, 0.50),       # xAI Grok
+    # Everything else uses Gemini flash lite → DEFAULT_LLM_PRICING
+}
+
+# ---------------------------------------------------------------------------
+# Estimated average tokens per LLM call (input, output)
+# Used for "expected cost per user" projections on admin dashboard
+# ---------------------------------------------------------------------------
+OPERATION_TOKEN_ESTIMATES = {
+    "classify": (1200, 200),          # xAI: taxonomy prompt + review → JSON
+    "chat_simple": (3000, 800),       # Gemini: system + context + user msg
+    "chat_insights": (3000, 1000),    # Gemini: RAG over reviews
+    "chat_agent": (6000, 2000),       # Gemini: multi-turn tool-calling
+    "summarize": (1500, 400),         # Gemini: subcategory/widget summary
+    "report_summary": (2000, 500),    # Gemini: executive report
+    "translate": (500, 300),          # Gemini: simple translation
+    "compare_overview": (3000, 800),  # Gemini: multi-game comparison
+    "compare_category": (2500, 600),
+    "compare_subcategory": (2000, 400),
+    "summarize_news": (2000, 500),
+    "export_refresh": (2000, 500),
+}
+
 
 
 class InsufficientCreditsError(Exception):
@@ -95,13 +133,13 @@ def _calculate_bonus_credits(balance: int, limit: int, used: int) -> int:
 
 
 def calculate_hard_limit(limit: int, used: int, balance: int) -> int:
-    """Calculate hard limit, including bonus credits (if any)."""
+    """Calculate hard limit — monthly limit plus any bonus credits (no overage buffer)."""
     if limit <= 0:
         used_val = int(used or 0)
         balance_val = int(balance or 0)
         return max(used_val + balance_val, 0)
     bonus = _calculate_bonus_credits(balance, limit, used)
-    return int(limit * (1 + SOFT_LIMIT_BUFFER) + bonus)
+    return int(limit + bonus)
 
 
 def maybe_reset_billing_period(user_id: str) -> None:
@@ -283,20 +321,20 @@ def check_credits_available(user_id: str, amount: int) -> Tuple[bool, str, Dict[
             )
         return (True, "", status)
 
-    # Calculate the hard limit (monthly limit + buffer + any bonus credits)
+    # Calculate the hard limit (monthly limit + any bonus credits)
     hard_limit = calculate_hard_limit(limit, used_this_period, balance)
 
-    # Check if at hard limit
+    # Check if at or over the limit
     if used_this_period >= hard_limit:
         tier_label = TIER_LABELS.get(subscription["tier"], subscription["tier"])
         return (
             False,
-            f"Credit limit exceeded. Your {tier_label} plan allows {limit:,} credits/month. "
+            f"Credit limit reached. Your {tier_label} plan allows {limit:,} credits/month. "
             f"Upgrade your plan or wait for your credits to reset.",
             status,
         )
 
-    # Check if this operation would exceed hard limit
+    # Check if this operation would exceed the limit
     if used_this_period + amount > hard_limit:
         remaining = hard_limit - used_this_period
         return (
@@ -306,25 +344,7 @@ def check_credits_available(user_id: str, amount: int) -> Tuple[bool, str, Dict[
             status,
         )
 
-    # Check if over soft limit (100%) - allow but warn
-    if used_this_period >= limit:
-        return (
-            True,
-            f"Warning: You've exceeded your monthly credit limit ({limit:,}). "
-            f"Operations are allowed up to {hard_limit:,} credits this period but consider upgrading.",
-            status,
-        )
-
-    # Check if this operation would exceed soft limit
-    if used_this_period + amount > limit:
-        return (
-            True,
-            f"Warning: This operation will exceed your monthly credit limit ({limit:,}). "
-            f"You have {max(limit - used_this_period, 0):,} credits remaining in your allowance.",
-            status,
-        )
-
-    # Check if approaching limit (80% threshold) - allow but warn
+    # Check if approaching limit (80% threshold) — allow but warn
     warning_threshold = limit * 0.8
     if used_this_period >= warning_threshold:
         percent_used = int((used_this_period / limit) * 100)
@@ -820,6 +840,10 @@ __all__ = [
     "TIER_LIMITS",
     "TIER_PRICES",
     "CREDIT_COSTS",
+    "LLM_MODEL_PRICING",
+    "DEFAULT_LLM_PRICING",
+    "OPERATION_LLM_PRICING",
+    "OPERATION_TOKEN_ESTIMATES",
     "InsufficientCreditsError",
     "calculate_hard_limit",
     "maybe_reset_billing_period",

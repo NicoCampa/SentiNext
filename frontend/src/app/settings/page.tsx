@@ -44,8 +44,8 @@ export default function SettingsPage() {
 
   const tierCreditsMap: Record<string, string> = {
     free: "1,000 one-time trial credits",
-    indie: "2,500 credits / month",
-    pro: "5,000 credits / month",
+    indie: "5,000 credits / month",
+    pro: "15,000 credits / month",
     max: "Custom credits / month",
   };
 
@@ -439,7 +439,7 @@ export default function SettingsPage() {
                             className="p-2.5 sm:p-3 border border-emerald-500/30 bg-[rgb(10,10,25)] hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                           >
                             <p className="text-xs sm:text-sm font-bold text-emerald-400">Indie</p>
-                            <p className="text-[10px] sm:text-xs text-emerald-400/50 mt-0.5 sm:mt-1">2,500 credits / month</p>
+                            <p className="text-[10px] sm:text-xs text-emerald-400/50 mt-0.5 sm:mt-1">5,000 credits / month</p>
                           </button>
                         )}
                         {(credits.tier === "free" || credits.tier === "indie") && (
@@ -449,7 +449,7 @@ export default function SettingsPage() {
                             className="p-2.5 sm:p-3 border border-sky-500/30 bg-[rgb(10,10,25)] hover:bg-sky-500/10 hover:border-sky-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                           >
                             <p className="text-xs sm:text-sm font-bold text-sky-400">Pro</p>
-                            <p className="text-[10px] sm:text-xs text-sky-400/50 mt-0.5 sm:mt-1">5,000 credits / month</p>
+                            <p className="text-[10px] sm:text-xs text-sky-400/50 mt-0.5 sm:mt-1">15,000 credits / month</p>
                           </button>
                         )}
                         {(credits.tier === "free" || credits.tier === "indie" || credits.tier === "pro") && (

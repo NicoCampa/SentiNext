@@ -874,10 +874,16 @@ class LLMCostSummary(BaseModel):
     cost_input_usd: float = 0.0
     cost_output_usd: float = 0.0
     cost_total_usd: float = 0.0
-    pricing_input_per_1m: float = 0.0
-    pricing_output_per_1m: float = 0.0
     by_operation: List[LLMCostBreakdown] = Field(default_factory=list)
     by_model: List[LLMCostBreakdown] = Field(default_factory=list)
+
+
+class TierCostEstimate(BaseModel):
+    tier: str
+    credits: int
+    light_usd: float = 0.0
+    typical_usd: float = 0.0
+    heavy_usd: float = 0.0
 
 
 class AdminDashboardResponse(BaseModel):
@@ -886,6 +892,7 @@ class AdminDashboardResponse(BaseModel):
     users: UsersSummary
     credits: CreditsSummary
     llm: LLMCostSummary
+    cost_per_user: List[TierCostEstimate] = Field(default_factory=list)
 
 
 class ApiEndpointUsage(BaseModel):
@@ -1002,8 +1009,6 @@ class CreditEstimateResponse(BaseModel):
     credits_needed: int
     current_balance: int
     can_afford: bool
-    would_exceed_soft_limit: bool
-    would_exceed_hard_limit: bool
 
 
 class CheckoutSessionRequest(BaseModel):
@@ -1297,8 +1302,6 @@ def get_credit_estimate(
         credits_needed=credits_needed,
         current_balance=balance,
         can_afford=used + credits_needed <= hard_limit,
-        would_exceed_soft_limit=used + credits_needed > limit,
-        would_exceed_hard_limit=used + credits_needed > hard_limit,
     )
 
 
@@ -2093,7 +2096,7 @@ def summarize_subcategory(
 
 class SummarizeWidgetRequest(BaseModel):
     app_id: int = Field(..., gt=0)
-    widget_kind: str = Field(..., pattern="^(trend_week|segment)$")
+    widget_kind: str = Field(..., pattern="^(trend_week|segment|top_issues|top_requests)$")
     widget_label: str = Field(..., min_length=1, max_length=160)
     context: Dict[str, Any] = Field(default_factory=dict)
     reviews: List[dict] = Field(..., min_length=1, max_length=100)
@@ -3015,6 +3018,70 @@ def get_admin_usage(
         raise HTTPException(status_code=500, detail="Failed to load API usage summary.") from exc
 
 
+def _llm_pricing_for_model(model_id: str) -> tuple:
+    """Return (input_per_1m, output_per_1m) for a model ID."""
+    return credits.LLM_MODEL_PRICING.get(model_id, credits.DEFAULT_LLM_PRICING)
+
+
+def _llm_pricing_for_operation(operation: str) -> tuple:
+    """Return (input_per_1m, output_per_1m) for an operation name."""
+    return credits.OPERATION_LLM_PRICING.get(operation, credits.DEFAULT_LLM_PRICING)
+
+
+def _compute_costs(prompt_tokens: int, response_tokens: int, pricing: tuple) -> Dict[str, float]:
+    input_rate, output_rate = pricing
+    input_cost = (prompt_tokens * input_rate) / 1_000_000
+    output_cost = (response_tokens * output_rate) / 1_000_000
+    return {
+        "input": round(input_cost, 6),
+        "output": round(output_cost, 6),
+        "total": round(input_cost + output_cost, 6),
+    }
+
+
+def _estimate_cost_per_credit(operation: str) -> float:
+    """Estimate LLM cost (USD) per credit spent on an operation."""
+    pricing = _llm_pricing_for_operation(operation)
+    tokens = credits.OPERATION_TOKEN_ESTIMATES.get(operation, (1500, 400))
+    credit_cost = credits.CREDIT_COSTS.get(operation, 1)
+    input_rate, output_rate = pricing
+    llm_cost = (tokens[0] * input_rate + tokens[1] * output_rate) / 1_000_000
+    return llm_cost / max(credit_cost, 1)
+
+
+def _compute_tier_cost_estimates() -> List[TierCostEstimate]:
+    """Compute estimated LLM cost per user for each tier at different usage levels."""
+    # Light: all credits on classify (cheapest per credit)
+    light_cpc = _estimate_cost_per_credit("classify")
+    # Heavy: all credits on chat_agent (most expensive per credit)
+    heavy_cpc = _estimate_cost_per_credit("chat_agent")
+    # Typical: weighted mix — 55% classify, 20% chat, 15% summarize, 5% translate, 5% compare
+    typical_cpc = (
+        0.55 * _estimate_cost_per_credit("classify")
+        + 0.20 * _estimate_cost_per_credit("chat_insights")
+        + 0.15 * _estimate_cost_per_credit("summarize")
+        + 0.05 * _estimate_cost_per_credit("translate")
+        + 0.05 * _estimate_cost_per_credit("compare_overview")
+    )
+
+    estimates = []
+    tiers = [
+        ("free", credits.TRIAL_CREDITS),
+        ("indie", credits.TIER_LIMITS["indie"]),
+        ("pro", credits.TIER_LIMITS["pro"]),
+        ("max", credits.TIER_LIMITS["max"]),
+    ]
+    for tier, cr in tiers:
+        estimates.append(TierCostEstimate(
+            tier=tier,
+            credits=cr,
+            light_usd=round(cr * light_cpc, 4),
+            typical_usd=round(cr * typical_cpc, 4),
+            heavy_usd=round(cr * heavy_cpc, 4),
+        ))
+    return estimates
+
+
 @app.get("/admin/dashboard", response_model=AdminDashboardResponse)
 def get_admin_dashboard(
     days: int = 30,
@@ -3029,50 +3096,20 @@ def get_admin_dashboard(
 
         llm_usage = storage.get_llm_usage_summary(days=safe_days)
 
-        input_rate = float(os.getenv("SENTINEXT_LLM_INPUT_PER_1M_USD", "0.30"))
-        output_rate = float(os.getenv("SENTINEXT_LLM_OUTPUT_PER_1M_USD", "2.50"))
-
-        def _compute_costs(prompt_tokens: int, response_tokens: int) -> Dict[str, float]:
-            input_cost = (prompt_tokens * input_rate) / 1_000_000
-            output_cost = (response_tokens * output_rate) / 1_000_000
-            total_cost = input_cost + output_cost
-            return {
-                "input": round(input_cost, 6),
-                "output": round(output_cost, 6),
-                "total": round(total_cost, 6),
-            }
-
-        total_costs = _compute_costs(
-            int(llm_usage.get("prompt_tokens", 0) or 0),
-            int(llm_usage.get("response_tokens", 0) or 0),
-        )
-
-        by_operation_costs = []
-        for item in llm_usage.get("by_operation", []) or []:
-            prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
-            response_tokens = int(item.get("response_tokens", 0) or 0)
-            costs = _compute_costs(prompt_tokens, response_tokens)
-            by_operation_costs.append(
-                LLMCostBreakdown(
-                    key=str(item.get("operation") or "unknown"),
-                    calls=int(item.get("calls", 0) or 0),
-                    prompt_tokens=prompt_tokens,
-                    response_tokens=response_tokens,
-                    total_tokens=int(item.get("total_tokens", 0) or 0),
-                    cost_input_usd=costs["input"],
-                    cost_output_usd=costs["output"],
-                    cost_total_usd=costs["total"],
-                )
-            )
-
+        # --- per-model costs (most accurate: uses model-specific pricing) ---
         by_model_costs = []
+        total_input_cost = 0.0
+        total_output_cost = 0.0
         for item in llm_usage.get("by_model", []) or []:
+            model_id = str(item.get("model") or "unknown")
             prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
             response_tokens = int(item.get("response_tokens", 0) or 0)
-            costs = _compute_costs(prompt_tokens, response_tokens)
+            costs = _compute_costs(prompt_tokens, response_tokens, _llm_pricing_for_model(model_id))
+            total_input_cost += costs["input"]
+            total_output_cost += costs["output"]
             by_model_costs.append(
                 LLMCostBreakdown(
-                    key=str(item.get("model") or "unknown"),
+                    key=model_id,
                     calls=int(item.get("calls", 0) or 0),
                     prompt_tokens=prompt_tokens,
                     response_tokens=response_tokens,
@@ -3082,6 +3119,29 @@ def get_admin_dashboard(
                     cost_total_usd=costs["total"],
                 )
             )
+
+        # --- per-operation costs (uses operation→model mapping) ---
+        by_operation_costs = []
+        for item in llm_usage.get("by_operation", []) or []:
+            operation = str(item.get("operation") or "unknown")
+            prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
+            response_tokens = int(item.get("response_tokens", 0) or 0)
+            costs = _compute_costs(prompt_tokens, response_tokens, _llm_pricing_for_operation(operation))
+            by_operation_costs.append(
+                LLMCostBreakdown(
+                    key=operation,
+                    calls=int(item.get("calls", 0) or 0),
+                    prompt_tokens=prompt_tokens,
+                    response_tokens=response_tokens,
+                    total_tokens=int(item.get("total_tokens", 0) or 0),
+                    cost_input_usd=costs["input"],
+                    cost_output_usd=costs["output"],
+                    cost_total_usd=costs["total"],
+                )
+            )
+
+        # Total cost derived from per-model sums (most accurate)
+        total_cost_usd = round(total_input_cost + total_output_cost, 6)
 
         mrr = 0.0
         for entry in tier_counts:
@@ -3115,11 +3175,9 @@ def get_admin_dashboard(
             prompt_tokens=int(llm_usage.get("prompt_tokens", 0) or 0),
             response_tokens=int(llm_usage.get("response_tokens", 0) or 0),
             total_tokens=int(llm_usage.get("total_tokens", 0) or 0),
-            cost_input_usd=total_costs["input"],
-            cost_output_usd=total_costs["output"],
-            cost_total_usd=total_costs["total"],
-            pricing_input_per_1m=input_rate,
-            pricing_output_per_1m=output_rate,
+            cost_input_usd=round(total_input_cost, 6),
+            cost_output_usd=round(total_output_cost, 6),
+            cost_total_usd=total_cost_usd,
             by_operation=by_operation_costs,
             by_model=by_model_costs,
         )
@@ -3130,6 +3188,7 @@ def get_admin_dashboard(
             users=users_payload,
             credits=credits_payload,
             llm=llm_payload,
+            cost_per_user=_compute_tier_cost_estimates(),
         )
     except Exception as exc:
         logger.exception("Failed to load admin dashboard: %s", exc)

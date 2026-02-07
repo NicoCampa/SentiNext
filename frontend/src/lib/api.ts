@@ -1010,10 +1010,16 @@ export interface AdminDashboardLlm {
   cost_input_usd: number;
   cost_output_usd: number;
   cost_total_usd: number;
-  pricing_input_per_1m: number;
-  pricing_output_per_1m: number;
   by_operation: AdminDashboardLlmBreakdown[];
   by_model: AdminDashboardLlmBreakdown[];
+}
+
+export interface TierCostEstimate {
+  tier: string;
+  credits: number;
+  light_usd: number;
+  typical_usd: number;
+  heavy_usd: number;
 }
 
 export interface AdminDashboardSummary {
@@ -1022,6 +1028,7 @@ export interface AdminDashboardSummary {
   users: AdminDashboardUsers;
   credits: AdminDashboardCredits;
   llm: AdminDashboardLlm;
+  cost_per_user: TierCostEstimate[];
 }
 
 export async function fetchAdminDashboardSummary(params: {
@@ -1257,8 +1264,6 @@ export interface CreditEstimate {
   credits_needed: number;
   current_balance: number;
   can_afford: boolean;
-  would_exceed_soft_limit: boolean;
-  would_exceed_hard_limit: boolean;
 }
 
 export interface CheckoutResponse {
@@ -1388,7 +1393,7 @@ export async function summarizeSubcategory(
 
 export interface WidgetSummaryPayload {
   app_id: number;
-  widget_kind: 'trend_week' | 'segment';
+  widget_kind: 'trend_week' | 'segment' | 'top_issues' | 'top_requests';
   widget_label: string;
   context?: Record<string, unknown>;
   reviews: Array<{

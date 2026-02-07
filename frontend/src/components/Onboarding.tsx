@@ -7,6 +7,7 @@ import { Button } from './ui/button';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SentiNextLogo } from './SentiNextLogo';
+import { createCheckoutSession } from '@/lib/api';
 
 const TOTAL_STEPS = 5;
 
@@ -104,7 +105,7 @@ export function Onboarding() {
             {currentStep === 1 && <StepSearchAnalyze />}
             {currentStep === 2 && <StepInsights />}
             {currentStep === 3 && <StepAIFeatures />}
-            {currentStep === 4 && <StepPricing />}
+            {currentStep === 4 && <StepPricing onComplete={markOnboardingComplete} />}
           </div>
 
           {/* Navigation buttons */}
@@ -467,8 +468,29 @@ function StepAIFeatures() {
   );
 }
 
-function StepPricing() {
+function StepPricing({ onComplete }: { onComplete: () => void }) {
   const { t } = useLanguage();
+  const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
+
+  async function handleSubscribe(tier: "indie" | "pro") {
+    setUpgradeLoading(tier);
+    try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const result = await createCheckoutSession(
+        tier,
+        `${baseUrl}/dashboard?view=home&upgrade=success`,
+        `${baseUrl}/dashboard?view=home&upgrade=cancelled`,
+        "monthly"
+      );
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      }
+    } catch (err) {
+      console.error("Failed to create checkout session", err);
+    } finally {
+      setUpgradeLoading(null);
+    }
+  }
 
   const tiers = [
     {
@@ -478,7 +500,9 @@ function StepPricing() {
       credits: t('onboarding.tier.trialCredits'),
       color: 'border-t-slate-400',
       textColor: 'text-slate-300',
+      btnClass: 'border-slate-500/30 text-slate-300 hover:bg-slate-500/10',
       badge: null,
+      action: 'free' as const,
     },
     {
       name: t('onboarding.tier.indie'),
@@ -487,7 +511,9 @@ function StepPricing() {
       credits: t('onboarding.tier.indieCredits'),
       color: 'border-t-emerald-500',
       textColor: 'text-emerald-400',
+      btnClass: 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10',
       badge: null,
+      action: 'indie' as const,
     },
     {
       name: t('onboarding.tier.pro'),
@@ -496,7 +522,9 @@ function StepPricing() {
       credits: t('onboarding.tier.proCredits'),
       color: 'border-t-sky-500',
       textColor: 'text-sky-400',
+      btnClass: 'border-sky-500/40 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20',
       badge: t('onboarding.tier.popular'),
+      action: 'pro' as const,
     },
     {
       name: t('onboarding.tier.enterprise'),
@@ -505,7 +533,9 @@ function StepPricing() {
       credits: t('onboarding.tier.custom'),
       color: 'border-t-purple-500',
       textColor: 'text-purple-400',
+      btnClass: 'border-purple-500/30 text-purple-400 hover:bg-purple-500/10',
       badge: null,
+      action: 'enterprise' as const,
     },
   ];
 
@@ -531,7 +561,7 @@ function StepPricing() {
         {tiers.map((tier, i) => (
           <div
             key={i}
-            className={`relative bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 border-t-2 ${tier.color} p-3 animate-fade-slide-up`}
+            className={`relative bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 border-t-2 ${tier.color} p-3 animate-fade-slide-up flex flex-col`}
             style={{ animationDelay: `${i * 80}ms` }}
           >
             {tier.badge && (
@@ -550,6 +580,29 @@ function StepPricing() {
                 <span className="text-[10px] text-white font-medium ml-auto">{tier.credits}</span>
               </div>
             </div>
+            {/* Action button */}
+            <button
+              onClick={() => {
+                if (tier.action === 'free') {
+                  onComplete();
+                } else if (tier.action === 'enterprise') {
+                  onComplete();
+                  window.location.href = '/support';
+                } else {
+                  handleSubscribe(tier.action);
+                }
+              }}
+              disabled={upgradeLoading !== null}
+              className={`mt-auto pt-3 w-full py-1.5 border text-[10px] uppercase tracking-wider transition-all disabled:opacity-50 ${tier.btnClass}`}
+            >
+              {upgradeLoading === tier.action
+                ? '...'
+                : tier.action === 'free'
+                ? t('onboarding.tier.tryFree')
+                : tier.action === 'enterprise'
+                ? t('onboarding.tier.contactUs')
+                : t('onboarding.tier.subscribe')}
+            </button>
           </div>
         ))}
       </div>

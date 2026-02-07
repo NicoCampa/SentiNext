@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useMemo } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
@@ -13,6 +13,7 @@ import { useSupportNotification } from "@/contexts/SupportNotificationContext";
 import { useTracking } from "@/hooks/useTracking";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 import { SentiNextLogo } from "@/components/SentiNextLogo";
+import { createCheckoutSession } from "@/lib/api";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -36,6 +37,27 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { user } = useUser();
   const { isAdmin } = useAdminStatus();
   const { credits } = useCredits();
+  const [sidebarUpgradeLoading, setSidebarUpgradeLoading] = useState<string | null>(null);
+
+  async function handleSidebarUpgrade(tier: "indie" | "pro") {
+    setSidebarUpgradeLoading(tier);
+    try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const result = await createCheckoutSession(
+        tier,
+        `${baseUrl}/settings?upgrade=success`,
+        `${baseUrl}/settings?upgrade=cancelled`,
+        "monthly"
+      );
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      }
+    } catch (err) {
+      console.error("Failed to create checkout session", err);
+    } finally {
+      setSidebarUpgradeLoading(null);
+    }
+  }
   const { userUnreadCount, adminUnreadCount, showWelcomeBadge } = useSupportNotification();
   const track = useTracking();
   const compact = density === "compact";
@@ -167,6 +189,36 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Bottom section */}
             <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
+              {/* Upgrade Banner for Free Users */}
+              {credits?.tier === "free" && (
+                <div className="border border-[rgb(0,255,255)]/20 bg-gradient-to-b from-[rgb(0,255,255)]/5 to-transparent p-3 space-y-2.5">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/70 mb-1">
+                      {t('upgrade.banner')}
+                    </p>
+                    <p className="text-[10px] text-[rgb(150,150,170)] leading-snug">
+                      {t('upgrade.unlockMore')}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => handleSidebarUpgrade("indie")}
+                      disabled={sidebarUpgradeLoading !== null}
+                      className="py-1.5 border border-emerald-500/30 text-[10px] uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50"
+                    >
+                      {sidebarUpgradeLoading === "indie" ? "..." : "Indie $10/mo"}
+                    </button>
+                    <button
+                      onClick={() => handleSidebarUpgrade("pro")}
+                      disabled={sidebarUpgradeLoading !== null}
+                      className="py-1.5 border border-sky-500/30 text-[10px] uppercase tracking-wider text-sky-400 hover:bg-sky-500/10 transition-all disabled:opacity-50"
+                    >
+                      {sidebarUpgradeLoading === "pro" ? "..." : "Pro $20/mo"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Combined User Profile + Settings */}
               <SignedIn>
                 <div className="border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)]/50 overflow-hidden">

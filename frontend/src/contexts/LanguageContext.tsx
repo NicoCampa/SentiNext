@@ -192,7 +192,7 @@ const translations: Record<Language, Record<string, string>> = {
     'compare.analyzeFirst': 'Analyze some games first to compare them here.',
     'compare.selectGamesDesc': 'Select Games',
     'compare.selected': 'Selected',
-    'compare.visual Comparison': 'Visual comparison across all categories',
+    'compare.visualComparison': 'Visual comparison across all categories',
     'compare.swapPrompt': 'Only 2 games can be compared. Swap in {game}?',
     'compare.swapHint': 'Choose a game to replace.',
     'compare.swapReplace': 'Replace {game}',
@@ -316,6 +316,11 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.tier.classifyCost': 'Classify: 1 credit',
     'onboarding.tier.chatCost': 'Chat: 2 credits',
     'onboarding.tier.summaryCost': 'Summary: 1 credit',
+    'onboarding.tier.subscribe': 'Subscribe',
+    'onboarding.tier.tryFree': 'Try for Free',
+    'onboarding.tier.contactUs': 'Contact Us',
+    'upgrade.banner': 'Upgrade your plan',
+    'upgrade.unlockMore': 'Get more credits and unlock full potential',
   },
   it: {
     // Navigation
@@ -620,6 +625,11 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.tier.classifyCost': 'Classifica: 1 credito',
     'onboarding.tier.chatCost': 'Chat: 2 crediti',
     'onboarding.tier.summaryCost': 'Riassunto: 1 credito',
+    'onboarding.tier.subscribe': 'Abbonati',
+    'onboarding.tier.tryFree': 'Prova Gratis',
+    'onboarding.tier.contactUs': 'Contattaci',
+    'upgrade.banner': 'Aggiorna il tuo piano',
+    'upgrade.unlockMore': 'Ottieni più crediti e sblocca tutto il potenziale',
   },
   fr: {
     // Navigation
@@ -924,6 +934,11 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.tier.classifyCost': 'Classifier : 1 crédit',
     'onboarding.tier.chatCost': 'Chat : 2 crédits',
     'onboarding.tier.summaryCost': 'Résumé : 1 crédit',
+    'onboarding.tier.subscribe': 'S\'abonner',
+    'onboarding.tier.tryFree': 'Essai Gratuit',
+    'onboarding.tier.contactUs': 'Contactez-nous',
+    'upgrade.banner': 'Améliorez votre plan',
+    'upgrade.unlockMore': 'Obtenez plus de crédits et débloquez tout le potentiel',
   },
   de: {
     // Navigation
@@ -1228,6 +1243,11 @@ const translations: Record<Language, Record<string, string>> = {
     'onboarding.tier.classifyCost': 'Klassifizieren: 1 Credit',
     'onboarding.tier.chatCost': 'Chat: 2 Credits',
     'onboarding.tier.summaryCost': 'Zusammenfassung: 1 Credit',
+    'onboarding.tier.subscribe': 'Abonnieren',
+    'onboarding.tier.tryFree': 'Kostenlos testen',
+    'onboarding.tier.contactUs': 'Kontaktieren',
+    'upgrade.banner': 'Plan upgraden',
+    'upgrade.unlockMore': 'Mehr Credits erhalten und volles Potenzial freischalten',
   },
 };
 

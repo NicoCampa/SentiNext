@@ -3086,6 +3086,116 @@ $reviews_text
     )
 )
 
+_SUMMARIZE_WIDGET_TOP_ISSUES_PROMPT = Template(
+    dedent(
+        """\
+You are analyzing the TOP REPORTED ISSUES across all categories for a Steam game.
+These are the most frequently mentioned problems, aggregated across multiple review subcategories.
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+TOP ISSUES OVERVIEW:
+$widget_label
+
+WIDGET CONTEXT (structured):
+$widget_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews with issues: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Languages (top): $language_mix
+- Issue-tagged reviews: $issue_rate
+
+TOP TAGGED ISSUES (count of reviews mentioning the issue):
+$top_issues
+
+TOP TAGGED REQUESTS (count of reviews mentioning the request):
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence executive overview of the most critical player issues>",
+  "key_points": ["<key issue pattern 1>", "<key issue pattern 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Focus on cross-cutting PATTERNS: what are the biggest pain points across categories?
+- Prioritize by severity and frequency — most impactful issues first.
+- Distinguish between bugs (fixable) and design complaints (debatable).
+- key_points: 3-6 bullets summarizing the main issue themes, grounded in review evidence.
+- actions: EXACTLY 3 prioritized, developer-actionable fixes (start each with a verb).
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
+    )
+)
+
+_SUMMARIZE_WIDGET_TOP_REQUESTS_PROMPT = Template(
+    dedent(
+        """\
+You are analyzing the TOP FEATURE REQUESTS across all categories for a Steam game.
+These are the most frequently requested improvements, aggregated across multiple review subcategories.
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+TOP REQUESTS OVERVIEW:
+$widget_label
+
+WIDGET CONTEXT (structured):
+$widget_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews with requests: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Languages (top): $language_mix
+- Request-tagged reviews: $request_rate
+
+TOP TAGGED ISSUES (count of reviews mentioning the issue):
+$top_issues
+
+TOP TAGGED REQUESTS (count of reviews mentioning the request):
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence overview of what players want most and why it matters>",
+  "key_points": ["<top request theme 1>", "<top request theme 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"]
+}
+
+RULES:
+- Focus on cross-cutting DEMAND patterns: what do players want most across all categories?
+- Prioritize by demand level and potential impact on player satisfaction.
+- Distinguish between "nice to have" quality-of-life changes and "deal-breaker" missing features.
+- key_points: 3-6 bullets summarizing the main request themes, grounded in review evidence.
+- actions: EXACTLY 3 prioritized, developer-actionable improvements (start each with a verb).
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
+    )
+)
+
 _REPORT_SUMMARY_PROMPT = Template(
     dedent(
         """You are a product insights analyst. Summarize the monthly Steam review data into a concise executive brief.
@@ -3587,7 +3697,7 @@ def summarize_widget_reviews(
 
     # Compact context formatting (avoid dumping raw JSON).
     context_lines: list[str] = []
-    for key in ("week_range", "segment_type", "segment_key", "segment_criteria", "filters", "query", "baseline"):
+    for key in ("week_range", "segment_type", "segment_key", "segment_criteria", "filters", "query", "baseline", "top_subcategories"):
         value = widget_context.get(key)
         if value is None:
             continue
@@ -3608,6 +3718,10 @@ def summarize_widget_reviews(
         prompt_template = _SUMMARIZE_WIDGET_RECENT_REVIEWS_PROMPT
     elif widget_kind == "trend_week":
         prompt_template = _SUMMARIZE_WIDGET_TREND_WEEK_PROMPT
+    elif widget_kind == "top_issues":
+        prompt_template = _SUMMARIZE_WIDGET_TOP_ISSUES_PROMPT
+    elif widget_kind == "top_requests":
+        prompt_template = _SUMMARIZE_WIDGET_TOP_REQUESTS_PROMPT
     elif widget_kind == "segment":
         segment_type = str(widget_context.get("segment_type") or "").strip().lower()
         if segment_type == "language":

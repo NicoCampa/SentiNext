@@ -854,7 +854,7 @@ export default function AdminPage() {
 
               <div className="mt-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
-                  Top LLM Costs
+                  LLM Costs by Operation
                 </p>
                 <div className="space-y-2">
                   {adminDashboard.llm.by_operation.slice(0, 5).map((item, idx) => (
@@ -868,6 +868,74 @@ export default function AdminPage() {
                   )}
                 </div>
               </div>
+
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                  LLM Costs by Model
+                </p>
+                <div className="space-y-2">
+                  {adminDashboard.llm.by_model.map((item, idx) => (
+                    <div key={`${item.key}-${idx}`} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400 truncate mr-2">{item.key}</span>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="font-mono text-amber-300">${item.cost_total_usd.toFixed(4)}</span>
+                        <span className="font-mono text-slate-500">{item.calls.toLocaleString()} calls</span>
+                      </div>
+                    </div>
+                  ))}
+                  {adminDashboard.llm.by_model.length === 0 && (
+                    <p className="text-xs text-slate-500">No model data available.</p>
+                  )}
+                </div>
+              </div>
+
+              {adminDashboard.cost_per_user && adminDashboard.cost_per_user.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-1">
+                    Expected LLM Cost Per User
+                  </p>
+                  <p className="text-[10px] text-slate-600 mb-3">
+                    Estimated provider cost per user if all credits are consumed
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10">
+                          <th className="text-left py-1.5 text-slate-500 font-medium">Tier</th>
+                          <th className="text-right py-1.5 text-slate-500 font-medium">Credits</th>
+                          <th className="text-right py-1.5 text-green-400/70 font-medium">Light</th>
+                          <th className="text-right py-1.5 text-amber-400/70 font-medium">Typical</th>
+                          <th className="text-right py-1.5 text-red-400/70 font-medium">Heavy</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminDashboard.cost_per_user.map((est) => (
+                          <tr key={est.tier} className="border-b border-white/5">
+                            <td className="py-1.5 text-slate-300">
+                              {TIER_LABELS[est.tier] ?? est.tier}
+                            </td>
+                            <td className="py-1.5 text-right font-mono text-slate-400">
+                              {est.credits.toLocaleString()}
+                            </td>
+                            <td className="py-1.5 text-right font-mono text-green-400">
+                              ${est.light_usd.toFixed(2)}
+                            </td>
+                            <td className="py-1.5 text-right font-mono text-amber-300">
+                              ${est.typical_usd.toFixed(2)}
+                            </td>
+                            <td className="py-1.5 text-right font-mono text-red-400">
+                              ${est.heavy_usd.toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[10px] text-slate-600 mt-2">
+                    Light = all classify &middot; Typical = 55% classify + 20% chat + 15% summary + 10% other &middot; Heavy = all chat agent
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-xs text-rose-400">{adminDashboardError ?? "No dashboard data available."}</p>
