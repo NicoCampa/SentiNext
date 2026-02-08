@@ -573,8 +573,8 @@ export default function AdminPage() {
         setGrantError("All fields are required");
         return;
       }
-      if (amount <= 0 || amount > 100000) {
-        setGrantError("Amount must be between 1 and 100,000");
+      if (amount === 0 || amount < -100000 || amount > 100000) {
+        setGrantError("Amount must be between -100,000 and 100,000 (non-zero)");
         return;
       }
 
@@ -584,8 +584,9 @@ export default function AdminPage() {
         reason: creditReason,
       });
 
+      const action = amount < 0 ? "deducted" : "granted";
       setGrantSuccess(
-        `Successfully granted ${result.amount_granted} credits. New balance: ${result.new_balance}`
+        `Successfully ${action} ${Math.abs(result.amount_granted)} credits. New balance: ${result.new_balance}`
       );
       setCreditUserId("");
       setCreditAmount("");
@@ -1081,7 +1082,7 @@ export default function AdminPage() {
 
         {/* Credits Management Section */}
         <Card variant="glass" className={`mb-4 p-5 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
-          <h2 className="text-sm font-semibold text-white mb-3">Grant Credits</h2>
+          <h2 className="text-sm font-semibold text-white mb-3">Manage Credits</h2>
           <form onSubmit={handleGrantCredits} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
@@ -1102,7 +1103,7 @@ export default function AdminPage() {
                   value={creditAmount}
                   onChange={(e) => setCreditAmount(e.target.value)}
                   placeholder="1000"
-                  min="1"
+                  min="-100000"
                   max="100000"
                   className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
                   disabled={grantingCredits}
@@ -1135,7 +1136,7 @@ export default function AdminPage() {
                 size="sm"
                 disabled={grantingCredits || !creditUserId || !creditAmount || !creditReason}
               >
-                {grantingCredits ? "Granting..." : "Grant Credits"}
+                {grantingCredits ? "Processing..." : "Submit"}
               </Button>
             </div>
           </form>
