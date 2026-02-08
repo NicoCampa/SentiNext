@@ -7,5 +7,5 @@ export default async function Product({ params }: { params: Promise<{ lang: stri
     const locale = normalizeLocale(lang);
     const dict = await getDictionary(locale);
 
-    return <ProductClient dict={dict} lang={locale} />;
+    return <ProductClient dict={dict} />;
 }

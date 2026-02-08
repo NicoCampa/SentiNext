@@ -23,7 +23,6 @@ export function GameLimitBar() {
   const tierLabelMap: Record<string, string> = {
     free: "Free",
     indie: "Indie",
-    pro: "Pro",
     max: "Enterprise",
   };
   const tierLabel = tierLabelMap[tier] ?? tier;
@@ -31,7 +30,7 @@ export function GameLimitBar() {
   // Game-based limits - all tiers have limits now
   const gamesUsed = credits.games_used ?? 0;
   // Fallback limits if backend hasn't been updated yet
-  const defaultLimits: Record<string, number | null> = { free: 3, indie: 10, pro: 25, max: null };
+  const defaultLimits: Record<string, number | null> = { free: 3, indie: 10, max: null };
   const rawLimit = credits.games_limit ?? defaultLimits[tier] ?? null;
   const isUnlimited = rawLimit === null;
   const gamesLimit = isUnlimited ? 0 : rawLimit;
@@ -45,7 +44,6 @@ export function GameLimitBar() {
     if (isAtGameLimit) return "bg-rose-500";
     if (gamesUsed >= gamesLimit - 1) return "bg-amber-400";
     if (tier === "max") return "bg-purple-500";
-    if (tier === "pro") return "bg-sky-400";
     if (tier === "indie") return "bg-emerald-500";
     return "bg-[rgb(0,255,255)]";
   };
@@ -54,14 +52,12 @@ export function GameLimitBar() {
     if (isAtGameLimit) return "text-rose-400";
     if (gamesUsed >= gamesLimit - 1) return "text-amber-400";
     if (tier === "max") return "text-purple-400";
-    if (tier === "pro") return "text-sky-400";
     if (tier === "indie") return "text-emerald-400";
     return "text-[rgb(0,255,255)]";
   };
 
   const getTierColor = () => {
     if (tier === "max") return "text-purple-400";
-    if (tier === "pro") return "text-sky-400";
     if (tier === "indie") return "text-emerald-400";
     return "text-[rgb(0,255,255)]";
   };
@@ -69,7 +65,6 @@ export function GameLimitBar() {
   const getBorderClass = () => {
     if (isAtGameLimit) return "border-rose-500/30 bg-rose-500/5";
     if (tier === "max") return "border-purple-500/20 bg-purple-500/5 hover:border-purple-500/40";
-    if (tier === "pro") return "border-sky-500/20 bg-sky-500/5 hover:border-sky-500/40";
     if (tier === "indie") return "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40";
     return "border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)]/50";
   };
@@ -77,27 +72,24 @@ export function GameLimitBar() {
   const getUpgradeMessage = () => {
     if (tier === "free") return "Upgrade to Indie to analyze more games";
     if (tier === "indie") return "Contact us for Enterprise";
-    if (tier === "pro") return "Upgrade to Enterprise for unlimited games";
     return "You're on the Enterprise plan";
   };
 
   const getButtonText = () => {
     if (isAtGameLimit) return "Upgrade Now";
     if (tier === "free") return "Upgrade to Indie";
-    if (tier === "indie") return "Contact Sales";
-    if (tier === "pro") return "Contact Sales";
+    if (tier === "indie") return "Contact Support";
     return "Manage Plan";
   };
 
   const getButtonClass = () => {
     if (isAtGameLimit) return "border-rose-500/30 text-rose-400 hover:bg-rose-500/10";
     if (tier === "max") return "border-purple-500/30 text-purple-400 hover:bg-purple-500/10";
-    if (tier === "pro") return "border-sky-500/30 text-sky-400 hover:bg-sky-500/10";
     if (tier === "indie") return "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10";
     return "border-[rgb(0,255,255)]/30 text-[rgb(0,255,255)] hover:bg-[rgb(0,255,255)]/10";
   };
 
-  const actionHref = tier === "pro" || tier === "max" ? "/support" : "/settings";
+  const actionHref = tier === "max" || tier === "indie" ? "/support" : "/settings";
 
   return (
     <div className={`p-3 border ${getBorderClass()}`}>

@@ -99,7 +99,6 @@ const CHART_BLOCK_RE = /```(?:chart|chartjs|chart-json)\n([\s\S]*?)```/gi;
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
   indie: "Indie",
-  pro: "Pro",
   max: "Enterprise",
 };
 

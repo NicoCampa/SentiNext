@@ -675,6 +675,7 @@ class AnalysisStatusResponse(BaseModel):
     snapshot_hash: Optional[str] = None
     stale: bool = False
     stale_reason: Optional[str] = None
+    data_refreshed: bool = False
 
 
 class LicenseStatusResponse(BaseModel):
@@ -1014,7 +1015,7 @@ class CreditEstimateResponse(BaseModel):
 
 
 class CheckoutSessionRequest(BaseModel):
-    tier: str = Field(..., pattern="^(indie|pro)$")
+    tier: str = Field(..., pattern="^(indie)$")
     success_url: str
     cancel_url: str
     billing_period: str = Field(default="monthly", pattern="^(monthly|annual)$")
@@ -1915,6 +1916,62 @@ def get_analysis_result(
     except Exception:
         logger.warning("Failed to compare app context hash for %s", app_id)
 
+    # Auto-refresh: if the underlying reviews have changed since this analysis
+    # ran (e.g. another user refreshed the same game), rebuild insights inline.
+    # This is cheap — no LLM calls, just re-apply existing labels and recompute
+    # aggregations (~100ms).
+    data_refreshed = False
+    stored_fingerprint = (metadata_payload or {}).get("review_fingerprint")
+    if stored_fingerprint and result.get("status") == "completed":
+        try:
+            current_fingerprint = storage.get_reviews_fingerprint(app_id)
+            if current_fingerprint and current_fingerprint != stored_fingerprint:
+                stored_reviews = storage.load_reviews(app_id)
+                if stored_reviews:
+                    df = build_reviews_dataframe(stored_reviews)
+                    if df is not None and not df.empty:
+                        llm_labels = storage.load_review_labels(app_id)
+                        df = llm.apply_review_labels(df, llm_labels)
+                        insights = prepare_insights(df)
+
+                        # Update fingerprint and retrieved count in metadata
+                        metadata_payload["review_fingerprint"] = current_fingerprint
+                        metadata_payload["retrieved"] = len(stored_reviews)
+                        metadata = AnalyzeMetadata(**metadata_payload)
+
+                        # Export reviews sample
+                        export_columns = [col for col in REVIEW_EXPORT_COLUMNS if col in df.columns]
+                        if export_columns:
+                            sample_limit = min(SAMPLE_LIMIT, df.shape[0])
+                            reviews_payload = json.loads(
+                                df[export_columns]
+                                .head(sample_limit)
+                                .to_json(orient="records", date_format="iso", date_unit="s")
+                            )
+                        else:
+                            reviews_payload = []
+
+                        # Persist so subsequent GETs don't rebuild again
+                        storage.save_analysis_result(
+                            user_id=user_id,
+                            app_id=app_id,
+                            metadata=metadata_payload,
+                            insights=insights,
+                            reviews=reviews_payload,
+                            status="completed",
+                            run_id=result.get("run_id"),
+                            snapshot_hash=result.get("snapshot_hash"),
+                            context_hash=result.get("context_hash"),
+                        )
+
+                        # Use rebuilt data for this response
+                        result["insights"] = insights
+                        result["reviews"] = reviews_payload
+                        data_refreshed = True
+                        logger.info("Auto-refreshed insights for app %s (user %s) — review pool changed", app_id, user_id)
+        except Exception:
+            logger.warning("Auto-refresh failed for app %s, serving cached data", app_id)
+
     return AnalysisStatusResponse(
         status=result.get("status", "unknown"),
         metadata=metadata,
@@ -1925,6 +1982,7 @@ def get_analysis_result(
         snapshot_hash=result.get("snapshot_hash"),
         stale=bool(result.get("stale")),
         stale_reason=stale_reason,
+        data_refreshed=data_refreshed,
     )
 
 
@@ -3213,7 +3271,7 @@ def get_admin_dashboard(
 
 class GrantCreditsRequest(BaseModel):
     user_id: str
-    amount: int = Field(..., gt=0, le=100000)
+    amount: int = Field(..., ge=-100000, le=100000)
     reason: str = Field(..., min_length=1, max_length=200)
 
 
@@ -3231,13 +3289,16 @@ def grant_credits_to_user(
 ) -> GrantCreditsResponse:
     """Grant credits to a user (admin only)."""
     try:
+        if payload.amount == 0:
+            raise HTTPException(status_code=400, detail="Amount cannot be zero")
+        action = "deduct" if payload.amount < 0 else "grant"
         new_balance = credits.add_credits(
             user_id=payload.user_id,
             amount=payload.amount,
             reason=payload.reason,
-            description=f"Admin grant: {payload.reason}",
+            description=f"Admin {action}: {payload.reason}",
         )
-        logger.info(f"Admin granted {payload.amount} credits to user {payload.user_id}")
+        logger.info(f"Admin {action} {abs(payload.amount)} credits for user {payload.user_id}")
         return GrantCreditsResponse(
             user_id=payload.user_id,
             amount_granted=payload.amount,

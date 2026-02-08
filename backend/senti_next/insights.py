@@ -19,7 +19,7 @@ from .analysis import (
     summarize_sentiment,
     core_fan_disappointment,
     refund_risk_index,
-    churn_signal_rate,
+
     veteran_benchmarking,
     experience_level_issues,
     purchase_type_insights,
@@ -315,8 +315,6 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
             "risk": {
                 "refund_risk": 0.0,
                 "core_fan_disappointment": 0.0,
-                "churn_window_default": 0,
-                "churn_rate": 0.0,
             },
             "subcategory_insights": [],
             "theme": derive_theme(metrics),
@@ -433,8 +431,6 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
         "risk": {
             "refund_risk": refund_risk_index(df),
             "core_fan_disappointment": core_fan_disappointment(df),
-            "churn_window_default": 7,
-            "churn_rate": churn_signal_rate(df, window_days=7),
         },
         "subcategory_insights": subcategory_insights,
         "player_segments": {

@@ -3,12 +3,9 @@ import Link from "next/link";
 import { Terminal, Search, BarChart2 } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 import type { ReactNode } from "react";
-import { normalizeLocale } from "@/lib/i18n";
 
-export default async function DocsIndex({ params }: { params: Promise<{ lang: string }> }) {
-    const { lang } = await params;
-    const locale = normalizeLocale(lang);
-    const dict = await getDictionary(locale);
+export default async function DocsIndex() {
+    const dict = await getDictionary("en");
 
     return (
         <div className="space-y-12 pb-20">
@@ -24,43 +21,39 @@ export default async function DocsIndex({ params }: { params: Promise<{ lang: st
                     icon={<Terminal className="h-5 w-5" />}
                     title={dict.docs.quickStart.title}
                     description={dict.docs.quickStart.description}
-                    href={`/${locale}/docs/getting-started`}
+                    href="/en/docs/getting-started"
                 />
                 <DocsCard
                     icon={<Search className="h-5 w-5" />}
                     title={dict.docs.dataIngestion.title}
                     description={dict.docs.dataIngestion.description}
-                    href={`/${locale}/docs/ingesting-reviews`}
+                    href="/en/docs/ingesting-reviews"
                 />
                 <DocsCard
                     icon={<BarChart2 className="h-5 w-5" />}
                     title={dict.docs.aiTaxonomy.title}
                     description={dict.docs.aiTaxonomy.description}
-                    href={`/${locale}/docs/insights-and-taxonomy`}
+                    href="/en/docs/insights-and-taxonomy"
                 />
             </div>
 
             <section className="space-y-6">
                 <h2 className="text-3xl font-bold tracking-tighter uppercase">
-                    {lang === 'it' ? 'Panoramica Prodotto' : lang === 'fr' ? 'Aperçu du Produit' : lang === 'de' ? 'Produktübersicht' : 'Product Overview'}
+                    Product Overview
                 </h2>
                 <div className="prose prose-invert max-w-none space-y-6">
                     <p>
-                        {lang === 'it'
-                            ? "SENTINEXT analizza le recensioni Steam pubbliche del tuo gioco e le trasforma in insight strutturati: tassonomia coerente, citazioni di evidenza e metriche utili per decidere cosa fare dopo."
-                            : "SENTINEXT analyzes public Steam reviews for your game and turns them into structured insights: a consistent taxonomy, evidence quotes, and metrics to decide what to do next."}
+                        SENTINEXT analyzes public Steam reviews for your game and turns them into structured insights: a consistent taxonomy, evidence quotes, and metrics to decide what to do next.
                     </p>
                     <p>
-                        {lang === 'it'
-                            ? "Dopo aver analizzato un gioco, puoi:"
-                            : "After you analyze a game, you can:"}
+                        After you analyze a game, you can:
                     </p>
                     <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 list-none p-0">
                         {[
-                            lang === 'it' ? "Vedere problemi e richieste più frequenti, con citazioni" : "See top issues and requests, backed by quotes",
-                            lang === 'it' ? "Esplorare recensioni etichettate e fare drill‑down" : "Explore labeled reviews and drill down into details",
-                            lang === 'it' ? "Fare domande via chat con grafici/citazioni" : "Ask questions via chat with charts/quotes",
-                            lang === 'it' ? "Confrontare giochi ed esportare dataset/report" : "Compare games and export datasets/reports"
+                            "See top issues and requests, backed by quotes",
+                            "Explore labeled reviews and drill down into details",
+                            "Ask questions via chat with charts/quotes",
+                            "Compare games and export datasets/reports"
                         ].map((item, i) => (
                             <li key={i} className="flex items-center gap-3 p-4 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm m-0">
                                 <span className="text-[#00F0FF] font-mono font-bold">{" >> "}</span>

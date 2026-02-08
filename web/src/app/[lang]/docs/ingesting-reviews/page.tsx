@@ -1,9 +1,7 @@
 "use client";
 
-import { use } from "react";
 import { Search, Database, ShieldCheck } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
-import { normalizeLocale } from "@/lib/i18n";
 import type { ReactNode } from "react";
 
 const fadeSlideUp = (delay: number): React.CSSProperties => ({
@@ -12,9 +10,7 @@ const fadeSlideUp = (delay: number): React.CSSProperties => ({
     animationDelay: `${delay}ms`,
 });
 
-export default function IngestingReviewsPage({ params }: { params: Promise<{ lang: string }> }) {
-    const { lang } = use(params);
-    const locale = normalizeLocale(lang);
+export default function IngestingReviewsPage() {
     const langBars = [
         { lang: "English", pct: 45 },
         { lang: "Chinese", pct: 18 },
@@ -34,58 +30,44 @@ export default function IngestingReviewsPage({ params }: { params: Promise<{ lan
 
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">
-                    {locale === 'it' ? 'Importazione Recensioni' : 'Review Ingestion'}
+                    Review Ingestion
                 </h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    {locale === 'it'
-                        ? <>SENTINEXT recupera le recensioni Steam pubbliche per un dato <code>AppID</code> e le salva per analisi, ricerca ed esportazione.</>
-                        : <>SENTINEXT fetches public Steam reviews for a given <code>AppID</code> and stores them so you can analyze, search, and export them later.</>}
+                    SENTINEXT fetches public Steam reviews for a given <code>AppID</code> and stores them so you can analyze, search, and export them later.
                 </p>
             </section>
 
             <div className="space-y-16 mt-16">
                 <DocsStep
                     number="01"
-                    title={locale === 'it' ? 'Recupero da Steam' : 'Fetch From Steam'}
+                    title="Fetch From Steam"
                     icon={<Search className="h-6 w-6" />}
-                    description={locale === 'it'
-                        ? "Paginiamo l'endpoint delle recensioni di Steam e raccogliamo testo e metadati utili."
-                        : "We paginate Steam's reviews endpoint and collect review text plus useful metadata."}
+                    description="We paginate Steam's reviews endpoint and collect review text plus useful metadata."
                 >
                     <p>
-                        {locale === 'it'
-                            ? "Le recensioni vengono recuperate dall'API pubblica di Steam (non è richiesto alcun login Steam). Salviamo campi come lingua, raccomandazione, timestamp, voti utili e tempo di gioco per consentirti di filtrare e approfondire in seguito."
-                            : "Reviews are pulled from the public Steam reviews API (no Steam login required). We store fields like language, recommendation, timestamps, helpful votes, and playtime so you can filter and drill down later."}
+                        Reviews are pulled from the public Steam reviews API (no Steam login required). We store fields like language, recommendation, timestamps, helpful votes, and playtime so you can filter and drill down later.
                     </p>
                 </DocsStep>
 
                 <DocsStep
                     number="02"
-                    title={locale === 'it' ? 'Filtri e Sicurezza' : 'Filters & Safety'}
+                    title="Filters & Safety"
                     icon={<ShieldCheck className="h-6 w-6" />}
-                    description={locale === 'it'
-                        ? "Rate limit, deduplica e filtri opzionali mantengono le esecuzioni affidabili."
-                        : "Rate limits, deduplication, and optional filters keep runs reliable."}
+                    description="Rate limits, deduplication, and optional filters keep runs reliable."
                 >
                     <p>
-                        {locale === 'it'
-                            ? "Il backend supporta il recupero di recensioni recenti, aggiornate, migliori o di tutte le recensioni e può operare in più lingue. La dashboard hosted si concentra sulle recensioni recenti e mantiene limiti attivi per restare veloce e stabile."
-                            : "The backend supports fetching recent, updated, best, or all reviews and can work across multiple languages. The hosted dashboard focuses on recent reviews and keeps limits in place to stay fast and stable."}
+                        The backend supports fetching recent, updated, best, or all reviews and can work across multiple languages. The hosted dashboard focuses on recent reviews and keeps limits in place to stay fast and stable.
                     </p>
                 </DocsStep>
 
                 <DocsStep
                     number="03"
-                    title={locale === 'it' ? 'Livello di Persistenza' : 'Persistence Layer'}
+                    title="Persistence Layer"
                     icon={<Database className="h-6 w-6" />}
-                    description={locale === 'it'
-                        ? "Archiviazione PostgreSQL per ricerca, esportazioni e analisi ripetute."
-                        : "PostgreSQL storage for search, exports, and repeat analyses."}
+                    description="PostgreSQL storage for search, exports, and repeat analyses."
                 >
                     <p>
-                        {locale === 'it'
-                            ? "I dati vengono salvati in PostgreSQL insieme alle etichette AI e alle citazioni di evidenza. Se analizzi di nuovo lo stesso gioco, le etichette memorizzate possono essere riutilizzate senza richiamare il modello."
-                            : "Data is persisted to PostgreSQL along with the AI labels and evidence quotes. If you analyze the same game again, cached labels can be reused instead of re-calling the model."}
+                        Data is persisted to PostgreSQL along with the AI labels and evidence quotes. If you analyze the same game again, cached labels can be reused instead of re-calling the model.
                     </p>
                 </DocsStep>
             </div>
@@ -93,18 +75,18 @@ export default function IngestingReviewsPage({ params }: { params: Promise<{ lan
             <section className="p-10 border border-[#00F0FF]/10 bg-[rgb(10,10,25)]/50 rounded-sm relative overflow-hidden">
                 <CornerMarkers className="opacity-40" />
                 <h2 className="text-2xl font-bold tracking-widest uppercase mb-6">
-                    {locale === 'it' ? 'Valori Predefiniti e Limiti' : 'Defaults & Limits'}
+                    Defaults & Limits
                 </h2>
                 <div className="grid md:grid-cols-2 gap-8">
                     <div className="space-y-2">
                         <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">
-                            {locale === 'it' ? 'Default Dashboard' : 'Dashboard Default'}
+                            Dashboard Default
                         </div>
                         <div className="text-3xl font-bold font-mono">1,000 REV/RUN</div>
                     </div>
                     <div className="space-y-2">
                         <div className="text-[10px] font-mono text-[#00F0FF] uppercase tracking-[0.3em]">
-                            {locale === 'it' ? 'Limite Recupero Backend (Default)' : 'Backend Fetch Cap (Default)'}
+                            Backend Fetch Cap (Default)
                         </div>
                         <div className="text-3xl font-bold font-mono">5,000 REV</div>
                     </div>
@@ -114,7 +96,7 @@ export default function IngestingReviewsPage({ params }: { params: Promise<{ lan
                 <div className="mt-8 space-y-3" style={fadeSlideUp(0)}>
                     <div className="flex items-center justify-between">
                         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                            {locale === 'it' ? 'Recupero recensioni...' : 'Fetching reviews...'}
+                            Fetching reviews...
                         </div>
                         <div className="font-mono text-xs text-[#00F0FF]">74%</div>
                     </div>
@@ -126,7 +108,7 @@ export default function IngestingReviewsPage({ params }: { params: Promise<{ lan
                 {/* Language distribution */}
                 <div className="mt-8 space-y-3" style={fadeSlideUp(100)}>
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-4">
-                        {locale === 'it' ? 'Distribuzione Recensioni per Lingua' : 'Review Distribution by Language'}
+                        Review Distribution by Language
                     </div>
                     {langBars.map((item, i) => (
                         <div key={item.lang} className="flex items-center gap-3" style={fadeSlideUp(160 + i * 80)}>

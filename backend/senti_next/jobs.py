@@ -60,6 +60,14 @@ def run_analysis_job(
     run_id = hashlib.sha256(f"{app_id}-{datetime.utcnow().isoformat()}".encode("utf-8")).hexdigest()[:16]
     snapshot_hash = hashlib.sha256(json.dumps(all_reviews, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
     context_hash = hashlib.sha256(json.dumps(game_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+
+    # Store a fingerprint of the review IDs used for this analysis so the
+    # dashboard can detect when the underlying review pool has changed
+    # (e.g. another user refreshed the same game).
+    review_fingerprint = storage.get_reviews_fingerprint(app_id)
+    if review_fingerprint:
+        metadata_dict["review_fingerprint"] = review_fingerprint
+
     total_reviews = len(all_reviews)
     progress_active = total_reviews > 0
 

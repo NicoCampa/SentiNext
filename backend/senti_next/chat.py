@@ -974,10 +974,8 @@ def build_game_aware_prompt(
                 prompt_parts.append("\n### Risk Indicators:")
                 refund_risk = risk_indicators.get("refund_risk", 0) * 100
                 core_disappointment = risk_indicators.get("core_fan_disappointment", 0) * 100
-                churn_signal = risk_indicators.get("churn_signal", 0) * 100
                 prompt_parts.append(f"Refund risk: {refund_risk:.1f}% (% of negative reviews with <2h playtime)")
                 prompt_parts.append(f"Core fan disappointment: {core_disappointment:.1f}% (% of negatives with 50h+ playtime)")
-                prompt_parts.append(f"Churn signal: {churn_signal:.1f}% (players who recently stopped)")
                 prompt_parts.append("")
 
             # Also show low-playtime negative reviews if available
@@ -1115,7 +1113,7 @@ def build_game_aware_prompt(
     prompt_parts.append("8. **For trend questions**: Use 'Sentiment Trend' data if available, create line charts showing progression over time")
     prompt_parts.append("9. **For segment questions** (veterans vs newcomers, playtime): Use 'Sentiment by Playtime Bucket' data")
     prompt_parts.append("10. **For comparison questions** (EA vs release, before/after): Use 'Early Access vs Release Comparison' data")
-    prompt_parts.append("11. **For risk questions** (refund risk, churn): Use 'Risk Indicators' data and explain what each metric means")
+    prompt_parts.append("11. **For risk questions** (refund risk, core fan disappointment): Use 'Risk Indicators' data and explain what each metric means")
     prompt_parts.append("12. **For feature request questions**: Use 'Most Requested Features' sorted by request count")
     prompt_parts.append("13. **For language questions** (issues by language, regional feedback): Use 'Sentiment by Language' data to compare feedback across different player communities")
 

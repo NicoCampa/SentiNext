@@ -35,7 +35,7 @@ import { Footer } from "@/components/layout/footer";
 import { normalizeLocale } from "@/lib/i18n";
 
 export async function generateStaticParams() {
-  return [{ lang: 'en' }, { lang: 'it' }, { lang: 'fr' }, { lang: 'de' }];
+  return [{ lang: 'en' }];
 }
 
 export default async function RootLayout({

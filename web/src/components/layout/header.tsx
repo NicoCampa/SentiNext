@@ -2,22 +2,19 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Menu, Globe } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Logo } from "@/components/ui/logo";
-import { usePathname } from "next/navigation";
 
 export function Header({ lang }: { lang: string }) {
     const [isOpen, setIsOpen] = useState(false);
-    const pathname = usePathname();
 
     const menuItems = [
-        { name: lang === 'it' ? 'Prodotto' : lang === 'fr' ? 'Produit' : lang === 'de' ? 'Produkt' : 'Product', href: `/${lang}/product` },
-        { name: lang === 'it' ? 'Processo' : lang === 'fr' ? 'Processus' : lang === 'de' ? 'Prozess' : 'Process', href: `/${lang}/how-it-works` },
-        { name: lang === 'it' ? 'Prezzi' : lang === 'fr' ? 'Tarifs' : lang === 'de' ? 'Preise' : 'Pricing', href: `/${lang}/pricing` },
-        { name: lang === 'it' ? 'Documentazione' : lang === 'fr' ? 'Docs' : lang === 'de' ? 'Doku' : 'Docs', href: `/${lang}/docs` },
+        { name: 'Product', href: `/${lang}/product` },
+        { name: 'Process', href: `/${lang}/how-it-works` },
+        { name: 'Pricing', href: `/${lang}/pricing` },
+        { name: 'Docs', href: `/${lang}/docs` },
     ];
 
     return (
@@ -44,18 +41,15 @@ export function Header({ lang }: { lang: string }) {
 
                 {/* Desktop Actions */}
                 <div className="hidden md:flex items-center justify-end gap-6 flex-1">
-                    <LanguageSwitcher currentLang={lang} pathname={pathname} />
-
                     <Button asChild className="h-11 px-8 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-widest text-[10px] shadow-[0_0_20px_rgba(0,240,255,0.3)] rounded-sm border-none">
                         <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank">
-                            {lang === 'it' ? 'Accedi alla Dashboard' : lang === 'fr' ? 'Connexion Dashboard' : lang === 'de' ? 'Dashboard Login' : 'Log in to Dashboard'}
+                            Log in to Dashboard
                         </Link>
                     </Button>
                 </div>
 
                 {/* Mobile Menu Toggle */}
                 <div className="flex items-center gap-4 md:hidden">
-                    <LanguageSwitcher currentLang={lang} pathname={pathname} />
                     <button className="p-2 text-muted-foreground hover:text-foreground" onClick={() => setIsOpen(!isOpen)}>
                         <Menu className="h-6 w-6" />
                     </button>
@@ -86,7 +80,7 @@ export function Header({ lang }: { lang: string }) {
                             <div className="flex flex-col gap-2">
                                 <Button asChild className="w-full bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-widest text-xs h-12 rounded-sm border-none shadow-[0_0_15px_rgba(0,240,255,0.2)]">
                                     <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank">
-                                        {lang === 'it' ? 'Accedi' : lang === 'fr' ? 'Connexion' : lang === 'de' ? 'Login' : 'Log in'}
+                                        Log in
                                     </Link>
                                 </Button>
                             </div>
@@ -95,41 +89,5 @@ export function Header({ lang }: { lang: string }) {
                 )}
             </AnimatePresence>
         </header>
-    );
-}
-
-function LanguageSwitcher({ currentLang, pathname }: { currentLang: string, pathname: string }) {
-    const languages = [
-        { code: 'en', label: 'EN' },
-        { code: 'it', label: 'IT' },
-        { code: 'fr', label: 'FR' },
-        { code: 'de', label: 'DE' },
-    ];
-
-    const redirectedPathname = (locale: string) => {
-        if (!pathname) return "/";
-        const segments = pathname.split("/");
-        segments[1] = locale;
-        return segments.join("/");
-    };
-
-    return (
-        <div className="flex items-center gap-3">
-            <Globe className="h-3 w-3 text-[#00F0FF]/40" />
-            <div className="flex gap-2">
-                {languages.map((lang) => (
-                    <Link
-                        key={lang.code}
-                        href={redirectedPathname(lang.code)}
-                        className={cn(
-                            "text-[10px] font-bold transition-colors hover:text-[#00F0FF]",
-                            currentLang === lang.code ? "text-[#00F0FF]" : "text-muted-foreground/60"
-                        )}
-                    >
-                        {lang.label}
-                    </Link>
-                ))}
-            </div>
-        </div>
     );
 }

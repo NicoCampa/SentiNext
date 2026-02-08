@@ -47,6 +47,7 @@
 
 /* Prevent layout shift when scrollbar appears/disappears */
 html {
+  font-size: 90%;
   scrollbar-gutter: stable;
 }
 

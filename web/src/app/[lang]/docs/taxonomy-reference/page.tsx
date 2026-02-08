@@ -1,9 +1,7 @@
 "use client";
 
-import { use } from "react";
 import { Tag } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
-import { normalizeLocale } from "@/lib/i18n";
 import type { ReactNode } from "react";
 
 const TAXONOMY: Array<{ main: string; subs: string[] }> = [
@@ -62,20 +60,15 @@ function titleize(value: string): string {
         .join(" ");
 }
 
-export default function TaxonomyReferencePage({ params }: { params: Promise<{ lang: string }> }) {
-    const { lang } = use(params);
-    const locale = normalizeLocale(lang);
-
+export default function TaxonomyReferencePage() {
     return (
         <div className="space-y-12 pb-20">
             <section className="space-y-4">
                 <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">
-                    {locale === "it" ? "Riferimento Tassonomia" : "Taxonomy Reference"}
+                    Taxonomy Reference
                 </h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    {locale === "it"
-                        ? <>Questa è la tassonomia attualmente utilizzata dal classificatore SENTINEXT. I tag sono formattati come <code>{"<main>/<sub>"}</code>, es. <code>technical/performance</code>.</>
-                        : <>This is the taxonomy currently used by the SENTINEXT classifier. Tags are formatted as <code>{"<main>/<sub>"}</code>, e.g. <code>technical/performance</code>.</>}
+                    This is the taxonomy currently used by the SENTINEXT classifier. Tags are formatted as <code>{"<main>/<sub>"}</code>, e.g. <code>technical/performance</code>.
                 </p>
             </section>
 
@@ -86,7 +79,6 @@ export default function TaxonomyReferencePage({ params }: { params: Promise<{ la
                         title={MAIN_LABELS[group.main] ?? titleize(group.main)}
                         icon={<Tag className="h-6 w-6" />}
                         frequency={CATEGORY_FREQUENCY[group.main] ?? 0}
-                        locale={locale}
                     >
                         <p className="mb-8 opacity-70">
                             <span className="font-mono text-xs uppercase tracking-[0.2em]">Main:</span>{" "}
@@ -112,11 +104,10 @@ type RefSectionProps = {
     title: string;
     icon: ReactNode;
     frequency: number;
-    locale: string;
     children: ReactNode;
 };
 
-function RefSection({ title, icon, frequency, locale, children }: RefSectionProps) {
+function RefSection({ title, icon, frequency, children }: RefSectionProps) {
     return (
         <section className="space-y-8">
             <div className="flex items-center gap-6">
@@ -131,7 +122,7 @@ function RefSection({ title, icon, frequency, locale, children }: RefSectionProp
                     <div className="h-full bg-[#00F0FF]/40 rounded-full" style={{ width: `${frequency}%` }} />
                 </div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                    {locale === "it" ? `~${frequency}% delle recensioni menziona questa categoria` : `~${frequency}% of reviews mention this category`}
+                    ~{frequency}% of reviews mention this category
                 </div>
             </div>
             <div className="pl-16">

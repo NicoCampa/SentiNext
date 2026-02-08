@@ -15,7 +15,7 @@ export function CreditBar({ compact = false }: CreditBarProps) {
   const { t } = useLanguage();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
 
-  async function handleUpgrade(tier: "indie" | "pro") {
+  async function handleUpgrade(tier: "indie") {
     setUpgradeLoading(tier);
     try {
       const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
@@ -83,7 +83,6 @@ export function CreditBar({ compact = false }: CreditBarProps) {
   const tierLabelMap: Record<string, string> = {
     free: "Free",
     indie: "Indie",
-    pro: "Pro",
     max: "Enterprise",
   };
   const tierLabel = tierLabelMap[credits.tier] ?? credits.tier;
@@ -191,12 +190,12 @@ export function CreditBar({ compact = false }: CreditBarProps) {
             </button>
           )}
           {(credits.tier === "free" || credits.tier === "indie") && (
-            <button
-              disabled
-              className="py-1.5 border border-sky-500/20 text-[10px] uppercase tracking-wider text-sky-400/40 cursor-not-allowed"
+            <Link
+              href="/support"
+              className="py-1.5 border border-purple-500/30 text-[10px] uppercase tracking-wider text-purple-400 hover:bg-purple-500/10 transition-all text-center"
             >
-              Pro — Soon
-            </button>
+              Enterprise
+            </Link>
           )}
         </div>
       )}

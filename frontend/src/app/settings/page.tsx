@@ -6,7 +6,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, fetchInvoices } from "@/lib/api";
+import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, fetchInvoices, grantCredits } from "@/lib/api";
 import type { InvoiceItem } from "@/lib/api";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -21,7 +21,7 @@ export default function SettingsPage() {
   const [logTailError, setLogTailError] = useState<string | null>(null);
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const [showLogs, setShowLogs] = useState(false);
   const { isAdmin } = useAdminStatus();
   const { credits, loading: creditsLoading } = useCredits();
@@ -34,6 +34,12 @@ export default function SettingsPage() {
   const { openUserProfile, signOut } = useClerk();
   const { user } = useUser();
   const { resetOnboarding } = useOnboarding();
+  const [creditUserId, setCreditUserId] = useState("");
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditReason, setCreditReason] = useState("");
+  const [creditAdjusting, setCreditAdjusting] = useState(false);
+  const [creditResult, setCreditResult] = useState<string | null>(null);
+  const [creditError, setCreditError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -42,21 +48,18 @@ export default function SettingsPage() {
   const tierLabelMap: Record<string, string> = {
     free: "Free",
     indie: "Indie",
-    pro: "Pro",
     max: "Enterprise",
   };
 
   const tierCreditsMap: Record<string, string> = {
     free: "1,000 one-time trial credits",
     indie: "5,000 credits / month",
-    pro: "15,000 credits / month",
     max: "Custom credits / month",
   };
 
   const tierColorMap: Record<string, string> = {
     free: "text-[rgb(150,150,170)]",
     indie: "text-emerald-400",
-    pro: "text-sky-400",
     max: "text-purple-400",
   };
 
@@ -75,7 +78,7 @@ export default function SettingsPage() {
     if (isAdmin) loadLogTail();
   }, [isAdmin, loadLogTail]);
 
-  async function handleUpgrade(tier: "indie" | "pro") {
+  async function handleUpgrade(tier: "indie") {
     setUpgradeLoading(tier);
     try {
       const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
@@ -132,6 +135,34 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleCreditAdjust(e: React.FormEvent) {
+    e.preventDefault();
+    setCreditAdjusting(true);
+    setCreditResult(null);
+    setCreditError(null);
+    try {
+      const amount = parseInt(creditAmount, 10);
+      if (!creditUserId || !amount || !creditReason) {
+        setCreditError("All fields are required and amount must be non-zero");
+        return;
+      }
+      const result = await grantCredits({
+        user_id: creditUserId,
+        amount,
+        reason: creditReason,
+      });
+      const action = result.amount_granted < 0 ? "Deducted" : "Granted";
+      setCreditResult(`${action} ${Math.abs(result.amount_granted)} credits. New balance: ${result.new_balance}`);
+      setCreditUserId("");
+      setCreditAmount("");
+      setCreditReason("");
+    } catch (err) {
+      setCreditError((err as Error).message || "Failed to adjust credits");
+    } finally {
+      setCreditAdjusting(false);
+    }
+  }
+
   async function handleCopyDiagnostics() {
     try {
       const payload = {
@@ -181,49 +212,6 @@ export default function SettingsPage() {
           <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-xl mx-auto'}`}>
           {/* Left Column */}
           <div className="space-y-6">
-            {/* Language Section */}
-            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up' : 'opacity-0'}`}>
-              <div className="mb-4 sm:mb-5">
-                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                  </svg>
-                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                    {t('settings.language')}
-                  </p>
-                </div>
-                <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">{t('settings.selectLanguage')}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {(['en', 'it', 'fr', 'de'] as const).map((lang) => (
-                  <button
-                    key={lang}
-                    onClick={() => setLanguage(lang)}
-                    className={`group relative p-2.5 sm:p-3 border transition-all active:scale-[0.98] ${
-                      language === lang
-                        ? 'border-[rgb(0,255,255)] bg-[rgb(0,255,255)]/10'
-                        : 'border-[rgb(0,255,255)]/20 hover:border-[rgb(0,255,255)]/50 bg-[rgb(10,10,25)]'
-                    }`}
-                  >
-                    {language === lang && (
-                      <>
-                        <div className="absolute top-0 left-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-t-2 border-l-2 border-[rgb(0,255,255)]" />
-                        <div className="absolute top-0 right-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-t-2 border-r-2 border-[rgb(0,255,255)]" />
-                        <div className="absolute bottom-0 left-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-b-2 border-l-2 border-[rgb(0,255,255)]" />
-                        <div className="absolute bottom-0 right-0 w-1.5 h-1.5 sm:w-2 sm:h-2 border-b-2 border-r-2 border-[rgb(0,255,255)]" />
-                      </>
-                    )}
-                    <p className={`text-xs sm:text-sm font-medium ${
-                      language === lang ? 'text-[rgb(0,255,255)]' : 'text-[rgb(200,200,210)]'
-                    }`}>
-                      {t(`lang.${lang}`)}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </Card>
-
             {/* Account Section - Mobile only (desktop has it in sidebar) */}
             <SignedIn>
               <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
@@ -661,6 +649,58 @@ export default function SettingsPage() {
                     </>
                   )}
                 </div>
+              </Card>
+
+              {/* Credit Adjustment */}
+              <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
+                <div className="mb-4">
+                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/70 mb-1">Credit Adjustment</p>
+                  <p className="text-xs text-slate-500">Grant or deduct credits for a user</p>
+                </div>
+                <form onSubmit={handleCreditAdjust} className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] sm:text-xs text-slate-400 mb-1">User ID</label>
+                    <input
+                      type="text"
+                      value={creditUserId}
+                      onChange={(e) => setCreditUserId(e.target.value)}
+                      placeholder="user_xxx"
+                      className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                      disabled={creditAdjusting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] sm:text-xs text-slate-400 mb-1">Amount (negative to deduct)</label>
+                    <input
+                      type="number"
+                      value={creditAmount}
+                      onChange={(e) => setCreditAmount(e.target.value)}
+                      placeholder="e.g. 500 or -200"
+                      className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                      disabled={creditAdjusting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] sm:text-xs text-slate-400 mb-1">Reason</label>
+                    <input
+                      type="text"
+                      value={creditReason}
+                      onChange={(e) => setCreditReason(e.target.value)}
+                      placeholder="e.g. promotional_grant or billing_correction"
+                      className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                      disabled={creditAdjusting}
+                    />
+                  </div>
+                  <Button type="submit" variant="primary" size="sm" disabled={creditAdjusting} className="w-full">
+                    {creditAdjusting ? "Processing..." : "Adjust Credits"}
+                  </Button>
+                  {creditResult && (
+                    <p className="text-xs text-emerald-400">{creditResult}</p>
+                  )}
+                  {creditError && (
+                    <p className="text-xs text-rose-400">{creditError}</p>
+                  )}
+                </form>
               </Card>
             </div>
           )}

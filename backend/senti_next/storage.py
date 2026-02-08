@@ -694,6 +694,26 @@ def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Op
     return [str(row[0]) for row in rows if row[0]]
 
 
+def get_reviews_fingerprint(app_id: int) -> Optional[str]:
+    """Fast SQL-only fingerprint of current review IDs for an app.
+
+    Returns an MD5 hash of the sorted review IDs, or None if no reviews exist.
+    Used to detect when the review pool has changed (e.g. another user refreshed).
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        result = conn.execute(
+            text("""
+                SELECT md5(string_agg(review_id, ',' ORDER BY review_id))
+                FROM reviews WHERE app_id = :app_id
+            """),
+            {"app_id": app_id},
+        )
+        row = result.fetchone()
+    return row[0] if row and row[0] else None
+
+
 def count_reviews(app_id: int) -> int:
     """Count total reviews for an app."""
     from . import db as db_module

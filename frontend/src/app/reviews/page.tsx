@@ -165,9 +165,6 @@ function ReviewsContent() {
         if (review.voted_up || (review.author_playtime_forever || 0) < 3000) return false;
       }
 
-      if (filterType === "risk_churn") {
-        if (review.voted_up || (review.author_playtime_last_two_weeks || 0) > 0) return false;
-      }
 
       return true;
     });

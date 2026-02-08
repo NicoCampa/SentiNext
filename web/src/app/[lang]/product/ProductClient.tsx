@@ -6,9 +6,9 @@ import Link from "next/link";
 import { Search, BarChart2, Layers, MessageSquare } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 import type { ReactNode } from "react";
-import type { Dictionary, SupportedLocale } from "@/lib/i18n";
+import type { Dictionary } from "@/lib/i18n";
 
-export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
+export default function ProductClient({ dict }: { dict: Dictionary }) {
     return (
         <div className="flex flex-col min-h-screen">
             {/* Hero */}
@@ -29,9 +29,7 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         transition={{ delay: 0.5 }}
                         className="text-xl md:text-2xl text-muted-foreground max-w-4xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60"
                     >
-                        {lang === 'it'
-                            ? 'Dalle recensioni Steam a insight strutturati, con evidenze.'
-                            : 'From Steam reviews to structured insights, with evidence.'}
+                        From Steam reviews to structured insights, with evidence.
                     </motion.p>
                 </div>
             </section>
@@ -40,15 +38,9 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
             <FeatureSection
                 id="ingest"
                 icon={<Search className="h-7 w-7 text-[#00F0FF]" />}
-                title={lang === 'it' ? "1. Ricerca e Ingestione" : "1. Search & Ingest"}
-                description={lang === 'it'
-                    ? "Cerca un gioco (nome o App ID) e avvia un'analisi. SENTINEXT recupera recensioni Steam recenti e salva i risultati sul tuo account."
-                    : "Search a game (name or App ID) and run an analysis. SENTINEXT fetches recent Steam reviews and saves results to your account."}
-                details={lang === 'it' ? [
-                    "Cerca per nome o incolla un App ID.",
-                    "Recupera recensioni recenti da Steam (endpoint pubblico; nessun login Steam).",
-                    "Esegue in background con tracking del progresso e persistenza su PostgreSQL."
-                ] : [
+                title="1. Search & Ingest"
+                description="Search a game (name or App ID) and run an analysis. SENTINEXT fetches recent Steam reviews and saves results to your account."
+                details={[
                     "Search by name or paste an App ID.",
                     "Fetch recent reviews from Steam (public endpoint; no Steam login).",
                     "Runs in the background with progress tracking and PostgreSQL persistence."
@@ -59,7 +51,7 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         <CornerMarkers />
                         {/* Left: Search */}
                         <div className="space-y-3">
-                            <div className="text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest mb-2">{lang === 'it' ? 'Ricerca Gioco' : 'Search Game'}</div>
+                            <div className="text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest mb-2">Search Game</div>
                             <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/20 rounded-sm p-3">
                                 <div className="flex items-center gap-2 mb-3">
                                     <Search className="w-3.5 h-3.5 text-[#00F0FF]/50" />
@@ -85,10 +77,10 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         </div>
                         {/* Right: Progress */}
                         <div className="space-y-3">
-                            <div className="text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest mb-2">{lang === 'it' ? 'Ingestione' : 'Ingestion'}</div>
+                            <div className="text-[10px] text-[#00F0FF]/60 font-mono uppercase tracking-widest mb-2">Ingestion</div>
                             <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/20 rounded-sm p-3 space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] text-[#00F0FF]/50 font-mono">{lang === 'it' ? 'Recupero recensioni...' : 'Fetching reviews...'}</span>
+                                    <span className="text-[10px] text-[#00F0FF]/50 font-mono">Fetching reviews...</span>
                                     <span className="text-xs text-[#00F0FF] font-mono font-bold">847/1000</span>
                                 </div>
                                 <div className="h-1.5 w-full bg-[#00F0FF]/10 rounded-full overflow-hidden">
@@ -101,9 +93,9 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                                     />
                                 </div>
                                 {[
-                                    { text: lang === 'it' ? 'Connessione a Steam API...' : 'Connecting to Steam API...', delay: 0.6 },
-                                    { text: lang === 'it' ? 'Recupero pagina 1/10...' : 'Fetching page 1/10...', delay: 0.9 },
-                                    { text: lang === 'it' ? '847 recensioni ingerite' : '847 reviews ingested', delay: 1.2 },
+                                    { text: 'Connecting to Steam API...', delay: 0.6 },
+                                    { text: 'Fetching page 1/10...', delay: 0.9 },
+                                    { text: '847 reviews ingested', delay: 1.2 },
                                 ].map((log, i) => (
                                     <motion.div
                                         key={i}
@@ -124,7 +116,7 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                                     className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-sm"
                                 >
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider">PostgreSQL: {lang === 'it' ? 'persistenza' : 'persisting'}</span>
+                                    <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-wider">PostgreSQL: persisting</span>
                                 </motion.div>
                             </div>
                         </div>
@@ -136,15 +128,9 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
             <FeatureSection
                 id="classify"
                 icon={<Layers className="h-7 w-7 text-[#00F0FF]" />}
-                title={lang === 'it' ? "2. Classificazione" : "2. Classification"}
-                description={lang === 'it'
-                    ? "L'IA etichetta ogni recensione con una tassonomia coerente ed estrae citazioni di evidenza."
-                    : "AI labels each review with a consistent taxonomy and extracts evidence quotes."}
-                details={lang === 'it' ? [
-                    "Assegna 1–6 tag (es. technical/performance, ui_ux_accessibility/quality_of_life).",
-                    "Separa problemi (issue) e richieste di feature (request).",
-                    "Salva citazioni testuali per ogni tag per la verifica."
-                ] : [
+                title="2. Classification"
+                description="AI labels each review with a consistent taxonomy and extracts evidence quotes."
+                details={[
                     "Assigns 1–6 tags (e.g., technical/performance, ui_ux_accessibility/quality_of_life).",
                     "Separates issues vs feature requests.",
                     "Stores verbatim evidence quotes for every tag so you can audit results."
@@ -157,17 +143,15 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         <div className="bg-[#00F0FF]/5 rounded-sm border border-[#00F0FF]/10 p-4">
                             <div className="flex items-center justify-between mb-3">
                                 <span className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">Review #847</span>
-                                <span className="px-2 py-0.5 bg-red-500/20 text-red-300 border border-red-500/30 text-[9px] font-bold uppercase tracking-wider rounded-sm">{lang === 'it' ? 'Negativa' : 'Negative'}</span>
+                                <span className="px-2 py-0.5 bg-red-500/20 text-red-300 border border-red-500/30 text-[9px] font-bold uppercase tracking-wider rounded-sm">Negative</span>
                             </div>
                             <p className="italic text-[#00F0FF]/70 text-xs leading-relaxed">
-                                {lang === 'it'
-                                    ? '"Il gioco crasha costantemente in battaglia, e i menu dell\'inventario sono impossibili da navigare con il controller."'
-                                    : '"Game keeps crashing mid-battle since the last patch, and the inventory menus are impossible to navigate with a controller."'}
+                                &quot;Game keeps crashing mid-battle since the last patch, and the inventory menus are impossible to navigate with a controller.&quot;
                             </p>
                         </div>
                         {/* Classification tags */}
                         <div className="space-y-2">
-                            <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">{lang === 'it' ? 'Classificazione AI' : 'AI Classification'}</div>
+                            <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">AI Classification</div>
                             <div className="flex flex-wrap gap-2">
                                 {[
                                     { label: 'technical/stability_crashes', color: 'bg-red-500/20 text-red-300 border-red-500/30', type: 'ISSUE', delay: 0.3 },
@@ -189,10 +173,10 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         </div>
                         {/* Evidence quotes */}
                         <div className="space-y-2">
-                            <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">{lang === 'it' ? 'Citazioni Evidenza' : 'Evidence Quotes'}</div>
+                            <div className="text-[10px] text-[#00F0FF]/50 uppercase tracking-widest">Evidence Quotes</div>
                             {[
-                                { quote: lang === 'it' ? '"crasha costantemente in battaglia"' : '"keeps crashing mid-battle"', tag: 'stability_crashes', color: 'border-red-500/50', delay: 0.9 },
-                                { quote: lang === 'it' ? '"menu dell\'inventario impossibili da navigare con il controller"' : '"inventory menus impossible to navigate with controller"', tag: 'menus_hud', color: 'border-amber-500/50', delay: 1.1 },
+                                { quote: '"keeps crashing mid-battle"', tag: 'stability_crashes', color: 'border-red-500/50', delay: 0.9 },
+                                { quote: '"inventory menus impossible to navigate with controller"', tag: 'menus_hud', color: 'border-amber-500/50', delay: 1.1 },
                             ].map((ev) => (
                                 <motion.div
                                     key={ev.tag}
@@ -215,15 +199,9 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
             <FeatureSection
                 id="insights"
                 icon={<BarChart2 className="h-7 w-7 text-[#00F0FF]" />}
-                title={lang === 'it' ? "3. Insight Quantificati" : "3. Quantified Insights"}
-                description={lang === 'it'
-                    ? "Dashboard, esplorazione recensioni, chat agente e confronto: passa dai numeri alle decisioni con evidenze e drill‑down."
-                    : "Dashboards, review explorer, AI agent chat, and comparisons: go from numbers to decisions with evidence and drill‑down."}
-                details={lang === 'it' ? [
-                    "Dashboard: breakdown per categoria, top issue/request e trend.",
-                    "Chat agente: domande e grafici basati sui tuoi dati analizzati.",
-                    "Confronto giochi, export CSV/JSONL e report PDF mensili."
-                ] : [
+                title="3. Quantified Insights"
+                description="Dashboards, review explorer, AI agent chat, and comparisons: go from numbers to decisions with evidence and drill‑down."
+                details={[
                     "Dashboard: category breakdown, top issues/requests, and trends.",
                     "AI agent chat: questions and charts grounded in your analyzed data.",
                     "Compare games, export CSV/JSONL, and generate monthly PDF reports."
@@ -235,10 +213,10 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         {/* KPI cards */}
                         <div className="grid grid-cols-4 gap-2 md:gap-3">
                             {[
-                                { label: lang === 'it' ? 'Raccomandazione' : 'Recommendation', value: '87%', color: 'text-emerald-400', border: 'border-l-emerald-500' },
-                                { label: lang === 'it' ? 'Tasso Issue' : 'Issue Rate', value: '23%', color: 'text-amber-400', border: 'border-l-amber-500' },
-                                { label: lang === 'it' ? 'Tasso Richieste' : 'Request Rate', value: '15%', color: 'text-sky-400', border: 'border-l-sky-500' },
-                                { label: lang === 'it' ? 'Recensioni' : 'Reviews', value: '1,000', color: 'text-[#00F0FF]', border: 'border-l-[#00F0FF]' },
+                                { label: 'Recommendation', value: '87%', color: 'text-emerald-400', border: 'border-l-emerald-500' },
+                                { label: 'Issue Rate', value: '23%', color: 'text-amber-400', border: 'border-l-amber-500' },
+                                { label: 'Request Rate', value: '15%', color: 'text-sky-400', border: 'border-l-sky-500' },
+                                { label: 'Reviews', value: '1,000', color: 'text-[#00F0FF]', border: 'border-l-[#00F0FF]' },
                             ].map((kpi, i) => (
                                 <motion.div
                                     key={kpi.label}
@@ -255,7 +233,7 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         </div>
                         {/* Trend chart */}
                         <div className="space-y-2 flex-1">
-                            <div className="text-[10px] text-[#00F0FF]/50 font-mono uppercase tracking-widest">{lang === 'it' ? 'Trend Sentiment' : 'Sentiment Trend'}</div>
+                            <div className="text-[10px] text-[#00F0FF]/50 font-mono uppercase tracking-widest">Sentiment Trend</div>
                             <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/10 rounded-sm p-3 h-24 md:h-28">
                                 <div className="h-full flex items-end gap-1">
                                     {[40, 45, 42, 55, 60, 58, 72, 75, 80, 85, 82, 87].map((value, i) => (
@@ -273,13 +251,13 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         </div>
                         {/* Category breakdown */}
                         <div className="space-y-2">
-                            <div className="text-[10px] text-[#00F0FF]/50 font-mono uppercase tracking-widest">{lang === 'it' ? 'Breakdown Categorie' : 'Category Breakdown'}</div>
+                            <div className="text-[10px] text-[#00F0FF]/50 font-mono uppercase tracking-widest">Category Breakdown</div>
                             <div className="bg-[#00F0FF]/5 border border-[#00F0FF]/10 rounded-sm p-3 space-y-2.5">
                                 {[
                                     { name: 'Gameplay', value: 85, color: 'bg-emerald-500' },
-                                    { name: lang === 'it' ? 'Tecnico' : 'Technical', value: 62, color: 'bg-amber-500' },
-                                    { name: lang === 'it' ? 'Contenuti' : 'Content', value: 78, color: 'bg-sky-500' },
-                                    { name: lang === 'it' ? 'Valore' : 'Value', value: 71, color: 'bg-purple-500' },
+                                    { name: 'Technical', value: 62, color: 'bg-amber-500' },
+                                    { name: 'Content', value: 78, color: 'bg-sky-500' },
+                                    { name: 'Value', value: 71, color: 'bg-purple-500' },
                                 ].map((cat, i) => (
                                     <motion.div
                                         key={cat.name}
@@ -313,15 +291,9 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
             <FeatureSection
                 id="chat"
                 icon={<MessageSquare className="h-7 w-7 text-[#00F0FF]" />}
-                title={lang === 'it' ? "4. Chat con l'Agente" : "4. Agent Chat"}
-                description={lang === 'it'
-                    ? "Fai domande in linguaggio naturale sui tuoi dati analizzati. L'agente risponde con grafici, evidenze e citazioni dalle recensioni reali."
-                    : "Ask natural-language questions about your analyzed data. The agent answers with charts, evidence, and quotes from real reviews."}
-                details={lang === 'it' ? [
-                    "Domande in linguaggio naturale — nessuna query da scrivere.",
-                    "Risposte con grafici inline e breakdown interattivi.",
-                    "Citazioni verbatim dalle recensioni come evidenza verificabile."
-                ] : [
+                title="4. Agent Chat"
+                description="Ask natural-language questions about your analyzed data. The agent answers with charts, evidence, and quotes from real reviews."
+                details={[
                     "Natural-language questions — no queries to write.",
                     "Answers with inline charts and interactive breakdowns.",
                     "Verbatim review quotes as auditable evidence."
@@ -333,7 +305,7 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         {/* Chat header */}
                         <div className="flex items-center gap-2 pb-2 border-b border-[#00F0FF]/10">
                             <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                            <span className="text-[10px] font-mono text-[#00F0FF]/50 uppercase tracking-widest">{lang === 'it' ? 'Agente AI — Online' : 'AI Agent — Online'}</span>
+                            <span className="text-[10px] font-mono text-[#00F0FF]/50 uppercase tracking-widest">AI Agent — Online</span>
                         </div>
                         {/* User message */}
                         <motion.div
@@ -345,7 +317,7 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                         >
                             <div className="max-w-[80%] bg-[#00F0FF]/10 border border-[#00F0FF]/30 rounded-sm p-3">
                                 <p className="text-xs text-white">
-                                    {lang === 'it' ? 'Quali sono i principali problemi tecnici?' : 'What are the top technical issues?'}
+                                    What are the top technical issues?
                                 </p>
                             </div>
                         </motion.div>
@@ -362,17 +334,15 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                             </div>
                             <div className="flex-1 space-y-3">
                                 <p className="text-xs text-[#00F0FF]/70 leading-relaxed">
-                                    {lang === 'it'
-                                        ? 'Su 1.000 recensioni, i problemi tecnici più segnalati sono:'
-                                        : 'Across 1,000 reviews, the most reported technical issues are:'}
+                                    Across 1,000 reviews, the most reported technical issues are:
                                 </p>
                                 {/* Inline chart */}
                                 <div className="bg-black/30 border border-[#00F0FF]/10 rounded-sm p-3 space-y-2.5">
                                     {[
-                                        { label: lang === 'it' ? 'Stabilità / Crash' : 'Stability / Crashes', value: 42, color: 'bg-red-500', delay: 0.7 },
+                                        { label: 'Stability / Crashes', value: 42, color: 'bg-red-500', delay: 0.7 },
                                         { label: 'Performance', value: 31, color: 'bg-amber-500', delay: 0.85 },
                                         { label: 'Networking', value: 18, color: 'bg-sky-500', delay: 1.0 },
-                                        { label: lang === 'it' ? 'Salvataggi' : 'Save Data', value: 9, color: 'bg-purple-500', delay: 1.15 },
+                                        { label: 'Save Data', value: 9, color: 'bg-purple-500', delay: 1.15 },
                                     ].map((item) => (
                                         <motion.div
                                             key={item.label}
@@ -405,11 +375,9 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
                                     transition={{ delay: 1.3 }}
                                     className="border-l-2 border-red-500/50 pl-3 py-1"
                                 >
-                                    <p className="text-[10px] text-[#00F0FF]/40 uppercase tracking-widest mb-1">{lang === 'it' ? 'Evidenza — stabilità' : 'Evidence — stability'}</p>
+                                    <p className="text-[10px] text-[#00F0FF]/40 uppercase tracking-widest mb-1">Evidence — stability</p>
                                     <p className="text-[11px] italic text-[#00F0FF]/60">
-                                        {lang === 'it'
-                                            ? '"Il gioco crasha ogni volta che entro nel terzo atto, ho perso ore di progresso."'
-                                            : '"Game crashes every time I enter the third act, lost hours of progress."'}
+                                        &quot;Game crashes every time I enter the third act, lost hours of progress.&quot;
                                     </p>
                                 </motion.div>
                             </div>
@@ -419,7 +387,7 @@ export default function ProductClient({ dict, lang }: { dict: Dictionary; lang: 
             />
 
             <section className="py-32 text-center">
-                <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase">{lang === 'it' ? 'Sistema Pronto.' : 'System Ready.'}</h2>
+                <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase">System Ready.</h2>
                 <Button size="lg" className="h-16 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>
                     <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank">
                         {dict.common.initialize}

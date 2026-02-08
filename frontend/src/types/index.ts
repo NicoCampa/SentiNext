@@ -82,8 +82,6 @@ export interface AudienceSegments {
 export interface RiskMetrics {
   refund_risk: number;
   core_fan_disappointment: number;
-  churn_window_default: number;
-  churn_rate: number;
 }
 
 
@@ -395,6 +393,7 @@ export interface AnalysisResultResponse {
   snapshot_hash?: string | null;
   stale?: boolean;
   stale_reason?: string | null;
+  data_refreshed?: boolean;
 }
 
 

@@ -357,14 +357,6 @@ def core_fan_disappointment(df: pd.DataFrame) -> float:
     return float((negatives["author_playtime_forever"].fillna(0) > 3000).mean())
 
 
-def churn_signal_rate(df: pd.DataFrame, window_days: int = 7) -> float:
-    valid = df.dropna(subset=["created_at", "last_played_at"])
-    if valid.empty:
-        return 0.0
-    deltas = (valid["created_at"] - valid["last_played_at"]).dt.total_seconds() / 86400.0
-    mask = deltas.abs() <= window_days
-    return float(mask.mean()) if len(mask) else 0.0
-
 
 def reviewer_influence_sentiment(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "author_num_reviews" not in df.columns:

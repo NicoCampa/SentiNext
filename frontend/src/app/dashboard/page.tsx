@@ -1,7 +1,6 @@
 'use client';
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import clsx from "clsx";
 import {
@@ -29,6 +28,7 @@ import {
   WidgetSummaryResponse,
   translateText,
   fetchSteamGameDetails,
+  fetchAnalysisResult,
   SteamGameDetailsResponse,
 } from "@/lib/api";
 import { CurrentPlayersWidget, NewsWithSummary } from "@/components/SteamLiveContext";
@@ -56,6 +56,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
 import { PageTransition } from "@/components/PageTransition";
 import { Portal } from "@/components/Portal";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -473,6 +474,8 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
   const [pendingAnalyzeGame, setPendingAnalyzeGame] = useState<SearchResult | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState<string | undefined>(undefined);
   const fetchFilter = "recent"; // Fixed to recent (latest reviews)
   const { credits, refresh: refreshCredits } = useCredits();
   const [mounted, setMounted] = useState(false);
@@ -525,6 +528,33 @@ function DashboardContent() {
       reviews: selectedStarredGame.sample ?? [],
     });
   }, [selectedStarredGame, selectedGame, analysis]);
+
+  // Background freshness check: after loading from starred game cache, check
+  // if the underlying reviews have changed (e.g. another user refreshed the
+  // same game). If so, the backend auto-rebuilds insights and returns updated
+  // data with data_refreshed=true.
+  useEffect(() => {
+    if (!selectedStarredGame?.app_id || !selectedStarredGame.insights) return;
+    let cancelled = false;
+    fetchAnalysisResult(selectedStarredGame.app_id)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.data_refreshed && result.insights) {
+          setAnalysis({
+            metadata: result.metadata ?? selectedStarredGame.metadata,
+            insights: result.insights,
+            reviews: result.reviews ?? [],
+          });
+          setUpdateSuccess("Your dashboard has been updated with more recent reviews");
+          setTimeout(() => setUpdateSuccess(null), 6000);
+          refreshGames().catch(() => null);
+        }
+      })
+      .catch(() => {
+        // Silently ignore — cached data is still valid
+      });
+    return () => { cancelled = true; };
+  }, [selectedStarredGame?.app_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (currentTask?.status === "completed" && currentTask.result) {
@@ -581,7 +611,13 @@ function DashboardContent() {
         refresh_days: shouldRefresh ? daysSinceLastRun : undefined,
       });
     } catch (err) {
-      setError((err as Error).message || "Failed to start analysis");
+      const msg = (err as Error).message || "Failed to start analysis";
+      if (/credit|insufficient/i.test(msg)) {
+        setUpgradeMessage(msg);
+        setShowUpgradeModal(true);
+      } else {
+        setError(msg);
+      }
     }
   }
 
@@ -709,13 +745,8 @@ function DashboardContent() {
                   </div>
 
                   {error && searchResults.length === 0 && (
-                    <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 flex items-center justify-between gap-3">
+                    <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
                       <p className="text-sm text-rose-400">{error}</p>
-                      {(/credit|insufficient/i.test(error)) && (
-                        <Link href="/settings" className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition-colors">
-                          Upgrade Plan
-                        </Link>
-                      )}
                     </div>
                   )}
 
@@ -943,6 +974,7 @@ function DashboardContent() {
             selectedGame={selectedGame}
             updateSuccess={updateSuccess}
             error={error}
+            onCreditError={(msg) => { setUpgradeMessage(msg); setShowUpgradeModal(true); }}
             onUpdate={async () => {
               if (!selectedGame || !analysis?.metadata?.fetched_at) return;
 
@@ -971,13 +1003,26 @@ function DashboardContent() {
                 // Auto-hide after 3 seconds
                 setTimeout(() => setUpdateSuccess(null), 3000);
               } catch (err) {
-                setError((err as Error).message || "Failed to update analysis");
+                const msg = (err as Error).message || "Failed to update analysis";
+                if (/credit|insufficient/i.test(msg)) {
+                  setUpgradeMessage(msg);
+                  setShowUpgradeModal(true);
+                } else {
+                  setError(msg);
+                }
               }
             }}
           />
         )}
       </div>
       </PageTransition>
+
+      {showUpgradeModal && (
+        <UpgradeModal
+          message={upgradeMessage}
+          onClose={() => setShowUpgradeModal(false)}
+        />
+      )}
     </AppLayout>
   );
 }
@@ -1090,12 +1135,14 @@ function AnalysisResults({
   onUpdate,
   updateSuccess,
   error,
+  onCreditError,
 }: {
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
   onUpdate?: () => void;
   updateSuccess?: string | null;
   error?: string | null;
+  onCreditError?: (message: string) => void;
 }) {
   const { t, language: userLanguage } = useLanguage();
   const { silentRefresh: refreshCredits } = useCredits();
@@ -2250,10 +2297,13 @@ function AnalysisResults({
         {error && (
           <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 sm:p-3 flex items-center justify-between gap-3">
             <p className="text-xs sm:text-sm text-rose-400">{error}</p>
-            {(/credit|insufficient/i.test(error)) && (
-              <Link href="/settings" className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition-colors">
+            {(/credit|insufficient/i.test(error)) && onCreditError && (
+              <button
+                onClick={() => onCreditError(error)}
+                className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition-colors"
+              >
                 Upgrade Plan
-              </Link>
+              </button>
             )}
           </div>
         )}
@@ -2271,7 +2321,7 @@ function AnalysisResults({
               AI Summary
             </button>
             <Button onClick={onUpdate} variant="ghost" size="sm" className="text-xs sm:text-sm flex-1 sm:flex-none">
-              Update
+              {t('dashboard.update')}
             </Button>
           </div>
         )}
@@ -2402,7 +2452,6 @@ function AnalysisResults({
                 <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most reported issues</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.length} items</span>
                 {issueItems.length > 0 && (
                   <button
                     onClick={handleSummarizeTopIssues}
@@ -2470,7 +2519,6 @@ function AnalysisResults({
                 <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-slate-400">Most requested features</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.length} items</span>
                 {requestItems.length > 0 && (
                   <button
                     onClick={handleSummarizeTopRequests}

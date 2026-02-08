@@ -1,9 +1,7 @@
 "use client";
 
-import { use } from "react";
 import { Brain, Quote, Tag, Layers, BarChart3 } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
-import { normalizeLocale } from "@/lib/i18n";
 import type { ReactNode } from "react";
 
 const fadeSlideUp = (delay: number): React.CSSProperties => ({
@@ -12,10 +10,7 @@ const fadeSlideUp = (delay: number): React.CSSProperties => ({
     animationDelay: `${delay}ms`,
 });
 
-export default function InsightsAndTaxonomyPage({ params }: { params: Promise<{ lang: string }> }) {
-    const { lang } = use(params);
-    const locale = normalizeLocale(lang);
-
+export default function InsightsAndTaxonomyPage() {
     const categoryBars = [
         { name: "Gameplay", pct: 85 },
         { name: "Technical", pct: 62 },
@@ -25,9 +20,9 @@ export default function InsightsAndTaxonomyPage({ params }: { params: Promise<{ 
     ];
 
     const kpis = [
-        { label: locale === 'it' ? 'Raccomandazione' : 'Recommendation', value: "87%", color: "border-l-emerald-500" },
-        { label: locale === 'it' ? 'Tasso Problemi' : 'Issue Rate', value: "23%", color: "border-l-amber-500" },
-        { label: locale === 'it' ? 'Tasso Richieste' : 'Request Rate', value: "15%", color: "border-l-sky-500" },
+        { label: "Recommendation", value: "87%", color: "border-l-emerald-500" },
+        { label: "Issue Rate", value: "23%", color: "border-l-amber-500" },
+        { label: "Request Rate", value: "15%", color: "border-l-sky-500" },
     ];
 
     return (
@@ -40,18 +35,16 @@ export default function InsightsAndTaxonomyPage({ params }: { params: Promise<{ 
             `}</style>
 
             <section className="space-y-4">
-                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">{locale === 'it' ? 'Insight e Tassonomia' : 'Insights & Taxonomy'}</h1>
+                <h1 className="text-5xl font-bold tracking-tighter uppercase mb-4">Insights & Taxonomy</h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    {locale === 'it'
-                        ? <>Ogni recensione Steam viene etichettata con una tassonomia coerente (es. <code>technical/performance</code>) e supportata da citazioni verificabili.</>
-                        : <>Each Steam review is labeled with a consistent taxonomy (e.g., <code>technical/performance</code>) and backed by evidence quotes you can audit.</>}
+                    Each Steam review is labeled with a consistent taxonomy (e.g., <code>technical/performance</code>) and backed by evidence quotes you can audit.
                 </p>
             </section>
 
             <div className="space-y-16 mt-16">
                 <TaxonomySection
-                    title={locale === 'it' ? 'Struttura Etichette' : 'Label Structure'}
-                    description={locale === 'it' ? 'Come SENTINEXT rappresenta il feedback in un formato coerente e interrogabile.' : 'How SENTINEXT represents feedback in a consistent, queryable format.'}
+                    title="Label Structure"
+                    description="How SENTINEXT represents feedback in a consistent, queryable format."
                 >
                     <div className="grid gap-8">
                         <TaxonomyItem
@@ -96,15 +89,13 @@ export default function InsightsAndTaxonomyPage({ params }: { params: Promise<{ 
                         <div className="p-3 bg-[#00F0FF]/10 border border-[#00F0FF]/20 text-[#00F0FF] rounded-sm">
                             <Quote className="h-6 w-6" />
                         </div>
-                        <h2 className="text-2xl font-bold tracking-widest uppercase m-0">{locale === 'it' ? 'Estrazione Citazioni' : 'Evidence Extraction'}</h2>
+                        <h2 className="text-2xl font-bold tracking-widest uppercase m-0">Evidence Extraction</h2>
                         <div className="h-px flex-1 bg-gradient-to-r from-[#00F0FF]/20 to-transparent" />
                     </div>
 
                     <div className="space-y-6">
                         <p className="font-light text-foreground/70 leading-relaxed max-w-2xl">
-                            {locale === 'it'
-                                ? 'Le etichette sono utili solo se verificabili. SENTINEXT allega citazioni brevi e letterali a ogni tag, così puoi risalire alla formulazione originale.'
-                                : 'Labels are only useful if you can verify them. SENTINEXT attaches short, verbatim quotes to every tag so you can trace an insight back to the original wording.'}
+                            Labels are only useful if you can verify them. SENTINEXT attaches short, verbatim quotes to every tag so you can trace an insight back to the original wording.
                         </p>
 
                         <div className="relative p-10 bg-black/40 border border-[#00F0FF]/10 rounded-sm italic font-mono text-[#00F0FF]/80">
@@ -124,14 +115,14 @@ export default function InsightsAndTaxonomyPage({ params }: { params: Promise<{ 
                         <div className="p-3 bg-[#00F0FF]/10 border border-[#00F0FF]/20 text-[#00F0FF] rounded-sm">
                             <BarChart3 className="h-6 w-6" />
                         </div>
-                        <h2 className="text-2xl font-bold tracking-widest uppercase m-0">{locale === 'it' ? 'Anteprima Dashboard' : 'Dashboard Preview'}</h2>
+                        <h2 className="text-2xl font-bold tracking-widest uppercase m-0">Dashboard Preview</h2>
                         <div className="h-px flex-1 bg-gradient-to-r from-[#00F0FF]/20 to-transparent" />
                     </div>
 
                     <div className="space-y-6">
                         {/* Category breakdown */}
                         <div className="p-6 bg-[rgb(10,10,25)]/50 border border-[#00F0FF]/10 rounded-sm space-y-4" style={fadeSlideUp(0)}>
-                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-4">{locale === 'it' ? 'Ripartizione Categorie' : 'Category Breakdown'}</div>
+                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-4">Category Breakdown</div>
                             {categoryBars.map((cat, i) => (
                                 <div key={cat.name} className="flex items-center gap-3" style={fadeSlideUp(i * 80)}>
                                     <div className="w-24 text-xs font-mono text-foreground/60 text-right">{cat.name}</div>

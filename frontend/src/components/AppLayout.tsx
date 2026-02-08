@@ -39,7 +39,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { credits } = useCredits();
   const [sidebarUpgradeLoading, setSidebarUpgradeLoading] = useState<string | null>(null);
 
-  async function handleSidebarUpgrade(tier: "indie" | "pro") {
+  async function handleSidebarUpgrade(tier: "indie") {
     setSidebarUpgradeLoading(tier);
     try {
       const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
@@ -64,14 +64,11 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const tierLabelMap: Record<string, string> = {
     free: "Free",
     indie: "Indie",
-    pro: "Pro",
     max: "Enterprise",
   };
   const tierLabel = credits?.tier ? (tierLabelMap[credits.tier] ?? credits.tier) : null;
   const tierBadgeClass = credits?.tier === "max"
     ? "border-purple-500/30 bg-purple-500/10 text-purple-400"
-    : credits?.tier === "pro"
-    ? "border-[rgb(0,255,255)]/30 bg-[rgb(0,255,255)]/10 text-[rgb(0,255,255)]"
     : credits?.tier === "indie"
     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
     : "border-slate-500/30 bg-slate-500/10 text-slate-300";

@@ -1319,7 +1319,7 @@ export async function fetchCreditEstimate(
  * Create a Stripe checkout session for subscription upgrade.
  */
 export async function createCheckoutSession(
-  tier: "indie" | "pro",
+  tier: "indie",
   successUrl: string,
   cancelUrl: string,
   billingPeriod: "monthly" | "annual" = "monthly"

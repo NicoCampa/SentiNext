@@ -32,7 +32,7 @@ TIER_PRICES = {
 TIER_LABELS = {
     "free": "Free",
     "indie": "Indie",
-    "pro": "Pro",
+    "pro": "Indie",   # legacy — mapped to Indie label for backward compat
     "max": "Enterprise",
 }
 

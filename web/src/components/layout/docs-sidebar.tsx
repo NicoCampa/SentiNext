@@ -3,23 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import type { Dictionary, SupportedLocale } from "@/lib/i18n";
+import type { Dictionary } from "@/lib/i18n";
 
-export function DocsSidebar({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
+export function DocsSidebar({ dict }: { dict: Dictionary }) {
     const pathname = usePathname();
 
-    // We construct the nav items using the translated labels from the dictionary
     const sidebarNavItems = [
         {
             title: dict.docs.sidebar.overview,
             items: [
                 {
                     title: dict.docs.sidebar.introduction,
-                    href: `/${lang}/docs`,
+                    href: `/en/docs`,
                 },
                 {
                     title: dict.docs.sidebar.gettingStarted,
-                    href: `/${lang}/docs/getting-started`,
+                    href: `/en/docs/getting-started`,
                 },
             ],
         },
@@ -28,11 +27,11 @@ export function DocsSidebar({ dict, lang }: { dict: Dictionary; lang: SupportedL
             items: [
                 {
                     title: dict.docs.sidebar.ingestingReviews,
-                    href: `/${lang}/docs/ingesting-reviews`,
+                    href: `/en/docs/ingesting-reviews`,
                 },
                 {
                     title: dict.docs.sidebar.insightsTaxonomy,
-                    href: `/${lang}/docs/insights-and-taxonomy`,
+                    href: `/en/docs/insights-and-taxonomy`,
                 },
             ],
         },
@@ -41,7 +40,7 @@ export function DocsSidebar({ dict, lang }: { dict: Dictionary; lang: SupportedL
             items: [
                 {
                     title: dict.docs.sidebar.faq,
-                    href: `/${lang}/docs/faq`,
+                    href: `/en/docs/faq`,
                 },
             ],
         },

@@ -6,9 +6,8 @@ import Link from "next/link";
 import { Mail, Github } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
 import type { ReactNode } from "react";
-import type { SupportedLocale } from "@/lib/i18n";
 
-export function ContactClient({ lang }: { lang: SupportedLocale }) {
+export function ContactClient() {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             <section className="py-20 md:py-32 bg-transparent relative overflow-hidden flex flex-col items-center justify-center border-b border-[#00F0FF]/10 w-full">
@@ -20,10 +19,10 @@ export function ContactClient({ lang }: { lang: SupportedLocale }) {
                         transition={{ duration: 0.8 }}
                         className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase"
                     >
-                        {lang === 'it' ? 'Connessione' : 'Connect'} <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{lang === 'it' ? 'Sistema.' : 'System.'}</span>
+                        Connect <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">System.</span>
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        {lang === 'it' ? 'Domande, feedback e supporto.' : 'Questions, feedback, and support.'}
+                        Questions, feedback, and support.
                     </p>
                 </div>
             </section>
@@ -33,17 +32,17 @@ export function ContactClient({ lang }: { lang: SupportedLocale }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
                         <ContactCard
                             icon={<Mail className="h-8 w-8 text-[#00F0FF]" />}
-                            title={lang === 'it' ? "Mail Diretta" : "Direct Mail"}
-                            description={lang === 'it' ? "Supporto, feedback e richieste." : "Support, feedback, and inquiries."}
+                            title="Direct Mail"
+                            description="Support, feedback, and inquiries."
                             link="mailto:nicolocampagnoli20@icloud.com"
                             label="nicolocampagnoli20@icloud.com"
                         />
                         <ContactCard
                             icon={<Github className="h-8 w-8 text-[#00F0FF]" />}
-                            title={lang === 'it' ? "Codice Sorgente" : "Source Code"}
-                            description={lang === 'it' ? "Segnala bug o proponi miglioramenti." : "Report bugs or propose improvements."}
+                            title="Source Code"
+                            description="Report bugs or propose improvements."
                             link="https://github.com/NicoCampa/SentiNext"
-                            label={lang === 'it' ? "Apri Repository" : "Open Repository"}
+                            label="Open Repository"
                         />
                     </div>
                 </div>

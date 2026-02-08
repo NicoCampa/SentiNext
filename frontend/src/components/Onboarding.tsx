@@ -472,7 +472,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
   const { t } = useLanguage();
   const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
 
-  async function handleSubscribe(tier: "indie" | "pro") {
+  async function handleSubscribe(tier: "indie") {
     setUpgradeLoading(tier);
     try {
       const baseUrl = typeof window !== "undefined" ? window.location.origin : "";

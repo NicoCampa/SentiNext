@@ -183,7 +183,7 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
           versionInsights: {},
         },
         audience: {
-          risk: { refund_risk: 0, core_fan_disappointment: 0, churn_window_default: 0, churn_rate: 0 },
+          risk: { refund_risk: 0, core_fan_disappointment: 0 },
           experienceLevel: {
             newcomers: { count: 0, recommendation_rate: 0 },
             casual: { count: 0, recommendation_rate: 0 },
@@ -295,7 +295,7 @@ export function useAnalysisViewModel(analysis: AnalyzeResponse | null): Analysis
     };
 
     const audience: AudienceView = {
-      risk: insights.risk ?? { refund_risk: 0, core_fan_disappointment: 0, churn_window_default: 0, churn_rate: 0 },
+      risk: insights.risk ?? { refund_risk: 0, core_fan_disappointment: 0 },
       experienceLevel: insights.player_segments?.experience_level ?? {
         newcomers: { count: 0, recommendation_rate: 0 },
         casual: { count: 0, recommendation_rate: 0 },

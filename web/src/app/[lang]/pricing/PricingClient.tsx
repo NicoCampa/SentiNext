@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
-import type { Dictionary, SupportedLocale } from "@/lib/i18n";
+import type { Dictionary } from "@/lib/i18n";
 
-export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
+export default function PricingClient({ dict }: { dict: Dictionary }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             {/* Hero */}
@@ -21,19 +21,17 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                     >
                         <Sparkles className="h-3.5 w-3.5 mr-2 text-primary animate-pulse" />
                         <span className="tracking-widest uppercase text-xs font-bold">
-                            {lang === 'it' ? 'PIANI A CREDITI' : 'CREDITS-BASED PLANS'}
+                            CREDITS-BASED PLANS
                         </span>
                     </motion.div>
                     <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase">
-                        {lang === 'it' ? 'Piani' : 'Plans'}{" "}
+                        Plans{" "}
                         <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">
-                            {lang === 'it' ? 'a Crediti.' : 'by Credits.'}
+                            by Credits.
                         </span>
                     </h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        {lang === 'it'
-                            ? 'Scegli un limite mensile di crediti. I crediti vengono usati per analisi, chat e confronti.'
-                            : 'Pick a monthly credit allowance. Credits are used for analysis, chat, and comparisons.'}
+                        Pick a monthly credit allowance. Credits are used for analysis, chat, and comparisons.
                     </p>
                 </div>
             </section>
@@ -47,7 +45,7 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             asChild
                         >
                             <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}>
-                                {lang === 'it' ? 'Provalo gratis' : 'Try it for free'}
+                                Try it for free
                             </Link>
                         </Button>
                     </div>
@@ -59,44 +57,44 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
                             name="Indie"
                             price="$8"
                             period="/ month"
-                            description={lang === 'it' ? 'Per team piccoli e dev indie.' : 'For small teams and indie developers.'}
+                            description="For small teams and indie developers."
                             features={[
-                                lang === 'it' ? "5.000 crediti / mese" : "5,000 credits / month",
-                                lang === 'it' ? "Dashboard + Chat agente + Confronti" : "Dashboards + AI agent chat + Compare",
-                                lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
-                                lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
+                                "5,000 credits / month",
+                                "Dashboards + AI agent chat + Compare",
+                                "Monthly PDF reports",
+                                "CSV / JSONL export",
                             ]}
-                            cta={lang === 'it' ? 'Passa a Indie' : 'Upgrade to Indie'}
+                            cta="Upgrade to Indie"
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
                         />
 
                         {/* Pro Tier (Coming Soon) */}
                         <PricingCard
                             name="Pro"
-                            price={lang === 'it' ? 'Prossimamente' : 'Coming Soon'}
-                            description={lang === 'it' ? 'Per studi che analizzano regolarmente.' : 'For teams that analyze reviews regularly.'}
+                            price="Coming Soon"
+                            description="For teams that analyze reviews regularly."
                             features={[
-                                lang === 'it' ? "15.000 crediti / mese" : "15,000 credits / month",
-                                lang === 'it' ? "Dashboard + Chat agente + Confronti" : "Dashboards + AI agent chat + Compare",
-                                lang === 'it' ? "Report PDF mensili" : "Monthly PDF reports",
-                                lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
+                                "15,000 credits / month",
+                                "Dashboards + AI agent chat + Compare",
+                                "Monthly PDF reports",
+                                "CSV / JSONL export",
                             ]}
-                            cta={lang === 'it' ? 'Prossimamente' : 'Coming Soon'}
+                            cta="Coming Soon"
                             href="#"
                         />
 
                         {/* Enterprise */}
                         <PricingCard
                             name="Enterprise"
-                            price={lang === 'it' ? 'Personalizzato' : 'Custom'}
-                            description={lang === 'it' ? 'Per studi con esigenze avanzate.' : 'For studios with advanced needs.'}
+                            price="Custom"
+                            description="For studios with advanced needs."
                             features={[
-                                lang === 'it' ? "Crediti e limiti su misura" : "Custom credits & limits",
-                                lang === 'it' ? "Supporto prioritario" : "Priority support",
-                                lang === 'it' ? "Report su misura" : "Custom reporting",
-                                lang === 'it' ? "Export CSV / JSONL" : "CSV / JSONL export",
+                                "Custom credits & limits",
+                                "Priority support",
+                                "Custom reporting",
+                                "CSV / JSONL export",
                             ]}
-                            cta={lang === 'it' ? 'Contattaci' : 'Contact Us'}
+                            cta="Contact Us"
                             href={`${process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}/support`}
                         />
                     </div>
@@ -106,9 +104,7 @@ export default function PricingClient({ dict, lang }: { dict: Dictionary; lang: 
             <section className="pb-32 w-full flex justify-center opacity-50">
                 <div className="container px-4 text-center">
                     <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">
-                        {lang === 'it'
-                            ? "* I crediti vengono usati per analisi, chat e confronti. I report PDF usano dati già analizzati."
-                            : "* Credits are used for analysis, chat, and comparisons. PDF reports use existing analysis data."}
+                        * Credits are used for analysis, chat, and comparisons. PDF reports use existing analysis data.
                     </p>
                 </div>
             </section>

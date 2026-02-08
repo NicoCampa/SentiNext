@@ -1,9 +1,7 @@
 "use client";
 
-import { use } from "react";
 import { HelpCircle } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
-import { normalizeLocale } from "@/lib/i18n";
 
 const fadeSlideUp = (delay: number): React.CSSProperties => ({
     opacity: 0,
@@ -11,47 +9,34 @@ const fadeSlideUp = (delay: number): React.CSSProperties => ({
     animationDelay: `${delay}ms`,
 });
 
-export default function FaqPage({ params }: { params: Promise<{ lang: string }> }) {
-    const { lang } = use(params);
-    const locale = normalizeLocale(lang);
-
+export default function FaqPage() {
     const questions = [
         {
-            q: lang === 'it' ? "SENTINEXT è affiliato con Valve/Steam?" : "Is SENTINEXT affiliated with Valve/Steam?",
-            a: lang === 'it'
-                ? "No. SENTINEXT è uno strumento indipendente che analizza recensioni Steam pubbliche. Non siamo approvati o affiliati a Valve Corporation."
-                : "No. SENTINEXT is an independent tool that analyzes public Steam reviews. We are not endorsed by or affiliated with Valve Corporation."
+            q: "Is SENTINEXT affiliated with Valve/Steam?",
+            a: "No. SENTINEXT is an independent tool that analyzes public Steam reviews. We are not endorsed by or affiliated with Valve Corporation."
         },
         {
-            q: lang === 'it' ? "Devo collegare un account Steam?" : "Do I need to connect a Steam account?",
-            a: lang === 'it'
-                ? "No. SENTINEXT usa endpoint pubblici di Steam per recuperare recensioni. Ti basta cercare un gioco o inserire un App ID."
-                : "No. SENTINEXT uses Steam's public endpoints to fetch reviews. You just search for a game or paste an App ID."
+            q: "Do I need to connect a Steam account?",
+            a: "No. SENTINEXT uses Steam's public endpoints to fetch reviews. You just search for a game or paste an App ID."
         },
         {
-            q: lang === 'it' ? "Posso analizzare giochi che non possiedo (anche concorrenti)?" : "Can I analyze games I don't own (including competitors)?",
-            a: lang === 'it'
-                ? "Sì, se le recensioni sono pubbliche su Steam. I crediti sono necessari per l'analisi."
-                : "Yes, as long as the reviews are public on Steam. Credits are required for analysis."
+            q: "Can I analyze games I don't own (including competitors)?",
+            a: "Yes, as long as the reviews are public on Steam. Credits are required for analysis."
         },
         {
-            q: lang === 'it' ? "Perché l'analisi gira in background?" : "Why does analysis run in the background?",
-            a: lang === 'it'
-                ? "L'analisi etichetta molte recensioni e salva risultati e citazioni. Il job gira in background e la dashboard mostra il progresso; la durata dipende dal volume e dalla coda."
-                : "Analysis labels many reviews and saves results and evidence quotes. It runs in the background and the dashboard shows progress; duration depends on volume and queue."
+            q: "Why does analysis run in the background?",
+            a: "Analysis labels many reviews and saves results and evidence quotes. It runs in the background and the dashboard shows progress; duration depends on volume and queue."
         },
         {
-            q: lang === 'it' ? "Come funzionano i crediti?" : "How do credits work?",
-            a: lang === 'it'
-                ? "I crediti vengono usati per etichettare recensioni e per funzioni AI come chat, riassunti e confronti. Vedi la pagina Pricing per i limiti mensili."
-                : "Credits are used to label reviews and for AI features like chat, summaries, and comparisons. See the Pricing page for monthly limits."
+            q: "How do credits work?",
+            a: "Credits are used to label reviews and for AI features like chat, summaries, and comparisons. See the Pricing page for monthly limits."
         }
     ];
 
     const stats = [
-        { value: "60+", label: locale === 'it' ? "Categorie" : "Categories" },
-        { value: "1,000", label: locale === 'it' ? "Recensioni / Analisi" : "Reviews / Run" },
-        { value: "29", label: locale === 'it' ? "Lingue" : "Languages" },
+        { value: "60+", label: "Categories" },
+        { value: "1,000", label: "Reviews / Run" },
+        { value: "29", label: "Languages" },
     ];
 
     return (
@@ -68,9 +53,7 @@ export default function FaqPage({ params }: { params: Promise<{ lang: string }> 
                     FAQ
                 </h1>
                 <p className="text-xl text-muted-foreground font-light leading-relaxed max-w-2xl">
-                    {locale === 'it'
-                        ? 'Domande frequenti su dati, crediti e utilizzo di SENTINEXT.'
-                        : 'Common questions about data sources, credits, and using SENTINEXT.'}
+                    Common questions about data sources, credits, and using SENTINEXT.
                 </p>
             </section>
 

@@ -7,5 +7,5 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
   const locale = normalizeLocale(lang);
   const dict = await getDictionary(locale);
 
-  return <HomeClient dict={dict} lang={locale} />;
+  return <HomeClient dict={dict} />;
 }

@@ -7,5 +7,5 @@ export default async function Pricing({ params }: { params: Promise<{ lang: stri
     const locale = normalizeLocale(lang);
     const dict = await getDictionary(locale);
 
-    return <PricingClient dict={dict} lang={locale} />;
+    return <PricingClient dict={dict} />;
 }

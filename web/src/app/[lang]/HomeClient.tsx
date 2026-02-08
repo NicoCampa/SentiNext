@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Sparkles, Cpu, Bot } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
-import type { Dictionary, SupportedLocale } from "@/lib/i18n";
+import type { Dictionary } from "@/lib/i18n";
 
 function TerminalLine({ text, delay, color = "text-[#00F0FF]/70", className, cursor }: { text: string, delay: number, color?: string, className?: string, cursor?: boolean }) {
     return (
@@ -29,7 +29,7 @@ function TerminalLine({ text, delay, color = "text-[#00F0FF]/70", className, cur
     );
 }
 
-export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
+export default function HomeClient({ dict }: { dict: Dictionary }) {
     const [bootPhase, setBootPhase] = useState<"booting" | "complete">("booting");
 
     useEffect(() => {
@@ -116,8 +116,8 @@ export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: Sup
                                 </Link>
                             </Button>
                             <Button size="lg" variant="outline" className="h-14 px-12 border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-[0.2em] text-xs rounded-none relative group" asChild>
-                                <Link href={`/${lang}/how-it-works`}>
-                                    {lang === 'it' ? 'Panoramica Pipeline' : lang === 'fr' ? 'Aperçu Pipeline' : lang === 'de' ? 'Pipeline-Übersicht' : 'Pipeline Overview'}
+                                <Link href="/en/how-it-works">
+                                    Pipeline Overview
                                 </Link>
                             </Button>
                         </div>
@@ -130,35 +130,25 @@ export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: Sup
                 <div className="container px-4 md:px-6 mx-auto">
 	                    <div className="flex flex-col items-center text-center gap-12">
 	                        <div className="text-[10px] font-mono uppercase tracking-[0.4em] text-[#00F0FF]/50 border-b border-[#00F0FF]/10 pb-4">
-	                            {lang === 'it'
-	                                ? 'Pensato per team di gioco'
-	                                : lang === 'fr'
-	                                    ? 'Pensé pour les équipes de jeu'
-	                                    : lang === 'de'
-	                                        ? 'Für Game-Teams gebaut'
-	                                        : 'Built for game teams'}
+	                            Built for game teams
 	                        </div>
 	                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
 	                            <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
 	                                <CornerMarkers className="opacity-20" />
 	                                <p className="text-lg font-light mb-6 opacity-80 leading-relaxed">
-	                                    {lang === 'it'
-	                                        ? "Aspetto le tue recensioni :)"
-	                                        : "I wait for your reviews :)"}
+	                                    I wait for your reviews :)
 	                                </p>
 	                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">
-	                                    {lang === 'it' ? 'Citazioni di evidenza' : 'Evidence quotes'}
+	                                    Evidence quotes
 	                                </div>
 	                            </div>
 	                            <div className="relative p-10 border border-[#00F0FF]/10 bg-[#00F0FF]/5 rounded-sm">
 	                                <CornerMarkers className="opacity-20" />
 	                                <p className="text-lg font-light mb-6 opacity-80 leading-relaxed">
-	                                    {lang === 'it'
-	                                        ? "Aspetto le tue recensioni :)"
-	                                        : "I wait for your reviews :)"}
+	                                    I wait for your reviews :)
 	                                </p>
 	                                <div className="text-xs font-bold uppercase tracking-widest text-[#00F0FF]">
-	                                    {lang === 'it' ? 'Dashboard, export, report' : 'Dashboards, exports, reports'}
+	                                    Dashboards, exports, reports
 	                                </div>
 	                            </div>
 	                        </div>
@@ -178,24 +168,14 @@ export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: Sup
 	                        >
 	                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm border border-[#00F0FF]/30 bg-[#00F0FF]/5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#00F0FF]">
 	                                <Cpu className="h-3 w-3" />
-	                                <span>
-                                        {lang === 'it'
-                                            ? 'Agente AI: Online'
-                                            : lang === 'fr'
-                                                ? 'Agent IA: En ligne'
-                                                : lang === 'de'
-                                                    ? 'KI-Agent: Online'
-                                                    : 'AI Agent: Online'}
-                                    </span>
+	                                <span>AI Agent: Online</span>
 	                            </div>
                             <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter uppercase leading-[0.9]">
-                                {lang === 'it' ? 'Interazione' : lang === 'fr' ? 'Interaction' : lang === 'de' ? 'Direkte' : 'Direct'} <br />
-                                <span className="text-[#00F0FF]">{lang === 'it' ? 'Diretta' : lang === 'fr' ? 'Directe' : lang === 'de' ? 'Interaktion' : 'Interaction'}</span>
+                                Direct <br />
+                                <span className="text-[#00F0FF]">Interaction</span>
                             </h2>
 	                            <p className="text-lg text-muted-foreground leading-relaxed font-light max-w-xl">
-	                                {lang === 'it'
-	                                    ? "Fai domande in linguaggio naturale: l’agente AI interroga i tuoi insight, cerca citazioni e confronta giochi—con grafici quando serve."
-	                                    : "Ask questions in natural language: the AI agent pulls stats, searches quotes, and compares games—grounded in your analyzed data (with charts when useful)."}
+	                                Ask questions in natural language: the AI agent pulls stats, searches quotes, and compares games—grounded in your analyzed data (with charts when useful).
 	                            </p>
 	                        </motion.div>
 
@@ -213,12 +193,12 @@ export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: Sup
                                 </div>
 
 	                                <div className="flex-1 space-y-6">
-	                                    <ChatMessage role="user" content={lang === 'it' ? "Mostrami recensioni negative sulla performance" : "Show me negative reviews about performance"} />
-	                                    <ChatMessage role="agent" content={lang === 'it' ? "> TOOLS: get_subcategory_stats + search_reviews. TOPIC: technical/performance (negative). EVIDENZA: \"Cali di FPS\", \"stuttering\"." : "> TOOLS: get_subcategory_stats + search_reviews. TOPIC: technical/performance (negative). EVIDENCE: \"FPS drops\", \"stuttering\"."} />
+	                                    <ChatMessage role="user" content="Show me negative reviews about performance" />
+	                                    <ChatMessage role="agent" content={"> TOOLS: get_subcategory_stats + search_reviews. TOPIC: technical/performance (negative). EVIDENCE: \"FPS drops\", \"stuttering\"."} />
 	                                </div>
 
                                 <div className="mt-8 p-4 border border-[#00F0FF]/20 bg-[#00F0FF]/5 rounded-sm flex items-center justify-between animate-pulse">
-                                    <span className="text-[#00F0FF]/50 uppercase tracking-[0.2em]">{lang === 'it' ? 'Esecuzione...' : 'Executing...'}</span>
+                                    <span className="text-[#00F0FF]/50 uppercase tracking-[0.2em]">Executing...</span>
                                     <Bot className="h-4 w-4 text-[#00F0FF]" />
                                 </div>
                             </div>
@@ -239,10 +219,10 @@ export default function HomeClient({ dict, lang }: { dict: Dictionary; lang: Sup
                     >
                         <CornerMarkers />
                         <h2 className="text-4xl md:text-6xl font-bold mb-8 uppercase tracking-tighter">
-                            {lang === 'it' ? 'Pronto a' : 'Ready to'} <span className="text-[#00F0FF]">{lang === 'it' ? 'Ottimizzare?' : 'Optimize?'}</span>
+                            Ready to <span className="text-[#00F0FF]">Optimize?</span>
                         </h2>
                         <p className="text-xl text-muted-foreground mb-12 max-w-2xl mx-auto font-light font-mono tracking-widest uppercase opacity-70">
-                            {lang === 'it' ? 'Smetti di indovinare. Inizia ad analizzare con precisione.' : 'Stop guessing. Start analyzing with precision.'}
+                            Stop guessing. Start analyzing with precision.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
                             <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>

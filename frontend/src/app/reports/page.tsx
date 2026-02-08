@@ -324,13 +324,6 @@ export default function ReportsPage() {
                         </p>
                         <p className="text-[10px] text-slate-600 mt-0.5">neg reviews 50h+ playtime</p>
                       </div>
-                      <div className="p-3 bg-slate-950/40 border border-white/10 rounded-lg">
-                        <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500 leading-tight">Churn Signal</p>
-                        <p className="font-mono text-sm text-amber-300 mt-1">
-                          {(riskMetrics.churn_rate * 100).toFixed(1)}%
-                        </p>
-                        <p className="text-[10px] text-slate-600 mt-0.5">quit within 7d of review</p>
-                      </div>
                     </div>
                   ) : (
                     <p className="text-xs text-slate-500">No risk data available. Run an analysis first.</p>

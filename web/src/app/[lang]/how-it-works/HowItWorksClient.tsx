@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Search, Zap, BarChart2 } from "lucide-react";
 import { CornerMarkers } from "@/components/ui/corner-markers";
-import type { Dictionary, SupportedLocale } from "@/lib/i18n";
+import type { Dictionary } from "@/lib/i18n";
 
-export default function HowItWorksClient({ dict, lang }: { dict: Dictionary; lang: SupportedLocale }) {
+export default function HowItWorksClient({ dict }: { dict: Dictionary }) {
     return (
         <div className="flex flex-col min-h-screen items-center w-full">
             {/* Hero */}
@@ -20,10 +20,10 @@ export default function HowItWorksClient({ dict, lang }: { dict: Dictionary; lan
                         transition={{ duration: 0.8 }}
                         className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 leading-tight uppercase"
                     >
-                        {lang === 'it' ? 'Il' : 'The'} <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">{lang === 'it' ? 'Processo.' : 'Process.'}</span>
+                        The <span className="text-[#00F0FF] shadow-[#00F0FF]/50 drop-shadow-[0_0_15px_rgba(0,240,255,0.3)]">Process.</span>
                     </motion.h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 font-mono uppercase tracking-[0.2em] opacity-60">
-                        {lang === 'it' ? 'Dalle recensioni Steam a insight azionabili.' : 'From Steam reviews to actionable insights.'}
+                        From Steam reviews to actionable insights.
                     </p>
                 </div>
             </section>
@@ -35,28 +35,22 @@ export default function HowItWorksClient({ dict, lang }: { dict: Dictionary; lan
                         <PipelineStep
                             number="01"
                             icon={<Search className="h-10 w-10 text-[#00F0FF]" />}
-                            title={lang === 'it' ? "INGESTIONE" : "INGESTION"}
-                            description={lang === 'it'
-                                ? "Recupera recensioni Steam per qualsiasi App ID (endpoint pubblico). Gestione paginazione e persistenza su database."
-                                : "Fetch Steam reviews for any App ID (public endpoint). Handles pagination and persists data to the database."}
+                            title="INGESTION"
+                            description="Fetch Steam reviews for any App ID (public endpoint). Handles pagination and persists data to the database."
                             delay={0.1}
                         />
                         <PipelineStep
                             number="02"
                             icon={<Zap className="h-10 w-10 text-[#00F0FF]" />}
-                            title={lang === 'it' ? "CLASSIFICAZIONE" : "CLASSIFICATION"}
-                            description={lang === 'it'
-                                ? "L'IA etichetta ogni recensione con una tassonomia coerente e salva citazioni di evidenza per ogni tag."
-                                : "AI labels each review with a consistent taxonomy and stores evidence quotes for every tag."}
+                            title="CLASSIFICATION"
+                            description="AI labels each review with a consistent taxonomy and stores evidence quotes for every tag."
                             delay={0.3}
                         />
                         <PipelineStep
                             number="03"
                             icon={<BarChart2 className="h-10 w-10 text-[#00F0FF]" />}
-                            title={lang === 'it' ? "INSIGHT" : "INSIGHTS"}
-                            description={lang === 'it'
-                                ? "Dashboard, esplorazione e confronto: identifica i principali problemi e richieste, poi fai domande all’agente AI e genera report."
-                                : "Dashboards, exploration, and comparisons: surface top issues and requests, ask the AI agent questions, and generate reports."}
+                            title="INSIGHTS"
+                            description="Dashboards, exploration, and comparisons: surface top issues and requests, ask the AI agent questions, and generate reports."
                             delay={0.5}
                         />
                     </div>
@@ -66,7 +60,7 @@ export default function HowItWorksClient({ dict, lang }: { dict: Dictionary; lan
             {/* Final CTA */}
             <section className="py-32 text-center relative border-t border-[#00F0FF]/10 w-full">
                 <div className="container px-4 mx-auto">
-                    <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase leading-none">Pipeline <span className="text-[#00F0FF]">{lang === 'it' ? 'Pronta' : 'Ready'}</span></h2>
+                    <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase leading-none">Pipeline <span className="text-[#00F0FF]">Ready</span></h2>
                     <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>
                         <Link href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"} target="_blank">
                             {dict.common.initialize}

@@ -2351,7 +2351,7 @@ def generate_follow_up_questions(
 ) -> List[str]:
     """Generate suggested follow-up questions based on the conversation.
 
-    Generates dynamic suggestions based on response content and tools used.
+    Uses tool results and response content to pick relevant, specific follow-ups.
 
     Args:
         response: The assistant's response
@@ -2361,12 +2361,28 @@ def generate_follow_up_questions(
     Returns:
         List of 2-3 suggested follow-up questions
     """
-    suggestions = []
+    suggestions: List[str] = []
     tools_used = {tc.get("tool") for tc in tool_calls}
     response_lower = response.lower()
+    multi_game = len(context.app_ids) > 1
 
-    # Extract specific topics mentioned in response for targeted follow-ups
-    mentioned_subcategories = []
+    # Collect already-explored topics from this turn + previous turns
+    explored_topics: set[str] = set()
+    for tc in (context.session_context.last_tool_calls or []) + tool_calls:
+        tool = tc.get("tool", "")
+        params = tc.get("params", {})
+        if tool == "get_subcategory_stats":
+            explored_topics.add(params.get("subcategory", ""))
+        elif tool == "search_reviews":
+            if params.get("query"):
+                explored_topics.add(params["query"])
+            if params.get("subcategory"):
+                explored_topics.add(params["subcategory"])
+        elif tool in ("get_top_issues", "get_top_praises", "get_feature_requests"):
+            explored_topics.add(tool)
+
+    # Extract subcategories mentioned in tool results
+    mentioned_subcategories: List[str] = []
     for call in tool_calls:
         result = call.get("result", {})
         if call.get("tool") == "get_top_issues":
@@ -2381,94 +2397,117 @@ def generate_follow_up_questions(
         elif call.get("tool") == "get_subcategory_stats":
             if result.get("subcategory"):
                 mentioned_subcategories.append(result["subcategory"])
+    mentioned_subcategories = [s for s in mentioned_subcategories if s]
 
-    # Dynamic suggestions based on content
-    if mentioned_subcategories:
-        # Suggest drilling into specific mentioned categories
-        top_subcat = mentioned_subcategories[0]
-        if "technical" in top_subcat:
-            suggestions.append("Are there workarounds players have found?")
-        elif "gameplay" in top_subcat:
-            suggestions.append("How does this compare to similar games?")
-        elif "monetization" in top_subcat:
-            suggestions.append("Do players feel the price is justified?")
+    # Helper: human-readable subcategory name
+    def _subcat_label(subcat: str) -> str:
+        return subcat.split("/")[-1].replace("_", " ")
 
-        # Suggest showing actual reviews for the topic
-        if "get_top_issues" in tools_used or "get_subcategory_stats" in tools_used:
-            suggestions.append(f"Show me what players say about {top_subcat.split('/')[-1]}")
+    # --- Tool-specific suggestions ---
 
-    # If response mentions numbers/percentages, suggest trend
-    if any(x in response_lower for x in ["reviews", "%", "percent", "rate"]):
-        if "get_sentiment_trend" not in tools_used:
-            suggestions.append("How has this changed over time?")
-
-    # If we showed top issues, suggest drilling down
     if "get_top_issues" in tools_used:
-        if not any("show" in s.lower() or "review" in s.lower() for s in suggestions):
-            suggestions.append("Show me specific reviews about the top issue")
+        if mentioned_subcategories:
+            top = mentioned_subcategories[0]
+            suggestions.append(f"Show me reviews about {_subcat_label(top)}")
+        if "get_top_praises" not in explored_topics:
+            suggestions.append("What do players praise most?")
 
-    # If we showed feature requests, suggest comparison
     if "get_feature_requests" in tools_used:
-        suggestions.append("Which requests have the most votes?")
-        if len(context.app_ids) > 1:
-            suggestions.append("How do these compare to the other game?")
+        if mentioned_subcategories:
+            top = mentioned_subcategories[0]
+            suggestions.append(f"Show me reviews about {_subcat_label(top)}")
+        if multi_game:
+            suggestions.append("How do feature requests differ between the two games?")
 
-    # If we showed top praises, suggest examples or contrast with issues
     if "get_top_praises" in tools_used:
-        suggestions.append("Show me reviews that praise the top theme")
-        if "get_top_issues" not in tools_used:
-            suggestions.append("What are the top complaints compared to these praises?")
+        if mentioned_subcategories:
+            top = mentioned_subcategories[0]
+            suggestions.append(f"Show me reviews about {_subcat_label(top)}")
+        if "get_top_issues" not in explored_topics:
+            suggestions.append("What are the top complaints?")
 
-    # If we listed topics, suggest drilling into one
     if "list_available_topics" in tools_used and mentioned_subcategories:
-        suggestions.append(f"Show stats for {mentioned_subcategories[0].split('/')[-1]}")
+        suggestions.append(f"Show stats for {_subcat_label(mentioned_subcategories[0])}")
 
-    # If we searched reviews, suggest statistics or more examples
     if "search_reviews" in tools_used:
-        suggestions.append("What's the overall sentiment on this topic?")
         has_more = any(
             tc.get("tool") == "search_reviews" and tc.get("result", {}).get("has_more")
             for tc in tool_calls
         )
         if has_more:
             suggestions.append("Show me more reviews")
-        if "positive" in response_lower or "negative" in response_lower:
-            suggestions.append("Show me examples from the opposite sentiment")
+        if "positive" in response_lower and "negative" not in response_lower:
+            suggestions.append("Show me negative reviews on this topic")
+        elif "negative" in response_lower and "positive" not in response_lower:
+            suggestions.append("Show me positive reviews on this topic")
+        if "get_subcategory_stats" not in tools_used:
+            suggestions.append("What are the stats for this topic?")
 
-    # If we showed sentiment trend, suggest investigation
+    if "get_subcategory_stats" in tools_used:
+        if "search_reviews" not in tools_used and mentioned_subcategories:
+            suggestions.append(f"Show me reviews about {_subcat_label(mentioned_subcategories[0])}")
+
     if "get_sentiment_trend" in tools_used:
-        if "drop" in response_lower or "decrease" in response_lower:
+        if "drop" in response_lower or "decrease" in response_lower or "declined" in response_lower:
             suggestions.append("What issues caused the sentiment drop?")
-        elif "increase" in response_lower or "improve" in response_lower:
+        elif "increase" in response_lower or "improve" in response_lower or "rose" in response_lower:
             suggestions.append("What improvements do players mention?")
+        else:
+            suggestions.append("What are the top issues in the last 30 days?")
 
-    # If we compared games, suggest more comparison
-    if "compare_games" in tools_used:
-        suggestions.append("Compare a different metric between these games")
-
-    # If we compared time windows, suggest drilling into the top mover
     if "compare_time_windows" in tools_used:
-        suggestions.append("Show reviews for the biggest change")
+        suggestions.append("Show me reviews about the biggest change")
 
-    # If we compared sentiment trends, suggest causes
-    if "compare_sentiment_trend" in tools_used:
-        suggestions.append("What might explain the trend differences?")
+    if "compare_games" in tools_used or "compare_sentiment_trend" in tools_used:
+        suggestions.append("What are the top issues for each game?")
 
-    # Generic follow-ups if nothing specific
+    if "get_game_overview" in tools_used:
+        if "get_top_issues" not in explored_topics:
+            suggestions.append("What are the top issues?")
+        if "get_feature_requests" not in explored_topics:
+            suggestions.append("What features are players requesting?")
+
+    # --- Cross-cutting suggestions (only if not already covered) ---
+
+    # Pricing: only when pricing-related subcategories or keywords are actually present
+    _pricing_subcats = {"monetization_value/pricing", "monetization_value/regional_pricing"}
+    _pricing_keywords = {"price", "pricing", "expensive", "cheap", "cost", "worth", "value for money", "overpriced"}
+    if (
+        any(s in _pricing_subcats for s in mentioned_subcategories)
+        or any(kw in response_lower for kw in _pricing_keywords)
+    ):
+        suggestions.append("Do players feel the price is justified?")
+
+    if "get_sentiment_trend" not in tools_used and "get_sentiment_trend" not in explored_topics:
+        if any(x in response_lower for x in ["%", "percent", "rate", "recommend"]):
+            suggestions.append("How has the sentiment changed over time?")
+
+    if multi_game and not any("compare" in s.lower() for s in suggestions):
+        suggestions.append("Compare the two games on top issues")
+
+    # --- Fallback if nothing matched ---
     if not suggestions:
-        suggestions = [
-            "What are the main issues?",
-            "Show me the sentiment trend",
-            "What do positive reviews say?",
+        fallbacks = [
+            "What are the top issues?",
+            "What features are players requesting?",
+            "How has the sentiment changed over time?",
         ]
+        for fb in fallbacks:
+            tool_tag = {
+                "What are the top issues?": "get_top_issues",
+                "What features are players requesting?": "get_feature_requests",
+                "How has the sentiment changed over time?": "get_sentiment_trend",
+            }.get(fb, "")
+            if tool_tag not in explored_topics:
+                suggestions.append(fb)
 
     # Deduplicate while preserving order
-    seen = set()
-    unique_suggestions = []
+    seen: set[str] = set()
+    unique: List[str] = []
     for s in suggestions:
-        s_lower = s.lower()
-        if s_lower not in seen:
-            seen.add(s_lower)
-            unique_suggestions.append(s)
+        key = s.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(s)
 
-    return unique_suggestions[:3]
+    return unique[:3]

@@ -2,7 +2,7 @@
 
 from .analysis import (
     build_reviews_dataframe,
-    churn_signal_rate,
+
     core_fan_disappointment,
     early_access_vs_release_sentiment,
     free_vs_paid_sentiment,
@@ -65,7 +65,7 @@ __all__ = [
     "SteamAPIError",
     "fetch_reviews_multi_language",
     "build_reviews_dataframe",
-    "churn_signal_rate",
+
     "core_fan_disappointment",
     "early_access_vs_release_sentiment",
     "fetch_reviews",

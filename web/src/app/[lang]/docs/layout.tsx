@@ -1,26 +1,21 @@
 import { getDictionary } from "@/lib/get-dictionary";
 import { DocsSidebar } from "@/components/layout/docs-sidebar";
-import { normalizeLocale } from "@/lib/i18n";
 
 export default async function DocsLayout({
     children,
-    params
 }: {
     children: React.ReactNode,
-    params: Promise<{ lang: string }>
 }) {
-    const { lang } = await params;
-    const locale = normalizeLocale(lang);
-    const dict = await getDictionary(locale);
+    const dict = await getDictionary("en");
 
     return (
         <div className="container px-4 md:px-6 py-16 flex flex-col md:flex-row gap-16 relative">
             <div className="absolute inset-0 bg-[#00F0FF]/[0.02] -z-10" />
 
-            <DocsSidebar dict={dict} lang={locale} />
+            <DocsSidebar dict={dict} />
 
             {/* Main Content */}
-            <main className="flex-1 min-w-0 max-w-4xl prose prose-invert 
+            <main className="flex-1 min-w-0 max-w-4xl prose prose-invert
                 prose-headings:font-bold prose-headings:tracking-tighter prose-headings:uppercase
                 prose-h1:text-5xl prose-h1:mb-12
                 prose-h2:text-2xl prose-h2:mt-16 prose-h2:mb-6 prose-h2:text-[#00F0FF]/80
