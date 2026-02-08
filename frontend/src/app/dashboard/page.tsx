@@ -2318,7 +2318,7 @@ function AnalysisResults({
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              AI Summary
+              AI Overview
             </button>
             <Button onClick={onUpdate} variant="ghost" size="sm" className="text-xs sm:text-sm flex-1 sm:flex-none">
               {t('dashboard.update')}
