@@ -1,5 +1,6 @@
 'use client';
 
+import type { ComponentType, SVGProps } from "react";
 import { ReactNode, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -20,6 +21,17 @@ interface AppLayoutProps {
   showSidebar?: boolean;
   sidebarContent?: ReactNode;
 }
+
+/* ── Inline SVG nav icons (Lucide-style, 24×24 viewBox) ── */
+type IconProps = SVGProps<SVGSVGElement>;
+const IconHome = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>);
+const IconChat = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>);
+const IconCompare = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>);
+const IconReports = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>);
+const IconSupport = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>);
+const IconDatabase = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>);
+const IconAdmin = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>);
+const IconSettings = (p: IconProps) => (<svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
 
 const LOCK_ICON = (
   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -78,25 +90,25 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const effectiveSupportCount = supportNotificationCount + (showWelcomeBadge ? 1 : 0);
 
   const navItems = useMemo(() => {
-    const items: Array<{ href: string; label: string; mobileLabel?: string; code: string; hasNotification?: boolean }> = [
-      { href: "/dashboard?view=home", label: t('nav.home'), code: "01" },
-      { href: "/chat", label: t('nav.chat'), mobileLabel: t('nav.chatMobile'), code: "02" },
-      { href: "/compare", label: t('nav.compare'), code: "03" },
-      { href: "/reports", label: t('nav.reports'), code: "04" },
+    const items: Array<{ href: string; label: string; mobileLabel?: string; icon: ComponentType<IconProps>; hasNotification?: boolean }> = [
+      { href: "/dashboard?view=home", label: t('nav.home'), icon: IconHome },
+      { href: "/chat", label: t('nav.chat'), mobileLabel: t('nav.chatMobile'), icon: IconChat },
+      { href: "/compare", label: t('nav.compare'), icon: IconCompare },
+      { href: "/reports", label: t('nav.reports'), icon: IconReports },
     ];
 
     if (isAdmin) {
-      items.push({ href: "/admin?tab=inbox", label: t('nav.inbox'), code: "0S", hasNotification: true });
+      items.push({ href: "/admin?tab=inbox", label: t('nav.inbox'), icon: IconSupport, hasNotification: true });
     } else {
-      items.push({ href: "/support", label: t('nav.support'), code: "0S", hasNotification: true });
+      items.push({ href: "/support", label: t('nav.support'), icon: IconSupport, hasNotification: true });
     }
 
     if (isAdmin) {
-      items.push({ href: "/database", label: t('nav.database'), code: "05" });
-      items.push({ href: "/admin", label: "Admin", code: "0A" });
+      items.push({ href: "/database", label: t('nav.database'), icon: IconDatabase });
+      items.push({ href: "/admin", label: "Admin", icon: IconAdmin });
     }
 
-    items.push({ href: "/settings", label: t('nav.settings'), code: "06" });
+    items.push({ href: "/settings", label: t('nav.settings'), icon: IconSettings });
     return items;
   }, [t, isAdmin]);
 
@@ -159,9 +171,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                       active ? activeClasses : inactiveClasses
                     )}
                   >
-                    <span className={clsx("text-[10px] font-mono", codeClasses)}>
-                      {item.code}
-                    </span>
+                    <item.icon className={clsx("h-4 w-4 flex-shrink-0", codeClasses)} />
                     <span className="text-xs uppercase tracking-[0.2em]">{item.label}</span>
                     {showNotification && (
                       <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[rgb(255,0,128)] px-1.5 text-[10px] font-medium text-white">
@@ -326,6 +336,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                       {effectiveSupportCount > 9 ? "9+" : effectiveSupportCount}
                     </span>
                   )}
+                  <item.icon className="h-4 w-4 mb-0.5" />
                   <span className="text-[10px] uppercase tracking-[0.1em] font-medium">{item.mobileLabel || item.label}</span>
                 </Link>
               );
