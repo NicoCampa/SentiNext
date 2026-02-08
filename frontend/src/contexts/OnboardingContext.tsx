@@ -21,28 +21,42 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [mounted, setMounted] = useState(false);
 
-  // Derive user-scoped storage key
-  const storageKey = user?.id ? `${STORAGE_KEY_PREFIX}_${user.id}` : null;
+  // Derive user-scoped storage key (fall back to "local" when running without Clerk auth)
+  const storageKey = user?.id
+    ? `${STORAGE_KEY_PREFIX}_${user.id}`
+    : isUserLoaded
+    ? `${STORAGE_KEY_PREFIX}_local`
+    : null;
 
   // Load state on mount (client-side only), scoped to authenticated user
   useEffect(() => {
     if (!isUserLoaded || !storageKey) return;
-    const completed = window.localStorage.getItem(storageKey) === "true";
-    setHasCompletedOnboarding(completed);
-    setShowOnboarding(!completed);
+    try {
+      const completed = window.localStorage.getItem(storageKey) === "true";
+      setHasCompletedOnboarding(completed);
+      setShowOnboarding(!completed);
+    } catch {
+      // localStorage unavailable (private browsing, storage disabled) — skip onboarding
+      setHasCompletedOnboarding(true);
+      setShowOnboarding(false);
+    }
     setMounted(true);
   }, [isUserLoaded, storageKey]);
 
   const markOnboardingComplete = useCallback(() => {
     setHasCompletedOnboarding(true);
     setShowOnboarding(false);
-    if (storageKey) window.localStorage.setItem(storageKey, "true");
+    try {
+      if (storageKey) window.localStorage.setItem(storageKey, "true");
+    } catch { /* storage unavailable */ }
   }, [storageKey]);
 
   const resetOnboarding = useCallback(() => {
     setHasCompletedOnboarding(false);
     setShowOnboarding(true);
-    if (storageKey) window.localStorage.setItem(storageKey, "false");
+    try {
+      if (storageKey) window.localStorage.setItem(storageKey, "false");
+    } catch { /* storage unavailable */ }
   }, [storageKey]);
 
   const dismissOnboarding = useCallback(() => {

@@ -483,6 +483,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
         "monthly"
       );
       if (result.checkout_url) {
+        onComplete(); // Mark onboarding done before redirect so it won't reappear on cancel
         window.location.href = result.checkout_url;
       }
     } catch (err) {

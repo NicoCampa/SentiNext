@@ -140,6 +140,9 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       if (completedTasks.has(appId)) return; // Avoid duplicate completion handling
       completedTasks.add(appId);
 
+      // Use fresh task from ref to avoid stale closure data
+      const currentTask = tasksRef.current.get(appId) ?? task;
+
       try {
         const analysis = await fetchAnalysisResult(appId);
         if (analysis.status === 'completed') {
@@ -148,7 +151,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             try {
               await saveStarredGame({
                 app_id: appId,
-                name: task.game.name,
+                name: currentTask.game.name,
                 metadata: analysis.metadata,
                 insights: analysis.insights,
                 sample: analysis.reviews,

@@ -107,7 +107,6 @@ def log_llm_usage(
                     "session_id": session_id,
                 },
             )
-            conn.commit()
     except Exception as exc:  # best-effort logging
         logger.debug("Failed to log LLM usage: %s", exc)
 
@@ -524,7 +523,6 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
                     {"review_text": review_text, "review_id": review_id},
                 )
 
-        conn.commit()
     return count
 
 
@@ -572,8 +570,6 @@ def enforce_review_limit(app_id: int, max_reviews: int = MAX_REVIEWS_PER_GAME) -
             {"review_ids": review_ids_to_delete},
         )
         deleted_count = result.rowcount
-
-        conn.commit()
 
         if deleted_count > 0:
             logger.info(f"Enforced review limit for app {app_id}: deleted {deleted_count} old reviews")
@@ -763,7 +759,6 @@ def upsert_review_label(
                 "updated_at": timestamp,
             },
         )
-        conn.commit()
 
 
 def bulk_upsert_review_labels(items: List[Dict[str, Any]]) -> None:
@@ -804,8 +799,6 @@ def bulk_upsert_review_labels(items: List[Dict[str, Any]]) -> None:
                     "updated_at": timestamp,
                 },
             )
-        # Single commit for all items in the batch
-        conn.commit()
 
 
 def load_review_labels(app_id: int) -> Dict[str, Dict]:
@@ -853,7 +846,6 @@ def reset_progress(user_id: str, app_id: int, total: int, phase: str = "classify
             """),
             {"user_id": user_id, "app_id": app_id, "total": int(total), "phase": phase, "updated_at": timestamp},
         )
-        conn.commit()
 
 
 def update_fetch_progress(user_id: str, app_id: int, fetched_count: int) -> None:
@@ -881,7 +873,6 @@ def update_fetch_progress(user_id: str, app_id: int, fetched_count: int) -> None
                 "updated_at": timestamp,
             },
         )
-        conn.commit()
 
 
 def update_progress(user_id: str, app_id: int, processed: int, total: Optional[int] = None) -> None:
@@ -919,7 +910,6 @@ def update_progress(user_id: str, app_id: int, processed: int, total: Optional[i
                 "app_id": app_id,
             },
         )
-        conn.commit()
 
 
 def clear_progress(user_id: str, app_id: int) -> None:
@@ -931,7 +921,6 @@ def clear_progress(user_id: str, app_id: int) -> None:
             text("DELETE FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
             {"user_id": user_id, "app_id": app_id},
         )
-        conn.commit()
 
 
 def update_progress_phase(user_id: str, app_id: int, phase: str) -> None:
@@ -952,7 +941,6 @@ def update_progress_phase(user_id: str, app_id: int, phase: str) -> None:
             """),
             {"phase": phase, "updated_at": timestamp, "user_id": user_id, "app_id": app_id},
         )
-        conn.commit()
 
 
 def cancel_progress(user_id: str, app_id: int) -> bool:
@@ -970,7 +958,6 @@ def cancel_progress(user_id: str, app_id: int) -> bool:
             {"user_id": user_id, "app_id": app_id, "updated_at": datetime.now(timezone.utc)},
         )
         row = result.fetchone()
-        conn.commit()
         return row is not None
 
 
@@ -1059,7 +1046,6 @@ def save_starred_game(
                 "updated_at": timestamp,
             },
         )
-        conn.commit()
 
 
 def delete_starred_game(user_id: str, app_id: int) -> None:
@@ -1071,7 +1057,6 @@ def delete_starred_game(user_id: str, app_id: int) -> None:
             text("DELETE FROM starred_games WHERE user_id = :user_id AND app_id = :app_id"),
             {"user_id": user_id, "app_id": app_id},
         )
-        conn.commit()
 
 
 def update_favorite_status(user_id: str, app_id: int, is_favorite: bool) -> bool:
@@ -1087,7 +1072,6 @@ def update_favorite_status(user_id: str, app_id: int, is_favorite: bool) -> bool
             """),
             {"user_id": user_id, "app_id": app_id, "is_favorite": is_favorite},
         )
-        conn.commit()
         return result.rowcount > 0
 
 
@@ -1136,7 +1120,6 @@ def delete_all_game_data(app_id: int) -> None:
         conn.execute(text("DELETE FROM progress WHERE app_id = :app_id"), {"app_id": app_id})
         conn.execute(text("DELETE FROM starred_games WHERE app_id = :app_id"), {"app_id": app_id})
         conn.execute(text("DELETE FROM analysis_results WHERE app_id = :app_id"), {"app_id": app_id})
-        conn.commit()
 
 
 def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -1233,7 +1216,6 @@ def clear_all_labels() -> int:
         result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
         count = result.fetchone()[0]
         conn.execute(text("DELETE FROM review_labels"))
-        conn.commit()
         return count
 
 
@@ -1248,7 +1230,6 @@ def clear_old_schema_labels() -> int:
             WHERE payload->>'main_category' IS NULL
         """))
         count = result.rowcount
-        conn.commit()
         return count
 
 
@@ -1277,7 +1258,6 @@ def clear_entire_database() -> Dict[str, int]:
         conn.execute(text("DELETE FROM progress"))
         conn.execute(text("DELETE FROM starred_games"))
         conn.execute(text("DELETE FROM analysis_results"))
-        conn.commit()
 
         return {
             "reviews": reviews_count,
@@ -1756,7 +1736,6 @@ def cleanup_old_jobs(age_days: int = 7) -> int:
             {"cutoff": cutoff},
         )
         count = cursor.rowcount
-        conn.commit()
     return count
 
 
@@ -1889,7 +1868,6 @@ def clear_chat_history(user_id: str, session_id: str = None) -> int:
                 {"user_id": user_id},
             )
         count = cursor.rowcount
-        conn.commit()
     return count
 
 
@@ -1947,7 +1925,6 @@ def save_support_message(
                 "read_by_user": read_by_user,
             },
         ).mappings().fetchone()
-        conn.commit()
     return _format_support_message(row)
 
 
@@ -1984,7 +1961,6 @@ def mark_support_thread_read_by_admin(user_id: str) -> int:
             {"user_id": user_id},
         )
         count = cursor.rowcount
-        conn.commit()
     return count
 
 
@@ -2001,7 +1977,6 @@ def mark_support_thread_read_by_user(user_id: str) -> int:
             {"user_id": user_id},
         )
         count = cursor.rowcount
-        conn.commit()
     return count
 
 
@@ -2994,7 +2969,6 @@ def save_chat_context(
                 "updated_at": timestamp,
             },
         )
-        conn.commit()
 
 
 def load_chat_context(session_id: str) -> Optional[Dict[str, Any]]:
@@ -3092,7 +3066,6 @@ def update_chat_context_turn(
                     "updated_at": timestamp,
                 },
             )
-        conn.commit()
 
 
 def delete_chat_context(session_id: str) -> None:
@@ -3104,7 +3077,6 @@ def delete_chat_context(session_id: str) -> None:
             text("DELETE FROM chat_context WHERE session_id = :session_id"),
             {"session_id": session_id},
         )
-        conn.commit()
 
 
 def save_session_context(
@@ -3155,7 +3127,6 @@ def save_session_context(
                 "updated_at": timestamp,
             },
         )
-        conn.commit()
 
 
 def load_session_context(session_id: str) -> Dict[str, Any]:
@@ -3211,7 +3182,6 @@ def save_citation_feedback(
                 "helpful": helpful,
             },
         )
-        conn.commit()
 
 
 def get_citation_feedback_stats(review_id: str) -> Dict[str, int]:
@@ -3320,7 +3290,6 @@ def save_chat_session(
                 "updated_at": timestamp,
             },
         )
-        conn.commit()
 
 
 def update_chat_session_timestamp(session_id: str) -> None:
@@ -3338,7 +3307,6 @@ def update_chat_session_timestamp(session_id: str) -> None:
             """),
             {"session_id": session_id, "updated_at": timestamp},
         )
-        conn.commit()
 
 
 def get_chat_session(session_id: str) -> Optional[Dict[str, Any]]:
@@ -3547,8 +3515,6 @@ def delete_chat_session(session_id: str) -> int:
             {"session_id": session_id},
         )
 
-        conn.commit()
-
     return messages_deleted
 
 
@@ -3645,7 +3611,6 @@ def save_comparison_summary(
                 "user_id": user_id,
             },
         )
-        conn.commit()
 
     logger.info(f"Saved comparison summary: cache_key={cache_key}, type={comparison_type}")
     return cache_key

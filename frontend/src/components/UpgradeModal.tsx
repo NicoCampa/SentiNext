@@ -30,6 +30,8 @@ export function UpgradeModal({ onClose, message }: UpgradeModalProps) {
       );
       if (result.checkout_url) {
         window.location.href = result.checkout_url;
+      } else {
+        console.error("Checkout session created but no checkout_url returned");
       }
     } catch (err) {
       console.error("Failed to create checkout session", err);

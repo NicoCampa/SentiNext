@@ -204,7 +204,6 @@ def maybe_reset_billing_period(user_id: str) -> None:
                 "now": now,
             },
         )
-        conn.commit()
 
 
 def get_user_subscription(user_id: str) -> Dict[str, Any]:
@@ -263,7 +262,6 @@ def get_user_subscription(user_id: str) -> Dict[str, Any]:
                     "now": now,
                 },
             )
-            conn.commit()
 
             return {
                 "tier": "free",
@@ -474,7 +472,6 @@ def deduct_credits(
                 "now": now,
             },
         )
-        conn.commit()
 
     logger.info(f"Deducted {amount} credits from user {user_id} for {operation}. New balance: {balance_after}")
     return True
@@ -527,7 +524,6 @@ def refund_credits(
                 "now": now,
             },
         )
-        conn.commit()
 
     logger.info(f"Refunded {amount} credits to user {user_id} for {operation}. New balance: {balance_after}")
     return balance_after
@@ -610,7 +606,6 @@ def add_credits(
                 "now": now,
             },
         )
-        conn.commit()
 
     logger.info(f"Added {amount} credits to user {user_id} for {reason}. New balance: {balance_after}")
     return balance_after
@@ -667,7 +662,6 @@ def reset_monthly_credits(user_id: str) -> None:
                 "now": now,
             },
         )
-        conn.commit()
 
     logger.info(f"Reset monthly credits for user {user_id} to {limit}")
 
@@ -710,7 +704,6 @@ def update_tier(user_id: str, new_tier: str, stripe_subscription_id: Optional[st
                 "now": now,
             },
         )
-        conn.commit()
 
     logger.info(f"Updated tier for user {user_id} to {new_tier} (limit: {new_limit})")
 
@@ -734,7 +727,6 @@ def set_stripe_customer(user_id: str, stripe_customer_id: str) -> None:
             """),
             {"user_id": user_id, "stripe_customer_id": stripe_customer_id, "now": now},
         )
-        conn.commit()
 
 
 def estimate_analysis_cost(new_reviews: int, cached_reviews: int = 0) -> int:
@@ -845,7 +837,6 @@ def set_cancel_at_period_end(user_id: str, value: bool) -> None:
             """),
             {"user_id": user_id, "value": value, "now": now},
         )
-        conn.commit()
 
     logger.info(f"Set cancel_at_period_end={value} for user {user_id}")
 
@@ -866,7 +857,6 @@ def set_payment_failed(user_id: str, value: bool) -> None:
             """),
             {"user_id": user_id, "value": value, "now": now},
         )
-        conn.commit()
 
     logger.info(f"Set payment_failed={value} for user {user_id}")
 

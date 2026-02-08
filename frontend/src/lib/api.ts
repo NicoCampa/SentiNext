@@ -404,9 +404,7 @@ export async function saveStarredGame(payload: StarredGamePayload): Promise<void
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) {
-    throw new Error(`Failed to save starred game (status ${response.status})`);
-  }
+  await handleResponse<void>(response);
 }
 
 const ADMIN_TOKEN_STORAGE_KEY = "sentinext_admin_token";

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import { SteamImage } from './SteamImage';
+import { UpgradeModal } from './UpgradeModal';
 import clsx from 'clsx';
 
 function formatRemainingTime(seconds?: number | null) {
@@ -24,15 +25,35 @@ function formatRemainingTime(seconds?: number | null) {
 export function AnalysisWidget() {
   const { tasks, clearTask } = useAnalysis();
   const [isMinimized, setIsMinimized] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
 
   const activeTasks = Array.from(tasks.entries());
   const hasActiveTasks = activeTasks.length > 0;
 
-  if (!hasActiveTasks) {
+  // Auto-show upgrade modal when a credit error first appears
+  const shownCreditErrorsRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    for (const [appId, task] of activeTasks) {
+      if (
+        task.status === 'error' &&
+        task.error &&
+        /credit|insufficient/i.test(task.error) &&
+        !shownCreditErrorsRef.current.has(appId)
+      ) {
+        shownCreditErrorsRef.current.add(appId);
+        setUpgradeMessage(task.error);
+        break;
+      }
+    }
+  }, [activeTasks]);
+
+  if (!hasActiveTasks && !upgradeMessage) {
     return null;
   }
 
   return (
+    <>
+    {hasActiveTasks && (
     <div className="fixed bottom-24 right-4 z-50 w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:bottom-6 sm:right-6 sm:w-96 sm:max-w-[calc(100vw-3rem)]">
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur">
         {/* Header */}
@@ -226,6 +247,14 @@ export function AnalysisWidget() {
                         {task.status === 'error' && (
                           <div className="text-xs text-rose-400">
                             Error: {task.error}
+                            {task.error && /credit|insufficient/i.test(task.error) && (
+                              <button
+                                onClick={() => setUpgradeMessage(task.error ?? null)}
+                                className="ml-2 text-amber-400 hover:text-amber-300 underline"
+                              >
+                                Upgrade
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -236,5 +265,13 @@ export function AnalysisWidget() {
         )}
       </div>
     </div>
+    )}
+    {upgradeMessage && (
+      <UpgradeModal
+        onClose={() => setUpgradeMessage(null)}
+        message={upgradeMessage}
+      />
+    )}
+    </>
   );
 }

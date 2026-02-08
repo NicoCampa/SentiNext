@@ -41,6 +41,8 @@ def _match_subcategories(question: str, available: Sequence[str]) -> List[str]:
     normalized = _normalize_text(question)
     matches: List[str] = []
     for key in available:
+        if "/" not in key:
+            continue
         main, sub = key.split("/", 1)
         variants = {
             _normalize_text(key),
