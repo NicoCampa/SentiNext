@@ -116,8 +116,8 @@ export default function HomeClient({ dict }: { dict: Dictionary }) {
                                 </Link>
                             </Button>
                             <Button size="lg" variant="outline" className="h-14 px-12 border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-[0.2em] text-xs rounded-none relative group" asChild>
-                                <Link href="/en/how-it-works">
-                                    Pipeline Overview
+                                <Link href="/en/product">
+                                    See How It Works
                                 </Link>
                             </Button>
                         </div>

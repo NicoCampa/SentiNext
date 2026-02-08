@@ -12,7 +12,6 @@ export function Header({ lang }: { lang: string }) {
 
     const menuItems = [
         { name: 'Product', href: `/${lang}/product` },
-        { name: 'Process', href: `/${lang}/how-it-works` },
         { name: 'Pricing', href: `/${lang}/pricing` },
         { name: 'Docs', href: `/${lang}/docs` },
     ];

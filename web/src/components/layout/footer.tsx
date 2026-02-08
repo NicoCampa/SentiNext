@@ -22,7 +22,6 @@ export function Footer({ lang }: { lang: SupportedLocale }) {
                     <div className="flex flex-col gap-4">
                         <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00F0FF]">Product</h4>
                         <Link href={`/${lang}/product`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Features</Link>
-                        <Link href={`/${lang}/how-it-works`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Process</Link>
                         <Link href={`/${lang}/pricing`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Pricing</Link>
                     </div>
 
