@@ -50,7 +50,7 @@ export default function PricingClient({ dict }: { dict: Dictionary }) {
                         </Button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 max-w-7xl mx-auto items-start">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-5xl mx-auto items-start">
 
                         {/* Indie */}
                         <PricingCard
@@ -60,27 +60,12 @@ export default function PricingClient({ dict }: { dict: Dictionary }) {
                             description="For small teams and indie developers."
                             features={[
                                 "5,000 credits / month",
-                                "Dashboards + AI agent chat + Compare",
+                                "Dashboards + Compare",
+                                "AI agent chat",
                                 "Monthly PDF reports",
-                                "CSV / JSONL export",
                             ]}
                             cta="Upgrade to Indie"
                             href={process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}
-                        />
-
-                        {/* Pro Tier (Coming Soon) */}
-                        <PricingCard
-                            name="Pro"
-                            price="Coming Soon"
-                            description="For teams that analyze reviews regularly."
-                            features={[
-                                "15,000 credits / month",
-                                "Dashboards + AI agent chat + Compare",
-                                "Monthly PDF reports",
-                                "CSV / JSONL export",
-                            ]}
-                            cta="Coming Soon"
-                            href="#"
                         />
 
                         {/* Enterprise */}
@@ -91,8 +76,8 @@ export default function PricingClient({ dict }: { dict: Dictionary }) {
                             features={[
                                 "Custom credits & limits",
                                 "Priority support",
+                                "AI agent chat",
                                 "Custom reporting",
-                                "CSV / JSONL export",
                             ]}
                             cta="Contact Us"
                             href={`${process.env.NEXT_PUBLIC_APP_URL || "https://app.sentinext.nicolocampagnoli.com"}/support`}
