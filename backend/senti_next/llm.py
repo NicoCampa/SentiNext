@@ -2566,12 +2566,20 @@ def ensure_review_labels(
                     if progress_callback is not None:
                         progress_callback(processed_count, total_reviews)
 
+                except InterruptedError:
+                    # Cancellation signal from progress_callback — propagate immediately
+                    raise
                 except Exception as exc:
                     logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
                     failed_count += 1
                     processed_count += 1
                     if progress_callback is not None:
-                        progress_callback(processed_count, total_reviews)
+                        try:
+                            progress_callback(processed_count, total_reviews)
+                        except InterruptedError:
+                            raise
+                        except Exception:
+                            pass  # Don't let a progress update error abort the whole batch
 
         # Flush remaining labels
         _flush_label_buffer(label_write_buffer)

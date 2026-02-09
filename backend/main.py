@@ -1608,6 +1608,38 @@ def analyze(
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
         filter_type = "recent"
 
+    # --- Early check for stale/running analysis ---
+    # Must happen BEFORE reset_progress() to avoid confusing the current
+    # request's own progress row with evidence of a previous running analysis.
+    existing_result = storage.load_analysis_result(user_id, request.app_id)
+    if existing_result and existing_result.get("status") == "running":
+        progress = storage.load_progress(user_id, request.app_id)
+        if progress is not None:
+            updated_ts = progress.get("updated_at", 0)
+            age_seconds = (datetime.now(timezone.utc) - datetime.fromtimestamp(updated_ts, tz=timezone.utc)).total_seconds() if updated_ts else float("inf")
+            if age_seconds < 300:  # Progress updated within 5 minutes — likely still running
+                processed = progress.get("processed", 0)
+                total = progress.get("total", 0)
+                logger.info(f"Analysis already running for app {request.app_id} ({processed}/{total}), age {age_seconds:.0f}s")
+                return AnalyzeResponse(
+                    metadata=AnalyzeMetadata(**existing_result.get("metadata", {})),
+                    insights=None,
+                    reviews=[],
+                )
+            else:
+                # Stale "running" result — mark as failed so we can re-run
+                logger.warning(f"Clearing stale 'running' analysis for app {request.app_id} (no progress for {age_seconds:.0f}s)")
+                storage.save_analysis_result(
+                    user_id=user_id,
+                    app_id=request.app_id,
+                    metadata=existing_result.get("metadata", {}),
+                    insights=None,
+                    reviews=[],
+                    status="failed",
+                    error="Analysis timed out (stale running state)",
+                )
+                storage.clear_progress(user_id, request.app_id)
+
     stored_reviews: List[dict] = []
     if request.persist:
         stored_reviews = storage.load_reviews(request.app_id)
@@ -1764,20 +1796,6 @@ def analyze(
             text("SELECT pg_advisory_unlock(:lock_id)"),
             {"lock_id": request.app_id + 1_000_000_000},
         )
-
-    existing_result = storage.load_analysis_result(user_id, request.app_id)
-    if existing_result and existing_result.get("status") == "running":
-        # The analysis result is marked as running - check if the job is still active.
-        progress = storage.load_progress(user_id, request.app_id)
-        if progress is not None:
-            processed = progress.get("processed", 0)
-            total = progress.get("total", 0)
-            logger.info(f"Analysis already running for app {request.app_id} ({processed}/{total})")
-            return AnalyzeResponse(
-                metadata=AnalyzeMetadata(**existing_result.get("metadata", {})),
-                insights=None,
-                reviews=[],
-            )
 
     game_context = fetch_app_details(request.app_id)
     header_image = None
@@ -3928,9 +3946,9 @@ def classification_progress(
         else None
     )
 
-    # For fetching phase, consider active if fetched_count > 0
-    # For classifying phase, consider active if processed < total
-    if phase == "fetching":
+    # For fetching/building_insights phases, always active.
+    # For classifying phase, active while processed < total.
+    if phase in ("fetching", "building_insights"):
         active = True
     else:
         active = processed < total
@@ -3963,7 +3981,7 @@ async def progress_stream(
         last_processed = -1
         last_fetched = -1
         idle_count = 0
-        max_idle = 120  # 60 seconds of no progress = timeout
+        max_idle = 200  # ~5 minutes of no progress = timeout (accounts for API rate limiting retries)
 
         while True:
             try:
@@ -3997,17 +4015,20 @@ async def progress_stream(
                     phase = progress.get("phase", "classifying")
                     fetched_count = int(progress.get("fetched_count", 0))
 
-                    # For fetching phase, consider active if fetched_count is changing
-                    # For classifying phase, consider active if processed < total
-                    if phase == "fetching":
-                        active = True  # Always active during fetching
+                    # For fetching/building_insights phases, always active.
+                    # For classifying phase, active while processed < total.
+                    if phase in ("fetching", "building_insights"):
+                        active = True
                     else:
                         active = processed < total
 
                     yield f"event: progress\ndata: {json.dumps({'processed': processed, 'total': total, 'active': active, 'phase': phase, 'fetched_count': fetched_count})}\n\n"
 
-                    # Track progress changes for both phases
-                    if phase == "fetching":
+                    # Track progress changes per phase
+                    if phase == "building_insights":
+                        # Transitional phase — don't count as idle, just wait
+                        idle_count = 0
+                    elif phase == "fetching":
                         if fetched_count == last_fetched:
                             idle_count += 1
                         else:
