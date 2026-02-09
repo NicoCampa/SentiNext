@@ -504,6 +504,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
       btnClass: 'border-slate-500/30 text-slate-300 hover:bg-slate-500/10',
       badge: null,
       action: 'free' as const,
+      features: [t('onboarding.tier.freeFeat1'), t('onboarding.tier.freeFeat2')],
     },
     {
       name: t('onboarding.tier.indie'),
@@ -515,6 +516,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
       btnClass: 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10',
       badge: null,
       action: 'indie' as const,
+      features: [t('onboarding.tier.indieFeat1'), t('onboarding.tier.indieFeat2'), t('onboarding.tier.indieFeat3')],
     },
     {
       name: t('onboarding.tier.enterprise'),
@@ -526,6 +528,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
       btnClass: 'border-purple-500/30 text-purple-400 hover:bg-purple-500/10',
       badge: null,
       action: 'enterprise' as const,
+      features: [t('onboarding.tier.entFeat1'), t('onboarding.tier.entFeat2')],
     },
   ];
 
@@ -547,7 +550,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
       </div>
 
       {/* Tier cards */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-8">
         {tiers.map((tier, i) => (
           <div
             key={i}
@@ -573,11 +576,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
             {/* Included features */}
             <div className="mt-3 pt-3 border-t border-[rgb(0,255,255)]/5 space-y-1.5">
               <p className="text-[9px] uppercase tracking-wider text-[rgb(100,100,120)] mb-1">{t('onboarding.tier.includes')}</p>
-              {[
-                t('onboarding.tier.classifyCost'),
-                t('onboarding.tier.chatCost'),
-                t('onboarding.tier.summaryCost'),
-              ].map((feat, j) => (
+              {tier.features.map((feat, j) => (
                 <div key={j} className="flex items-center gap-1.5">
                   <svg className="w-3 h-3 text-[rgb(0,255,255)]/50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

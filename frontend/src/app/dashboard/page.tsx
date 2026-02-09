@@ -1224,6 +1224,27 @@ function AnalysisResults({
   const [mounted, setMounted] = useState(false);
   const healthOverviewRequestIdRef = useRef(0);
 
+  // Collapsible widget state (persisted in localStorage)
+  type WidgetKey = 'healthOverview' | 'topIssuesRequests' | 'categoriesOverview' | 'sentimentTrend' | 'segmentation' | 'recentUpdates';
+  const COLLAPSED_STORAGE_KEY = 'sentinext_collapsed_widgets';
+  const [collapsedWidgets, setCollapsedWidgets] = useState<Set<WidgetKey>>(new Set());
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+      if (stored) setCollapsedWidgets(new Set(JSON.parse(stored)));
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleWidget = useCallback((key: WidgetKey) => {
+    setCollapsedWidgets(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
   // Trigger animations on mount
   useEffect(() => {
     setMounted(true);
@@ -2439,19 +2460,33 @@ function AnalysisResults({
 
       {/* Health Overview Card */}
       <div className={mounted ? 'animate-fade-slide-up animation-delay-75' : 'opacity-0'}>
-        <HealthOverviewCard
-          overview={healthOverview}
-          onRefresh={handleRefreshHealthOverview}
-          refreshing={healthOverviewRefreshing}
-          gameName={selectedGame?.name}
-          reviewCount={healthOverviewOverride?.review_count ?? analysis.metadata?.retrieved}
-          startDate={healthOverviewOverride?.start_date}
-          endDate={healthOverviewOverride?.end_date}
-        />
+        <div className="flex items-center justify-between mb-1">
+          <button type="button" onClick={() => toggleWidget('healthOverview')} className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
+            <svg className={`w-3 h-3 transition-transform ${collapsedWidgets.has('healthOverview') ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            {collapsedWidgets.has('healthOverview') ? 'Show' : 'Hide'} Overview
+          </button>
+        </div>
+        {!collapsedWidgets.has('healthOverview') && (
+          <HealthOverviewCard
+            overview={healthOverview}
+            onRefresh={handleRefreshHealthOverview}
+            refreshing={healthOverviewRefreshing}
+            gameName={selectedGame?.name}
+            reviewCount={healthOverviewOverride?.review_count ?? analysis.metadata?.retrieved}
+            startDate={healthOverviewOverride?.start_date}
+            endDate={healthOverviewOverride?.end_date}
+          />
+        )}
       </div>
 
       <div className="space-y-6">
 
+        <div>
+          <button type="button" onClick={() => toggleWidget('topIssuesRequests')} className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors mb-2">
+            <svg className={`w-3 h-3 transition-transform ${collapsedWidgets.has('topIssuesRequests') ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            {collapsedWidgets.has('topIssuesRequests') ? 'Show' : 'Hide'} Issues & Requests
+          </button>
+        {!collapsedWidgets.has('topIssuesRequests') && (
         <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
           <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-250' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
@@ -2587,13 +2622,21 @@ function AnalysisResults({
             )}
           </Card>
         </div>
+        )}
+        </div>
 
         <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
-          <div>
-            <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
-            <p className="mt-1 text-xs sm:text-sm text-slate-400">Recommendation rate by category</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.categoriesOverview')}</h4>
+              <p className="mt-1 text-xs sm:text-sm text-slate-400">Recommendation rate by category</p>
+            </div>
+            <button type="button" onClick={() => toggleWidget('categoriesOverview')} className="text-slate-500 hover:text-slate-300 transition-colors p-1" title={collapsedWidgets.has('categoriesOverview') ? 'Expand' : 'Collapse'}>
+              <svg className={`w-4 h-4 transition-transform ${collapsedWidgets.has('categoriesOverview') ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </button>
           </div>
 
+          {!collapsedWidgets.has('categoriesOverview') && (
           <div className="mt-4 sm:mt-5 grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {categories.map((category) => {
               const rateText = formatPercentOrDash(category.rate);
@@ -2652,6 +2695,7 @@ function AnalysisResults({
               );
             })}
           </div>
+          )}
         </Card>
 
         <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-500' : 'opacity-0'}`}>
@@ -2660,24 +2704,29 @@ function AnalysisResults({
               <h4 className="text-lg font-semibold text-white">Trends</h4>
               <p className="mt-1 text-sm text-slate-400">How recommendation rate and volume shift over time</p>
             </div>
-            {latestTrend && (
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <span className="text-slate-400">
-                  Latest {formatPercentOrDash(latestTrend.recommendation_rate)} rec
-                </span>
-                <span className={recDeltaClass}>{recDeltaLabel}</span>
-                <span className="text-slate-400">{latestTrend.reviews.toLocaleString()} reviews</span>
-                <span className={volumeDeltaClass}>{volumeDeltaLabel}</span>
-                {filtersActive && (
-                  <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-slate-300">
-                    filtered view
+            <div className="flex items-center gap-3">
+              {latestTrend && (
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <span className="text-slate-400">
+                    Latest {formatPercentOrDash(latestTrend.recommendation_rate)} rec
                   </span>
-                )}
-              </div>
-            )}
+                  <span className={recDeltaClass}>{recDeltaLabel}</span>
+                  <span className="text-slate-400">{latestTrend.reviews.toLocaleString()} reviews</span>
+                  <span className={volumeDeltaClass}>{volumeDeltaLabel}</span>
+                  {filtersActive && (
+                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-slate-300">
+                      filtered view
+                    </span>
+                  )}
+                </div>
+              )}
+              <button type="button" onClick={() => toggleWidget('sentimentTrend')} className="text-slate-500 hover:text-slate-300 transition-colors p-1" title={collapsedWidgets.has('sentimentTrend') ? 'Expand' : 'Collapse'}>
+                <svg className={`w-4 h-4 transition-transform ${collapsedWidgets.has('sentimentTrend') ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+            </div>
           </div>
 
-          {trendSeries.length === 0 ? (
+          {!collapsedWidgets.has('sentimentTrend') && (trendSeries.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">
               {filtersActive && filteredReviewSample.length === 0
                 ? "No reviews match the current filters."
@@ -2726,25 +2775,21 @@ function AnalysisResults({
                 </div>
               </div>
             </div>
-          )}
+          ))}
         </Card>
 
-        {/* Recent Updates (News) */}
-        {selectedGame && (
-          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-600' : 'opacity-0'}`}>
-            <NewsWithSummary appId={selectedGame.appid} count={5} />
-          </Card>
-        )}
-
-        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-700' : 'opacity-0'}`}>
+        <Card variant="glass" className={`p-6 ${mounted ? 'animate-fade-slide-up animation-delay-600' : 'opacity-0'}`}>
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-lg font-semibold text-white">Userbase segmentation</h4>
               <p className="mt-1 text-sm text-slate-400">Who is reviewing and what they care about</p>
             </div>
+            <button type="button" onClick={() => toggleWidget('segmentation')} className="text-slate-500 hover:text-slate-300 transition-colors p-1" title={collapsedWidgets.has('segmentation') ? 'Expand' : 'Collapse'}>
+              <svg className={`w-4 h-4 transition-transform ${collapsedWidgets.has('segmentation') ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </button>
           </div>
 
-          {!playerSegments ? (
+          {!collapsedWidgets.has('segmentation') && (!playerSegments ? (
             <p className="mt-4 text-sm text-slate-500">Segmentation data is not available for this analysis.</p>
           ) : (
             <div className="mt-5 space-y-6">
@@ -3030,8 +3075,22 @@ function AnalysisResults({
                 </div>
               </div>
             </div>
-          )}
+          ))}
         </Card>
+
+        {/* Recent Updates (News) */}
+        {selectedGame && (
+          <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-700' : 'opacity-0'}`}>
+            <div className="flex items-center justify-end mb-1">
+              <button type="button" onClick={() => toggleWidget('recentUpdates')} className="text-slate-500 hover:text-slate-300 transition-colors p-1" title={collapsedWidgets.has('recentUpdates') ? 'Expand' : 'Collapse'}>
+                <svg className={`w-4 h-4 transition-transform ${collapsedWidgets.has('recentUpdates') ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+            </div>
+            {!collapsedWidgets.has('recentUpdates') && (
+              <NewsWithSummary appId={selectedGame.appid} count={5} />
+            )}
+          </Card>
+        )}
       </div>
 
       {selectedSubcategory ? (
