@@ -98,7 +98,7 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
     ];
 
     if (isAdmin) {
-      items.push({ href: "/admin?tab=inbox", label: t('nav.inbox'), icon: IconSupport, hasNotification: true });
+      items.push({ href: "/admin?tab=support", label: t('nav.inbox'), icon: IconSupport, hasNotification: true });
     } else {
       items.push({ href: "/support", label: t('nav.support'), icon: IconSupport, hasNotification: true });
     }

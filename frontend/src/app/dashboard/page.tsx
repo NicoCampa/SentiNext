@@ -559,6 +559,8 @@ function DashboardContent() {
   useEffect(() => {
     if (currentTask?.status === "completed" && currentTask.result) {
       setAnalysis(currentTask.result);
+      setUpdateSuccess("You are up to date");
+      setTimeout(() => setUpdateSuccess(null), 3000);
       refreshGames().catch(() => null);
       refreshCredits().catch(() => null);
       if (selectedGame) {
@@ -997,11 +999,9 @@ function DashboardContent() {
                   filter: fetchFilter,
                   refresh_days: daysSinceLastRun,
                 });
-
-                // Show success message
-                setUpdateSuccess("You are up to date");
-                // Auto-hide after 3 seconds
-                setTimeout(() => setUpdateSuccess(null), 3000);
+                // Don't show "You are up to date" here — the analysis runs
+                // in the background. The completion effect will update the
+                // dashboard (and Last run date) when the job finishes.
               } catch (err) {
                 const msg = (err as Error).message || "Failed to update analysis";
                 if (/credit|insufficient/i.test(msg)) {

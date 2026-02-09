@@ -221,6 +221,10 @@ def run_analysis_job(
             # the final state.  The progress row is overwritten on the next
             # analysis via reset_progress().
             storage.update_progress(user_id, app_id, total_reviews, total_reviews)
+            # Reset phase from "building_insights" back to "classifying" so
+            # the SSE stream can detect completion (building_insights forces
+            # active=true which prevents the SSE completion check).
+            storage.update_progress_phase(user_id, app_id, "classifying")
 
         # Refund credits if analysis failed and produced no usable result
         if analysis_failed and credit_tracker.total > 0:

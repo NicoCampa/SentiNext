@@ -1637,6 +1637,10 @@ def _run_analysis_job(
             # the final state.  The progress row is overwritten on the next
             # analysis via reset_progress().
             storage.update_progress(user_id, app_id, total_reviews, total_reviews)
+            # Reset phase from "building_insights" back to "classifying" so
+            # the SSE stream can detect completion (building_insights forces
+            # active=true which prevents the SSE completion check).
+            storage.update_progress_phase(user_id, app_id, "classifying")
 
         # Refund credits if analysis failed and produced no usable result
         if analysis_failed and credit_tracker.total > 0:
@@ -4001,10 +4005,17 @@ def classification_progress(
         else None
     )
 
-    # For fetching/building_insights phases, always active.
-    # For classifying phase, active while processed < total.
-    if phase in ("fetching", "building_insights"):
+    # For fetching phase, always active.  For building_insights, check
+    # if the analysis result has already been saved as completed — if so,
+    # report inactive so the frontend knows the job is done.
+    if phase == "fetching":
         active = True
+    elif phase == "building_insights":
+        result = storage.load_analysis_result(user_id, app_id)
+        if result and result.get("status") in ("completed", "failed"):
+            active = False
+        else:
+            active = True
     else:
         active = processed < total
 
@@ -4080,15 +4091,17 @@ async def progress_stream(
                     yield f"event: progress\ndata: {json.dumps({'processed': processed, 'total': total, 'active': active, 'phase': phase, 'fetched_count': fetched_count})}\n\n"
 
                     # Track progress changes per phase
-                    if phase == "building_insights":
-                        # Transitional phase — don't count as idle, just wait
-                        idle_count = 0
-                    elif phase == "fetching":
+                    if phase == "fetching":
                         if fetched_count == last_fetched:
                             idle_count += 1
                         else:
                             idle_count = 0
                             last_fetched = fetched_count
+                    elif phase == "building_insights":
+                        # Transitional phase — increment idle slowly to allow
+                        # for health overview generation but still timeout
+                        # if the job dies in this phase.
+                        idle_count += 1
                     else:
                         if processed == last_processed:
                             idle_count += 1
@@ -4096,8 +4109,10 @@ async def progress_stream(
                             idle_count = 0
                             last_processed = processed
 
-                    # Check if completed
-                    if not active and total > 0:
+                    # Check if completed — use processed >= total (not just
+                    # "not active") so we also detect completion when phase is
+                    # "building_insights" which always reports active=true.
+                    if total > 0 and (not active or processed >= total):
                         result = storage.load_analysis_result(user_id, app_id)
                         if result:
                             status = result.get("status", "unknown")
