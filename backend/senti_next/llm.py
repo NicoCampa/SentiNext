@@ -2719,9 +2719,14 @@ def apply_review_labels(df: pd.DataFrame, labels: Mapping[str, Mapping[str, Any]
     key_series = df_labeled["review_id"].astype(str)
 
     def _get_value(review_id: str, key: str, default: Any) -> Any:
-        payload = labels.get(review_id)
-        if not payload:
+        entry = labels.get(review_id)
+        if not entry:
             return default
+        # Unwrap nested storage format from load_review_labels():
+        # {"model": ..., "payload": {actual label data}}
+        payload = entry
+        if "model" in entry and isinstance(entry.get("payload"), dict):
+            payload = entry["payload"]
         value = payload.get(key, default)
         if key in ("subcategories", "issue_subcategories", "request_subcategories"):
             if isinstance(value, list):
