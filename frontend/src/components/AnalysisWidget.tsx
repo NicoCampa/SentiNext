@@ -102,11 +102,11 @@ export function AnalysisWidget() {
                     <p className="text-sm font-medium text-white line-clamp-1">
                       {task.game.name}
                     </p>
-                    {(task.status === 'completed' || task.status === 'analyzing') && (
+                    {(task.status === 'completed' || task.status === 'analyzing' || task.status === 'queued') && (
                       <button
                         onClick={() => clearTask(appId)}
                         className="flex-shrink-0 rounded p-0.5 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400"
-                        title={task.status === 'analyzing' ? 'Cancel analysis' : 'Dismiss'}
+                        title={task.status === 'analyzing' ? 'Cancel analysis' : task.status === 'queued' ? 'Remove from queue' : 'Dismiss'}
                       >
                         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -116,6 +116,24 @@ export function AnalysisWidget() {
                   </div>
 
                   {/* Status */}
+                  {task.status === 'queued' && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-amber-300">
+                          Waiting in queue
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Waiting for {task.waitingFor ?? 'another analysis'} to finish...
+                      </p>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-700">
+                        <div
+                          className="h-full w-full bg-gradient-to-r from-amber-500/40 to-amber-500/20 animate-pulse"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {task.status === 'analyzing' && (
                     <div className="space-y-1.5">
                       {/* Phase indicator with step number */}

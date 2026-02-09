@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef, useMemo } from 'react';
-import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis, trackEvent } from '@/lib/api';
+import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis, trackEvent, fetchCreditStatus } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
@@ -11,10 +11,12 @@ interface ProgressWithEstimate extends ProgressStatus {
 
 interface AnalysisTask {
   game: SearchResult;
-  status: 'analyzing' | 'completed' | 'error';
+  status: 'queued' | 'analyzing' | 'completed' | 'error';
   progress: ProgressWithEstimate | null;
   result: AnalyzeResponse | null;
   error: string | null;
+  /** Name of the game this task is waiting on (only set when status === 'queued') */
+  waitingFor: string | null;
 }
 
 interface StartAnalysisOptions {
@@ -26,6 +28,11 @@ interface StartAnalysisOptions {
   filter?: string;
   day_range?: number | null;
   refresh_days?: number | null;
+}
+
+interface QueuedEntry {
+  game: SearchResult;
+  options: StartAnalysisOptions;
 }
 
 interface AnalysisContextType {
@@ -48,6 +55,7 @@ interface ProgressStats {
 export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Map<number, AnalysisTask>>(new Map());
   const progressStatsRef = useRef<Map<number, ProgressStats>>(new Map());
+  const queueRef = useRef<QueuedEntry[]>([]);
 
   const resetProgressStats = useCallback((appId: number) => {
     progressStatsRef.current.delete(appId);
@@ -119,6 +127,127 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
 
+  // --- Queue processing: when no analysis is running, start the next queued one ---
+  const processQueueRef = useRef<() => void>(() => {});
+
+  const processQueue = useCallback(async () => {
+    // Check if anything is currently analyzing
+    const currentTasks = tasksRef.current;
+    const hasRunning = Array.from(currentTasks.values()).some((t) => t.status === 'analyzing');
+    if (hasRunning) return;
+
+    const next = queueRef.current.shift();
+    if (!next) return;
+
+    const { game, options } = next;
+    const appId = game.appid;
+
+    // Check credits before auto-starting
+    try {
+      const creditStatus = await fetchCreditStatus();
+      if (creditStatus.blocked) {
+        setTasks((prev) => {
+          const newTasks = new Map(prev);
+          const existing = newTasks.get(appId);
+          if (existing && existing.status === 'queued') {
+            newTasks.set(appId, {
+              ...existing,
+              status: 'error',
+              waitingFor: null,
+              error: 'Insufficient credits to start this analysis. Please upgrade your plan or wait for your credits to renew.',
+            });
+          }
+          return newTasks;
+        });
+        // Continue processing — maybe more queued tasks should also be marked
+        processQueueRef.current();
+        return;
+      }
+    } catch {
+      // Credit check failed — let the /analyze endpoint handle it
+    }
+
+    // Transition from queued → analyzing
+    resetProgressStats(appId);
+    setTasks((prev) => {
+      const newTasks = new Map(prev);
+      const existing = newTasks.get(appId);
+      if (existing && existing.status === 'queued') {
+        newTasks.set(appId, {
+          ...existing,
+          status: 'analyzing',
+          waitingFor: null,
+          progress: null,
+        });
+      }
+      return newTasks;
+    });
+
+    trackEvent({
+      event_name: "start_analysis",
+      event_category: "analysis",
+      page: "/dashboard",
+      target: game.name,
+      metadata: { app_id: appId, review_count: options.review_count, language: options.language },
+    });
+
+    const persist = options.persist ?? true;
+    const refresh = options.refresh ?? false;
+    const reviewCount = options.review_count ?? loadDefaultAnalysisReviewCount();
+    const language = options.language ?? "all";
+    const languages = options.languages;
+    const filter = options.filter ?? "recent";
+    const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
+    const dayRange = options.day_range ?? undefined;
+
+    try {
+      saveDefaultAnalysisReviewCount(reviewCount);
+      const result = await analyzeGame({
+        app_id: appId,
+        review_count: reviewCount,
+        language,
+        languages,
+        filter,
+        day_range: dayRange,
+        persist,
+        refresh,
+        refresh_days: refreshDays,
+      });
+
+      setTasks((prev) => {
+        const newTasks = new Map(prev);
+        const current = newTasks.get(appId);
+        if (current && current.status === 'analyzing') {
+          newTasks.set(appId, { ...current, result });
+        }
+        return newTasks;
+      });
+    } catch (err) {
+      let errorMessage = 'Analysis failed';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      try {
+        const parsed = JSON.parse(errorMessage);
+        if (parsed?.message) errorMessage = parsed.message;
+      } catch {
+        // Not JSON, use as-is
+      }
+      setTasks((prev) => {
+        const newTasks = new Map(prev);
+        const current = newTasks.get(appId);
+        if (current) {
+          newTasks.set(appId, { ...current, status: 'error', progress: null, waitingFor: null, error: errorMessage });
+        }
+        return newTasks;
+      });
+      // Analysis failed to start — try next in queue
+      processQueueRef.current();
+    }
+  }, [resetProgressStats]);
+
+  processQueueRef.current = processQueue;
+
   // Track progress for active analyses using SSE with polling fallback
   // Only re-run when the SET of active task IDs changes, not on every progress update
   useEffect(() => {
@@ -184,6 +313,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             }
             return newTasks;
           });
+          // Analysis finished — process next queued task
+          processQueueRef.current();
         } else if (analysis.status === 'failed') {
           resetProgressStats(appId);
           setTasks((prev) => {
@@ -199,6 +330,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             }
             return newTasks;
           });
+          // Analysis failed — process next queued task
+          processQueueRef.current();
         } else {
           // Status is still 'analyzing' or something else - remove from completed so we can retry
           completedTasks.delete(appId);
@@ -330,9 +463,31 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
     const dayRange = options.day_range ?? undefined;
 
-    // Check if already analyzing OR if an API call is already in-flight
+    // Check if already analyzing/queued OR if an API call is already in-flight
     const existing = tasks.get(appId);
-    if ((existing && existing.status === 'analyzing') || pendingAnalysisRef.current.has(appId)) {
+    if ((existing && (existing.status === 'analyzing' || existing.status === 'queued')) || pendingAnalysisRef.current.has(appId)) {
+      return;
+    }
+
+    // Check if another game is currently analyzing — queue this one
+    const runningTask = Array.from(tasks.entries()).find(
+      ([id, task]) => id !== appId && task.status === 'analyzing'
+    );
+    if (runningTask) {
+      // Add to queue
+      queueRef.current.push({ game, options: { persist, refresh, review_count: reviewCount, language, languages, filter, day_range: dayRange, refresh_days: refreshDays } });
+      setTasks((prev) => {
+        const newTasks = new Map(prev);
+        newTasks.set(appId, {
+          game,
+          status: 'queued',
+          progress: null,
+          result: null,
+          error: null,
+          waitingFor: runningTask[1].game.name,
+        });
+        return newTasks;
+      });
       return;
     }
 
@@ -358,6 +513,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         progress: null,
         result: null,
         error: null,
+        waitingFor: null,
       });
       return newTasks;
     });
@@ -403,10 +559,12 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         const newTasks = new Map(prev);
         const current = newTasks.get(appId);
         if (current) {
-          newTasks.set(appId, { ...current, status: 'error', progress: null, error: errorMessage });
+          newTasks.set(appId, { ...current, status: 'error', progress: null, waitingFor: null, error: errorMessage });
         }
         return newTasks;
       });
+      // Analysis failed to start — try next in queue
+      processQueueRef.current();
     } finally {
       pendingAnalysisRef.current.delete(appId);
     }
@@ -430,12 +588,23 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // If clearing a queued task, remove it from the queue
+    if (task && task.status === 'queued') {
+      queueRef.current = queueRef.current.filter((entry) => entry.game.appid !== appId);
+    }
+
     resetProgressStats(appId);
     setTasks((prev) => {
       const newTasks = new Map(prev);
       newTasks.delete(appId);
       return newTasks;
     });
+
+    // If we cancelled a running analysis, process the next queued task
+    if (task && task.status === 'analyzing') {
+      // Small delay to let the cancel propagate
+      setTimeout(() => processQueueRef.current(), 500);
+    }
   }, [resetProgressStats]);
 
   return (

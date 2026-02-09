@@ -1572,6 +1572,37 @@ def save_analysis_result(
         )
 
 
+def has_running_analysis(user_id: str, exclude_app_id: Optional[int] = None) -> Optional[int]:
+    """Check if the user has any analysis currently running.
+
+    Returns the app_id of the running analysis, or None if none is running.
+    Optionally excludes a specific app_id (for re-run checks).
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        if exclude_app_id is not None:
+            row = conn.execute(
+                text("""
+                    SELECT app_id FROM analysis_results
+                    WHERE user_id = :user_id AND status = 'running' AND app_id != :exclude_app_id
+                    LIMIT 1
+                """),
+                {"user_id": user_id, "exclude_app_id": exclude_app_id},
+            ).fetchone()
+        else:
+            row = conn.execute(
+                text("""
+                    SELECT app_id FROM analysis_results
+                    WHERE user_id = :user_id AND status = 'running'
+                    LIMIT 1
+                """),
+                {"user_id": user_id},
+            ).fetchone()
+
+    return int(row[0]) if row else None
+
+
 def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
     from . import db as db_module
     with db_module.get_connection() as conn:

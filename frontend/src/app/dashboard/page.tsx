@@ -485,7 +485,7 @@ function DashboardContent() {
   }, []);
 
   const currentTask = selectedGame ? getTask(selectedGame.appid) : undefined;
-  const isAnalyzing = currentTask?.status === "analyzing";
+  const isAnalyzing = currentTask?.status === "analyzing" || currentTask?.status === "queued";
   const progress = currentTask?.progress ?? null;
 
   useEffect(() => {
@@ -641,7 +641,7 @@ function DashboardContent() {
   }, [handleReset, viewParam]);
 
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
-  const recentAnalyses = games.slice(0, 6);
+  const recentAnalyses = games;
   const favoriteGames = useMemo(() => games.filter(game => game.is_favorite), [games]);
   const transitionKey = selectedGame ? `game-${selectedGame.appid}` : `home-${viewParam ?? "default"}`;
 
@@ -758,7 +758,7 @@ function DashboardContent() {
                       <div className="grid gap-4 md:grid-cols-2">
                         {searchResults.map((game) => {
                           const gameTask = getTask(game.appid);
-                          const isAnalyzingGame = gameTask?.status === "analyzing";
+                          const isAnalyzingGame = gameTask?.status === "analyzing" || gameTask?.status === "queued";
                           const isAlreadyAnalyzed = games.some((entry) => entry.app_id === game.appid);
                           return (
                             <div
@@ -882,11 +882,7 @@ function DashboardContent() {
                   <h2 className="text-base sm:text-lg font-semibold text-white">{t('dashboard.recentAnalyses')}</h2>
                   <p className="text-[11px] sm:text-xs text-slate-400">{t('dashboard.recentDesc')}</p>
                 </div>
-                {recentAnalyses.length > 0 ? (
-                  <a href="/compare" className="text-xs text-sky-400 hover:text-sky-300 px-2 py-1 -mr-2">
-                    {t('dashboard.viewAll')}
-                  </a>
-                ) : null}
+                {null}
               </div>
 
               <div className="mt-3 sm:mt-4">

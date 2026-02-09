@@ -1667,6 +1667,17 @@ def analyze(
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
         filter_type = "recent"
 
+    # --- Enforce 1 concurrent analysis per user ---
+    running_app_id = storage.has_running_analysis(user_id, exclude_app_id=request.app_id)
+    if running_app_id is not None:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "You already have an analysis in progress. Please wait for it to finish or cancel it before starting a new one.",
+                "running_app_id": running_app_id,
+            },
+        )
+
     # --- Early check for stale/running analysis ---
     # Must happen BEFORE reset_progress() to avoid confusing the current
     # request's own progress row with evidence of a previous running analysis.
