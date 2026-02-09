@@ -1462,15 +1462,27 @@ def _run_analysis_job(
     metadata: AnalyzeMetadata,
     game_context: Optional[dict],
 ) -> None:
-    run_id = hashlib.sha256(f"{app_id}-{datetime.now(timezone.utc).isoformat()}".encode("utf-8")).hexdigest()[:16]
-    snapshot_hash = hashlib.sha256(",".join(sorted(str(r.get("recommendationid", "")) for r in all_reviews)).encode()).hexdigest()[:16]
-    context_hash = hashlib.sha256(json.dumps(game_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
     total_reviews = len(all_reviews)
     progress_active = total_reviews > 0
+    run_id: Optional[str] = None
+    snapshot_hash: Optional[str] = None
+    context_hash: Optional[str] = None
+    credit_tracker = llm.CreditAccumulator()
+    analysis_failed = False
+
+    try:
+        run_id = hashlib.sha256(f"{app_id}-{datetime.now(timezone.utc).isoformat()}".encode("utf-8")).hexdigest()[:16]
+        snapshot_hash = hashlib.sha256(",".join(sorted(str(r.get("recommendationid", "")) for r in all_reviews)).encode()).hexdigest()[:16]
+        context_hash = hashlib.sha256(json.dumps(game_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+    except Exception as exc:
+        logger.warning("Failed to compute analysis hashes: %s", exc)
 
     if progress_active:
         # Reset progress to classifying phase (fetch phase is done at this point)
-        storage.reset_progress(user_id, app_id, total_reviews, phase="classifying")
+        try:
+            storage.reset_progress(user_id, app_id, total_reviews, phase="classifying")
+        except Exception as exc:
+            logger.error("Failed to reset progress to classifying: %s", exc)
 
         def _progress_callback(processed: int, total: int) -> None:
             # Check for cancellation
@@ -1482,9 +1494,6 @@ def _run_analysis_job(
                 logger.warning("Progress update failed: %s", exc)
     else:
         storage.clear_progress(user_id, app_id)
-
-    credit_tracker = llm.CreditAccumulator()
-    analysis_failed = False
 
     try:
         with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify", credit_accumulator=credit_tracker):
@@ -1824,10 +1833,10 @@ def analyze(
         snapshot_hash=None,
         stale=False,
     )
-    # Initialize progress in "fetching" phase immediately so the frontend
-    # never sees an empty progress row between the /analyze response and
-    # the background job starting (fixes progress bar flicker bug).
-    storage.reset_progress(user_id, request.app_id, total=0, phase="fetching")
+    # Initialize progress so the frontend sees a valid row between the
+    # /analyze response and the background job starting.  Use the real
+    # total and phase="classifying" (fetching is already done at this point).
+    storage.reset_progress(user_id, request.app_id, total=len(all_reviews), phase="classifying")
 
     if game_context:
         logger.info(f"Fetched game context for {game_context.get('name', request.app_id)}")

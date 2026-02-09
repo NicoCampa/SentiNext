@@ -2530,56 +2530,70 @@ def ensure_review_labels(
             payload, model_used = classify_review_single(item, game_context=game_context)
             return payload, model_used, item
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Global timeout: 3 minutes per review (generous, accounts for retries + rate limits).
+        # Prevents the entire background task from hanging forever if a worker thread is stuck.
+        global_timeout = max(600, len(pending_reviews) * 180)  # At least 10 min
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        try:
             future_to_item = {}
             for item in pending_reviews:
                 ctx = contextvars.copy_context()
                 future = executor.submit(ctx.run, _process_single, item)
                 future_to_item[future] = item
 
-            for future in as_completed(future_to_item):
-                item = future_to_item[future]
-                try:
-                    payload, model_used, _ = future.result(timeout=120)
-                    review_id = str(item["review_id"])
-                    review_hash = str(item["review_hash"])
+            try:
+                for future in as_completed(future_to_item, timeout=global_timeout):
+                    item = future_to_item[future]
+                    try:
+                        payload, model_used, _ = future.result(timeout=120)
+                        review_id = str(item["review_id"])
+                        review_hash = str(item["review_hash"])
 
-                    payload["_label_source"] = "llm"
-                    payload["_label_model"] = model_used
+                        payload["_label_source"] = "llm"
+                        payload["_label_model"] = model_used
 
-                    label_write_buffer.append({
-                        "app_id": app_id,
-                        "review_id": review_id,
-                        "review_hash": review_hash,
-                        "payload": payload,
-                        "model": model_used,
-                        "prompt_version": ACTIVE_PROMPT_VERSION,
-                    })
+                        label_write_buffer.append({
+                            "app_id": app_id,
+                            "review_id": review_id,
+                            "review_hash": review_hash,
+                            "payload": payload,
+                            "model": model_used,
+                            "prompt_version": ACTIVE_PROMPT_VERSION,
+                        })
 
-                    results[review_id] = payload
-                    processed_count += 1
+                        results[review_id] = payload
+                        processed_count += 1
 
-                    # Bulk write periodically
-                    if len(label_write_buffer) >= BULK_WRITE_SIZE:
-                        _flush_label_buffer(label_write_buffer)
+                        # Bulk write periodically
+                        if len(label_write_buffer) >= BULK_WRITE_SIZE:
+                            _flush_label_buffer(label_write_buffer)
 
-                    if progress_callback is not None:
-                        progress_callback(processed_count, total_reviews)
-
-                except InterruptedError:
-                    # Cancellation signal from progress_callback — propagate immediately
-                    raise
-                except Exception as exc:
-                    logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
-                    failed_count += 1
-                    processed_count += 1
-                    if progress_callback is not None:
-                        try:
+                        if progress_callback is not None:
                             progress_callback(processed_count, total_reviews)
-                        except InterruptedError:
-                            raise
-                        except Exception:
-                            pass  # Don't let a progress update error abort the whole batch
+
+                    except InterruptedError:
+                        # Cancellation signal from progress_callback — propagate immediately
+                        raise
+                    except Exception as exc:
+                        logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
+                        failed_count += 1
+                        processed_count += 1
+                        if progress_callback is not None:
+                            try:
+                                progress_callback(processed_count, total_reviews)
+                            except InterruptedError:
+                                raise
+                            except Exception:
+                                pass  # Don't let a progress update error abort the whole batch
+            except TimeoutError:
+                # Some worker threads hung — count remaining futures as failures
+                hung_count = sum(1 for f in future_to_item if not f.done())
+                logger.error(f"Classification timed out after {global_timeout}s with {hung_count} reviews still pending")
+                failed_count += hung_count
+                processed_count += hung_count
+        finally:
+            # Don't wait for hung threads — cancel queued futures and move on
+            executor.shutdown(wait=False, cancel_futures=True)
 
         # Flush remaining labels
         _flush_label_buffer(label_write_buffer)
