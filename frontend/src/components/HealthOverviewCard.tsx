@@ -165,7 +165,7 @@ export default function HealthOverviewCard({
               <div>
                 <h4 className="text-[10px] uppercase tracking-wider text-white/70 mb-1.5 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-white/50" />
-                  Key Issues
+                  Key Facts
                 </h4>
                 <ul className="space-y-1">
                   {overview.key_points.map((item, idx) => (

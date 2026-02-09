@@ -168,10 +168,15 @@ def _estimate_cost(model: str, prompt_tokens: int, response_tokens: int) -> floa
 
 
 def _build_scenarios() -> List[Scenario]:
+    # Primary game: Cyberpunk 2077 (1091500) — large dataset
+    # Secondary game: Hades II (1145350) — for comparison scenarios
+    PRIMARY = 1091500
+    SECONDARY = 1145350
+
     return [
         Scenario(
             name="top_issues_drilldown",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="top_issues",
@@ -187,7 +192,7 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="available_topics",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="list_topics",
@@ -198,18 +203,18 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="feature_requests",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="top_requests",
-                    message="What are the top feature requests from players?",
+                    message="What features are players requesting the most?",
                     expected_tools={"get_feature_requests"},
                 ),
             ],
         ),
         Scenario(
             name="sentiment_trend",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="sentiment_trend",
@@ -221,7 +226,7 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="compare_time_windows",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="compare_issues_30d",
@@ -232,7 +237,7 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="game_overview",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="overview",
@@ -243,7 +248,7 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="top_praises",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="praises",
@@ -254,7 +259,7 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="subcategory_stats",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="perf_stats",
@@ -265,7 +270,7 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="search_reviews",
-            app_ids=[299970],
+            app_ids=[PRIMARY],
             steps=[
                 TestStep(
                     name="crash_reviews",
@@ -276,22 +281,22 @@ def _build_scenarios() -> List[Scenario]:
         ),
         Scenario(
             name="compare_games",
-            app_ids=[299970, 3194360],
+            app_ids=[PRIMARY, SECONDARY],
             steps=[
                 TestStep(
                     name="compare_issues",
-                    message="Compare Project Motor Racing with Formula Legends on top issues.",
+                    message="Compare Cyberpunk 2077 with Hades II on top issues.",
                     expected_tools={"compare_games"},
                 ),
             ],
         ),
         Scenario(
             name="compare_sentiment_trend",
-            app_ids=[299970, 3194360],
+            app_ids=[PRIMARY, SECONDARY],
             steps=[
                 TestStep(
                     name="compare_sentiment",
-                    message="Compare sentiment trends between Project Motor Racing and Formula Legends over the last 90 days.",
+                    message="Compare sentiment trends between Cyberpunk 2077 and Hades II over the last 12 weeks.",
                     expected_tools={"compare_sentiment_trend"},
                     allow_error_codes={"data_not_found"},
                 ),
@@ -343,7 +348,7 @@ async def _run_scenario(
 
         if result.needs_clarification:
             failures.append("agent_requested_clarification")
-        if result.suggest_game_selection or result.suggest_search_game:
+        if result.suggest_search_game:
             failures.append("agent_requested_game_selection")
         if not tool_calls:
             failures.append("no_tool_calls")

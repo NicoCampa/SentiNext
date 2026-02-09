@@ -613,7 +613,7 @@ class ReportSummary(BaseModel):
 class HealthOverview(BaseModel):
     """Structured output for persistent health overview card."""
     summary: str = Field(description="2-4 sentence executive recap")
-    key_points: list[str] = Field(default_factory=list, description="Key issues or observations")
+    key_points: list[str] = Field(default_factory=list, description="Key facts or observations")
     actions: list[str] = Field(default_factory=list, description="Top 3 prioritized actions")
     health_score: int = Field(description="Overall health score from 1-10")
     sentiment_trend: str = Field(description="One of: improving, stable, declining")

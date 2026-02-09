@@ -2394,6 +2394,9 @@ def generate_follow_up_questions(
         elif call.get("tool") == "list_available_topics":
             topics = result.get("topics", [])
             mentioned_subcategories.extend([t.get("subcategory", "") for t in topics[:3]])
+        elif call.get("tool") == "get_feature_requests":
+            requests = result.get("feature_requests", [])
+            mentioned_subcategories.extend([r.get("subcategory", "") for r in requests[:3]])
         elif call.get("tool") == "get_subcategory_stats":
             if result.get("subcategory"):
                 mentioned_subcategories.append(result["subcategory"])

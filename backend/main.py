@@ -2883,6 +2883,8 @@ async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require
                 )
 
             response_text = agent_result.response
+            if not response_text or not response_text.strip():
+                response_text = "I couldn't generate a complete response. Please try rephrasing your question."
             suggested_questions = agent_result.suggested_questions
             tool_calls_made = len(agent_result.tool_calls_made)
 

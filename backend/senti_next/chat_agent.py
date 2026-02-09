@@ -592,6 +592,12 @@ async def run_agent(
 
                     # Validate and fix any charts in the response
                     response_text = result.get("response", "")
+
+                    # Guard against empty final_answer from LLM
+                    if not response_text.strip():
+                        logger.warning("LLM called final_answer with empty response, building fallback")
+                        response_text = _build_graceful_response(None, all_tool_calls, context)
+
                     if "```chart" in response_text:
                         response_text = validate_and_fix_charts(response_text)
 
@@ -684,29 +690,20 @@ async def run_agent(
                     suggested_questions=suggested,
                 )
 
-            # No content - try to build a response from tool results
+            # No content - build a response from tool results
             if all_tool_calls:
-                # Check if any tool returned useful data
-                last_tool = all_tool_calls[-1] if all_tool_calls else None
-                if last_tool:
-                    result = last_tool.get("result", {})
-                    if result.get("error"):
-                        # Tool failed - return the error message
-                        error_msg = result.get("error", "An error occurred while processing your request.")
-                        return AgentResult(
-                            response=error_msg,
-                            error="tool_error",
-                            tool_calls_made=all_tool_calls,
-                        )
-                    elif result.get("data"):
-                        # Tool returned data but LLM didn't summarize it
-                        # This is a fallback - ideally shouldn't happen
-                        logger.warning("LLM returned empty response after successful tool call")
-                        return AgentResult(
-                            response="I found the data but encountered an issue formatting the response. Please try rephrasing your question.",
-                            error="empty_response",
-                            tool_calls_made=all_tool_calls,
-                        )
+                graceful = _build_graceful_response(None, all_tool_calls, context)
+                suggested = generate_follow_up_questions(
+                    graceful,
+                    all_tool_calls,
+                    context,
+                )
+                return AgentResult(
+                    response=graceful,
+                    error="empty_response",
+                    tool_calls_made=all_tool_calls,
+                    suggested_questions=suggested,
+                )
 
             # No tool calls and no content - generic error
             return AgentResult(

@@ -99,7 +99,7 @@ export function UpgradeModal({ onClose, message }: UpgradeModalProps) {
                 >
                   <div>
                     <p className="text-sm font-semibold text-white">Contact Support</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Get help or request additional credits</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Get help with your account</p>
                   </div>
                   <svg className="w-4 h-4 text-sky-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
