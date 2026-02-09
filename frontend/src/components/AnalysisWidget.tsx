@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import { SteamImage } from './SteamImage';
 import { UpgradeModal } from './UpgradeModal';
@@ -22,6 +22,10 @@ function formatRemainingTime(seconds?: number | null) {
   return `${remainder}s`;
 }
 
+// Module-level set so dismissed credit errors survive component remounts
+// (AppLayout remounts on every page navigation)
+const shownCreditErrors = new Set<number>();
+
 export function AnalysisWidget() {
   const { tasks, clearTask } = useAnalysis();
   const [isMinimized, setIsMinimized] = useState(false);
@@ -31,21 +35,20 @@ export function AnalysisWidget() {
   const hasActiveTasks = activeTasks.length > 0;
 
   // Auto-show upgrade modal when a credit error first appears
-  const shownCreditErrorsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
-    for (const [appId, task] of activeTasks) {
+    for (const [appId, task] of tasks.entries()) {
       if (
         task.status === 'error' &&
         task.error &&
         /credit|insufficient/i.test(task.error) &&
-        !shownCreditErrorsRef.current.has(appId)
+        !shownCreditErrors.has(appId)
       ) {
-        shownCreditErrorsRef.current.add(appId);
+        shownCreditErrors.add(appId);
         setUpgradeMessage(task.error);
         break;
       }
     }
-  }, [activeTasks]);
+  }, [tasks]);
 
   if (!hasActiveTasks && !upgradeMessage) {
     return null;

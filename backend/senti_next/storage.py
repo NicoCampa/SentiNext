@@ -484,6 +484,8 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
     from . import db as db_module
 
     count = 0
+    search_vector_updates: list[dict] = []
+
     with db_module.get_connection() as conn:
         for review in rows:
             review_id = str(review.get("recommendationid"))
@@ -493,7 +495,7 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
             timestamp_created = review.get("timestamp_created")
             timestamp_updated = review.get("timestamp_updated")
 
-            result = conn.execute(
+            conn.execute(
                 text("""
                     INSERT INTO reviews (review_id, app_id, data, timestamp_created, timestamp_updated)
                     VALUES (:review_id, :app_id, :data, :timestamp_created, :timestamp_updated)
@@ -511,17 +513,24 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
             )
             count += 1
 
-            # Update search vector for full-text search
             review_text = str(review.get("review") or "")
             if review_text:
-                conn.execute(
-                    text("""
-                        UPDATE reviews
-                        SET search_vector = to_tsvector('simple', :review_text)
-                        WHERE review_id = :review_id
-                    """),
-                    {"review_text": review_text, "review_id": review_id},
-                )
+                search_vector_updates.append({"review_id": review_id, "review_text": review_text})
+
+        # Bulk update search vectors after all inserts
+        if search_vector_updates:
+            conn.execute(
+                text("""
+                    UPDATE reviews
+                    SET search_vector = to_tsvector('simple', batch.review_text)
+                    FROM (SELECT unnest(:review_ids) AS review_id, unnest(:review_texts) AS review_text) AS batch
+                    WHERE reviews.review_id = batch.review_id
+                """),
+                {
+                    "review_ids": [item["review_id"] for item in search_vector_updates],
+                    "review_texts": [item["review_text"] for item in search_vector_updates],
+                },
+            )
 
     return count
 
@@ -531,43 +540,39 @@ def enforce_review_limit(app_id: int, max_reviews: int = MAX_REVIEWS_PER_GAME) -
 
     Keeps the most recent `max_reviews` reviews based on timestamp_created.
     Also deletes associated labels for removed reviews.
+    Uses atomic CTE-based DELETEs to avoid races with concurrent inserts.
 
     Returns number of reviews deleted.
     """
     from . import db as db_module
 
     with db_module.get_connection() as conn:
-        # First, get the review IDs to delete (oldest beyond limit)
-        result = conn.execute(
+        # Atomically delete labels for excess reviews
+        conn.execute(
             text("""
-                SELECT review_id FROM reviews
-                WHERE app_id = :app_id
-                ORDER BY timestamp_created DESC
-                OFFSET :max_reviews
+                WITH excess AS (
+                    SELECT review_id FROM reviews
+                    WHERE app_id = :app_id
+                    ORDER BY timestamp_created DESC
+                    OFFSET :max_reviews
+                )
+                DELETE FROM review_labels WHERE review_id IN (SELECT review_id FROM excess)
             """),
             {"app_id": app_id, "max_reviews": max_reviews},
         )
-        review_ids_to_delete = [row[0] for row in result.fetchall()]
 
-        if not review_ids_to_delete:
-            return 0
-
-        # Delete associated labels first (foreign key constraint)
-        conn.execute(
-            text("""
-                DELETE FROM review_labels
-                WHERE review_id = ANY(:review_ids)
-            """),
-            {"review_ids": review_ids_to_delete},
-        )
-
-        # Delete the old reviews
+        # Atomically delete excess reviews
         result = conn.execute(
             text("""
-                DELETE FROM reviews
-                WHERE review_id = ANY(:review_ids)
+                WITH excess AS (
+                    SELECT review_id FROM reviews
+                    WHERE app_id = :app_id
+                    ORDER BY timestamp_created DESC
+                    OFFSET :max_reviews
+                )
+                DELETE FROM reviews WHERE review_id IN (SELECT review_id FROM excess)
             """),
-            {"review_ids": review_ids_to_delete},
+            {"app_id": app_id, "max_reviews": max_reviews},
         )
         deleted_count = result.rowcount
 
@@ -650,11 +655,6 @@ def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Op
 
     from . import db as db_module
 
-    # Convert search query to tsquery format
-    # Simple approach: split on spaces and join with &
-    query_terms = raw.split()
-    ts_query = " & ".join(query_terms)
-
     lang = (language or "").strip().lower()
 
     with db_module.get_connection() as conn:
@@ -666,11 +666,11 @@ def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Op
                     FROM reviews
                     WHERE app_id = :app_id
                       AND data->>'language' = :language
-                      AND search_vector @@ to_tsquery('simple', :query)
-                    ORDER BY ts_rank(search_vector, to_tsquery('simple', :query)) DESC
+                      AND search_vector @@ plainto_tsquery('simple', :query)
+                    ORDER BY ts_rank(search_vector, plainto_tsquery('simple', :query)) DESC
                     LIMIT :limit
                 """),
-                {"app_id": int(app_id), "language": lang, "query": ts_query, "limit": int(limit)},
+                {"app_id": int(app_id), "language": lang, "query": raw, "limit": int(limit)},
             )
         else:
             result = conn.execute(
@@ -678,11 +678,11 @@ def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Op
                     SELECT review_id
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND search_vector @@ to_tsquery('simple', :query)
-                    ORDER BY ts_rank(search_vector, to_tsquery('simple', :query)) DESC
+                      AND search_vector @@ plainto_tsquery('simple', :query)
+                    ORDER BY ts_rank(search_vector, plainto_tsquery('simple', :query)) DESC
                     LIMIT :limit
                 """),
-                {"app_id": int(app_id), "query": ts_query, "limit": int(limit)},
+                {"app_id": int(app_id), "query": raw, "limit": int(limit)},
             )
 
         rows = result.fetchall()
@@ -2126,10 +2126,8 @@ def search_reviews_with_date_filter(
         }
 
         if raw:
-            query_terms = raw.split()
-            ts_query = " | ".join(query_terms)  # Use OR for broader matching
-            where_parts.append("r.search_vector @@ to_tsquery('simple', :query)")
-            params["query"] = ts_query
+            where_parts.append("r.search_vector @@ plainto_tsquery('simple', :query)")
+            params["query"] = raw
 
         if max_days is not None:
             cutoff = int(time.time()) - (max_days * 24 * 60 * 60)

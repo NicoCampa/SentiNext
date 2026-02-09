@@ -8,7 +8,7 @@ import re
 import secrets
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
 import asyncio
@@ -26,7 +26,7 @@ import jwt
 from jwt import PyJWKClient
 from jwt.exceptions import InvalidTokenError
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -164,7 +164,7 @@ _JWKS_CLIENT: Optional[PyJWKClient] = None
 # In-memory chat status tracking for SSE
 # Maps session_id -> list of status messages
 _chat_status_store: Dict[str, List[str]] = {}
-_chat_status_lock = None  # Will be initialized lazily for async
+_chat_status_lock = asyncio.Lock()
 
 def _get_chat_status_store() -> Dict[str, List[str]]:
     """Get the chat status store (thread-safe access)."""
@@ -179,6 +179,11 @@ def _emit_chat_status(session_id: str, status: str) -> None:
     # Keep only last 20 status messages per session
     if len(store[session_id]) > 20:
         store[session_id] = store[session_id][-20:]
+    # Evict oldest entries if store grows too large
+    if len(store) > 1000:
+        oldest_keys = list(store.keys())[:len(store) - 1000]
+        for key in oldest_keys:
+            del store[key]
 
 def _get_chat_status(session_id: str) -> List[str]:
     """Get all status messages for a session."""
@@ -261,7 +266,15 @@ async def lifespan(application: FastAPI):
     logger.info("Database engine closed")
 
 
-app = FastAPI(title="SENTINEXT API", version="0.1.0", lifespan=lifespan)
+_is_prod = os.getenv("SENTINEXT_AUTH_ENABLED") == "1"
+app = FastAPI(
+    title="SENTINEXT API",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -297,6 +310,9 @@ _RATE_LIMITS: Dict[str, int] = {
     "/chat": 20,
     "/chat/simple": 20,
     "/credits/stripe-webhook": 30,
+    "/admin/credits/grant": 10,
+    "/admin/update-tier": 10,
+    "/admin/update-user-tier": 10,
 }
 _DEFAULT_RATE_LIMIT = 60
 _RATE_WINDOW_SECONDS = 60
@@ -325,7 +341,7 @@ def _get_rate_key(request: Request) -> str:
     return f"ip:{client_ip}" if client_ip else "ip:unknown"
 
 
-def _check_rate_limit_redis(key: str, limit: int) -> bool:
+async def _check_rate_limit_redis(key: str, limit: int) -> bool:
     """Check rate limit via Redis INCR + EXPIRE. Returns True if allowed."""
     try:
         r = redis_client.get_redis()
@@ -336,19 +352,23 @@ def _check_rate_limit_redis(key: str, limit: int) -> bool:
         return count <= limit
     except Exception:
         # Redis error — fall through to in-memory
-        return _check_rate_limit_memory(key, limit)
+        return await _check_rate_limit_memory(key, limit)
 
 
-def _check_rate_limit_memory(key: str, limit: int) -> bool:
+_rate_limit_lock = asyncio.Lock()
+
+
+async def _check_rate_limit_memory(key: str, limit: int) -> bool:
     """Fallback in-memory rate limiter (per-worker, lost on restart)."""
-    now = time.time()
-    bucket = _rate_limit_buckets.setdefault(key, collections.deque())
-    while bucket and bucket[0] < now - _RATE_WINDOW_SECONDS:
-        bucket.popleft()
-    if len(bucket) >= limit:
-        return False
-    bucket.append(now)
-    return True
+    async with _rate_limit_lock:
+        now = time.time()
+        bucket = _rate_limit_buckets.setdefault(key, collections.deque())
+        while bucket and bucket[0] < now - _RATE_WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= limit:
+            return False
+        bucket.append(now)
+        return True
 
 
 @app.middleware("http")
@@ -367,9 +387,9 @@ async def rate_limit_middleware(request: Request, call_next):
     key = f"{_get_rate_key(request)}:{path.split('/')[1] if '/' in path[1:] else path}"
 
     if redis_client.is_redis_configured():
-        allowed = _check_rate_limit_redis(key, limit)
+        allowed = await _check_rate_limit_redis(key, limit)
     else:
-        allowed = _check_rate_limit_memory(key, limit)
+        allowed = await _check_rate_limit_memory(key, limit)
 
     if not allowed:
         return JSONResponse(
@@ -417,9 +437,9 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     # SSE endpoints: token validation is optional, endpoint has its own auth
-    # Use exact suffix matching to avoid accidentally bypassing auth for paths
-    # that happen to contain "/stream" (e.g. a path parameter value).
-    is_sse = request.url.path.endswith("/stream")
+    # Use an explicit allowlist instead of heuristic suffix matching.
+    _SSE_PATHS = {"/progress/stream", "/chat/stream", "/chat/simple/stream"}
+    is_sse = any(request.url.path.endswith(suffix) for suffix in _SSE_PATHS)
 
     auth_header = request.headers.get("authorization", "")
     token = None
@@ -689,7 +709,7 @@ class LicenseStatusResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     app_id: int = Field(..., gt=0)
-    question: str = Field(..., min_length=3)
+    question: str = Field(..., min_length=3, max_length=5000)
     sentiment: str = Field("all")
     min_helpful: int = Field(0, ge=0)
     max_days: Optional[int] = Field(None, ge=1, le=365)
@@ -700,7 +720,7 @@ class ChatRequest(BaseModel):
 
 
 class SimpleChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=5000)
     session_id: Optional[str] = None
     # Game context for "Chat with Your Data"
     app_ids: Optional[List[int]] = Field(None, max_length=2, description="App IDs for game context (max 2)")
@@ -1087,7 +1107,7 @@ def _database_row_to_item(row: Dict[str, Any], games_map: Dict[int, Optional[str
     playtime_recent = int(author.get("playtime_last_two_weeks") or 0)
     created_ts = payload.get("timestamp_created")
     created_at = (
-        datetime.utcfromtimestamp(created_ts).isoformat() + "Z"
+        datetime.fromtimestamp(created_ts, tz=timezone.utc).isoformat().replace("+00:00", "Z")
         if isinstance(created_ts, (int, float))
         else None
     )
@@ -1170,8 +1190,8 @@ def healthcheck(response: Response) -> dict:
     db_ok = db_module.check_db_health()
     if not db_ok:
         response.status_code = 503
-        return {"status": "unhealthy", "database": "unreachable", "timestamp": datetime.utcnow().isoformat() + "Z"}
-    return {"status": "ok", "database": "connected", "timestamp": datetime.utcnow().isoformat() + "Z"}
+        return {"status": "unhealthy", "database": "unreachable", "timestamp": datetime.now(timezone.utc).isoformat() + "Z"}
+    return {"status": "ok", "database": "connected", "timestamp": datetime.now(timezone.utc).isoformat() + "Z"}
 
 
 @app.get("/languages")
@@ -1417,7 +1437,7 @@ def get_invoices(user_id: str = Depends(require_user_id)) -> list:
 
 
 @app.get("/search", response_model=List[SearchResult])
-def search(query: str) -> List[SearchResult]:
+def search(query: str, user_id: str = Depends(require_user_id)) -> List[SearchResult]:
     if not query or len(query.strip()) < 2:
         raise HTTPException(status_code=400, detail="Query must be at least 2 characters long.")
     try:
@@ -1442,8 +1462,8 @@ def _run_analysis_job(
     metadata: AnalyzeMetadata,
     game_context: Optional[dict],
 ) -> None:
-    run_id = hashlib.sha256(f"{app_id}-{datetime.utcnow().isoformat()}".encode("utf-8")).hexdigest()[:16]
-    snapshot_hash = hashlib.sha256(json.dumps(all_reviews, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+    run_id = hashlib.sha256(f"{app_id}-{datetime.now(timezone.utc).isoformat()}".encode("utf-8")).hexdigest()[:16]
+    snapshot_hash = hashlib.sha256(",".join(sorted(str(r.get("recommendationid", "")) for r in all_reviews)).encode()).hexdigest()[:16]
     context_hash = hashlib.sha256(json.dumps(game_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
     total_reviews = len(all_reviews)
     progress_active = total_reviews > 0
@@ -1718,17 +1738,40 @@ def analyze(
                 },
             )
 
-    # Check if there's already a running analysis for this game
+    # Check if there's already a running analysis for this game (any user).
+    # Use a database advisory lock keyed by app_id to prevent concurrent analyses.
+    from .senti_next import db as db_mod
+    with db_mod.get_connection() as conn:
+        lock_acquired = conn.execute(
+            text("SELECT pg_try_advisory_lock(:lock_id)"),
+            {"lock_id": request.app_id + 1_000_000_000},
+        ).scalar()
+    if not lock_acquired:
+        return AnalyzeResponse(
+            metadata=AnalyzeMetadata(
+                app_id=request.app_id,
+                requested=request.review_count,
+                retrieved=0,
+                language=request.language,
+                fetched_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            ),
+            insights=None,
+            reviews=[],
+        )
+    # Release the advisory lock immediately — it only served as a probe.
+    with db_mod.get_connection() as conn:
+        conn.execute(
+            text("SELECT pg_advisory_unlock(:lock_id)"),
+            {"lock_id": request.app_id + 1_000_000_000},
+        )
+
     existing_result = storage.load_analysis_result(user_id, request.app_id)
     if existing_result and existing_result.get("status") == "running":
         # The analysis result is marked as running - check if the job is still active.
-        # A progress row existing (even with total=0 in early "fetching" phase) means
-        # the job was initialized and hasn't completed yet.
         progress = storage.load_progress(user_id, request.app_id)
         if progress is not None:
             processed = progress.get("processed", 0)
             total = progress.get("total", 0)
-            # Job is actively running - don't start another
             logger.info(f"Analysis already running for app {request.app_id} ({processed}/{total})")
             return AnalyzeResponse(
                 metadata=AnalyzeMetadata(**existing_result.get("metadata", {})),
@@ -1747,7 +1790,7 @@ def analyze(
         retrieved=len(all_reviews),
         language=request.language,
         languages=languages_to_fetch,
-        fetched_at=datetime.utcnow().isoformat() + "Z",
+        fetched_at=datetime.now(timezone.utc).isoformat() + "Z",
         header_image=header_image,
     )
 
@@ -1899,7 +1942,7 @@ def get_analysis_result(
         try:
             fetched_dt = datetime.fromisoformat(metadata.fetched_at.replace("Z", "+00:00"))
             max_age_days = int(os.getenv("SENTINEXT_STALE_DAYS", "30"))
-            age_days = (datetime.utcnow() - fetched_dt.replace(tzinfo=None)).days
+            age_days = (datetime.now(timezone.utc) - fetched_dt).days
             if age_days > max_age_days:
                 result["stale"] = True
                 stale_reason = f"Analysis older than {max_age_days} days"
@@ -1926,49 +1969,67 @@ def get_analysis_result(
         try:
             current_fingerprint = storage.get_reviews_fingerprint(app_id)
             if current_fingerprint and current_fingerprint != stored_fingerprint:
-                stored_reviews = storage.load_reviews(app_id)
-                if stored_reviews:
-                    df = build_reviews_dataframe(stored_reviews)
-                    if df is not None and not df.empty:
-                        llm_labels = storage.load_review_labels(app_id)
-                        df = llm.apply_review_labels(df, llm_labels)
-                        insights = prepare_insights(df)
+                # Use advisory lock to prevent concurrent rebuilds for the same app
+                from .senti_next import db as db_mod
+                with db_mod.get_connection() as conn:
+                    lock_acquired = conn.execute(
+                        text("SELECT pg_try_advisory_lock(:lock_id)"),
+                        {"lock_id": app_id + 2_000_000_000},
+                    ).scalar()
+                if not lock_acquired:
+                    logger.info("Auto-refresh skipped for app %s — another rebuild in progress", app_id)
+                else:
+                    try:
+                        stored_reviews = storage.load_reviews(app_id)
+                        if stored_reviews:
+                            df = build_reviews_dataframe(stored_reviews)
+                            if df is not None and not df.empty:
+                                llm_labels = storage.load_review_labels(app_id)
+                                df = llm.apply_review_labels(df, llm_labels)
+                                insights = prepare_insights(df)
 
-                        # Update fingerprint and retrieved count in metadata
-                        metadata_payload["review_fingerprint"] = current_fingerprint
-                        metadata_payload["retrieved"] = len(stored_reviews)
-                        metadata = AnalyzeMetadata(**metadata_payload)
+                                # Update fingerprint and retrieved count in metadata
+                                metadata_payload["review_fingerprint"] = current_fingerprint
+                                metadata_payload["retrieved"] = len(stored_reviews)
+                                metadata = AnalyzeMetadata(**metadata_payload)
 
-                        # Export reviews sample
-                        export_columns = [col for col in REVIEW_EXPORT_COLUMNS if col in df.columns]
-                        if export_columns:
-                            sample_limit = min(SAMPLE_LIMIT, df.shape[0])
-                            reviews_payload = json.loads(
-                                df[export_columns]
-                                .head(sample_limit)
-                                .to_json(orient="records", date_format="iso", date_unit="s")
+                                # Export reviews sample
+                                export_columns = [col for col in REVIEW_EXPORT_COLUMNS if col in df.columns]
+                                if export_columns:
+                                    sample_limit = min(SAMPLE_LIMIT, df.shape[0])
+                                    reviews_payload = json.loads(
+                                        df[export_columns]
+                                        .head(sample_limit)
+                                        .to_json(orient="records", date_format="iso", date_unit="s")
+                                    )
+                                else:
+                                    reviews_payload = []
+
+                                # Persist so subsequent GETs don't rebuild again
+                                storage.save_analysis_result(
+                                    user_id=user_id,
+                                    app_id=app_id,
+                                    metadata=metadata_payload,
+                                    insights=insights,
+                                    reviews=reviews_payload,
+                                    status="completed",
+                                    run_id=result.get("run_id"),
+                                    snapshot_hash=result.get("snapshot_hash"),
+                                    context_hash=result.get("context_hash"),
+                                )
+
+                                # Use rebuilt data for this response
+                                result["insights"] = insights
+                                result["reviews"] = reviews_payload
+                                data_refreshed = True
+                                logger.info("Auto-refreshed insights for app %s (user %s) — review pool changed", app_id, user_id)
+                    finally:
+                        # Release advisory lock
+                        with db_mod.get_connection() as conn:
+                            conn.execute(
+                                text("SELECT pg_advisory_unlock(:lock_id)"),
+                                {"lock_id": app_id + 2_000_000_000},
                             )
-                        else:
-                            reviews_payload = []
-
-                        # Persist so subsequent GETs don't rebuild again
-                        storage.save_analysis_result(
-                            user_id=user_id,
-                            app_id=app_id,
-                            metadata=metadata_payload,
-                            insights=insights,
-                            reviews=reviews_payload,
-                            status="completed",
-                            run_id=result.get("run_id"),
-                            snapshot_hash=result.get("snapshot_hash"),
-                            context_hash=result.get("context_hash"),
-                        )
-
-                        # Use rebuilt data for this response
-                        result["insights"] = insights
-                        result["reviews"] = reviews_payload
-                        data_refreshed = True
-                        logger.info("Auto-refreshed insights for app %s (user %s) — review pool changed", app_id, user_id)
         except Exception:
             logger.warning("Auto-refresh failed for app %s, serving cached data", app_id)
 
@@ -2124,10 +2185,16 @@ def rebuild_trends(
     return {"status": "ok", "message": "Trends rebuilt successfully", "app_id": app_id}
 
 
+class ReviewItem(BaseModel):
+    review_id: str
+    review: str
+    voted_up: Optional[bool] = None
+
+
 class SummarizeSubcategoryRequest(BaseModel):
     app_id: int = Field(..., gt=0)
     subcategory: str = Field(..., min_length=3)
-    reviews: List[dict] = Field(..., min_length=1, max_length=100)
+    reviews: List[ReviewItem] = Field(..., min_length=1, max_length=100)
     summary_type: str = Field(default="general", pattern="^(issue|request|general)$")
     summary_context: Optional[str] = Field(
         default=None,
@@ -2154,7 +2221,7 @@ def summarize_subcategory(
     try:
         with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize"):
             result = llm.summarize_subcategory_reviews(
-                reviews=request.reviews,
+                reviews=[r.dict() for r in request.reviews],
                 subcategory=request.subcategory,
                 game_context=game_context,
                 summary_type=request.summary_type,
@@ -2527,7 +2594,7 @@ def compare_games_summarize(
             description="Refund: comparison LLM failed",
         )
         logger.exception("LLM comparison failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"AI comparison failed: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail="AI comparison failed. Please try again.") from exc
     except Exception as exc:
         credits.refund_credits(
             user_id=user_id,
@@ -2536,7 +2603,7 @@ def compare_games_summarize(
             description="Refund: comparison failed",
         )
         logger.exception("Comparison failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Failed to generate comparison: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail="Failed to generate comparison. Please try again.") from exc
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_license)])
@@ -2574,7 +2641,7 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
 
 
 class TranslateRequest(BaseModel):
-    text: str
+    text: str = Field(..., max_length=10000)
     target_language: str  # e.g., 'en', 'it', 'fr', 'de'
 
 
@@ -2608,7 +2675,7 @@ def translate_text_endpoint(
         raise HTTPException(status_code=500, detail="Translation failed.") from exc
 
 
-@app.post("/chat/simple", response_model=SimpleChatResponse)
+@app.post("/chat/simple", response_model=SimpleChatResponse, dependencies=[Depends(require_license)])
 async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_id)) -> SimpleChatResponse:
     """Simple chatbot endpoint that uses Gemini for general conversation with memory.
 
@@ -3501,7 +3568,7 @@ async def chat_stream(
                 # Send any new status messages
                 if len(statuses) > last_index:
                     for status in statuses[last_index:]:
-                        yield f"event: status\ndata: {json.dumps({'message': status, 'timestamp': datetime.utcnow().isoformat() + 'Z'})}\n\n"
+                        yield f"event: status\ndata: {json.dumps({'message': status, 'timestamp': datetime.now(timezone.utc).isoformat() + 'Z'})}\n\n"
                         idle_count = 0
                     last_index = len(statuses)
 
@@ -3738,7 +3805,7 @@ def generate_executive_summary(
                         period=period,
                         insights=insights,
                     )
-                llm_summary["generated_at"] = datetime.utcnow().isoformat() + "Z"
+                llm_summary["generated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
                 insights = {**insights, "llm_summary": llm_summary}
             else:
                 logger.info("Skipping report summary (credits unavailable): %s", credit_message)
@@ -3845,7 +3912,7 @@ def classification_progress(
     fetched_count = int(progress.get("fetched_count", 0))
     timestamp = progress.get("updated_at")
     updated_at = (
-        datetime.utcfromtimestamp(timestamp).isoformat() + "Z"
+        datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
         if timestamp
         else None
     )
@@ -3907,7 +3974,7 @@ async def progress_stream(
                             # Job is still running but progress was cleared/not yet initialized
                             yield f"event: progress\ndata: {json.dumps({'processed': 0, 'total': 0, 'active': True, 'phase': 'fetching', 'fetched_count': 0})}\n\n"
                             idle_count += 1
-                            await asyncio.sleep(0.5)
+                            await asyncio.sleep(1.5)
                             continue
 
                     # No progress and no result - send empty state
@@ -3959,7 +4026,7 @@ async def progress_stream(
                     yield f"event: timeout\ndata: {json.dumps({'status': 'timeout'})}\n\n"
                     return
 
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(1.5)
 
             except asyncio.CancelledError:
                 # Client disconnected
@@ -3989,16 +4056,8 @@ def cancel_analysis(
     cancelled = storage.cancel_progress(user_id, app_id)
     if cancelled:
         logger.info(f"Analysis cancelled for app {app_id} by user {user_id}")
-        # Also mark the analysis result as cancelled
-        storage.save_analysis_result(
-            user_id=user_id,
-            app_id=app_id,
-            metadata={},
-            insights=None,
-            reviews=[],
-            status="cancelled",
-            error="Analysis cancelled by user",
-        )
+        # Only set the progress cancelled flag; the background job handles the
+        # final analysis result state (avoids overwriting existing metadata).
     return {"cancelled": cancelled, "app_id": app_id}
 
 
@@ -4015,7 +4074,7 @@ def list_starred_games(
             if details and details.get("header_image"):
                 metadata_payload["header_image"] = details["header_image"]
         metadata = AnalyzeMetadata(**metadata_payload)
-        updated_at = datetime.utcfromtimestamp(item["updated_at"]).isoformat() + "Z"
+        updated_at = datetime.fromtimestamp(item["updated_at"], tz=timezone.utc).isoformat().replace("+00:00", "Z")
         response.append(
             StarredGameResponse(
                 app_id=item["app_id"],
@@ -4095,7 +4154,7 @@ def list_favorite_games(
             if details and details.get("header_image"):
                 metadata_payload["header_image"] = details["header_image"]
         metadata = AnalyzeMetadata(**metadata_payload)
-        updated_at = datetime.utcfromtimestamp(item["updated_at"]).isoformat() + "Z"
+        updated_at = datetime.fromtimestamp(item["updated_at"], tz=timezone.utc).isoformat().replace("+00:00", "Z")
         response.append(
             StarredGameResponse(
                 app_id=item["app_id"],
@@ -4172,8 +4231,7 @@ def get_database_review_by_id(
     user_app_ids = [entry["app_id"] for entry in user_games]
 
     # Allow access if user owns the game or if user is admin
-    auth_status = _get_auth_status(user_id)
-    if app_id not in user_app_ids and not auth_status.get("is_admin", False):
+    if app_id not in user_app_ids and not is_admin_user_id(user_id):
         raise HTTPException(status_code=403, detail="Access denied to this review")
 
     games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
@@ -4184,8 +4242,8 @@ def get_database_review_by_id(
 
 @app.get("/database/reviews", response_model=DatabaseReviewsResponse, dependencies=[Depends(require_license)])
 def database_reviews(
-    limit: int = 200,
-    offset: int = 0,
+    limit: int = Query(default=200, le=1000),
+    offset: int = Query(default=0, ge=0),
     app_id: Optional[int] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
@@ -4322,7 +4380,7 @@ def database_export(
         max_rows_value = EXPORT_MAX_ROWS
     max_rows_value = min(max_rows_value, EXPORT_MAX_ROWS)
 
-    now_stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     app_label = str(app_id) if app_id else "all"
     ext = "csv" if export_format == "csv" else "jsonl"
     filename = f"sentinext-dataset-{scope_label}-{app_label}-{now_stamp}.{ext}"
@@ -4466,7 +4524,7 @@ def get_steam_player_count(
         return PlayerCountResponse(
             app_id=app_id,
             player_count=player_count,
-            timestamp=int(datetime.utcnow().timestamp()),
+            timestamp=int(datetime.now(timezone.utc).timestamp()),
         )
     except SteamAPIError as exc:
         logger.error("Steam API error fetching player count for app %s: %s", app_id, exc)
@@ -4515,7 +4573,7 @@ def get_steam_price(
             price_final_formatted="Free" if is_free else details.get("price_final_formatted"),
             price_discount=details.get("price_discount", 0),
             price_currency=details.get("price_currency"),
-            timestamp=int(datetime.utcnow().timestamp()),
+            timestamp=int(datetime.now(timezone.utc).timestamp()),
         )
     except SteamAPIError as exc:
         logger.error("Steam API error fetching price for app %s: %s", app_id, exc)
@@ -4575,7 +4633,7 @@ def get_steam_details(
             price_final=details.get("price_final") if not is_free else None,
             price_discount=details.get("price_discount", 0),
             price_currency=details.get("price_currency"),
-            timestamp=int(datetime.utcnow().timestamp()),
+            timestamp=int(datetime.now(timezone.utc).timestamp()),
         )
     except SteamAPIError as exc:
         logger.error("Steam API error fetching details for app %s: %s", app_id, exc)

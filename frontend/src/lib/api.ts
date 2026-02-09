@@ -444,9 +444,7 @@ export async function removeStarredGame(appId: number): Promise<void> {
   const response = await authFetch(apiUrl(`/starred/${appId}`), {
     method: "DELETE",
   });
-  if (!response.ok) {
-    throw new Error(`Failed to remove starred game (status ${response.status})`);
-  }
+  await handleResponse<void>(response);
 }
 
 export async function toggleFavorite(appId: number, isFavorite: boolean): Promise<{ app_id: number; is_favorite: boolean }> {
@@ -486,9 +484,7 @@ export async function deleteGame(appId: number): Promise<void> {
     method: "DELETE",
     headers: optionalAdminHeaders(),
   });
-  if (!response.ok) {
-    throw new Error(`Failed to delete game data (status ${response.status})`);
-  }
+  await handleResponse<void>(response);
 }
 
 export interface DatabaseStats {
@@ -513,8 +509,8 @@ export interface DatabaseReviewsParams {
 
 export async function fetchDatabaseReviews(params: DatabaseReviewsParams = {}): Promise<DatabaseReviewsResponse> {
   const url = new URL(apiUrl("/database/reviews"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (params.limit) url.searchParams.set("limit", String(params.limit));
-  if (params.offset) url.searchParams.set("offset", String(params.offset));
+  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
+  if (params.offset != null) url.searchParams.set("offset", String(params.offset));
   if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
   if (params.language) url.searchParams.set("language", params.language);
   if (params.query) url.searchParams.set("query", params.query);
@@ -597,6 +593,10 @@ export async function downloadDatabaseExport(params: DatabaseExportParams): Prom
   if (params.max_rows) url.searchParams.set("max_rows", String(params.max_rows));
 
   const response = await authFetch(url.toString(), { cache: "no-store" });
+  if (response.status === 401) {
+    if (typeof window !== "undefined") window.location.href = "/sign-in";
+    throw new Error("Session expired. Please sign in again.");
+  }
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(detail || `Export failed (status ${response.status})`);
@@ -1522,6 +1522,10 @@ export async function exportChatSession(
   );
   url.searchParams.set("format", format);
   const response = await authFetch(url.toString(), { cache: "no-store" });
+  if (response.status === 401) {
+    if (typeof window !== "undefined") window.location.href = "/sign-in";
+    throw new Error("Session expired. Please sign in again.");
+  }
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(detail || `Export failed (status ${response.status})`);

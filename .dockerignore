@@ -1,0 +1,14 @@
+.env*
+.git
+.gitignore
+node_modules/
+__pycache__/
+*.pyc
+frontend/
+web/
+data/
+benchmarks/
+.venv*/
+*.md
+.claude/
+scripts/

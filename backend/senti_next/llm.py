@@ -8,6 +8,7 @@ import logging
 import os
 import contextvars
 import threading
+import types
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from string import Template
+import textwrap
 from textwrap import dedent
 from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
 
@@ -93,7 +95,7 @@ def llm_usage_context(
     if credit_accumulator is not None:
         updates["credit_accumulator"] = credit_accumulator
     merged = {**current, **updates}
-    token = _LLM_USAGE_CONTEXT.set(merged)
+    token = _LLM_USAGE_CONTEXT.set(types.MappingProxyType(merged))
     try:
         yield
     finally:
@@ -294,8 +296,15 @@ MIN_REVIEW_WORDS = 2
 _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
 
 
+_dotenv_loaded = False
+
+
 def _maybe_load_dotenv() -> None:
+    global _dotenv_loaded
+    if _dotenv_loaded:
+        return
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        _dotenv_loaded = True
         return
 
     try:
@@ -310,6 +319,7 @@ def _maybe_load_dotenv() -> None:
         try:
             content = env_path.read_text(encoding="utf-8")
         except Exception:
+            _dotenv_loaded = True
             return
 
         for raw_line in content.splitlines():
@@ -328,7 +338,10 @@ def _maybe_load_dotenv() -> None:
             if value and value[0] == value[-1] and value[0] in {"'", '"'}:
                 value = value[1:-1]
             os.environ[key] = value
+        _dotenv_loaded = True
         return
+
+    _dotenv_loaded = True
 
 _PROMPT_TEMPLATE = Template(
     dedent(
@@ -736,9 +749,7 @@ def _clean_snippet(value: Any) -> str:
     text = str(value).replace("\n", " ").replace("\r", " ").strip()
     if not text:
         return ""
-    if len(text) > MAX_EVIDENCE_SNIPPET_CHARS:
-        return text[: MAX_EVIDENCE_SNIPPET_CHARS - 3].rstrip() + "..."
-    return text
+    return textwrap.shorten(text, width=MAX_EVIDENCE_SNIPPET_CHARS, placeholder="...")
 
 
 def _review_word_count(text: str) -> int:
@@ -2361,6 +2372,7 @@ def ensure_review_labels(
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
     processed_count = 0
+    failed_count = 0
     cached_reuse_count = 0
 
     pending_reviews: list[Dict[str, Any]] = []
@@ -2476,12 +2488,19 @@ def ensure_review_labels(
 
     # Charge for cached label reuse (no LLM call, still billed)
     if cached_reuse_count > 0:
-        _reserve_credits_for_operation(
-            "classify_cached",
-            amount=cached_reuse_count * credits.CREDIT_COSTS["classify_cached"],
-            description=f"Cached labels reused ({cached_reuse_count})",
-            app_id=app_id,
-        )
+        try:
+            _reserve_credits_for_operation(
+                "classify_cached",
+                amount=cached_reuse_count * credits.CREDIT_COSTS["classify_cached"],
+                description=f"Cached labels reused ({cached_reuse_count})",
+                app_id=app_id,
+            )
+        except credits.InsufficientCreditsError:
+            logger.warning(
+                "Insufficient credits for cached label billing (%d cached); "
+                "returning cached results anyway since no LLM work was needed.",
+                cached_reuse_count,
+            )
 
     # Process reviews in parallel (one xAI call per review, two-tier fallback)
     if pending_reviews:
@@ -2539,7 +2558,7 @@ def ensure_review_labels(
 
                 except Exception as exc:
                     logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
-                    raise
+                    failed_count += 1
 
         # Flush remaining labels
         _flush_label_buffer(label_write_buffer)
@@ -4127,7 +4146,7 @@ REVIEW SAMPLES (filtered for {subcategory}):
         logger.error(f"JSON parsing error: {exc}")
         raise LLMError(
             f"Invalid JSON response from AI: {str(exc)}",
-            error_type=LLMErrorType.API_ERROR,
+            error_type=LLMErrorType.UNKNOWN,
         ) from exc
     except Exception as exc:
         logger.exception(f"Failed to compare games: {exc}")
@@ -4137,7 +4156,7 @@ REVIEW SAMPLES (filtered for {subcategory}):
             error_msg = f"Gemini API error: {str(exc)}"
         raise LLMError(
             f"Failed to generate comparison: {error_msg}",
-            error_type=LLMErrorType.API_ERROR,
+            error_type=LLMErrorType.UNKNOWN,
         ) from exc
 
 

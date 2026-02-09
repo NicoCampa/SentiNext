@@ -148,6 +148,7 @@ function splitChatContent(content: string): ChatPart[] {
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
+  CHART_BLOCK_RE.lastIndex = 0;
   while ((match = CHART_BLOCK_RE.exec(content)) !== null) {
     if (match.index > lastIndex) {
       parts.push({ type: "text", value: content.slice(lastIndex, match.index) });

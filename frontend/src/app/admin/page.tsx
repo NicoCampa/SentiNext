@@ -54,6 +54,7 @@ import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useSupportNotification } from "@/contexts/SupportNotificationContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 
 // Register Chart.js components
 ChartJS.register(
@@ -1458,7 +1459,7 @@ export default function AdminPage() {
                               if (part.type === "text") {
                                 return (
                                   <div key={`text-${partIdx}`} className="prose prose-invert prose-sm max-w-none">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
                                       {part.value}
                                     </ReactMarkdown>
                                   </div>

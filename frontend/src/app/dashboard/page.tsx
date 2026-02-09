@@ -554,7 +554,7 @@ function DashboardContent() {
         // Silently ignore — cached data is still valid
       });
     return () => { cancelled = true; };
-  }, [selectedStarredGame?.app_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedStarredGame?.app_id, selectedStarredGame?.metadata, selectedStarredGame?.insights, refreshGames, setAnalysis]);
 
   useEffect(() => {
     if (currentTask?.status === "completed" && currentTask.result) {

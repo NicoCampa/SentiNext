@@ -9,6 +9,7 @@ import re
 import time
 
 from . import credits, llm, storage
+from .llm import _sanitize_review_text
 from .steam_api import fetch_app_details
 
 logger = logging.getLogger(__name__)
@@ -540,12 +541,14 @@ def build_chat_prompt(context: Dict[str, Any]) -> str:
     evidence_json = json.dumps(evidence_lines, ensure_ascii=True)
     stats_json = json.dumps(context["subcategory_stats"], ensure_ascii=True)
 
+    sanitized_question = _sanitize_review_text(context['question'])
+
     return (
         "You are an insights assistant. Use ONLY the data provided.\n"
         "If evidence is missing or insufficient, say so explicitly.\n"
         "Return JSON only with fields: answer (string), used_subcategories (list), citations (list of {review_id, subcategory, snippet}).\n\n"
         f"Game: {context['game_name']}\n"
-        f"Question: {context['question']}\n"
+        f"Question: {sanitized_question}\n"
         f"Filters: sentiment={context['sentiment']}, min_helpful={context['min_helpful']}, max_days={context['max_days']}, playtime_bucket={context.get('playtime_bucket')}, language={context.get('language')}\n"
         f"Matched subcategories: {context['matched_subcategories']}\n"
         f"Subcategory stats (count, recommendation_rate, issue_count, request_count): {stats_json}\n"
@@ -1120,7 +1123,8 @@ def build_game_aware_prompt(
     prompt_parts.append("13. **For language questions** (issues by language, regional feedback): Use 'Sentiment by Language' data to compare feedback across different player communities")
 
     # Current question
-    prompt_parts.append(f"\n## Current Question:\n{message}")
+    sanitized_message = _sanitize_review_text(message)
+    prompt_parts.append(f"\n## Current Question:\n{sanitized_message}")
     prompt_parts.append("\n## Your Answer:")
 
     return "\n".join(prompt_parts)

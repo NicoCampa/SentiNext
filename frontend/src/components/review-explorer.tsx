@@ -215,8 +215,8 @@ export function ReviewsTable({ reviews, helper }: { reviews: ReviewRow[]; helper
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {reviews.map((review) => (
-              <tr key={String(review.review_id ?? Math.random())} className="bg-white/5">
+            {reviews.map((review, idx) => (
+              <tr key={String(review.review_id ?? `row-${idx}`)} className="bg-white/5">
                 <td className="px-4 py-3 text-slate-100">
                   <p className="whitespace-pre-line text-sm">{review.review}</p>
                   <p className="mt-2 text-xs text-slate-400">

@@ -30,6 +30,15 @@ from .analysis import (
     quality_weighted_insights,
     cross_segment_analysis,
 )
+
+
+def _listify(value: Any) -> list[str]:
+    """Normalize a value to a list of strings, filtering non-strings."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
 def _frame_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     if df is None or df.empty:
         return []
@@ -53,11 +62,6 @@ def aggregate_subcategory_insights(
         or "llm_subcategory_evidence" not in df.columns
     ):
         return []
-
-    def _listify(value: Any) -> list[str]:
-        if not isinstance(value, list):
-            return []
-        return [str(item) for item in value if isinstance(item, str)]
 
     def _snippets(value: Any) -> list[str]:
         if isinstance(value, list):
@@ -281,9 +285,10 @@ def category_trend_over_time(df: pd.DataFrame, freq: str = "auto") -> Dict[str, 
 def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
     """Build a JSON-serialisable insight payload for the given review frame."""
     if df is None or df.empty:
-        metrics = summarize_sentiment(df)
         default_metrics = {
-            **metrics,
+            "total_reviews": 0,
+            "share_positive": 0.0,
+            "share_negative": 0.0,
             "feature_request_rate": 0.0,
             "issue_rate": 0.0,
             "coverage_rate": 0.0,
@@ -297,9 +302,9 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
             },
             "category_breakdown": {},
             "category_recommendation_rates": {},
-            "playtime": summarize_playtime(df),
-            "helpful": helpfulness_summary(df),
-            "recommendation": recommendation_rate(df),
+            "playtime": {},
+            "helpful": {},
+            "recommendation": {},
             "sentiment_counts": [],
             "trend": [],
             "segments": {
@@ -317,7 +322,7 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
                 "core_fan_disappointment": 0.0,
             },
             "subcategory_insights": [],
-            "theme": derive_theme(metrics),
+            "theme": derive_theme(default_metrics),
         }
 
     metrics = summarize_sentiment(df)
@@ -346,11 +351,6 @@ def prepare_insights(df: pd.DataFrame) -> Dict[str, Any]:
     category_breakdown: dict[str, dict[str, int]] = {}
     category_recommendation_rates: dict[str, dict[str, Any]] = {}
     if "llm_subcategories" in df.columns:
-        def _listify(value: Any) -> list[str]:
-            if not isinstance(value, list):
-                return []
-            return [str(item) for item in value if isinstance(item, str)]
-
         exploded = df["llm_subcategories"].apply(_listify).explode().dropna()
         if not exploded.empty:
             for item in exploded:
