@@ -73,7 +73,7 @@ export default function HealthOverviewCard({
             <svg className="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <h3 className="text-sm font-medium text-slate-400">Health Overview</h3>
+            <h3 className="text-sm font-medium text-slate-400">Overview</h3>
           </div>
           <button
             onClick={onRefresh}
@@ -93,7 +93,7 @@ export default function HealthOverviewCard({
             )}
           </button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">Run analysis to generate a health overview, or click Generate to create one now.</p>
+        <p className="mt-2 text-xs text-slate-500">Run analysis to generate an overview, or click Generate to create one now.</p>
       </Card>
     );
   }
@@ -105,13 +105,13 @@ export default function HealthOverviewCard({
           <svg className="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
-          <h3 className="text-sm font-medium text-white">Health Overview</h3>
+          <h3 className="text-sm font-medium text-white">Overview</h3>
         </div>
         <button
           onClick={onRefresh}
           disabled={refreshing}
           className="text-xs px-2 py-1 rounded border border-white/10 text-slate-400 hover:text-sky-400 hover:border-sky-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-          title="Refresh health overview"
+          title="Refresh overview"
         >
           {refreshing ? (
             <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
