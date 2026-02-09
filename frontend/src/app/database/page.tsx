@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AppLayout } from '@/components/AppLayout';
 import { PageTransition } from '@/components/PageTransition';
@@ -15,7 +15,7 @@ import { fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
 import type { DatabaseGameOption } from '@/types';
 import type { DatabaseScope, DatabaseStats } from '@/lib/api';
 
-export default function DatabasePage() {
+function DatabasePageInner() {
   const { t } = useLanguage();
   const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
   const searchParams = useSearchParams();
@@ -143,5 +143,13 @@ export default function DatabasePage() {
         </div>
       </PageTransition>
     </AppLayout>
+  );
+}
+
+export default function DatabasePage() {
+  return (
+    <Suspense>
+      <DatabasePageInner />
+    </Suspense>
   );
 }

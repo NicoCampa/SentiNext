@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AppLayout } from '@/components/AppLayout';
 import { PageTransition } from '@/components/PageTransition';
@@ -22,7 +22,7 @@ function mapTabParam(param: string | null): AdminTab {
   return 'dashboard';
 }
 
-export default function AdminPage() {
+function AdminPageInner() {
   const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
   const { refresh: refreshNotification, adminUnreadCount } = useSupportNotification();
   const searchParams = useSearchParams();
@@ -100,5 +100,13 @@ export default function AdminPage() {
         </div>
       </PageTransition>
     </AppLayout>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense>
+      <AdminPageInner />
+    </Suspense>
   );
 }
