@@ -126,6 +126,43 @@ def run_analysis_job(
         else:
             reviews_payload = []
 
+        # Auto-generate health overview for the persistent dashboard card
+        try:
+            # Load *previous* analysis result as baseline for trend comparison
+            baseline = None
+            try:
+                prev_result = storage.load_analysis_result(user_id, app_id)
+                if prev_result:
+                    prev_insights = prev_result.get("insights") or {}
+                    prev_metadata = prev_result.get("metadata") or {}
+                    prev_date = prev_metadata.get("fetched_at") or ""
+                    if not prev_date and prev_result.get("updated_at"):
+                        try:
+                            prev_date = datetime.utcfromtimestamp(prev_result["updated_at"]).strftime("%Y-%m-%d")
+                        except Exception:
+                            prev_date = ""
+                    if prev_insights:
+                        baseline = {
+                            "date": prev_date,
+                            "recommendation_rate": prev_insights.get("recommendation"),
+                            "issue_rate": (prev_insights.get("llm") or {}).get("issue_rate"),
+                            "request_rate": (prev_insights.get("llm") or {}).get("feature_request_rate"),
+                        }
+            except Exception:
+                pass
+            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="health_overview", credit_accumulator=credit_tracker):
+                health_overview = llm.generate_health_overview(
+                    reviews=reviews_payload,
+                    game_context=game_context,
+                    baseline=baseline,
+                )
+            if insights is not None:
+                insights["health_overview"] = health_overview
+        except Exception as exc:
+            logger.warning("Health overview generation failed (non-fatal): %s", exc)
+            if insights is not None:
+                insights["health_overview"] = None
+
         storage.save_analysis_result(
             user_id=user_id,
             app_id=app_id,

@@ -1462,6 +1462,9 @@ export interface RecentReviewsSummaryResponse {
   summary: string;
   key_points: string[];
   actions: string[];
+  health_score?: number | null;
+  sentiment_trend?: "improving" | "stable" | "declining" | null;
+  top_strengths?: string[];
   review_count: number;
   start_date?: string | null;
   end_date?: string | null;

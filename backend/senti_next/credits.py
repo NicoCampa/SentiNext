@@ -48,6 +48,7 @@ CREDIT_COSTS = {
     "chat_agent": 4,       # Per agent iteration (~4x classify cost)
 
     # Summaries & utilities
+    "health_overview": 1,  # Per health overview generation (auto or manual refresh)
     "summarize": 1,        # Per summary generation
     "report_summary": 1,   # Executive report LLM summary
     "translate": 1,        # Per translation call

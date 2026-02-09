@@ -2276,7 +2276,7 @@ def summarize_widget(
 
 class SummarizeRecentReviewsRequest(BaseModel):
     app_id: int = Field(..., gt=0)
-    count: int = Field(default=100, ge=10, le=200)
+    count: int = Field(default=500, ge=10, le=1000)
     filter_context: Optional[str] = Field(default=None, description="Description of active filters for context")
 
 
@@ -2284,6 +2284,9 @@ class SummarizeRecentReviewsResponse(BaseModel):
     summary: str
     key_points: List[str] = Field(default_factory=list)
     actions: List[str] = Field(default_factory=list)
+    health_score: Optional[int] = None
+    sentiment_trend: Optional[str] = None
+    top_strengths: List[str] = Field(default_factory=list)
     review_count: int
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -2335,12 +2338,21 @@ def summarize_recent_reviews(
     baseline = None
     try:
         result = storage.load_analysis_result(user_id, request.app_id) or {}
-        insights = result.get("insights") or {}
-        if insights:
+        prev_insights = result.get("insights") or {}
+        prev_metadata = result.get("metadata") or {}
+        prev_date = prev_metadata.get("fetched_at") or ""
+        if not prev_date and result.get("updated_at"):
+            try:
+                from datetime import datetime as _dt
+                prev_date = _dt.utcfromtimestamp(result["updated_at"]).strftime("%Y-%m-%d")
+            except Exception:
+                prev_date = ""
+        if prev_insights:
             baseline = {
-                "recommendation_rate": insights.get("recommendation"),
-                "issue_rate": (insights.get("llm") or {}).get("issue_rate"),
-                "request_rate": (insights.get("llm") or {}).get("feature_request_rate"),
+                "date": prev_date,
+                "recommendation_rate": prev_insights.get("recommendation"),
+                "issue_rate": (prev_insights.get("llm") or {}).get("issue_rate"),
+                "request_rate": (prev_insights.get("llm") or {}).get("feature_request_rate"),
             }
     except Exception:
         baseline = None
@@ -2375,13 +2387,12 @@ def summarize_recent_reviews(
     }
 
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize"):
-            result = llm.summarize_widget_reviews(
+        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="health_overview"):
+            result = llm.generate_health_overview(
                 reviews=reviews_payload,
-                widget_kind="recent_reviews",
-                widget_label=f"Most recent {len(reviews_payload)} reviews",
-                widget_context=widget_context,
                 game_context=game_context,
+                baseline=baseline,
+                widget_context=widget_context,
             )
         return SummarizeRecentReviewsResponse(
             **result,

@@ -610,6 +610,16 @@ class ReportSummary(BaseModel):
     actions: list[str] = Field(default_factory=list, description="Suggested actions")
 
 
+class HealthOverview(BaseModel):
+    """Structured output for persistent health overview card."""
+    summary: str = Field(description="2-4 sentence executive recap")
+    key_points: list[str] = Field(default_factory=list, description="Key issues or observations")
+    actions: list[str] = Field(default_factory=list, description="Top 3 prioritized actions")
+    health_score: int = Field(description="Overall health score from 1-10")
+    sentiment_trend: str = Field(description="One of: improving, stable, declining")
+    top_strengths: list[str] = Field(default_factory=list, description="Top 3 strengths")
+
+
 class SubcategorySummary(BaseModel):
     """Structured output for subcategory review summaries."""
     summary: str = Field(description="Summary paragraph of reviews in this subcategory")
@@ -3105,6 +3115,64 @@ $reviews_text
     )
 )
 
+_HEALTH_OVERVIEW_PROMPT = Template(
+    dedent(
+        """\
+You are generating a HEALTH OVERVIEW CARD for a Steam game dashboard. This is a persistent summary that gives developers an at-a-glance view of their game's current reception.
+
+GAME CONTEXT:
+Name: $game_name
+Type: $game_type
+Genres: $game_genres
+Description: $game_description
+
+REVIEW WINDOW:
+$widget_label
+
+BASELINE (previous analysis snapshot to compare against):
+$baseline_context
+
+SUBSET METRICS (computed from provided reviews):
+- Reviews: $review_count
+- Recommendation rate (thumbs up): $recommendation_rate
+- Avg helpful votes: $avg_helpful
+- Languages (top): $language_mix
+- Issue-tagged reviews: $issue_rate
+- Request-tagged reviews: $request_rate
+
+TOP TAGGED ISSUES (count of reviews mentioning the issue):
+$top_issues
+
+TOP TAGGED REQUESTS (count of reviews mentioning the request):
+$top_requests
+
+OUTPUT JSON SCHEMA (use these exact keys; no extras):
+{
+  "summary": "<2-4 sentence executive recap of overall game health>",
+  "key_points": ["<key observation 1>", "<key observation 2>", "..."],
+  "actions": ["<action 1>", "<action 2>", "<action 3>"],
+  "health_score": <integer 1-10>,
+  "sentiment_trend": "<improving|stable|declining>",
+  "top_strengths": ["<strength 1>", "<strength 2>", "<strength 3>"]
+}
+
+RULES:
+- health_score: 1-10 integer. Consider recommendation rate, issue severity, and overall tone. 8-10 = healthy, 5-7 = mixed, 1-4 = concerning.
+- sentiment_trend: "improving" if current metrics are better than the baseline snapshot, "declining" if worse, "stable" if similar or no baseline available. Only compare when a dated baseline is provided.
+- top_strengths: Exactly 3 things players praise most (gameplay, visuals, value, etc.). Grounded in review evidence.
+- key_points: 3-6 bullets covering the most important observations (issues, patterns, notable feedback).
+- actions: EXACTLY 3 prioritized, developer-actionable recommendations (start each with a verb).
+- Avoid the word "sentiment". Use "recommendation rate" or "thumbs up/down".
+- JSON MUST be valid: double quotes only, no trailing commas.
+
+REVIEWS:
+<<<BEGIN REVIEWS>>>
+$reviews_text
+<<<END REVIEWS>>>
+"""
+    )
+)
+
 _SUMMARIZE_WIDGET_TOP_ISSUES_PROMPT = Template(
     dedent(
         """\
@@ -3797,6 +3865,259 @@ def summarize_widget_reviews(
             "summary": "Unable to generate summary.",
             "key_points": [],
             "actions": [],
+        }
+
+
+def generate_health_overview(
+    reviews: Sequence[Mapping[str, Any]],
+    game_context: Optional[Dict[str, Any]] = None,
+    baseline: Optional[Dict[str, Any]] = None,
+    widget_context: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Generate a persistent health overview card for the dashboard.
+
+    Reuses the same review preprocessing as summarize_widget_reviews() but
+    produces an extended schema with health_score, sentiment_trend, and
+    top_strengths in addition to the standard summary/key_points/actions.
+    """
+    if not reviews:
+        return {
+            "summary": "No reviews available to generate health overview.",
+            "key_points": [],
+            "actions": [],
+            "health_score": 5,
+            "sentiment_trend": "stable",
+            "top_strengths": [],
+        }
+
+    widget_context = widget_context or {}
+
+    # Build game context strings
+    if game_context:
+        game_name = game_context.get("name", "Unknown")
+        game_type = game_context.get("type", "game")
+        genres = game_context.get("genres", [])
+        description = game_context.get("short_description", "")[:200]
+        game_genres = ", ".join(genres) if genres else "Unknown"
+        game_description = description if description else "Not available"
+    else:
+        game_name = "Unknown"
+        game_type = "game"
+        game_genres = "Unknown"
+        game_description = "Not available"
+
+    def _to_int(value: Any) -> int:
+        try:
+            if value is None:
+                return 0
+            if isinstance(value, bool):
+                return int(value)
+            if isinstance(value, (int, float)):
+                return int(value)
+            if isinstance(value, str):
+                return int(float(value))
+        except Exception:
+            return 0
+        return 0
+
+    def _to_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y", "recommended", "thumbs_up", "up"}
+        return False
+
+    def _clean_snippet(value: Any, max_len: int = 160) -> Optional[str]:
+        text = str(value).replace("\n", " ").replace("\r", " ").strip()
+        if not text:
+            return None
+        if len(text) > max_len:
+            return text[:max_len] + "..."
+        return text
+
+    def _listify_strings(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
+
+    # Compute subset metrics
+    review_count = len(reviews)
+    voted_flags: list[bool] = [_to_bool(r.get("voted_up", False)) for r in reviews]
+    rec_rate = (sum(1 for v in voted_flags if v) / review_count) if review_count else 0.0
+    avg_helpful = sum(_to_int(r.get("votes_up")) for r in reviews) / review_count if review_count else 0.0
+
+    # Issue/request rate + top tags
+    issue_hits = 0
+    request_hits = 0
+    issue_counter: Counter[str] = Counter()
+    request_counter: Counter[str] = Counter()
+    for r in reviews:
+        issues = _listify_strings(r.get("llm_issue_subcategories"))
+        requests = _listify_strings(r.get("llm_request_subcategories"))
+        if issues:
+            issue_hits += 1
+            issue_counter.update(issues)
+        if requests:
+            request_hits += 1
+            request_counter.update(requests)
+
+    issue_rate = issue_hits / review_count if review_count else 0.0
+    request_rate = request_hits / review_count if review_count else 0.0
+
+    def _format_top(counter: Counter[str], limit: int = 8) -> str:
+        if not counter:
+            return "- None"
+        lines = []
+        for key, count in counter.most_common(limit):
+            lines.append(f"- {key}: {count}")
+        return "\n".join(lines)
+
+    # Language mix
+    lang_counter: Counter[str] = Counter()
+    for r in reviews:
+        lang = r.get("language")
+        if isinstance(lang, str) and lang.strip():
+            lang_counter.update([lang.strip().lower()])
+    if lang_counter:
+        top_langs = [f"{lang} ({count})" for lang, count in lang_counter.most_common(3)]
+        language_mix = ", ".join(top_langs)
+    else:
+        language_mix = "unknown"
+
+    # Build review blocks (same approach as summarize_widget_reviews)
+    def _helpful_sort_key(r: Mapping[str, Any]) -> int:
+        return _to_int(r.get("votes_up"))
+
+    sorted_by_helpful = sorted(list(reviews), key=_helpful_sort_key, reverse=True)
+    sampled_reviews = sorted_by_helpful[: min(50, len(sorted_by_helpful))]
+    full_review_limit = min(8, len(sampled_reviews))
+
+    evidence_blocks: list[str] = []
+    full_review_blocks: list[str] = []
+
+    for i, review in enumerate(sampled_reviews, 1):
+        voted_up = _to_bool(review.get("voted_up", False))
+        sentiment = "Recommended" if voted_up else "Not recommended"
+        helpful = _to_int(review.get("votes_up"))
+        lang = str(review.get("language") or "unknown")
+        created = str(review.get("created_at") or "")
+
+        # Evidence snippets
+        evidence = review.get("llm_subcategory_evidence") or review.get("subcategory_evidence") or {}
+        snippets: list[str] = []
+        if isinstance(evidence, dict):
+            for key in list(evidence.keys())[:3]:
+                raw_values = evidence[key]
+                values = raw_values if isinstance(raw_values, list) else [raw_values]
+                for item in values:
+                    cleaned = _clean_snippet(item)
+                    if cleaned and cleaned not in snippets:
+                        snippets.append(cleaned)
+                    if len(snippets) >= 2:
+                        break
+                if len(snippets) >= 2:
+                    break
+
+        if snippets:
+            evidence_blocks.append(f"[Review {i}] ({sentiment}, {helpful} helpful, {lang}, {created}) " + " | ".join(snippets))
+        else:
+            fallback = _clean_snippet(review.get("review") or "", max_len=160)
+            if fallback:
+                evidence_blocks.append(f"[Review {i}] ({sentiment}, {helpful} helpful, {lang}, {created}) {fallback}")
+
+        if i <= full_review_limit:
+            text = (review.get("review") or "").strip()
+            if text:
+                if len(text) > 500:
+                    text = text[:500] + "..."
+                full_review_blocks.append(f"[Review {i}] ({sentiment}, {helpful} helpful, {lang}, {created})\n{text}")
+
+    sections: list[str] = []
+    if evidence_blocks:
+        sections.append("EVIDENCE SNIPPETS (highlights):\n" + "\n".join(evidence_blocks[:24]))
+    if full_review_blocks:
+        sections.append("FULL REVIEW EXAMPLES (top helpful):\n" + "\n\n".join(full_review_blocks))
+
+    reviews_text = "\n\n".join(sections)
+    if not reviews_text.strip():
+        return {
+            "summary": "No review text available.",
+            "key_points": [],
+            "actions": [],
+            "health_score": 5,
+            "sentiment_trend": "stable",
+            "top_strengths": [],
+        }
+
+    # Format baseline context with explicit date
+    if baseline:
+        baseline_date = baseline.get("date") or "unknown date"
+        baseline_lines = [f"Previous analysis from {baseline_date}:"]
+        for key, value in baseline.items():
+            if key != "date" and value is not None:
+                baseline_lines.append(f"- {key}: {value}")
+        baseline_context = "\n".join(baseline_lines)
+    else:
+        baseline_context = "No previous analysis available (first run). Set sentiment_trend to \"stable\"."
+
+    prompt = _HEALTH_OVERVIEW_PROMPT.substitute(
+        game_name=game_name,
+        game_type=game_type,
+        game_genres=game_genres,
+        game_description=game_description,
+        widget_label=f"All {review_count} analyzed reviews",
+        baseline_context=baseline_context,
+        review_count=f"{review_count:,}",
+        recommendation_rate=f"{rec_rate:.1%}",
+        avg_helpful=f"{avg_helpful:.1f}",
+        language_mix=language_mix,
+        issue_rate=f"{issue_rate:.1%}",
+        request_rate=f"{request_rate:.1%}",
+        top_issues=_format_top(issue_counter),
+        top_requests=_format_top(request_counter),
+        reviews_text=reviews_text,
+    )
+
+    reservation: Optional[dict] = None
+    try:
+        _user_id, ctx_operation, ctx_app_id, ctx_session_id = _billing_context()
+        reservation = _reserve_credits_for_operation(
+            "health_overview",
+            description="Health overview generation",
+            app_id=ctx_app_id,
+            session_id=ctx_session_id,
+        )
+        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=HealthOverview)
+        parsed = HealthOverview.model_validate_json(raw)
+
+        # Clamp and validate
+        health_score = max(1, min(10, parsed.health_score))
+        sentiment_trend = parsed.sentiment_trend.strip().lower()
+        if sentiment_trend not in ("improving", "stable", "declining"):
+            sentiment_trend = "stable"
+
+        return {
+            "summary": parsed.summary.strip() or "Unable to generate summary.",
+            "key_points": [s.strip() for s in parsed.key_points if s][:6],
+            "actions": [s.strip() for s in parsed.actions if s][:3],
+            "health_score": health_score,
+            "sentiment_trend": sentiment_trend,
+            "top_strengths": [s.strip() for s in parsed.top_strengths if s][:3],
+        }
+    except credits.InsufficientCreditsError:
+        raise
+    except Exception as exc:
+        _refund_reserved_credits(reservation, "Refund: health overview failed")
+        logger.error("Failed to generate health overview: %s", exc)
+        return {
+            "summary": "Unable to generate health overview.",
+            "key_points": [],
+            "actions": [],
+            "health_score": 5,
+            "sentiment_trend": "stable",
+            "top_strengths": [],
         }
 
 

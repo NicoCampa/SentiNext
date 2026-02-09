@@ -23,7 +23,6 @@ import {
   summarizeRecentReviews,
   summarizeSubcategory,
   summarizeWidget,
-  RecentReviewsSummaryResponse,
   SubcategorySummaryResponse,
   WidgetSummaryResponse,
   translateText,
@@ -54,6 +53,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SteamImage } from "@/components/SteamImage";
+import HealthOverviewCard from "@/components/HealthOverviewCard";
 import { PageTransition } from "@/components/PageTransition";
 import { Portal } from "@/components/Portal";
 import { UpgradeModal } from "@/components/UpgradeModal";
@@ -1205,16 +1205,24 @@ function AnalysisResults({
   const [topRequestsSummary, setTopRequestsSummary] = useState<WidgetSummaryResponse | null>(null);
   const [topRequestsSummaryLoading, setTopRequestsSummaryLoading] = useState(false);
   const [topRequestsSummaryError, setTopRequestsSummaryError] = useState<string | null>(null);
-  const [recentReviewsModalOpen, setRecentReviewsModalOpen] = useState(false);
-  const [recentReviewsSummary, setRecentReviewsSummary] = useState<RecentReviewsSummaryResponse | null>(null);
-  const [recentReviewsSummaryLoading, setRecentReviewsSummaryLoading] = useState(false);
-  const [recentReviewsSummaryError, setRecentReviewsSummaryError] = useState<string | null>(null);
+  const [healthOverviewRefreshing, setHealthOverviewRefreshing] = useState(false);
+  const [healthOverviewOverride, setHealthOverviewOverride] = useState<{
+    summary: string;
+    key_points: string[];
+    actions: string[];
+    health_score: number;
+    sentiment_trend: "improving" | "stable" | "declining";
+    top_strengths: string[];
+    review_count?: number;
+    start_date?: string | null;
+    end_date?: string | null;
+  } | null>(null);
   const [lastMonthOnly, setLastMonthOnly] = useState(false);
   const [negativeOnly, setNegativeOnly] = useState(false);
   const [highPlaytime, setHighPlaytime] = useState(false);
   const [highHelpful, setHighHelpful] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const recentSummaryRequestIdRef = useRef(0);
+  const healthOverviewRequestIdRef = useRef(0);
 
   // Trigger animations on mount
   useEffect(() => {
@@ -1730,13 +1738,6 @@ function AnalysisResults({
     },
   };
 
-  const closeRecentReviewsModal = useCallback(() => {
-    recentSummaryRequestIdRef.current += 1; // invalidate in-flight requests
-    setRecentReviewsModalOpen(false);
-    setRecentReviewsSummary(null);
-    setRecentReviewsSummaryError(null);
-    setRecentReviewsSummaryLoading(false);
-  }, []);
 
   const closeTopIssuesModal = useCallback(() => {
     setTopIssuesModalOpen(false);
@@ -1752,7 +1753,7 @@ function AnalysisResults({
     setTopRequestsSummaryLoading(false);
   }, []);
 
-  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek || selectedSegment || recentReviewsModalOpen || topIssuesModalOpen || topRequestsModalOpen);
+  const hasOverlay = Boolean(selectedSubcategory || selectedTrendWeek || selectedSegment || topIssuesModalOpen || topRequestsModalOpen);
 
   useEffect(() => {
     if (!hasOverlay) return;
@@ -1764,10 +1765,6 @@ function AnalysisResults({
         }
         if (topRequestsModalOpen) {
           closeTopRequestsModal();
-          return;
-        }
-        if (recentReviewsModalOpen) {
-          closeRecentReviewsModal();
           return;
         }
         if (selectedSegment) {
@@ -1792,10 +1789,8 @@ function AnalysisResults({
     selectedTrendWeek,
     selectedSubcategory,
     selectedSegment,
-    recentReviewsModalOpen,
     topIssuesModalOpen,
     topRequestsModalOpen,
-    closeRecentReviewsModal,
     closeTopIssuesModal,
     closeTopRequestsModal,
     clearSelectedSubcategory,
@@ -2194,31 +2189,41 @@ function AnalysisResults({
     }
   };
 
-  const handleSummarizeRecentReviews = useCallback(async () => {
+  // Health overview: prefer manual refresh override, fall back to auto-generated from insights
+  const healthOverview = healthOverviewOverride ?? insights?.health_overview ?? null;
+
+  const handleRefreshHealthOverview = useCallback(async () => {
     if (!selectedGame) return;
 
-    const requestId = recentSummaryRequestIdRef.current + 1;
-    recentSummaryRequestIdRef.current = requestId;
+    const requestId = healthOverviewRequestIdRef.current + 1;
+    healthOverviewRequestIdRef.current = requestId;
 
-    setRecentReviewsModalOpen(true);
-    setRecentReviewsSummaryLoading(true);
-    setRecentReviewsSummaryError(null);
+    setHealthOverviewRefreshing(true);
 
     try {
       const result = await summarizeRecentReviews({
         app_id: selectedGame.appid,
-        count: 100,
+        count: 500,
         filter_context: filterScopeLabel ?? undefined,
       });
-      if (recentSummaryRequestIdRef.current !== requestId) return;
-      setRecentReviewsSummary(result);
+      if (healthOverviewRequestIdRef.current !== requestId) return;
+      setHealthOverviewOverride({
+        summary: result.summary,
+        key_points: result.key_points,
+        actions: result.actions,
+        health_score: result.health_score ?? 5,
+        sentiment_trend: result.sentiment_trend ?? "stable",
+        top_strengths: result.top_strengths ?? [],
+        review_count: result.review_count,
+        start_date: result.start_date,
+        end_date: result.end_date,
+      });
       refreshCredits();
-    } catch (err) {
-      if (recentSummaryRequestIdRef.current !== requestId) return;
-      setRecentReviewsSummaryError((err as Error).message || "Failed to generate summary");
+    } catch {
+      // Silently fail — the card still shows previous data or empty state
     } finally {
-      if (recentSummaryRequestIdRef.current !== requestId) return;
-      setRecentReviewsSummaryLoading(false);
+      if (healthOverviewRequestIdRef.current !== requestId) return;
+      setHealthOverviewRefreshing(false);
     }
   }, [selectedGame, refreshCredits, filterScopeLabel]);
 
@@ -2310,16 +2315,6 @@ function AnalysisResults({
 
         {onUpdate && (
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 sm:justify-end">
-            <button
-              onClick={handleSummarizeRecentReviews}
-              disabled={!selectedGame}
-              className="text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              AI Overview
-            </button>
             <Button onClick={onUpdate} variant="ghost" size="sm" className="text-xs sm:text-sm flex-1 sm:flex-none">
               {t('dashboard.update')}
             </Button>
@@ -2441,6 +2436,19 @@ function AnalysisResults({
           </div>
         </div>
       </Card>
+
+      {/* Health Overview Card */}
+      <div className={mounted ? 'animate-fade-slide-up animation-delay-75' : 'opacity-0'}>
+        <HealthOverviewCard
+          overview={healthOverview}
+          onRefresh={handleRefreshHealthOverview}
+          refreshing={healthOverviewRefreshing}
+          gameName={selectedGame?.name}
+          reviewCount={healthOverviewOverride?.review_count ?? analysis.metadata?.retrieved}
+          startDate={healthOverviewOverride?.start_date}
+          endDate={healthOverviewOverride?.end_date}
+        />
+      </div>
 
       <div className="space-y-6">
 
@@ -4106,125 +4114,6 @@ function AnalysisResults({
         </Portal>
       ) : null}
 
-      {recentReviewsModalOpen ? (
-        <Portal>
-          <div
-            className="fixed inset-0 z-[9996] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
-            onClick={closeRecentReviewsModal}
-            style={{ WebkitBackdropFilter: "blur(12px)" }}
-          >
-            <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
-              <div
-                className="w-full max-w-4xl rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-semibold text-white">Recent reviews</h3>
-                    <p className="mt-1 text-xs sm:text-sm text-slate-400">
-                      Most recent {recentReviewsSummary?.review_count ?? 100} reviews
-                      {recentReviewsSummary?.start_date && recentReviewsSummary?.end_date
-                        ? ` · ${recentReviewsSummary.start_date} → ${recentReviewsSummary.end_date}`
-                        : ""}
-                    </p>
-                    {filterScopeLabel && (
-                      <p className="mt-1 text-[11px] sm:text-xs text-sky-400 line-clamp-2">
-                        Filters: {filterScopeLabel}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <button
-                      onClick={handleSummarizeRecentReviews}
-                      disabled={recentReviewsSummaryLoading}
-                      className="flex-1 sm:flex-none text-xs sm:text-sm px-3 py-2.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                    >
-                      {recentReviewsSummaryLoading ? (
-                        <>
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                          Summarizing...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                          {recentReviewsSummary ? "Refresh" : "AI Summary"}
-                        </>
-                      )}
-                    </button>
-                    <Button variant="secondary" onClick={closeRecentReviewsModal} className="flex-1 sm:flex-none text-xs sm:text-sm">
-                      Close
-                    </Button>
-                  </div>
-                </div>
-
-                {recentReviewsSummaryError && (
-                  <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
-                    <p className="text-sm text-rose-400">{recentReviewsSummaryError}</p>
-                  </div>
-                )}
-
-                {recentReviewsSummary ? (
-                  <div className="mt-4 space-y-4 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
-                    <div>
-                      <h4 className="text-xs uppercase tracking-wider text-sky-400 mb-2">Summary</h4>
-                      <p className="text-sm text-slate-200 leading-relaxed">{recentReviewsSummary.summary}</p>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {recentReviewsSummary.key_points.length > 0 && (
-                        <div>
-                          <h4 className="text-xs uppercase tracking-wider text-white/80 mb-2 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 bg-white/70" />
-                            Key points
-                          </h4>
-                          <ul className="space-y-1.5">
-                            {recentReviewsSummary.key_points.map((item, idx) => (
-                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
-                                <span className="text-sky-300 mt-1">•</span>
-                                <span>{item}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {recentReviewsSummary.actions.length > 0 && (
-                        <div>
-                          <h4 className="text-xs uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 bg-emerald-400" />
-                            Actions
-                          </h4>
-                          <ul className="space-y-1.5">
-                            {recentReviewsSummary.actions.map((item, idx) => (
-                              <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
-                                <span className="text-emerald-400 mt-1">→</span>
-                                <span>{item}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-
-                    <p className="text-xs text-slate-500 pt-2 border-t border-white/10">
-                      Based on {recentReviewsSummary.review_count} reviews
-                    </p>
-                  </div>
-                ) : recentReviewsSummaryLoading ? (
-                  <p className="mt-4 text-sm text-slate-500">Generating summary…</p>
-                ) : (
-                  <p className="mt-4 text-sm text-slate-500">Click "AI Summary" to generate a recent reviews recap.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </Portal>
-      ) : null}
     </div>
   );
 }

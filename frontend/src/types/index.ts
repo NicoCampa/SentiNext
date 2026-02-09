@@ -273,6 +273,15 @@ export interface VersionInsight {
   top_categories: Record<string, number>;
 }
 
+export interface HealthOverviewData {
+  summary: string;
+  key_points: string[];
+  actions: string[];
+  health_score: number;
+  sentiment_trend: "improving" | "stable" | "declining";
+  top_strengths: string[];
+}
+
 export interface InsightsResponse {
   metrics: Record<string, number>;
   llm: LLMMetrics;
@@ -293,6 +302,7 @@ export interface InsightsResponse {
   quality_weighted?: QualityWeightedInsights;
   cross_segment?: CrossSegmentAnalysis;
   theme?: ThemeDefinition;
+  health_overview?: HealthOverviewData | null;
 }
 
 export interface ReviewRow {
