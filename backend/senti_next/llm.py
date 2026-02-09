@@ -2540,7 +2540,7 @@ def ensure_review_labels(
             for future in as_completed(future_to_item):
                 item = future_to_item[future]
                 try:
-                    payload, model_used, _ = future.result()
+                    payload, model_used, _ = future.result(timeout=120)
                     review_id = str(item["review_id"])
                     review_hash = str(item["review_hash"])
 
@@ -2569,6 +2569,9 @@ def ensure_review_labels(
                 except Exception as exc:
                     logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
                     failed_count += 1
+                    processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback(processed_count, total_reviews)
 
         # Flush remaining labels
         _flush_label_buffer(label_write_buffer)

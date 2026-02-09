@@ -551,7 +551,7 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
         {tiers.map((tier, i) => (
           <div
             key={i}
-            className={`relative bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 border-t-2 ${tier.color} p-3 animate-fade-slide-up flex flex-col`}
+            className={`relative bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 border-t-2 ${tier.color} p-3 animate-fade-slide-up flex flex-col min-h-[220px]`}
             style={{ animationDelay: `${i * 80}ms` }}
           >
             {tier.badge && (
@@ -569,6 +569,22 @@ function StepPricing({ onComplete }: { onComplete: () => void }) {
                 <span className="text-[10px] text-[rgb(100,100,120)]">{t('onboarding.tier.creditsLabel')}</span>
                 <span className="text-[10px] text-white font-medium ml-auto">{tier.credits}</span>
               </div>
+            </div>
+            {/* Included features */}
+            <div className="mt-3 pt-3 border-t border-[rgb(0,255,255)]/5 space-y-1.5">
+              <p className="text-[9px] uppercase tracking-wider text-[rgb(100,100,120)] mb-1">{t('onboarding.tier.includes')}</p>
+              {[
+                t('onboarding.tier.classifyCost'),
+                t('onboarding.tier.chatCost'),
+                t('onboarding.tier.summaryCost'),
+              ].map((feat, j) => (
+                <div key={j} className="flex items-center gap-1.5">
+                  <svg className="w-3 h-3 text-[rgb(0,255,255)]/50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-[10px] text-[rgb(150,150,170)]">{feat}</span>
+                </div>
+              ))}
             </div>
             {/* Action button */}
             <button
