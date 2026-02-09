@@ -636,6 +636,21 @@ def init_postgresql_schema() -> None:
             ON user_events(created_at DESC)
         """))
 
+        # Waitlist table for capacity-gated signups
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS waitlist (
+                id SERIAL PRIMARY KEY,
+                email TEXT NOT NULL UNIQUE,
+                referral_source TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                notified_at TIMESTAMP,
+                converted_at TIMESTAMP
+            )
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_waitlist_created ON waitlist(created_at DESC)
+        """))
+
         logger.info("PostgreSQL schema initialized and migrated")
 
 

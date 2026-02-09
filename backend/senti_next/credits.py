@@ -101,6 +101,10 @@ OPERATION_TOKEN_ESTIMATES = {
 
 
 
+class CapacityExceededError(Exception):
+    """Raised when user capacity is full and a new user tries to register."""
+
+
 class InsufficientCreditsError(Exception):
     """Raised when a user lacks sufficient credits for an operation."""
 
@@ -243,6 +247,14 @@ def get_user_subscription(user_id: str) -> Dict[str, Any]:
         row = result.fetchone()
 
         if row is None:
+            # Check capacity before creating a new user
+            import os
+            capacity = int(os.getenv("SENTINEXT_USER_CAPACITY", "0"))
+            if capacity > 0:
+                count = conn.execute(text("SELECT COUNT(*) FROM user_subscriptions")).fetchone()[0]
+                if count >= capacity:
+                    raise CapacityExceededError("The service is at capacity. Please join the waitlist.")
+
             # Create default free tier subscription
             now = datetime.now(timezone.utc)
             period_end = _calculate_period_end(now)
@@ -885,6 +897,7 @@ __all__ = [
     "DEFAULT_LLM_PRICING",
     "OPERATION_LLM_PRICING",
     "OPERATION_TOKEN_ESTIMATES",
+    "CapacityExceededError",
     "InsufficientCreditsError",
     "calculate_hard_limit",
     "maybe_reset_billing_period",

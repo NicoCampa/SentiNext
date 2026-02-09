@@ -147,6 +147,7 @@ def _validate_redirect_url(url: str, label: str = "URL") -> None:
 
 
 ADMIN_TOKEN = os.getenv("SENTINEXT_ADMIN_TOKEN")
+USER_CAPACITY = int(os.getenv("SENTINEXT_USER_CAPACITY", "0"))
 DESTRUCTIVE_ENABLED = os.getenv("SENTINEXT_ENABLE_DESTRUCTIVE", "false").lower() in {"1", "true", "yes"}
 AUTH_ENABLED = os.getenv("SENTINEXT_AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}
 AUTH_JWKS_URL = os.getenv("SENTINEXT_AUTH_JWKS_URL") or os.getenv("SENTINEXT_CLERK_JWKS_URL")
@@ -288,6 +289,14 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Global exception handler — prevent stack traces from leaking to clients
 # ---------------------------------------------------------------------------
+@app.exception_handler(credits.CapacityExceededError)
+async def _capacity_exceeded_handler(request: Request, exc: credits.CapacityExceededError):
+    return JSONResponse(
+        status_code=403,
+        content={"detail": str(exc), "code": "capacity_exceeded"},
+    )
+
+
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
@@ -313,6 +322,7 @@ _RATE_LIMITS: Dict[str, int] = {
     "/admin/credits/grant": 10,
     "/admin/update-tier": 10,
     "/admin/update-user-tier": 10,
+    "/waitlist/join": 5,
 }
 _DEFAULT_RATE_LIMIT = 60
 _RATE_WINDOW_SECONDS = 60
@@ -400,7 +410,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
     return await call_next(request)
 
-AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/credits/stripe-webhook"}
+AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/credits/stripe-webhook", "/capacity", "/waitlist/join"}
 SSE_PATHS = {"/progress/{app_id}/stream"}  # SSE endpoints get token from query param
 
 
@@ -4874,6 +4884,77 @@ def delete_account(user_id: str = Depends(require_user_id)) -> dict:
         "deleted": deleted,
         "total_rows": total,
     }
+
+
+# ============================================================================
+# Capacity & Waitlist Endpoints
+# ============================================================================
+
+
+@app.get("/capacity")
+def check_capacity():
+    """Public endpoint: check if the service is accepting new users."""
+    if USER_CAPACITY <= 0:
+        return {"accepting_new_users": True, "current_users": 0, "capacity": 0}
+    with db_module.get_connection() as conn:
+        current = conn.execute(text("SELECT COUNT(*) FROM user_subscriptions")).fetchone()[0]
+    return {"accepting_new_users": current < USER_CAPACITY, "current_users": current, "capacity": USER_CAPACITY}
+
+
+class WaitlistJoinRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+    referral_source: Optional[str] = Field(default=None, max_length=200)
+
+
+@app.post("/waitlist/join")
+def join_waitlist(payload: WaitlistJoinRequest):
+    """Public endpoint: join the waitlist when capacity is full."""
+    email = payload.email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+    with db_module.get_connection() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO waitlist (email, referral_source)
+                VALUES (:email, :referral_source)
+                ON CONFLICT (email) DO NOTHING
+            """),
+            {"email": email, "referral_source": payload.referral_source},
+        )
+    return {"status": "ok", "message": "You've been added to the waitlist. We'll notify you when a spot opens up."}
+
+
+@app.get("/admin/waitlist")
+def get_waitlist(
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: None = Depends(require_admin),
+):
+    """Admin endpoint: view waitlist entries."""
+    with db_module.get_connection() as conn:
+        total_row = conn.execute(text("SELECT COUNT(*) FROM waitlist")).fetchone()
+        total = total_row[0] if total_row else 0
+        rows = conn.execute(
+            text("""
+                SELECT id, email, referral_source, created_at, notified_at, converted_at
+                FROM waitlist
+                ORDER BY created_at DESC
+                LIMIT :limit OFFSET :offset
+            """),
+            {"limit": limit, "offset": offset},
+        ).fetchall()
+    entries = [
+        {
+            "id": r[0],
+            "email": r[1],
+            "referral_source": r[2],
+            "created_at": r[3].isoformat() if r[3] else None,
+            "notified_at": r[4].isoformat() if r[4] else None,
+            "converted_at": r[5].isoformat() if r[5] else None,
+        }
+        for r in rows
+    ]
+    return {"total": total, "entries": entries}
 
 
 if __name__ == "__main__":

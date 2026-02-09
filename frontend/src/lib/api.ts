@@ -1871,6 +1871,30 @@ export interface EventsSummary {
   }[];
 }
 
+// ============================================================================
+// Capacity & Waitlist API (public, no auth)
+// ============================================================================
+
+export interface CapacityStatus {
+  accepting_new_users: boolean;
+  current_users: number;
+  capacity: number;
+}
+
+export async function fetchCapacity(): Promise<CapacityStatus> {
+  const response = await fetch(apiUrl("/capacity"), { cache: "no-store" });
+  return handleResponse<CapacityStatus>(response);
+}
+
+export async function joinWaitlist(email: string, referralSource?: string): Promise<{status: string; message: string}> {
+  const response = await fetch(apiUrl("/waitlist/join"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, referral_source: referralSource }),
+  });
+  return handleResponse<{status: string; message: string}>(response);
+}
+
 export async function fetchAdminAnalytics(hours: number = 24): Promise<EventsSummary> {
   const response = await authFetch(apiUrl(`/admin/analytics?hours=${hours}`), {
     headers: optionalAdminHeaders(),
