@@ -192,7 +192,7 @@ class LLMSettingsResponse(BaseModel):
 
 class LLMSettingsUpdate(BaseModel):
     provider: str = Field(..., description="Provider name: gemini, xai, openai, ollama")
-    model: str = Field(..., description="Model name (e.g. gpt-4o-mini, gemini-2.0-flash-lite)")
+    model: str = Field(..., description="Model name (e.g. gpt-5-mini, gemini-flash-lite-latest)")
 
 
 @router.get("/settings/providers", response_model=List[LLMProviderInfo])

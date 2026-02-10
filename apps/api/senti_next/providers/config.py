@@ -10,9 +10,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SUGGESTED_MODELS: dict[str, list[str]] = {
-    "gemini": ["gemini-2.0-flash-lite", "gemini-2.0-flash"],
-    "xai": ["grok-3-fast", "grok-3"],
-    "openai": ["gpt-4o-mini", "gpt-4o"],
+    "gemini": ["gemini-flash-lite-latest", "gemini-flash-latest"],
+    "xai": ["grok-4-1-fast-non-reasoning", "grok-4-1-fast-reasoning"],
+    "openai": ["gpt-5-mini", "gpt-5-nano"],
     "ollama": ["llama3.1:8b", "qwen2.5:7b", "gemma2:9b"],
 }
 

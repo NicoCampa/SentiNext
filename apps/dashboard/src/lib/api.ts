@@ -1571,9 +1571,41 @@ export interface LlmSettings {
   model: string;
 }
 
+interface RawLlmProvider {
+  name: string;
+  models?: string[];
+  suggested_models?: string[];
+  has_key?: boolean;
+  available?: boolean;
+}
+
+interface RawLlmProvidersResponse {
+  providers: RawLlmProvider[];
+}
+
+function normalizeLlmProvider(raw: RawLlmProvider): LlmProvider {
+  const suggestedModels = Array.isArray(raw.suggested_models)
+    ? raw.suggested_models
+    : Array.isArray(raw.models)
+    ? raw.models
+    : [];
+
+  return {
+    name: raw.name,
+    available: Boolean(raw.available ?? raw.has_key),
+    suggested_models: suggestedModels,
+  };
+}
+
 export async function getProviders(): Promise<LlmProvidersResponse> {
   const response = await authFetch(apiUrl("/settings/providers"), { cache: "no-store" });
-  return handleResponse<LlmProvidersResponse>(response);
+  const payload = await handleResponse<RawLlmProvidersResponse | RawLlmProvider[]>(response);
+  const providers = Array.isArray(payload) ? payload : payload.providers;
+  return {
+    providers: providers
+      .filter((provider) => typeof provider?.name === "string" && provider.name.length > 0)
+      .map(normalizeLlmProvider),
+  };
 }
 
 export async function getLlmSettings(): Promise<LlmSettings> {
@@ -1582,10 +1614,14 @@ export async function getLlmSettings(): Promise<LlmSettings> {
 }
 
 export async function updateLlmSettings(provider: string, model: string): Promise<LlmSettings> {
+  const trimmedModel = model.trim();
+  if (!trimmedModel) {
+    throw new Error("Model cannot be empty.");
+  }
   const response = await authFetch(apiUrl("/settings/llm"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, model }),
+    body: JSON.stringify({ provider, model: trimmedModel }),
   });
   return handleResponse<LlmSettings>(response);
 }

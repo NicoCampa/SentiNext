@@ -32,10 +32,10 @@ class XAIProvider(LLMProvider):
 
     def __init__(self, model_name: str | None = None):
         self._model = model_name or os.getenv(
-            "SENTINEXT_XAI_MODEL", "grok-3-fast"
+            "SENTINEXT_XAI_MODEL", "grok-4-1-fast-non-reasoning"
         )
         self._reasoning_model = os.getenv(
-            "SENTINEXT_XAI_MODEL_REASONING", "grok-3"
+            "SENTINEXT_XAI_MODEL_REASONING", "grok-4-1-fast-reasoning"
         )
 
     @property

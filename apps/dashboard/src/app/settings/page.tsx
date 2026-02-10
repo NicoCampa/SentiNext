@@ -229,7 +229,7 @@ export default function SettingsPage() {
                       type="text"
                       value={modelInput}
                       onChange={(e) => setModelInput(e.target.value)}
-                      placeholder="e.g. grok-3-mini"
+                      placeholder="e.g. gpt-5-mini"
                       className="w-full bg-[rgb(10,10,25)] border border-[rgb(0,255,255)]/20 text-xs sm:text-sm text-[rgb(200,200,210)] p-2.5 sm:p-3 font-mono focus:border-[rgb(0,255,255)] focus:outline-none transition-colors placeholder:text-[rgb(100,100,120)]"
                     />
                     {selectedProviderObj && selectedProviderObj.suggested_models.length > 1 && (

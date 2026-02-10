@@ -36,9 +36,9 @@ SentiNext supports multiple LLM providers. Set at least one API key:
 
 | Provider | Env Variable | Suggested Models |
 |----------|-------------|------------------|
-| Google Gemini | `GEMINI_API_KEY` | gemini-2.0-flash-lite, gemini-2.0-flash |
-| xAI Grok | `XAI_API_KEY` | grok-3-fast, grok-3 |
-| OpenAI | `OPENAI_API_KEY` | gpt-4o-mini, gpt-4o |
+| Google Gemini | `GEMINI_API_KEY` | gemini-flash-lite-latest, gemini-flash-latest |
+| xAI Grok | `XAI_API_KEY` | grok-4-1-fast-non-reasoning, grok-4-1-fast-reasoning |
+| OpenAI | `OPENAI_API_KEY` | gpt-5-mini, gpt-5-nano |
 | Ollama (local) | No key needed | llama3.1:8b, qwen2.5:7b, gemma2:9b |
 
 Provider and model can be changed at runtime via the Settings page or `PUT /settings/llm`.
