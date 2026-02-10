@@ -74,16 +74,16 @@ export default function PricingClient({ dict }: { dict: Dictionary }) {
                             external={false}
                         />
 
-                        {/* Request a Demo */}
+                        {/* Enterprise implementation */}
                         <DeployCard
                             icon={<MessageSquare className="h-6 w-6 text-[#00F0FF]" />}
-                            name="Guided Setup"
-                            description="Need help getting started? Request a guided demo."
+                            name="Enterprise Implementation"
+                            description="Planning production rollout? Book a paid implementation call."
                             features={[
-                                "Live walkthrough",
-                                "Deployment assistance",
-                                "Architecture guidance",
-                                "Custom integration help",
+                                "Architecture and deployment planning",
+                                "Integration scope definition",
+                                "Infrastructure review",
+                                "Implementation pricing and support",
                             ]}
                             cta={dict.common.requestDemo}
                             href="/en/demo"

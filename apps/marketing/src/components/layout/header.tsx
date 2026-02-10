@@ -44,7 +44,7 @@ export function Header({ lang }: { lang: string }) {
                 <div className="hidden md:flex items-center justify-end gap-6 flex-1">
                     <Button asChild className="h-11 px-8 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-widest text-[10px] shadow-[0_0_20px_rgba(0,240,255,0.3)] rounded-sm border-none">
                         <Link href={`/${lang}/demo`}>
-                            Request a Demo
+                            Book Enterprise Call
                         </Link>
                     </Button>
                 </div>
@@ -82,7 +82,7 @@ export function Header({ lang }: { lang: string }) {
                             <div className="flex flex-col gap-2">
                                 <Button asChild className="w-full bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-widest text-xs h-12 rounded-sm border-none shadow-[0_0_15px_rgba(0,240,255,0.2)]">
                                     <Link href={`/${lang}/demo`}>
-                                        Request a Demo
+                                        Book Enterprise Call
                                     </Link>
                                 </Button>
                             </div>

@@ -1,7 +1,7 @@
 {
     "common": {
         "getStarted": "Get Started",
-        "requestDemo": "Request a Demo",
+        "requestDemo": "Book Enterprise Call",
         "viewOnGithub": "View on GitHub",
         "product": "Product",
         "pricing": "Get Started",
@@ -25,21 +25,21 @@
         "bullet3": "Self-hosted: your data stays yours"
     },
     "demo": {
-        "badge": "Guided Walkthrough",
-        "title1": "Request a",
-        "title2": "Demo",
-        "subtitle": "See SentiNext in action with a guided walkthrough of the full analysis pipeline.",
-        "card1Title": "Live Analysis",
-        "card1Desc": "Watch the full pipeline in action: search a game, ingest reviews, and see AI classification happen in real time.",
-        "card2Title": "Dashboard Walkthrough",
-        "card2Desc": "Explore the insights dashboard, review explorer, category breakdowns, and evidence quotes.",
-        "card3Title": "AI Chat",
-        "card3Desc": "Ask natural-language questions about analyzed data and get answers with charts and evidence.",
-        "card4Title": "Deployment Guidance",
-        "card4Desc": "Get help setting up SentiNext on your own infrastructure with Docker Compose or manual deployment.",
-        "ctaTitle": "Ready to see it in action?",
-        "ctaSubtitle": "Send us an email and we will schedule a walkthrough.",
-        "ctaButton": "Request a Demo"
+        "badge": "Enterprise Implementation",
+        "title1": "Book an",
+        "title2": "Implementation Call",
+        "subtitle": "For teams planning a production rollout of SentiNext. We cover architecture, deployment scope, and pricing.",
+        "card1Title": "Architecture Review",
+        "card1Desc": "Align on your current stack, security requirements, and deployment model before implementation.",
+        "card2Title": "Deployment Plan",
+        "card2Desc": "Define a practical rollout plan for ingestion, analysis jobs, storage, and dashboard access.",
+        "card3Title": "Integration Scope",
+        "card3Desc": "Map SentiNext into your existing data and workflow tooling with clear ownership and milestones.",
+        "card4Title": "Commercial and Support",
+        "card4Desc": "Review implementation scope, pricing, and support options for your team.",
+        "ctaTitle": "Planning an enterprise rollout?",
+        "ctaSubtitle": "Email us to schedule a paid implementation consultation. This is not a free tutorial session.",
+        "ctaButton": "Book Enterprise Call"
     },
     "docs": {
         "title": "Documentation",

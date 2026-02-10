@@ -23,7 +23,7 @@ export function Footer({ lang }: { lang: SupportedLocale }) {
                         <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00F0FF]">Product</h4>
                         <Link href={`/${lang}/product`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Features</Link>
                         <Link href={`/${lang}/pricing`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Get Started</Link>
-                        <Link href={`/${lang}/demo`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Request a Demo</Link>
+                        <Link href={`/${lang}/demo`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Book Enterprise Call</Link>
                     </div>
 
                     <div className="flex flex-col gap-4">

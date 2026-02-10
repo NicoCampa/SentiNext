@@ -86,7 +86,7 @@ export default function DemoClient({ dict }: { dict: Dictionary }) {
                         </p>
                         <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
                             <Button size="lg" className="h-14 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)] relative overflow-hidden group" asChild>
-                                <a href="mailto:nicolocampagnoli20@icloud.com?subject=SentiNext%20Demo%20Request">
+                                <a href="mailto:nicolocampagnoli20@icloud.com?subject=SentiNext%20Enterprise%20Implementation%20Call">
                                     <Mail className="h-4 w-4 mr-3" />
                                     <span className="relative z-10">{dict.demo.ctaButton}</span>
                                     <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500" />
