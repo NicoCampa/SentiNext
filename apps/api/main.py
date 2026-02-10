@@ -7,10 +7,9 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 # Load environment variables from .env.local (for local development)
 from dotenv import load_dotenv
@@ -49,20 +48,16 @@ logger = logging.getLogger(__name__)
 # Startup environment validation
 # ---------------------------------------------------------------------------
 def _validate_startup_env() -> None:
-    """Fail fast if critical environment variables are missing."""
-    errors: list[str] = []
-
+    """Warn if no LLM provider is configured yet (API keys can be added in Settings)."""
     has_gemini = bool(os.getenv("GEMINI_API_KEY"))
     has_xai = bool(os.getenv("XAI_API_KEY"))
     has_openai = bool(os.getenv("OPENAI_API_KEY"))
     has_ollama = bool(os.getenv("SENTINEXT_OLLAMA_BASE_URL")) or os.path.exists("/usr/local/bin/ollama") or os.path.exists("/usr/bin/ollama")
     if not has_gemini and not has_xai and not has_openai and not has_ollama:
-        errors.append("At least one LLM provider is required (GEMINI_API_KEY, XAI_API_KEY, OPENAI_API_KEY, or Ollama).")
-
-    if errors:
-        for err in errors:
-            logger.error("Startup validation failed: %s", err)
-        raise RuntimeError("Startup validation failed:\n  - " + "\n  - ".join(errors))
+        logger.warning(
+            "No LLM provider configured yet. Add an API key in Settings "
+            "or set GEMINI_API_KEY, XAI_API_KEY, OPENAI_API_KEY, or configure Ollama."
+        )
 
 _validate_startup_env()
 
@@ -158,7 +153,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["content-type", "authorization", "x-admin-token"],
+    allow_headers=["content-type", "x-admin-token"],
     expose_headers=["Content-Disposition"],
 )
 
@@ -182,11 +177,11 @@ async def _global_exception_handler(request: Request, exc: Exception):
 _rate_limit_buckets: Dict[str, collections.deque] = {}
 
 _RATE_LIMITS: Dict[str, int] = {
-    "/analyze": 5,
-    "/chat": 20,
-    "/chat/simple": 20,
+    "/analyze": int(os.getenv("SENTINEXT_RATE_ANALYZE", "20")),
+    "/chat": int(os.getenv("SENTINEXT_RATE_CHAT", "60")),
+    "/chat/simple": int(os.getenv("SENTINEXT_RATE_CHAT", "60")),
 }
-_DEFAULT_RATE_LIMIT = 60
+_DEFAULT_RATE_LIMIT = int(os.getenv("SENTINEXT_RATE_DEFAULT", "120"))
 _RATE_WINDOW_SECONDS = 60
 _RATE_EXEMPT = {"/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
 

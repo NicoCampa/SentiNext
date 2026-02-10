@@ -38,6 +38,11 @@ def get_provider(name: str | None = None, model: str | None = None) -> LLMProvid
     """
     if name is None:
         name, default_model = get_active_provider()
+        if not name:
+            raise ValueError(
+                "No LLM provider configured. Set one via the Settings page "
+                "or the SENTINEXT_LLM_PROVIDER environment variable."
+            )
         if model is None:
             model = default_model
 

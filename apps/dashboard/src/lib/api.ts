@@ -56,7 +56,7 @@ function apiUrl(pathname: string): string {
   return `${base}${pathname}`;
 }
 
-export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   return fetch(input, init);
 }
 
@@ -83,7 +83,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 export async function searchGames(query: string): Promise<SearchResult[]> {
   const url = new URL(apiUrl("/search"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
   url.searchParams.set("query", query);
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<SearchResult[]>(response);
 }
 
@@ -106,14 +106,14 @@ export interface LanguagesResponse {
 }
 
 export async function fetchLanguages(): Promise<LanguagesResponse> {
-  const response = await authFetch(apiUrl("/languages"), {
+  const response = await apiFetch(apiUrl("/languages"), {
     cache: "force-cache",
   });
   return handleResponse<LanguagesResponse>(response);
 }
 
 export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeResponse> {
-  const response = await authFetch(apiUrl("/analyze"), {
+  const response = await apiFetch(apiUrl("/analyze"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -122,14 +122,14 @@ export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeRespo
 }
 
 export async function fetchProgress(appId: number): Promise<ProgressStatus> {
-  const response = await authFetch(apiUrl(`/progress/${appId}`), {
+  const response = await apiFetch(apiUrl(`/progress/${appId}`), {
     cache: "no-store",
   });
   return handleResponse<ProgressStatus>(response);
 }
 
 export async function cancelAnalysis(appId: number): Promise<{ cancelled: boolean; app_id: number }> {
-  const response = await authFetch(apiUrl(`/progress/${appId}/cancel`), {
+  const response = await apiFetch(apiUrl(`/progress/${appId}/cancel`), {
     method: "POST",
   });
   return handleResponse<{ cancelled: boolean; app_id: number }>(response);
@@ -238,21 +238,21 @@ export function subscribeToProgress(
 }
 
 export async function fetchStarredGames(): Promise<StarredGameDTO[]> {
-  const response = await authFetch(apiUrl("/starred"), {
+  const response = await apiFetch(apiUrl("/starred"), {
     cache: "no-store",
   });
   return handleResponse<StarredGameDTO[]>(response);
 }
 
 export async function fetchAnalysisResult(appId: number): Promise<AnalysisResultResponse> {
-  const response = await authFetch(apiUrl(`/analysis/${appId}`), {
+  const response = await apiFetch(apiUrl(`/analysis/${appId}`), {
     cache: "no-store",
   });
   return handleResponse<AnalysisResultResponse>(response);
 }
 
 export async function rebuildInsights(appId: number): Promise<{ status: string; message: string; app_id: number }> {
-  const response = await authFetch(apiUrl(`/analysis/${appId}/rebuild-insights`), {
+  const response = await apiFetch(apiUrl(`/analysis/${appId}/rebuild-insights`), {
     method: "POST",
     cache: "no-store",
   });
@@ -260,7 +260,7 @@ export async function rebuildInsights(appId: number): Promise<{ status: string; 
 }
 
 export async function rebuildTrends(appId: number): Promise<{ status: string; message: string; app_id: number }> {
-  const response = await authFetch(apiUrl(`/analysis/${appId}/rebuild-trends`), {
+  const response = await apiFetch(apiUrl(`/analysis/${appId}/rebuild-trends`), {
     method: "POST",
     cache: "no-store",
   });
@@ -268,12 +268,12 @@ export async function rebuildTrends(appId: number): Promise<{ status: string; me
 }
 
 export async function fetchHealth(): Promise<{ status: string; timestamp: string }> {
-  const response = await authFetch(apiUrl("/health"), { cache: "no-store" });
+  const response = await apiFetch(apiUrl("/health"), { cache: "no-store" });
   return handleResponse<{ status: string; timestamp: string }>(response);
 }
 
 export async function fetchStoragePaths(): Promise<StoragePaths> {
-  const response = await authFetch(apiUrl("/settings/storage"), {
+  const response = await apiFetch(apiUrl("/settings/storage"), {
     cache: "no-store",
   });
   return handleResponse<StoragePaths>(response);
@@ -282,12 +282,12 @@ export async function fetchStoragePaths(): Promise<StoragePaths> {
 export async function fetchLogTail(bytes: number = 20000): Promise<LogTailResponse> {
   const url = new URL(apiUrl("/logs/tail"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
   url.searchParams.set("bytes", String(bytes));
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<LogTailResponse>(response);
 }
 
 export async function estimateAnalysis(payload: AnalyzePayload): Promise<AnalyzeEstimateResponse> {
-  const response = await authFetch(apiUrl("/analyze/estimate"), {
+  const response = await apiFetch(apiUrl("/analyze/estimate"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -318,7 +318,7 @@ export interface ChatRequestPayload {
 }
 
 export async function chatWithInsights(payload: ChatRequestPayload): Promise<ChatResponse> {
-  const response = await authFetch(apiUrl("/chat"), {
+  const response = await apiFetch(apiUrl("/chat"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -336,12 +336,12 @@ export async function fetchFeedback(appId: number, options: FeedbackOptions = {}
   if (options.discord_limit) url.searchParams.set("discord_limit", String(options.discord_limit));
   if (options.forum_limit) url.searchParams.set("forum_limit", String(options.forum_limit));
 
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<FeedbackItem[]>(response);
 }
 
 export async function saveStarredGame(payload: StarredGamePayload): Promise<void> {
-  const response = await authFetch(apiUrl("/starred"), {
+  const response = await apiFetch(apiUrl("/starred"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -349,48 +349,16 @@ export async function saveStarredGame(payload: StarredGamePayload): Promise<void
   await handleResponse<void>(response);
 }
 
-const ADMIN_TOKEN_STORAGE_KEY = "sentinext_admin_token";
-
-export function getAdminToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
-}
-
-export function setAdminToken(token: string | null): void {
-  if (typeof window === "undefined") return;
-  if (!token) {
-    window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
-    return;
-  }
-  window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
-}
-
-export async function verifyAdminToken(token: string): Promise<void> {
-  const response = await authFetch(apiUrl("/admin/verify"), {
-    method: "POST",
-    headers: { "x-admin-token": token },
-    cache: "no-store",
-  });
-  await handleResponse<{ ok: boolean }>(response);
-}
-
-function requireAdminHeaders(): HeadersInit {
-  const token = getAdminToken();
-  if (!token) {
-    throw new Error("Admin is locked. Unlock to proceed.");
-  }
-  return { "x-admin-token": token };
-}
 
 export async function removeStarredGame(appId: number): Promise<void> {
-  const response = await authFetch(apiUrl(`/starred/${appId}`), {
+  const response = await apiFetch(apiUrl(`/starred/${appId}`), {
     method: "DELETE",
   });
   await handleResponse<void>(response);
 }
 
 export async function toggleFavorite(appId: number, isFavorite: boolean): Promise<{ app_id: number; is_favorite: boolean }> {
-  const response = await authFetch(apiUrl(`/starred/${appId}/favorite`), {
+  const response = await apiFetch(apiUrl(`/starred/${appId}/favorite`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ is_favorite: isFavorite }),
@@ -399,7 +367,7 @@ export async function toggleFavorite(appId: number, isFavorite: boolean): Promis
 }
 
 export async function fetchFavoriteGames(): Promise<StarredGameDTO[]> {
-  const response = await authFetch(apiUrl("/starred/favorites"), {
+  const response = await apiFetch(apiUrl("/starred/favorites"), {
     cache: "no-store",
   });
   return handleResponse<StarredGameDTO[]>(response);
@@ -408,7 +376,7 @@ export async function fetchFavoriteGames(): Promise<StarredGameDTO[]> {
 export async function generateComparisonSummary(
   request: ComparisonSummarizeRequest
 ): Promise<ComparisonSummary> {
-  const response = await authFetch(apiUrl('/compare/summarize'), {
+  const response = await apiFetch(apiUrl('/compare/summarize'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -416,15 +384,9 @@ export async function generateComparisonSummary(
   return handleResponse<ComparisonSummary>(response);
 }
 
-function optionalAdminHeaders(): HeadersInit {
-  const token = getAdminToken();
-  return token ? { "x-admin-token": token } : {};
-}
-
 export async function deleteGame(appId: number): Promise<void> {
-  const response = await authFetch(apiUrl(`/games/${appId}`), {
+  const response = await apiFetch(apiUrl(`/games/${appId}`), {
     method: "DELETE",
-    headers: optionalAdminHeaders(),
   });
   await handleResponse<void>(response);
 }
@@ -438,15 +400,12 @@ export interface DatabaseStats {
   starred_games: number;
 }
 
-export type DatabaseScope = "me" | "all";
-
 export interface DatabaseReviewsParams {
   limit?: number;
   offset?: number;
   app_id?: number | null;
   language?: string | null;
   query?: string | null;
-  scope?: DatabaseScope;
 }
 
 export async function fetchDatabaseReviews(params: DatabaseReviewsParams = {}): Promise<DatabaseReviewsResponse> {
@@ -456,22 +415,19 @@ export async function fetchDatabaseReviews(params: DatabaseReviewsParams = {}): 
   if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
   if (params.language) url.searchParams.set("language", params.language);
   if (params.query) url.searchParams.set("query", params.query);
-  if (params.scope === "all") url.searchParams.set("scope", "all");
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<DatabaseReviewsResponse>(response);
 }
 
-export async function fetchDatabaseGames(scope: DatabaseScope = "me"): Promise<DatabaseGameOption[]> {
+export async function fetchDatabaseGames(): Promise<DatabaseGameOption[]> {
   const url = new URL(apiUrl("/database/games"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (scope === "all") url.searchParams.set("scope", "all");
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<DatabaseGameOption[]>(response);
 }
 
-export async function fetchDatabaseStats(scope: DatabaseScope = "me"): Promise<DatabaseStats> {
+export async function fetchDatabaseStats(): Promise<DatabaseStats> {
   const url = new URL(apiUrl("/database/stats"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (scope === "all") url.searchParams.set("scope", "all");
-  const response = await authFetch(url.toString(), {
+  const response = await apiFetch(url.toString(), {
     cache: "no-store",
   });
   return handleResponse<DatabaseStats>(response);
@@ -481,7 +437,6 @@ export type DatabaseExportFormat = "csv" | "jsonl";
 
 export interface DatabaseExportParams {
   format: DatabaseExportFormat;
-  scope?: DatabaseScope;
   app_id?: number | null;
   language?: string | null;
   query?: string | null;
@@ -509,18 +464,16 @@ export interface DatabaseExportCount {
 }
 
 export async function fetchDatabaseExportCount(params: {
-  scope?: DatabaseScope;
   app_id?: number | null;
   language?: string | null;
   query?: string | null;
 }): Promise<DatabaseExportCount> {
   const url = new URL(apiUrl("/database/reviews/count"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (params.scope === "all") url.searchParams.set("scope", "all");
   if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
   if (params.language) url.searchParams.set("language", params.language);
   if (params.query) url.searchParams.set("query", params.query);
 
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<DatabaseExportCount>(response);
 }
 
@@ -528,13 +481,12 @@ export async function downloadDatabaseExport(params: DatabaseExportParams): Prom
   if (typeof window === "undefined") return;
   const url = new URL(apiUrl("/database/export"), window.location.origin);
   url.searchParams.set("format", params.format);
-  if (params.scope === "all") url.searchParams.set("scope", "all");
   if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
   if (params.language) url.searchParams.set("language", params.language);
   if (params.query) url.searchParams.set("query", params.query);
   if (params.max_rows) url.searchParams.set("max_rows", String(params.max_rows));
 
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(detail || `Export failed (status ${response.status})`);
@@ -554,46 +506,21 @@ export async function downloadDatabaseExport(params: DatabaseExportParams): Prom
   window.URL.revokeObjectURL(objectUrl);
 }
 
-export interface BackendAdminStatus {
-  destructive_enabled: boolean;
-  token_configured: boolean;
-  admin_user_ids_configured?: boolean;
-}
-
-export async function fetchBackendAdminStatus(): Promise<BackendAdminStatus> {
-  const response = await authFetch(apiUrl("/admin/status"), {
-    cache: "no-store",
-  });
-  return handleResponse<BackendAdminStatus>(response);
-}
-
 export async function clearLabels(oldSchemaOnly: boolean = false): Promise<{ deleted: number; scope: string }> {
   const url = oldSchemaOnly
     ? apiUrl("/database/labels") + "?old_schema_only=true"
     : apiUrl("/database/labels");
-  const response = await authFetch(url, {
+  const response = await apiFetch(url, {
     method: "DELETE",
-    headers: optionalAdminHeaders(),
   });
   return handleResponse<{ deleted: number; scope: string }>(response);
 }
 
 export async function clearEntireDatabase(): Promise<{ deleted: Record<string, number>; scope: string }> {
-  const response = await authFetch(apiUrl("/database/clear"), {
+  const response = await apiFetch(apiUrl("/database/clear"), {
     method: "DELETE",
-    headers: optionalAdminHeaders(),
   });
   return handleResponse<{ deleted: Record<string, number>; scope: string }>(response);
-}
-
-export interface AuthStatus {
-  user_id: string;
-  is_admin: boolean;
-}
-
-export async function fetchAuthStatus(): Promise<AuthStatus> {
-  const response = await authFetch(apiUrl("/auth/status"), { cache: "no-store" });
-  return handleResponse<AuthStatus>(response);
 }
 
 // ============================================================================
@@ -648,7 +575,7 @@ export interface EnhancedChatResponse {
 export async function sendEnhancedChat(
   payload: EnhancedChatPayload
 ): Promise<EnhancedChatResponse> {
-  const response = await authFetch(apiUrl("/chat/simple"), {
+  const response = await apiFetch(apiUrl("/chat/simple"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -748,275 +675,6 @@ export function subscribeToChatStream(
 }
 
 // ============================================================================
-// Admin Chat API
-// ============================================================================
-
-export interface AdminChatSession {
-  session_id: string;
-  user_id: string;
-  title: string | null;
-  app_ids: number[];
-  first_user_message: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-  message_count: number;
-  positive_feedback: number;
-  negative_feedback: number;
-}
-
-export interface AdminChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  timestamp?: string;
-}
-
-export async function fetchAdminChatSessions(
-  limit: number = 100
-): Promise<AdminChatSession[]> {
-  const response = await authFetch(apiUrl(`/admin/chat-sessions?limit=${limit}`), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<AdminChatSession[]>(response);
-}
-
-export async function fetchAdminChatHistory(
-  sessionId: string
-): Promise<AdminChatMessage[]> {
-  const response = await authFetch(apiUrl(`/admin/chat-history/${sessionId}`), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<AdminChatMessage[]>(response);
-}
-
-// ============================================================================
-// Support Messaging API
-// ============================================================================
-
-export interface SupportMessage {
-  id: number;
-  thread_id: string;
-  user_id: string;
-  sender_id: string;
-  sender_role: "user" | "admin";
-  message: string;
-  created_at?: string | null;
-  read_by_admin: boolean;
-  read_by_user: boolean;
-}
-
-export interface SupportThreadSummary {
-  user_id: string;
-  last_message_at?: string | null;
-  last_message?: string | null;
-  last_sender_role?: "user" | "admin" | null;
-  message_count: number;
-  unread_count: number;
-}
-
-export async function fetchSupportThread(): Promise<SupportMessage[]> {
-  const response = await authFetch(apiUrl("/support/thread"), {
-    cache: "no-store",
-  });
-  return handleResponse<SupportMessage[]>(response);
-}
-
-export async function sendSupportMessage(message: string): Promise<SupportMessage> {
-  const response = await authFetch(apiUrl("/support/message"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
-  });
-  return handleResponse<SupportMessage>(response);
-}
-
-export async function fetchAdminSupportThreads(limit: number = 100): Promise<SupportThreadSummary[]> {
-  const response = await authFetch(apiUrl(`/admin/support/threads?limit=${limit}`), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<SupportThreadSummary[]>(response);
-}
-
-export async function fetchAdminSupportThread(userId: string): Promise<SupportMessage[]> {
-  const response = await authFetch(apiUrl(`/admin/support/thread/${encodeURIComponent(userId)}`), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<SupportMessage[]>(response);
-}
-
-export async function sendAdminSupportReply(userId: string, message: string): Promise<SupportMessage> {
-  const response = await authFetch(apiUrl(`/admin/support/thread/${encodeURIComponent(userId)}/reply`), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...optionalAdminHeaders(),
-    },
-    body: JSON.stringify({ message }),
-  });
-  return handleResponse<SupportMessage>(response);
-}
-
-export interface UnreadCountResponse {
-  unread_count: number;
-}
-
-export async function fetchSupportUnreadCount(): Promise<UnreadCountResponse> {
-  const response = await authFetch(apiUrl("/support/unread"), {
-    cache: "no-store",
-  });
-  return handleResponse<UnreadCountResponse>(response);
-}
-
-export async function fetchAdminSupportUnreadCount(): Promise<UnreadCountResponse> {
-  const response = await authFetch(apiUrl("/admin/support/unread"), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<UnreadCountResponse>(response);
-}
-
-export interface AdminDashboardUsers {
-  active: number;
-}
-
-
-export interface AdminDashboardLlmBreakdown {
-  key: string;
-  calls: number;
-  prompt_tokens: number;
-  response_tokens: number;
-  total_tokens: number;
-  cost_input_usd: number;
-  cost_output_usd: number;
-  cost_total_usd: number;
-}
-
-export interface AdminDashboardLlm {
-  calls: number;
-  prompt_tokens: number;
-  response_tokens: number;
-  total_tokens: number;
-  cost_input_usd: number;
-  cost_output_usd: number;
-  cost_total_usd: number;
-  by_operation: AdminDashboardLlmBreakdown[];
-  by_model: AdminDashboardLlmBreakdown[];
-}
-
-export interface AdminDashboardSummary {
-  since: string;
-  days: number;
-  users: AdminDashboardUsers;
-  llm: AdminDashboardLlm;
-}
-
-export async function fetchAdminDashboardSummary(params: {
-  days?: number;
-} = {}): Promise<AdminDashboardSummary> {
-  const url = new URL(apiUrl("/admin/dashboard"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (params.days) url.searchParams.set("days", String(params.days));
-  const response = await authFetch(url.toString(), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<AdminDashboardSummary>(response);
-}
-
-export interface LlmUsageBreakdownItem {
-  operation?: string | null;
-  model?: string | null;
-  calls: number;
-  prompt_tokens: number;
-  response_tokens: number;
-  total_tokens: number;
-  cached_tokens: number;
-  tool_use_prompt_tokens: number;
-  thoughts_tokens: number;
-}
-
-export interface AdminLlmUsageSummary {
-  since: string;
-  days: number;
-  total_calls: number;
-  prompt_tokens: number;
-  response_tokens: number;
-  total_tokens: number;
-  cached_tokens: number;
-  tool_use_prompt_tokens: number;
-  thoughts_tokens: number;
-  by_operation: LlmUsageBreakdownItem[];
-  by_model: LlmUsageBreakdownItem[];
-}
-
-export async function fetchAdminLlmUsageSummary(params: {
-  days?: number;
-  user_id?: string;
-  app_id?: number;
-  session_id?: string;
-} = {}): Promise<AdminLlmUsageSummary> {
-  const url = new URL(apiUrl("/admin/llm-usage/summary"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (params.days) url.searchParams.set("days", String(params.days));
-  if (params.user_id) url.searchParams.set("user_id", params.user_id);
-  if (params.app_id) url.searchParams.set("app_id", String(params.app_id));
-  if (params.session_id) url.searchParams.set("session_id", params.session_id);
-
-  const response = await authFetch(url.toString(), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<AdminLlmUsageSummary>(response);
-}
-
-// ============================================================================
-// Admin API Usage
-// ============================================================================
-
-export interface ApiEndpointUsage {
-  path: string;
-  count: number;
-  avg_ms: number;
-}
-
-export interface ApiUserUsage {
-  user_id: string;
-  count: number;
-  first_seen: string | null;
-  last_seen: string | null;
-}
-
-export interface ApiDailyCount {
-  date: string;
-  count: number;
-}
-
-export interface ApiUsageSummary {
-  period_days: number;
-  total_requests: number;
-  unique_users: number;
-  by_endpoint: ApiEndpointUsage[];
-  by_user: ApiUserUsage[];
-  daily: ApiDailyCount[];
-}
-
-export async function fetchAdminApiUsage(params: {
-  days?: number;
-  user_id?: string;
-} = {}): Promise<ApiUsageSummary> {
-  const url = new URL(apiUrl("/admin/usage"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (params.days) url.searchParams.set("days", String(params.days));
-  if (params.user_id) url.searchParams.set("user_id", params.user_id);
-  const response = await authFetch(url.toString(), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<ApiUsageSummary>(response);
-}
-
-
-// ============================================================================
 // Translation API
 // ============================================================================
 
@@ -1033,7 +691,7 @@ export interface TranslateResponse {
 export async function translateText(
   payload: TranslatePayload
 ): Promise<TranslateResponse> {
-  const response = await authFetch(apiUrl("/translate"), {
+  const response = await apiFetch(apiUrl("/translate"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1077,7 +735,7 @@ export interface SubcategorySummaryResponse {
 export async function summarizeSubcategory(
   payload: SubcategorySummaryPayload
 ): Promise<SubcategorySummaryResponse> {
-  const response = await authFetch(apiUrl("/summarize/subcategory"), {
+  const response = await apiFetch(apiUrl("/summarize/subcategory"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1119,7 +777,7 @@ export interface WidgetSummaryResponse {
 export async function summarizeWidget(
   payload: WidgetSummaryPayload
 ): Promise<WidgetSummaryResponse> {
-  const response = await authFetch(apiUrl("/summarize/widget"), {
+  const response = await apiFetch(apiUrl("/summarize/widget"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1152,7 +810,7 @@ export interface RecentReviewsSummaryResponse {
 export async function summarizeRecentReviews(
   payload: RecentReviewsSummaryPayload
 ): Promise<RecentReviewsSummaryResponse> {
-  const response = await authFetch(apiUrl("/summarize/recent-reviews"), {
+  const response = await apiFetch(apiUrl("/summarize/recent-reviews"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1176,7 +834,7 @@ export interface CitationFeedbackPayload {
 export async function submitCitationFeedback(
   payload: CitationFeedbackPayload
 ): Promise<{ status: string }> {
-  const response = await authFetch(apiUrl("/chat/citation-feedback"), {
+  const response = await apiFetch(apiUrl("/chat/citation-feedback"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1203,7 +861,7 @@ export async function exportChatSession(
     typeof window !== "undefined" ? window.location.origin : "http://localhost"
   );
   url.searchParams.set("format", format);
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(detail || `Export failed (status ${response.status})`);
@@ -1254,7 +912,7 @@ export interface ReportMonthsResponse {
  * Fetch available months with review data for a game.
  */
 export async function fetchReportMonths(appId: number): Promise<ReportMonthsResponse> {
-  const response = await authFetch(apiUrl(`/reports/available-months/${appId}`), {
+  const response = await apiFetch(apiUrl(`/reports/available-months/${appId}`), {
     cache: "no-store",
   });
   return handleResponse<ReportMonthsResponse>(response);
@@ -1275,7 +933,7 @@ export async function downloadExecutiveSummary(
   url.searchParams.set("month", String(month));
   url.searchParams.set("format", "pdf");
 
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(detail || `Failed to generate report (status ${response.status})`);
@@ -1333,7 +991,7 @@ export async function fetchSteamNews(
   );
   url.searchParams.set("count", String(count));
   url.searchParams.set("max_length", String(maxLength));
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<SteamNewsResponse>(response);
 }
 
@@ -1349,7 +1007,7 @@ export interface SteamPlayerCountResponse {
 export async function fetchSteamPlayerCount(
   appId: number
 ): Promise<SteamPlayerCountResponse> {
-  const response = await authFetch(apiUrl(`/steam/players/${appId}`), {
+  const response = await apiFetch(apiUrl(`/steam/players/${appId}`), {
     cache: "no-store",
   });
   return handleResponse<SteamPlayerCountResponse>(response);
@@ -1380,7 +1038,7 @@ export async function fetchSteamPrice(
     typeof window !== "undefined" ? window.location.origin : "http://localhost"
   );
   url.searchParams.set("cc", cc);
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<SteamPriceResponse>(response);
 }
 
@@ -1408,7 +1066,7 @@ export interface SteamGameDetailsResponse {
 export async function fetchSteamGameDetails(
   appId: number
 ): Promise<SteamGameDetailsResponse> {
-  const response = await authFetch(apiUrl(`/steam/details/${appId}`), { cache: "no-store" });
+  const response = await apiFetch(apiUrl(`/steam/details/${appId}`), { cache: "no-store" });
   return handleResponse<SteamGameDetailsResponse>(response);
 }
 
@@ -1442,7 +1100,7 @@ export async function fetchSteamAchievements(
     typeof window !== "undefined" ? window.location.origin : "http://localhost"
   );
   url.searchParams.set("limit", String(limit));
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<SteamAchievementsResponse>(response);
 }
 
@@ -1470,7 +1128,7 @@ export async function fetchSteamGameContext(
     typeof window !== "undefined" ? window.location.origin : "http://localhost"
   );
   url.searchParams.set("news_count", String(newsCount));
-  const response = await authFetch(url.toString(), { cache: "no-store" });
+  const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<SteamGameContext>(response);
 }
 
@@ -1498,7 +1156,7 @@ export interface SummarizeNewsResponse {
 export async function summarizeNews(
   payload: SummarizeNewsPayload
 ): Promise<SummarizeNewsResponse> {
-  const response = await authFetch(apiUrl("/summarize/news"), {
+  const response = await apiFetch(apiUrl("/summarize/news"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1520,36 +1178,11 @@ export interface TrackEventPayload {
 
 /** Fire-and-forget event tracking — never throws, never blocks UI. */
 export function trackEvent(payload: TrackEventPayload): void {
-  authFetch(apiUrl("/track"), {
+  apiFetch(apiUrl("/track"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   }).catch(() => {});
-}
-
-export interface EventsSummary {
-  total_events: number;
-  unique_users: number;
-  top_events: { event_name: string; event_category: string; count: number }[];
-  top_pages: { page: string; count: number }[];
-  events_over_time: { hour: string; count: number }[];
-  active_users: { user_id: string; event_count: number; last_active: string }[];
-  recent_events: {
-    user_id: string;
-    event_name: string;
-    event_category: string;
-    page: string | null;
-    target: string | null;
-    metadata: Record<string, unknown>;
-    created_at: string;
-  }[];
-}
-
-export async function fetchAdminAnalytics(hours: number = 24): Promise<EventsSummary> {
-  const response = await authFetch(apiUrl(`/admin/analytics?hours=${hours}`), {
-    headers: optionalAdminHeaders(),
-  });
-  return handleResponse<EventsSummary>(response);
 }
 
 // ============================================================================
@@ -1598,7 +1231,7 @@ function normalizeLlmProvider(raw: RawLlmProvider): LlmProvider {
 }
 
 export async function getProviders(): Promise<LlmProvidersResponse> {
-  const response = await authFetch(apiUrl("/settings/providers"), { cache: "no-store" });
+  const response = await apiFetch(apiUrl("/settings/providers"), { cache: "no-store" });
   const payload = await handleResponse<RawLlmProvidersResponse | RawLlmProvider[]>(response);
   const providers = Array.isArray(payload) ? payload : payload.providers;
   return {
@@ -1609,7 +1242,7 @@ export async function getProviders(): Promise<LlmProvidersResponse> {
 }
 
 export async function getLlmSettings(): Promise<LlmSettings> {
-  const response = await authFetch(apiUrl("/settings/llm"), { cache: "no-store" });
+  const response = await apiFetch(apiUrl("/settings/llm"), { cache: "no-store" });
   return handleResponse<LlmSettings>(response);
 }
 
@@ -1618,10 +1251,32 @@ export async function updateLlmSettings(provider: string, model: string): Promis
   if (!trimmedModel) {
     throw new Error("Model cannot be empty.");
   }
-  const response = await authFetch(apiUrl("/settings/llm"), {
+  const response = await apiFetch(apiUrl("/settings/llm"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider, model: trimmedModel }),
   });
   return handleResponse<LlmSettings>(response);
+}
+
+// ============================================================================
+// API Key Management
+// ============================================================================
+
+export interface ApiKeyStatus {
+  keys: Record<string, boolean>;
+}
+
+export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
+  const response = await apiFetch(apiUrl("/settings/api-keys"), { cache: "no-store" });
+  return handleResponse<ApiKeyStatus>(response);
+}
+
+export async function updateApiKey(provider: string, apiKey: string): Promise<ApiKeyStatus> {
+  const response = await apiFetch(apiUrl("/settings/api-keys"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, api_key: apiKey }),
+  });
+  return handleResponse<ApiKeyStatus>(response);
 }

@@ -13,8 +13,6 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-# Maximum reviews to keep per game (older reviews are deleted on refresh)
-MAX_REVIEWS_PER_GAME = 1000
 
 
 def _parse_json_field(val: Any, default: Any = None) -> Any:
@@ -426,15 +424,20 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
     return count
 
 
-def enforce_review_limit(app_id: int, max_reviews: int = MAX_REVIEWS_PER_GAME) -> int:
+def enforce_review_limit(app_id: int, max_reviews: int = 0) -> int:
     """Delete oldest reviews beyond the limit for a game.
 
     Keeps the most recent `max_reviews` reviews based on timestamp_created.
     Also deletes associated labels for removed reviews.
     Uses atomic CTE-based DELETEs to avoid races with concurrent inserts.
 
+    When max_reviews is 0 (unlimited), no reviews are deleted.
+
     Returns number of reviews deleted.
     """
+    if max_reviews == 0:
+        return 0
+
     from . import db as db_module
 
     with db_module.get_connection() as conn:
@@ -1254,6 +1257,53 @@ def list_database_games_all() -> List[Dict[str, Any]]:
     return [{"app_id": app_id, "name": name_map.get(app_id)} for app_id in all_ids]
 
 
+def get_top_games_by_review_count(
+    limit: int = 5,
+    language: Optional[str] = None,
+    query: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return top games by review count using SQL GROUP BY.
+
+    Args:
+        limit: Maximum number of games to return.
+        language: Optional language filter (e.g. "english").
+        query: Optional full-text search query.
+
+    Returns:
+        List of dicts with keys: app_id, count.
+    """
+    from . import db as db_module
+
+    where_parts: List[str] = []
+    params: Dict[str, Any] = {"limit": int(limit)}
+    lang = (language or "").strip().lower()
+    raw_query = (query or "").strip()
+
+    if raw_query:
+        where_parts.append("search_vector @@ plainto_tsquery('simple', :query)")
+        params["query"] = raw_query
+    if lang and lang != "all":
+        where_parts.append("data->>'language' = :lang")
+        params["lang"] = lang
+
+    where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text(f"""
+                SELECT app_id, COUNT(*) AS cnt
+                FROM reviews
+                {where_clause}
+                GROUP BY app_id
+                ORDER BY cnt DESC
+                LIMIT :limit
+            """),
+            params,
+        ).fetchall()
+
+    return [{"app_id": int(row[0]), "count": int(row[1])} for row in rows]
+
+
 def list_database_games(user_id: str) -> List[Dict[str, Any]]:
     """List games for a specific user."""
     from . import db as db_module
@@ -1665,7 +1715,7 @@ def cleanup_old_jobs(age_days: int = 7) -> int:
 def save_chat_message(user_id: str, role: str, content: str, session_id: str = None) -> None:
     """Save a chat message to the database."""
     from . import db as db_module
-    logger.info(f"Saving chat message: user_id={user_id}, session_id={session_id}, role={role}, content_length={len(content)}")
+    logger.debug(f"Saving chat message: user_id={user_id}, session_id={session_id}, role={role}, content_length={len(content)}")
     with db_module.get_connection() as conn:
         conn.execute(
             text("""
@@ -1679,13 +1729,13 @@ def save_chat_message(user_id: str, role: str, content: str, session_id: str = N
                 "content": content,
             },
         )
-    logger.info(f"Successfully saved chat message for user_id={user_id}, session_id={session_id}")
+    logger.debug(f"Successfully saved chat message for user_id={user_id}, session_id={session_id}")
 
 
 def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> List[Dict[str, Any]]:
     """Load chat history for a user, optionally filtered by session."""
     from . import db as db_module
-    logger.info(f"Loading chat history for user_id={user_id}, session_id={session_id}, limit={limit}")
+    logger.debug(f"Loading chat history for user_id={user_id}, session_id={session_id}, limit={limit}")
     with db_module.get_connection() as conn:
         if session_id:
             rows = conn.execute(
@@ -1726,7 +1776,7 @@ def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> 
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
             "session_id": row.get("session_id"),
         })
-    logger.info(f"Loaded {len(messages)} messages for user_id={user_id}, session_id={session_id}")
+    logger.debug(f"Loaded {len(messages)} messages for user_id={user_id}, session_id={session_id}")
     return messages
 
 
@@ -1790,195 +1840,6 @@ def clear_chat_history(user_id: str, session_id: str = None) -> int:
             )
         count = cursor.rowcount
     return count
-
-
-# Support Message Functions
-
-def _format_support_message(row: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize support message rows for API responses."""
-    if row is None:
-        return {}
-    created_at = row["created_at"].isoformat() if row.get("created_at") else None
-    return {
-        "id": row.get("id"),
-        "thread_id": row.get("thread_id"),
-        "user_id": row.get("user_id"),
-        "sender_id": row.get("sender_id"),
-        "sender_role": row.get("sender_role"),
-        "message": row.get("message"),
-        "created_at": created_at,
-        "read_by_admin": bool(row.get("read_by_admin")),
-        "read_by_user": bool(row.get("read_by_user")),
-    }
-
-
-def save_support_message(
-    *,
-    user_id: str,
-    sender_id: str,
-    sender_role: str,
-    message: str,
-) -> Dict[str, Any]:
-    """Save a support message (user/admin)."""
-    from . import db as db_module
-    clean_message = (message or "").strip()
-    if not clean_message:
-        raise ValueError("Message cannot be empty.")
-    thread_id = user_id
-    read_by_admin = sender_role == "admin"
-    read_by_user = sender_role == "user"
-    with db_module.get_connection() as conn:
-        row = conn.execute(
-            text("""
-            INSERT INTO support_messages
-                (thread_id, user_id, sender_id, sender_role, message, read_by_admin, read_by_user)
-            VALUES
-                (:thread_id, :user_id, :sender_id, :sender_role, :message, :read_by_admin, :read_by_user)
-            RETURNING id, thread_id, user_id, sender_id, sender_role, message, created_at, read_by_admin, read_by_user
-            """),
-            {
-                "thread_id": thread_id,
-                "user_id": user_id,
-                "sender_id": sender_id,
-                "sender_role": sender_role,
-                "message": clean_message,
-                "read_by_admin": read_by_admin,
-                "read_by_user": read_by_user,
-            },
-        ).mappings().fetchone()
-    return _format_support_message(row)
-
-
-def load_support_thread(user_id: str, limit: int = 200) -> List[Dict[str, Any]]:
-    """Load support thread messages for a user."""
-    from . import db as db_module
-    safe_limit = max(1, min(int(limit or 200), 500))
-    with db_module.get_connection() as conn:
-        rows = conn.execute(
-            text("""
-            SELECT id, thread_id, user_id, sender_id, sender_role, message, created_at, read_by_admin, read_by_user
-            FROM support_messages
-            WHERE user_id = :user_id
-            ORDER BY created_at DESC
-            LIMIT :limit
-            """),
-            {"user_id": user_id, "limit": safe_limit},
-        ).mappings().fetchall()
-
-    messages = [_format_support_message(row) for row in reversed(rows)]
-    return messages
-
-
-def mark_support_thread_read_by_admin(user_id: str) -> int:
-    """Mark all messages in a thread as read by admin."""
-    from . import db as db_module
-    with db_module.get_connection() as conn:
-        cursor = conn.execute(
-            text("""
-            UPDATE support_messages
-            SET read_by_admin = TRUE
-            WHERE user_id = :user_id AND read_by_admin = FALSE
-            """),
-            {"user_id": user_id},
-        )
-        count = cursor.rowcount
-    return count
-
-
-def mark_support_thread_read_by_user(user_id: str) -> int:
-    """Mark all messages in a thread as read by the user."""
-    from . import db as db_module
-    with db_module.get_connection() as conn:
-        cursor = conn.execute(
-            text("""
-            UPDATE support_messages
-            SET read_by_user = TRUE
-            WHERE user_id = :user_id AND read_by_user = FALSE
-            """),
-            {"user_id": user_id},
-        )
-        count = cursor.rowcount
-    return count
-
-
-def list_support_threads(limit: int = 100) -> List[Dict[str, Any]]:
-    """List support threads with unread counts for admin inbox."""
-    from . import db as db_module
-    safe_limit = max(1, min(int(limit or 100), 500))
-    with db_module.get_connection() as conn:
-        rows = conn.execute(
-            text("""
-            SELECT
-                sm.user_id,
-                MAX(sm.created_at) AS last_message_at,
-                COUNT(*) AS message_count,
-                SUM(CASE WHEN sm.sender_role = 'user' AND sm.read_by_admin = FALSE THEN 1 ELSE 0 END) AS unread_count,
-                (
-                    SELECT message
-                    FROM support_messages sm2
-                    WHERE sm2.user_id = sm.user_id
-                    ORDER BY sm2.created_at DESC
-                    LIMIT 1
-                ) AS last_message,
-                (
-                    SELECT sender_role
-                    FROM support_messages sm2
-                    WHERE sm2.user_id = sm.user_id
-                    ORDER BY sm2.created_at DESC
-                    LIMIT 1
-                ) AS last_sender_role
-            FROM support_messages sm
-            GROUP BY sm.user_id
-            ORDER BY last_message_at DESC
-            LIMIT :limit
-            """),
-            {"limit": safe_limit},
-        ).mappings().fetchall()
-
-    threads: List[Dict[str, Any]] = []
-    for row in rows:
-        last_message_at = row["last_message_at"].isoformat() if row.get("last_message_at") else None
-        threads.append({
-            "user_id": row["user_id"],
-            "last_message_at": last_message_at,
-            "last_message": row.get("last_message"),
-            "last_sender_role": row.get("last_sender_role"),
-            "message_count": int(row.get("message_count") or 0),
-            "unread_count": int(row.get("unread_count") or 0),
-        })
-    return threads
-
-
-def get_user_unread_support_count(user_id: str) -> int:
-    """Get count of unread admin messages for a user."""
-    from . import db as db_module
-    with db_module.get_connection() as conn:
-        row = conn.execute(
-            text("""
-            SELECT COUNT(*) AS unread_count
-            FROM support_messages
-            WHERE user_id = :user_id
-              AND sender_role = 'admin'
-              AND read_by_user = FALSE
-            """),
-            {"user_id": user_id},
-        ).mappings().fetchone()
-    return int(row["unread_count"]) if row else 0
-
-
-def get_admin_total_unread_support_count() -> int:
-    """Get total count of unread user messages across all threads (for admin)."""
-    from . import db as db_module
-    with db_module.get_connection() as conn:
-        row = conn.execute(
-            text("""
-            SELECT COUNT(*) AS unread_count
-            FROM support_messages
-            WHERE sender_role = 'user'
-              AND read_by_admin = FALSE
-            """),
-        ).mappings().fetchone()
-    return int(row["unread_count"]) if row else 0
 
 
 def _parse_date_filter(date_filter: str) -> Optional[int]:
@@ -3294,112 +3155,6 @@ def list_chat_sessions_for_user(user_id: str, limit: int = 50) -> List[Dict[str,
     return sessions
 
 
-def load_chat_history_by_session(session_id: str, limit: int = 500) -> List[Dict[str, Any]]:
-    """Load chat history for a session (admin use - no user_id filter).
-
-    Args:
-        session_id: Session ID to load
-        limit: Maximum messages to return
-
-    Returns:
-        List of message dicts in chronological order
-    """
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT role, content, created_at, session_id
-                FROM chat_messages
-                WHERE session_id = :session_id
-                ORDER BY created_at ASC
-                LIMIT :limit
-            """),
-            {"session_id": session_id, "limit": limit},
-        ).mappings().fetchall()
-
-    messages = []
-    for row in rows:
-        messages.append({
-            "role": row["role"],
-            "content": row["content"],
-            "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
-            "session_id": row["session_id"],
-        })
-
-    return messages
-
-
-def list_all_chat_sessions_with_feedback(limit: int = 100) -> List[Dict[str, Any]]:
-    """List all chat sessions from all users with feedback summary (admin only).
-
-    Returns sessions with:
-    - Basic session info (id, user_id, title, timestamps)
-    - Feedback summary (positive_count, negative_count)
-    - Message count
-
-    Args:
-        limit: Maximum number of sessions to return
-
-    Returns:
-        List of session metadata dicts with feedback info
-    """
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        # Query from chat_messages (source of truth) and join with feedback
-        rows = conn.execute(
-            text("""
-                SELECT
-                    cm.session_id,
-                    cm.user_id,
-                    COUNT(*) as message_count,
-                    MIN(cm.created_at) as started_at,
-                    MAX(cm.created_at) as last_message_at,
-                    (
-                        SELECT content
-                        FROM chat_messages
-                        WHERE session_id = cm.session_id AND role = 'user'
-                        ORDER BY created_at ASC
-                        LIMIT 1
-                    ) as first_user_message,
-                    COALESCE(f.positive_count, 0) as positive_feedback,
-                    COALESCE(f.negative_count, 0) as negative_feedback
-                FROM chat_messages cm
-                LEFT JOIN (
-                    SELECT
-                        session_id,
-                        SUM(CASE WHEN helpful = true THEN 1 ELSE 0 END) as positive_count,
-                        SUM(CASE WHEN helpful = false THEN 1 ELSE 0 END) as negative_count
-                    FROM citation_feedback
-                    GROUP BY session_id
-                ) f ON cm.session_id = f.session_id
-                WHERE cm.session_id IS NOT NULL
-                GROUP BY cm.session_id, cm.user_id, f.positive_count, f.negative_count
-                ORDER BY last_message_at DESC
-                LIMIT :limit
-            """),
-            {"limit": limit},
-        ).mappings().fetchall()
-
-    sessions = []
-    for row in rows:
-        sessions.append({
-            "session_id": row["session_id"],
-            "user_id": row["user_id"],
-            "title": None,  # Not stored in chat_messages
-            "app_ids": [],  # Not stored in chat_messages
-            "first_user_message": row["first_user_message"],
-            "created_at": row["started_at"].isoformat() if row["started_at"] else None,
-            "updated_at": row["last_message_at"].isoformat() if row["last_message_at"] else None,
-            "message_count": row["message_count"],
-            "positive_feedback": row["positive_feedback"],
-            "negative_feedback": row["negative_feedback"],
-        })
-
-    return sessions
-
-
 def delete_chat_session(session_id: str) -> int:
     """Delete a chat session and all its messages.
 
@@ -3577,7 +3332,7 @@ def delete_user_data(user_id: str) -> Dict[str, int]:
     """Delete all user-owned data for GDPR compliance.
 
     Deletes: starred_games, chat_messages, chat_sessions, chat_context,
-    citation_feedback, support_messages, analysis_results, progress,
+    citation_feedback, analysis_results, progress,
     job_registry, comparison_summaries, api_requests, llm_usage.
 
     Reviews/labels are shared game data and not user-owned, so excluded.
@@ -3593,7 +3348,6 @@ def delete_user_data(user_id: str) -> Dict[str, int]:
         "chat_sessions",
         "chat_context",
         "citation_feedback",
-        "support_messages",
         "analysis_results",
         "progress",
         "job_registry",

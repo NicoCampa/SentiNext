@@ -5,12 +5,17 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, getProviders, getLlmSettings, updateLlmSettings } from "@/lib/api";
+import { fetchLogTail, getProviders, getLlmSettings, updateLlmSettings, getApiKeyStatus, updateApiKey } from "@/lib/api";
 import type { LlmProvider } from "@/lib/api";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useOnboarding } from "@/contexts/OnboardingContext";
+
+const API_KEY_PROVIDERS = [
+  { name: "gemini", label: "Gemini", placeholder: "AIza..." },
+  { name: "xai", label: "xAI (Grok)", placeholder: "xai-..." },
+  { name: "openai", label: "OpenAI", placeholder: "sk-..." },
+] as const;
 
 export default function SettingsPage() {
   const { health, refresh: refreshHealth } = useBackendHealth();
@@ -20,8 +25,6 @@ export default function SettingsPage() {
   const [copyError, setCopyError] = useState<string | null>(null);
   const { t } = useLanguage();
   const [showLogs, setShowLogs] = useState(false);
-  const { isAdmin } = useAdminStatus();
-  const [mounted, setMounted] = useState(false);
   const { resetOnboarding } = useOnboarding();
 
   // LLM settings state
@@ -35,36 +38,40 @@ export default function SettingsPage() {
   const [llmError, setLlmError] = useState<string | null>(null);
   const [llmSuccess, setLlmSuccess] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // API key state
+  const [apiKeyStatus, setApiKeyStatus] = useState<Record<string, boolean>>({});
+  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+  const [apiKeySaving, setApiKeySaving] = useState<string | null>(null);
+  const [apiKeySuccess, setApiKeySuccess] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
 
-  // Load LLM settings
-  useEffect(() => {
-    async function loadLlmSettings() {
-      setLlmLoading(true);
-      setLlmError(null);
-      try {
-        const [providersRes, settingsRes] = await Promise.all([
-          getProviders(),
-          getLlmSettings(),
-        ]);
-        setProviders(providersRes.providers);
-        setCurrentProvider(settingsRes.provider);
-        setCurrentModel(settingsRes.model);
-        setSelectedProvider(settingsRes.provider);
-        setModelInput(settingsRes.model);
-      } catch (err) {
-        console.error("Failed to load LLM settings", err);
-        setLlmError("Failed to load LLM settings. Is the backend running?");
-      } finally {
-        setLlmLoading(false);
-      }
+  const loadAllSettings = useCallback(async () => {
+    setLlmLoading(true);
+    setLlmError(null);
+    try {
+      const [providersRes, settingsRes, keyStatus] = await Promise.all([
+        getProviders(),
+        getLlmSettings(),
+        getApiKeyStatus(),
+      ]);
+      setProviders(providersRes.providers);
+      setCurrentProvider(settingsRes.provider);
+      setCurrentModel(settingsRes.model);
+      setSelectedProvider(settingsRes.provider);
+      setModelInput(settingsRes.model);
+      setApiKeyStatus(keyStatus.keys);
+    } catch (err) {
+      console.error("Failed to load settings", err);
+      setLlmError("Failed to load settings. Is the backend running?");
+    } finally {
+      setLlmLoading(false);
     }
-    loadLlmSettings();
   }, []);
 
-  // Update model suggestion when provider changes
+  useEffect(() => {
+    loadAllSettings();
+  }, [loadAllSettings]);
+
   const handleProviderChange = useCallback((providerName: string) => {
     setSelectedProvider(providerName);
     const provider = providers.find(p => p.name === providerName);
@@ -91,6 +98,43 @@ export default function SettingsPage() {
     }
   }, [selectedProvider, modelInput]);
 
+  const handleSaveApiKey = useCallback(async (provider: string) => {
+    const key = apiKeyInputs[provider] || "";
+    setApiKeySaving(provider);
+    setApiKeyError(null);
+    setApiKeySuccess(null);
+    try {
+      const result = await updateApiKey(provider, key);
+      setApiKeyStatus(result.keys);
+      setApiKeyInputs(prev => ({ ...prev, [provider]: "" }));
+      setApiKeySuccess(provider);
+      setTimeout(() => setApiKeySuccess(null), 3000);
+      const providersRes = await getProviders();
+      setProviders(providersRes.providers);
+    } catch (err) {
+      console.error(`Failed to save API key for ${provider}`, err);
+      setApiKeyError(err instanceof Error ? err.message : `Failed to save API key for ${provider}.`);
+    } finally {
+      setApiKeySaving(null);
+    }
+  }, [apiKeyInputs]);
+
+  const handleRemoveApiKey = useCallback(async (provider: string) => {
+    setApiKeySaving(provider);
+    setApiKeyError(null);
+    try {
+      const result = await updateApiKey(provider, "");
+      setApiKeyStatus(result.keys);
+      const providersRes = await getProviders();
+      setProviders(providersRes.providers);
+    } catch (err) {
+      console.error(`Failed to remove API key for ${provider}`, err);
+      setApiKeyError(err instanceof Error ? err.message : `Failed to remove API key.`);
+    } finally {
+      setApiKeySaving(null);
+    }
+  }, []);
+
   const loadLogTail = useCallback(async () => {
     try {
       const result = await fetchLogTail(20000);
@@ -103,8 +147,8 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) loadLogTail();
-  }, [isAdmin, loadLogTail]);
+    loadLogTail();
+  }, [loadLogTail]);
 
   async function handleCopyDiagnostics() {
     try {
@@ -132,79 +176,153 @@ export default function SettingsPage() {
   return (
     <AppLayout>
       <PageTransition>
-        <div className="mx-auto max-w-4xl px-3 py-4 sm:px-6 sm:py-8 space-y-4 sm:space-y-6">
+        <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
           {/* Header */}
-          <div className="mb-4 sm:mb-8 space-y-3 sm:space-y-4">
-            <div className="flex items-center gap-2.5 sm:gap-3">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 border border-[rgb(0,255,255)]/50 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-[rgb(0,255,255)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-lg sm:text-2xl font-bold tracking-wider">
-                  <span className="text-white">
-                    {t('settings.title').toUpperCase()}
-                  </span>
-                </h1>
-                <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-[0.15em] sm:tracking-[0.2em]">
-                  System Configuration
-                </p>
-              </div>
-            </div>
-            <div className="h-[1px] bg-gradient-to-r from-[rgb(0,255,255)]/50 via-[rgb(0,255,255)]/20 to-transparent" />
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-white">{t('settings.title')}</h1>
+            <p className="text-sm text-slate-400">System configuration and diagnostics</p>
           </div>
 
-          <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-xl mx-auto'}`}>
-          {/* Left Column */}
-          <div className="space-y-6">
-            {/* LLM Provider Settings */}
-            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
-              <div className="mb-4 sm:mb-5">
-                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                    LLM Provider
-                  </p>
+          {/* System Status Bar */}
+          <Card variant="glass" className="overflow-hidden p-0">
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_120%_at_80%_0%,rgba(14,165,233,0.15),transparent_60%)]" />
+              <div className="relative flex flex-wrap items-center gap-4 p-4 sm:gap-6 sm:p-5">
+                <div className="flex items-center gap-2.5">
+                  <span className={`h-2.5 w-2.5 rounded-full ${
+                    health.state === "online"
+                      ? 'bg-emerald-400'
+                      : health.state === "offline"
+                      ? 'bg-rose-500'
+                      : 'bg-amber-500 animate-pulse'
+                  }`} />
+                  <span className="text-xs uppercase tracking-wider text-slate-400">Backend</span>
+                  <span className={`text-xs font-medium ${
+                    health.state === "online"
+                      ? 'text-emerald-300'
+                      : health.state === "offline"
+                      ? 'text-rose-400'
+                      : 'text-amber-400'
+                  }`}>
+                    {health.state === "online" ? t('settings.online') : health.state === "offline" ? t('settings.offline') : t('settings.checking')}
+                  </span>
                 </div>
-                <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">Configure which AI model powers review classification</p>
+
+                {currentProvider && (
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                    <span className="text-xs uppercase tracking-wider text-slate-400">Active LLM</span>
+                    <span className="text-xs font-mono text-sky-300">{currentProvider} / {currentModel}</span>
+                  </div>
+                )}
+
+                <div className="ml-auto">
+                  <Button size="sm" variant="secondary" onClick={() => refreshHealth()} className="text-xs">
+                    {t('settings.recheckBackend')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* API Keys */}
+            <Card variant="glass" className="p-5">
+              <div className="mb-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">API Keys</p>
+                <p className="mt-1.5 text-sm text-slate-400">Add API keys to enable LLM providers</p>
+              </div>
+
+              <div className="space-y-3">
+                {API_KEY_PROVIDERS.map(({ name, label, placeholder }) => {
+                  const hasKey = apiKeyStatus[name] ?? false;
+                  const isSaving = apiKeySaving === name;
+                  const isSuccess = apiKeySuccess === name;
+                  return (
+                    <div key={name} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-medium text-slate-200">{label}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`h-1.5 w-1.5 rounded-full ${hasKey ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                          <span className={`text-[10px] uppercase tracking-wider ${hasKey ? 'text-emerald-300' : 'text-slate-500'}`}>
+                            {hasKey ? 'Configured' : 'Not set'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={apiKeyInputs[name] || ""}
+                          onChange={(e) => setApiKeyInputs(prev => ({ ...prev, [name]: e.target.value }))}
+                          placeholder={hasKey ? "Enter new key to replace" : placeholder}
+                          className="flex-1 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-1.5 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none transition-colors"
+                        />
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => handleSaveApiKey(name)}
+                          disabled={isSaving || !(apiKeyInputs[name] || "").trim()}
+                          className="text-xs"
+                        >
+                          {isSaving ? '...' : 'Save'}
+                        </Button>
+                        {hasKey && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleRemoveApiKey(name)}
+                            disabled={isSaving}
+                            className="text-xs text-rose-400 hover:text-rose-300"
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                      {isSuccess && (
+                        <p className="mt-1.5 text-[10px] text-emerald-300">API key saved</p>
+                      )}
+                    </div>
+                  );
+                })}
+                {apiKeyError && (
+                  <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2">
+                    <p className="text-xs text-rose-400">{apiKeyError}</p>
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-500">
+                  Ollama does not require an API key. Keys are stored locally on your server.
+                </p>
+              </div>
+            </Card>
+
+            {/* LLM Provider Selection */}
+            <Card variant="glass" className="p-5">
+              <div className="mb-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">LLM Provider</p>
+                <p className="mt-1.5 text-sm text-slate-400">Configure which AI model powers review classification</p>
               </div>
 
               {llmLoading ? (
-                <div className="space-y-3 animate-pulse">
-                  <div className="h-10 bg-white/5 rounded" />
-                  <div className="h-10 bg-white/5 rounded" />
-                  <div className="h-3 bg-white/5 rounded w-2/3" />
+                <div className="space-y-3">
+                  <div className="h-10 animate-pulse rounded-lg bg-white/5" />
+                  <div className="h-10 animate-pulse rounded-lg bg-white/5" />
+                  <div className="h-3 w-2/3 animate-pulse rounded bg-white/5" />
                 </div>
               ) : llmError && providers.length === 0 ? (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30">
-                  <p className="text-xs sm:text-sm text-rose-400">{llmError}</p>
+                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
+                  <p className="text-sm text-rose-400">{llmError}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Current Active Config */}
-                  {currentProvider && (
-                    <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[rgb(0,255,136)]" />
-                      <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">Active:</span>
-                      <span className="text-[10px] sm:text-xs font-mono text-[rgb(0,255,255)]">
-                        {currentProvider} / {currentModel}
-                      </span>
-                    </div>
-                  )}
-
                   {/* Provider Selection */}
                   <div>
-                    <label className="block text-[10px] sm:text-xs uppercase tracking-[0.15em] text-[rgb(0,255,255)]/50 mb-1.5">
+                    <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-slate-500">
                       Provider
                     </label>
                     <select
                       value={selectedProvider}
                       onChange={(e) => handleProviderChange(e.target.value)}
-                      className="w-full bg-[rgb(10,10,25)] border border-[rgb(0,255,255)]/20 text-xs sm:text-sm text-[rgb(200,200,210)] p-2.5 sm:p-3 focus:border-[rgb(0,255,255)] focus:outline-none transition-colors"
+                      className="w-full rounded-lg border border-white/10 bg-slate-950/50 p-2.5 text-sm text-slate-200 focus:border-sky-500 focus:outline-none transition-colors"
                     >
                       <option value="" disabled>Select a provider...</option>
                       {providers.map((p) => (
@@ -214,33 +332,33 @@ export default function SettingsPage() {
                       ))}
                     </select>
                     {availableProviders.length === 0 && providers.length > 0 && (
-                      <p className="mt-1.5 text-[10px] sm:text-xs text-amber-400">
-                        No providers have API keys configured. Set an API key in your environment variables.
+                      <p className="mt-1.5 text-xs text-amber-400">
+                        No providers have API keys configured. Add an API key to get started.
                       </p>
                     )}
                   </div>
 
                   {/* Model Input */}
                   <div>
-                    <label className="block text-[10px] sm:text-xs uppercase tracking-[0.15em] text-[rgb(0,255,255)]/50 mb-1.5">
+                    <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-slate-500">
                       Model
                     </label>
                     <input
                       type="text"
                       value={modelInput}
                       onChange={(e) => setModelInput(e.target.value)}
-                      placeholder="e.g. gpt-5-mini"
-                      className="w-full bg-[rgb(10,10,25)] border border-[rgb(0,255,255)]/20 text-xs sm:text-sm text-[rgb(200,200,210)] p-2.5 sm:p-3 font-mono focus:border-[rgb(0,255,255)] focus:outline-none transition-colors placeholder:text-[rgb(100,100,120)]"
+                      placeholder="e.g. gpt-4o-mini"
+                      className="w-full rounded-lg border border-white/10 bg-slate-950/50 p-2.5 font-mono text-sm text-slate-200 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none transition-colors"
                     />
                     {selectedProviderObj && selectedProviderObj.suggested_models.length > 1 && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        <span className="text-[9px] sm:text-[10px] text-[rgb(150,150,170)] uppercase tracking-wider mr-1">Suggested:</span>
+                        <span className="mr-1 text-[10px] uppercase tracking-wider text-slate-500">Suggested:</span>
                         {selectedProviderObj.suggested_models.map((m) => (
                           <button
                             key={m}
                             type="button"
                             onClick={() => setModelInput(m)}
-                            className="text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 border border-[rgb(0,255,255)]/20 text-[rgb(0,255,255)]/60 hover:text-[rgb(0,255,255)] hover:border-[rgb(0,255,255)]/50 transition-colors"
+                            className="rounded-md border border-white/10 px-1.5 py-0.5 font-mono text-[10px] text-slate-400 transition hover:border-sky-500/50 hover:text-sky-300"
                           >
                             {m}
                           </button>
@@ -249,161 +367,88 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  {/* Error / Success messages */}
                   {llmError && (
-                    <div className="p-2 bg-rose-500/10 border border-rose-500/30">
-                      <p className="text-[10px] sm:text-xs text-rose-400">{llmError}</p>
+                    <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2">
+                      <p className="text-xs text-rose-400">{llmError}</p>
                     </div>
                   )}
                   {llmSuccess && (
-                    <div className="flex items-center gap-2 p-2 bg-[rgb(0,255,136)]/10 border border-[rgb(0,255,136)]/30">
-                      <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
-                      <span className="text-[10px] sm:text-xs text-[rgb(0,255,136)]">Settings saved successfully</span>
+                    <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      <span className="text-xs text-emerald-300">Settings saved successfully</span>
                     </div>
                   )}
 
-                  {/* Save Button */}
                   <Button
                     size="sm"
                     variant="primary"
                     onClick={handleSaveLlm}
                     disabled={llmSaving || !selectedProvider || !modelInput || !hasChanges}
-                    className="text-[10px] sm:text-xs"
+                    className="text-xs"
                   >
                     {llmSaving ? 'Saving...' : 'Save LLM Settings'}
                   </Button>
                 </div>
               )}
             </Card>
-
-            {/* System Status */}
-            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-200 lg:animation-delay-100' : 'opacity-0'}`}>
-              <div className="mb-4 sm:mb-5">
-                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-                  </svg>
-                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                    System Status
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2 sm:space-y-3">
-                {/* Backend Status */}
-                <div className="flex items-center justify-between p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                  <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
-                    Backend
-                  </span>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
-                      health.state === "online"
-                        ? 'bg-[rgb(0,255,136)]'
-                        : health.state === "offline"
-                        ? 'bg-rose-500'
-                        : 'bg-amber-500 animate-pulse'
-                    }`} />
-                    <span className={`text-[10px] sm:text-xs font-mono uppercase ${
-                      health.state === "online"
-                        ? 'text-[rgb(0,255,136)]'
-                        : health.state === "offline"
-                        ? 'text-rose-400'
-                        : 'text-amber-400'
-                    }`}>
-                      {health.state === "online" ? t('settings.online') : health.state === "offline" ? t('settings.offline') : t('settings.checking')}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Frontend Version */}
-                <div className="flex items-center justify-between p-2.5 sm:p-3 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10">
-                  <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
-                    Frontend
-                  </span>
-                  <span className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
-                    v0.1.0
-                  </span>
-                </div>
-              </div>
-            </Card>
           </div>
 
-          {/* Right Column - Diagnostics (Admin Only) */}
-          {isAdmin && (
-            <div className="space-y-4 sm:space-y-6">
-              <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300' : 'opacity-0'}`}>
-                <div className="mb-4 sm:mb-5">
-                  <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                      {t('settings.diagnostics')}
-                    </p>
-                  </div>
-                  <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">{t('settings.diagnosticsDesc')}</p>
-                </div>
-
-                {/* Quick Actions */}
-                <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-4 sm:mb-5">
-                  <Button size="sm" variant="secondary" onClick={() => refreshHealth()} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
-                    {t('settings.recheckBackend')}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => { loadLogTail(); setShowLogs(true); }} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
-                    {t('settings.refreshLogs')}
-                  </Button>
-                  <Button size="sm" variant="primary" onClick={handleCopyDiagnostics} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
-                    {t('settings.copyDiagnostics')}
-                  </Button>
-                  <Button size="sm" variant="update" onClick={resetOnboarding} className="text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2">
-                    Test Onboarding
-                  </Button>
-                </div>
-
-                {copiedDiagnostics && (
-                  <div className="flex items-center gap-2 mb-3 sm:mb-4 p-2 bg-[rgb(0,255,136)]/10 border border-[rgb(0,255,136)]/30">
-                    <span className="w-1.5 h-1.5 bg-[rgb(0,255,136)] rounded-full" />
-                    <span className="text-[10px] sm:text-xs text-[rgb(0,255,136)]">{t('settings.copied')}</span>
-                  </div>
-                )}
-
-                {copyError && (
-                  <p className="text-[10px] sm:text-xs text-rose-400 mb-3 sm:mb-4">{copyError}</p>
-                )}
-
-                {/* Log Tail (Collapsible) */}
-                <div className="space-y-2 sm:space-y-3">
-                  <button
-                    onClick={() => setShowLogs(!showLogs)}
-                    className="flex items-center gap-2 text-left w-full min-h-[44px] sm:min-h-0"
-                  >
-                    <span className={`text-[rgb(0,255,255)]/50 transition-transform ${showLogs ? 'rotate-90' : ''}`}>
-                      &gt;
-                    </span>
-                    <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/50">
-                      System Logs
-                    </p>
-                  </button>
-
-                  {showLogs && (
-                    <>
-                      {logTailError ? (
-                        <p className="text-[10px] sm:text-xs text-rose-400">{logTailError}</p>
-                      ) : (
-                        <pre className="max-h-36 sm:max-h-48 overflow-auto border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)] p-3 sm:p-4 text-[10px] sm:text-xs text-[rgb(200,200,210)] font-mono">
-                          {logTail || "No logs yet."}
-                        </pre>
-                      )}
-                    </>
-                  )}
-                </div>
-              </Card>
-
+          {/* Diagnostics */}
+          <Card variant="glass" className="p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">{t('settings.diagnostics')}</p>
+                <p className="mt-1.5 text-sm text-slate-400">{t('settings.diagnosticsDesc')}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={() => { loadLogTail(); setShowLogs(true); }} className="text-xs">
+                  {t('settings.refreshLogs')}
+                </Button>
+                <Button size="sm" variant="primary" onClick={handleCopyDiagnostics} className="text-xs">
+                  {t('settings.copyDiagnostics')}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={resetOnboarding} className="text-xs">
+                  Test Onboarding
+                </Button>
+              </div>
             </div>
-          )}
+
+            {copiedDiagnostics && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span className="text-xs text-emerald-300">{t('settings.copied')}</span>
+              </div>
+            )}
+
+            {copyError && (
+              <p className="mb-4 text-xs text-rose-400">{copyError}</p>
+            )}
+
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowLogs(!showLogs)}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                <svg className={`h-3 w-3 text-slate-500 transition-transform ${showLogs ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">System Logs</p>
+              </button>
+
+              {showLogs && (
+                <>
+                  {logTailError ? (
+                    <p className="text-xs text-rose-400">{logTailError}</p>
+                  ) : (
+                    <pre className="max-h-48 overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 font-mono text-xs text-slate-300">
+                      {logTail || "No logs yet."}
+                    </pre>
+                  )}
+                </>
+              )}
+            </div>
+          </Card>
         </div>
-      </div>
       </PageTransition>
     </AppLayout>
   );

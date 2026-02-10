@@ -766,13 +766,20 @@ function DashboardContent() {
                                 {game.price && <p className="mt-1 text-sm text-slate-400">{game.price}</p>}
                                 {pendingAnalyzeGame?.appid === game.appid && !isAnalyzingGame ? (
                                   <div className="mt-3 flex items-center gap-2">
-                                    <span className="text-xs text-slate-400">Latest reviews:</span>
+                                    <span className="text-xs text-slate-400">Reviews:</span>
                                     <Button
                                       onClick={() => handleAnalyze(game, 1000)}
                                       variant={isAlreadyAnalyzed ? "update" : "primary"}
                                       size="sm"
                                     >
-                                      Analyze 1,000 reviews
+                                      1,000
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleAnalyze(game, 0)}
+                                      variant={isAlreadyAnalyzed ? "update" : "primary"}
+                                      size="sm"
+                                    >
+                                      All
                                     </Button>
                                   </div>
                                 ) : (

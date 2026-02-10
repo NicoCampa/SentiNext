@@ -1,44 +1,40 @@
 'use client';
 
-import { Suspense, useEffect, useState, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageTransition } from '@/components/PageTransition';
-import { ComingSoon } from '@/components/ComingSoon';
-import { DatabaseTabBar, type DatabaseTab } from '@/components/database/DatabaseTabBar';
-import { OverviewTab } from '@/components/database/tabs/OverviewTab';
 import { ReviewsTab } from '@/components/database/tabs/ReviewsTab';
-import { ActionsTab } from '@/components/database/tabs/ActionsTab';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useAdminStatus } from '@/hooks/useAdminStatus';
-import { fetchDatabaseStats, fetchDatabaseGames } from '@/lib/api';
+import {
+  fetchDatabaseStats,
+  fetchDatabaseGames,
+  deleteGame,
+  clearEntireDatabase,
+} from '@/lib/api';
 import type { DatabaseGameOption } from '@/types';
-import type { DatabaseScope, DatabaseStats } from '@/lib/api';
+import type { DatabaseStats } from '@/lib/api';
 
-function DatabasePageInner() {
+export default function DatabasePage() {
   const { t } = useLanguage();
-  const { isAdmin, isLoading: isAdminLoading } = useAdminStatus();
-  const searchParams = useSearchParams();
 
-  const [scope, setScope] = useState<DatabaseScope>('me');
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [games, setGames] = useState<DatabaseGameOption[]>([]);
   const [loadingStats, setLoadingStats] = useState(true);
-  const [quickSentiment, setQuickSentiment] = useState<'all' | 'positive' | 'negative'>('all');
-  const [quickType, setQuickType] = useState<'all' | 'issue' | 'request'>('all');
-  const [activeTab, setActiveTab] = useState<DatabaseTab>(() => {
-    const tab = searchParams?.get('tab');
-    if (tab === 'reviews' || tab === 'actions') return tab;
-    return 'overview';
-  });
+
+  const [dangerOpen, setDangerOpen] = useState(false);
+  const [selectedDeleteGameId, setSelectedDeleteGameId] = useState<number | null>(null);
+  const [busy, setAdminBusy] = useState(false);
+  const [actionError, setAdminError] = useState<string | null>(null);
+  const [actionSuccess, setAdminSuccess] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    if (!isAdmin) return;
     setLoadingStats(true);
     try {
       const [newStats, newGames] = await Promise.all([
-        fetchDatabaseStats(scope),
-        fetchDatabaseGames(scope),
+        fetchDatabaseStats(),
+        fetchDatabaseGames(),
       ]);
       setStats(newStats);
       setGames(newGames);
@@ -47,109 +43,174 @@ function DatabasePageInner() {
     } finally {
       setLoadingStats(false);
     }
-  }, [scope, isAdmin]);
+  }, []);
 
   useEffect(() => {
-    if (isAdminLoading || !isAdmin) return;
     loadData();
-  }, [loadData, isAdminLoading, isAdmin]);
+  }, [loadData]);
 
-  if (isAdminLoading || !isAdmin) {
-    return (
-      <AppLayout>
-        <PageTransition>
-          <ComingSoon
-            title="Database coming soon"
-            description="The database explorer is under construction. Check back soon."
-          />
-        </PageTransition>
-      </AppLayout>
-    );
+  async function handleDeleteGame() {
+    if (!selectedDeleteGameId) return;
+    const game = games.find((g) => g.app_id === selectedDeleteGameId);
+    const label = game?.name || `App ${selectedDeleteGameId}`;
+    if (!window.confirm(`Delete all data for ${label}? This cannot be undone.`)) return;
+
+    setAdminBusy(true);
+    setAdminError(null);
+    setAdminSuccess(null);
+    try {
+      await deleteGame(selectedDeleteGameId);
+      setAdminSuccess(`Deleted data for ${label}.`);
+      setSelectedDeleteGameId(null);
+      await loadData();
+    } catch (err) {
+      setAdminError((err as Error).message || 'Failed to delete.');
+    } finally {
+      setAdminBusy(false);
+    }
   }
+
+  async function handleClearDatabase() {
+    if (window.prompt('Type DELETE ALL to confirm.') !== 'DELETE ALL') return;
+
+    setAdminBusy(true);
+    setAdminError(null);
+    setAdminSuccess(null);
+    try {
+      await clearEntireDatabase();
+      setAdminSuccess('Database cleared.');
+      setSelectedDeleteGameId(null);
+      await loadData();
+    } catch (err) {
+      setAdminError((err as Error).message || 'Failed to clear.');
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
+  const statItems = [
+    { label: t('common.games'), value: stats?.games },
+    { label: t('common.reviews'), value: stats?.reviews },
+    { label: t('common.labels'), value: stats?.labels },
+  ];
 
   return (
     <AppLayout>
       <PageTransition>
-        <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-6 sm:px-6 sm:py-8">
           {/* Header */}
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight">
-                <span className="text-white">{t('database.title')}</span>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-white">
+                {t('database.title')}
               </h1>
-              <p className="text-sm text-slate-400">{t('database.subtitle')}</p>
+              <p className="mt-1 text-sm text-slate-400">{t('database.subtitle')}</p>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 p-1 text-xs uppercase tracking-[0.25em] text-slate-400">
-              <button
-                type="button"
-                onClick={() => setScope('me')}
-                className={`rounded-full px-3 py-1 transition ${
-                  scope === 'me'
-                    ? 'bg-sky-500/20 text-sky-200'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {t('database.myData')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setScope('all')}
-                className={`rounded-full px-3 py-1 transition ${
-                  scope === 'all'
-                    ? 'bg-amber-500/20 text-amber-200'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {t('database.allUsers')}
-              </button>
+            <div className="flex items-center gap-3">
+              {statItems.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/50 px-3 py-1.5"
+                >
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                    {item.label}
+                  </span>
+                  <span className="text-sm font-medium text-white">
+                    {loadingStats ? '...' : (item.value ?? 0).toLocaleString()}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Tab Bar */}
-          <DatabaseTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          {/* Reviews explorer */}
+          <ReviewsTab games={games} t={t} />
 
-          {/* Tab Content */}
-          {activeTab === 'overview' && (
-            <OverviewTab
-              stats={stats}
-              loadingStats={loadingStats}
-              scope={scope}
-              quickSentiment={quickSentiment}
-              setQuickSentiment={setQuickSentiment}
-              quickType={quickType}
-              setQuickType={setQuickType}
-              t={t}
-            />
-          )}
-          {activeTab === 'reviews' && (
-            <ReviewsTab
-              scope={scope}
-              games={games}
-              quickSentiment={quickSentiment}
-              setQuickSentiment={setQuickSentiment}
-              quickType={quickType}
-              setQuickType={setQuickType}
-              t={t}
-            />
-          )}
-          {activeTab === 'actions' && (
-            <ActionsTab
-              games={games}
-              scope={scope}
-              onStatsRefresh={loadData}
-              t={t}
-            />
-          )}
+          {/* Danger zone - collapsible */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setDangerOpen(!dangerOpen)}
+              className="flex items-center gap-2 text-xs text-slate-500 transition hover:text-slate-300"
+            >
+              <div className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+              <span className="uppercase tracking-[0.2em]">Danger zone</span>
+              <svg
+                className={`h-3 w-3 transition-transform ${dangerOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
+
+            {dangerOpen && (
+              <Card variant="glass" className="mt-3 border-rose-500/20 p-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-slate-200">Delete game data</p>
+                    <p className="text-xs text-slate-400">
+                      Remove all reviews, labels, and analysis results for one game.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={selectedDeleteGameId ?? ''}
+                        onChange={(e) =>
+                          setSelectedDeleteGameId(
+                            e.target.value ? Number(e.target.value) : null,
+                          )
+                        }
+                        className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200 focus:border-rose-500 focus:outline-none"
+                      >
+                        <option value="">Select a game</option>
+                        {games.map((g) => (
+                          <option key={g.app_id} value={g.app_id}>
+                            {g.name || `App ${g.app_id}`}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        loading={busy}
+                        onClick={handleDeleteGame}
+                        disabled={busy || !selectedDeleteGameId}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-slate-200">Clear entire database</p>
+                    <p className="text-xs text-slate-400">
+                      Remove all data. You will be asked to type &quot;DELETE ALL&quot; to confirm.
+                    </p>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      loading={busy}
+                      onClick={handleClearDatabase}
+                      disabled={busy}
+                    >
+                      Delete all data
+                    </Button>
+                  </div>
+                </div>
+
+                {actionError && <p className="mt-3 text-xs text-rose-300">{actionError}</p>}
+                {actionSuccess && <p className="mt-3 text-xs text-emerald-300">{actionSuccess}</p>}
+              </Card>
+            )}
+          </div>
         </div>
       </PageTransition>
     </AppLayout>
-  );
-}
-
-export default function DatabasePage() {
-  return (
-    <Suspense>
-      <DatabasePageInner />
-    </Suspense>
   );
 }

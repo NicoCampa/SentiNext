@@ -7,7 +7,6 @@ import { UiPreferencesProvider } from "@/contexts/UiPreferencesContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { StarredGamesProvider } from "@/contexts/StarredGamesContext";
-import { SupportNotificationProvider } from "@/contexts/SupportNotificationContext";
 import { Onboarding } from "@/components/Onboarding";
 
 export function ClientProviders({ children }: { children: ReactNode }) {
@@ -18,10 +17,8 @@ export function ClientProviders({ children }: { children: ReactNode }) {
             <StarredGamesProvider>
               <GameProvider>
                 <AnalysisProvider>
-                  <SupportNotificationProvider>
-                    {children}
-                    <Onboarding />
-                  </SupportNotificationProvider>
+                  {children}
+                  <Onboarding />
                 </AnalysisProvider>
               </GameProvider>
             </StarredGamesProvider>

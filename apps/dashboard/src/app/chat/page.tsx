@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
 import { SteamImage } from "@/components/SteamImage";
 import {
-  authFetch,
+  apiFetch,
   sendEnhancedChat,
   subscribeToChatStream,
   submitCitationFeedback,
@@ -218,7 +218,7 @@ export default function ChatPage() {
     async function loadSessions() {
       try {
         // Load all sessions
-        const sessionsResponse = await authFetch(apiUrl("/chat/sessions"));
+        const sessionsResponse = await apiFetch(apiUrl("/chat/sessions"));
         if (sessionsResponse.ok) {
           const sessionsList = await sessionsResponse.json();
           setSessions(sessionsList);
@@ -449,7 +449,7 @@ export default function ChatPage() {
 
   async function reloadSessions() {
     try {
-      const sessionsResponse = await authFetch(apiUrl("/chat/sessions"));
+      const sessionsResponse = await apiFetch(apiUrl("/chat/sessions"));
       if (sessionsResponse.ok) {
         const sessionsList = await sessionsResponse.json();
         setSessions(sessionsList);
@@ -461,7 +461,7 @@ export default function ChatPage() {
 
   async function loadSession(sessionId: string) {
     try {
-      const response = await authFetch(apiUrl(`/chat/history?session_id=${sessionId}`));
+      const response = await apiFetch(apiUrl(`/chat/history?session_id=${sessionId}`));
       if (response.ok) {
         const history = await response.json();
         const loadedMessages = history.map((msg: any) => ({

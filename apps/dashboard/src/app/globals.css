@@ -60,7 +60,7 @@ body {
     /* Subtle gradient */
     radial-gradient(ellipse at top, rgba(var(--blue-500) / 0.05) 0%, transparent 50%);
   color: rgb(var(--text-primary));
-  font-family: var(--font-sans), 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans, 'Space Grotesk'), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   letter-spacing: -0.01em;

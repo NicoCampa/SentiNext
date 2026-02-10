@@ -8,10 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import storage, db as db_module
+from ._guards import admin_token, env_flag, require_admin_token
 
 logger = logging.getLogger(__name__)
 
@@ -29,17 +30,6 @@ def _log_file_path() -> Path:
     from platformdirs import user_data_dir
     data_dir = Path(user_data_dir("SentiNext", "SentiNext"))
     return data_dir / "logs" / "backend.log"
-
-
-def _admin_token() -> str:
-    return (os.getenv("SENTINEXT_ADMIN_TOKEN") or "").strip()
-
-
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +223,7 @@ def update_llm_settings(body: LLMSettingsUpdate) -> LLMSettingsResponse:
     if body.provider != "ollama" and not _provider_has_key(body.provider):
         raise HTTPException(
             status_code=400,
-            detail=f"Provider '{body.provider}' has no API key configured. Set the appropriate environment variable.",
+            detail=f"Provider '{body.provider}' has no API key configured. Add one in Settings or set the environment variable.",
         )
 
     set_active_provider(body.provider, body.model)
@@ -246,6 +236,40 @@ def update_llm_settings(body: LLMSettingsUpdate) -> LLMSettingsResponse:
         model_id=config["model_id"],
         api_key_configured=_provider_has_key(config["provider"]),
     )
+
+
+class ApiKeyUpdate(BaseModel):
+    provider: str = Field(..., description="Provider name: gemini, xai, openai")
+    api_key: str = Field(..., description="API key value (empty string to remove)")
+
+
+class ApiKeyStatusResponse(BaseModel):
+    keys: Dict[str, bool]  # provider -> has_key
+
+
+@router.get("/settings/api-keys", response_model=ApiKeyStatusResponse)
+def get_api_key_status() -> ApiKeyStatusResponse:
+    """Return which providers have API keys configured (without exposing keys)."""
+    from ..providers.config import get_api_key_status as _status
+    return ApiKeyStatusResponse(keys=_status())
+
+
+@router.put("/settings/api-keys", response_model=ApiKeyStatusResponse)
+def update_api_key(body: ApiKeyUpdate) -> ApiKeyStatusResponse:
+    """Save or remove an API key for a provider."""
+    from ..providers.config import save_api_key, get_api_key_status as _status, _PROVIDER_ENV_VARS
+    from ..providers import clear_cache
+
+    if body.provider not in _PROVIDER_ENV_VARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid provider '{body.provider}'. Must be one of: {sorted(_PROVIDER_ENV_VARS.keys())}",
+        )
+
+    save_api_key(body.provider, body.api_key)
+    clear_cache()
+
+    return ApiKeyStatusResponse(keys=_status())
 
 
 @router.get("/logs/tail")
@@ -267,29 +291,26 @@ def logs_tail(bytes: int = 20000) -> dict:
 
 
 @router.get("/auth/status")
-def auth_status() -> dict:
-    token_configured = bool(_admin_token())
+def auth_status(x_admin_token: Optional[str] = Header(default=None, alias="x-admin-token")) -> dict:
+    expected = admin_token()
+    token_configured = bool(expected)
+    is_admin = (not token_configured) or ((x_admin_token or "").strip() == expected)
     return {
         "user_id": "local",
-        "is_admin": not token_configured,
+        "is_admin": is_admin,
     }
 
 
 @router.post("/admin/verify")
-def admin_verify(x_admin_token: Optional[str] = Header(default=None, alias="x-admin-token")) -> dict:
-    expected = _admin_token()
-    if not expected:
-        return {"ok": True}
-    if (x_admin_token or "").strip() != expected:
-        raise HTTPException(status_code=401, detail="Invalid admin token.")
+def admin_verify(_: None = Depends(require_admin_token)) -> dict:
     return {"ok": True}
 
 
 @router.get("/admin/status")
 def admin_status() -> dict:
-    token_configured = bool(_admin_token())
+    token_configured = bool(admin_token())
     return {
-        "destructive_enabled": _env_flag("SENTINEXT_ENABLE_DESTRUCTIVE", True),
+        "destructive_enabled": env_flag("SENTINEXT_ENABLE_DESTRUCTIVE", True),
         "token_configured": token_configured,
         "admin_user_ids_configured": not token_configured,
     }
@@ -305,6 +326,7 @@ def get_admin_llm_usage_summary(
     user_id: Optional[str] = None,
     app_id: Optional[int] = None,
     session_id: Optional[str] = None,
+    _: None = Depends(require_admin_token),
 ) -> LLMUsageSummaryResponse:
     try:
         summary = storage.get_llm_usage_summary(
@@ -323,6 +345,7 @@ def get_admin_llm_usage_summary(
 def get_admin_usage(
     days: int = 30,
     user_id: Optional[str] = None,
+    _: None = Depends(require_admin_token),
 ) -> ApiUsageResponse:
     try:
         summary = storage.get_api_usage_summary(days=days, user_id=user_id)
@@ -333,7 +356,7 @@ def get_admin_usage(
 
 
 @router.get("/admin/dashboard", response_model=AdminDashboardResponse)
-def get_admin_dashboard(days: int = 30) -> AdminDashboardResponse:
+def get_admin_dashboard(days: int = 30, _: None = Depends(require_admin_token)) -> AdminDashboardResponse:
     try:
         safe_days = max(1, min(int(days or 30), 365))
         user_summary = storage.get_user_summary(safe_days)
@@ -412,6 +435,6 @@ def track_event(request: TrackEventRequest):
 
 
 @router.get("/admin/analytics")
-def admin_analytics(hours: int = 24, user_id: Optional[str] = None):
+def admin_analytics(hours: int = 24, user_id: Optional[str] = None, _: None = Depends(require_admin_token)):
     hours = min(max(hours, 1), 720)
     return storage.get_events_summary(since_hours=hours, user_id=user_id)

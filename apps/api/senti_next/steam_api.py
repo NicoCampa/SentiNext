@@ -14,9 +14,6 @@ from .circuit_breaker import steam_api_breaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
 
-# Maximum reviews per game - this limits both storage and fetching
-MAX_REVIEWS_PER_GAME = 1000
-
 # In-memory cache for game context with TTL
 _CONTEXT_CACHE: Dict[int, Tuple[Dict, float]] = {}
 _CONTEXT_CACHE_LOCK = threading.Lock()
@@ -205,7 +202,7 @@ def fetch_reviews(
 
     Args:
         app_id: Steam application ID
-        count: Number of reviews to fetch (capped at MAX_REVIEWS_PER_GAME)
+        count: Number of reviews to fetch. 0 means fetch all available reviews (no limit).
         language: Language code or "all" for all languages
         filter_type: "recent", "updated", or "all" (by helpfulness)
         day_range: For filter="all", range from now to n days ago (max 365)
@@ -213,20 +210,19 @@ def fetch_reviews(
                               Default False filters them out.
         progress_callback: Optional callback(fetched_count) called after each batch
     """
-    # Enforce maximum reviews per game
-    count = min(count, MAX_REVIEWS_PER_GAME)
+    unlimited = count == 0
 
     reviews: List[dict] = []
     cursor = "*"
 
-    while len(reviews) < count:
-        remaining = count - len(reviews)
+    while unlimited or len(reviews) < count:
+        remaining = 100 if unlimited else min(100, count - len(reviews))
         params = {
             "json": 1,
             "language": language,
             "purchase_type": "all",
             "review_type": "all",
-            "num_per_page": min(100, remaining),
+            "num_per_page": remaining,
             "cursor": cursor,
             "filter": filter_type,
         }
@@ -258,7 +254,7 @@ def fetch_reviews(
         if not data.get("success"):
             break
 
-    return reviews[:count]
+    return reviews if unlimited else reviews[:count]
 
 
 def resolve_app_id(user_input: str) -> Optional[int]:
@@ -423,10 +419,16 @@ def fetch_reviews_multi_language(
     if len(languages) == 1:
         return fetch_reviews(app_id, count, languages[0], filter_type, day_range, include_review_bombs, progress_callback)
 
-    # Distribute count across languages
-    per_language = max(1, count // len(languages))
-    # First language gets any remainder
-    first_language_count = count - (per_language * (len(languages) - 1))
+    unlimited = count == 0
+
+    # Distribute count across languages (0 = unlimited per language)
+    if unlimited:
+        per_language = 0
+        first_language_count = 0
+    else:
+        per_language = max(1, count // len(languages))
+        # First language gets any remainder
+        first_language_count = count - (per_language * (len(languages) - 1))
 
     # Thread-safe counter for progress tracking across parallel fetches
     total_fetched = [0]  # Use list for mutability in nested function
@@ -482,7 +484,7 @@ def fetch_reviews_multi_language(
 
     # Sort by timestamp (most recent first) and limit to requested count
     all_reviews.sort(key=lambda r: r.get("timestamp_created", 0), reverse=True)
-    return all_reviews[:count]
+    return all_reviews if unlimited else all_reviews[:count]
 
 
 # Steam language codes mapping (display name -> API code)

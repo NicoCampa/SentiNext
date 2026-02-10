@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import storage, llm
-from ..steam_api import fetch_app_details, SteamAPIError
+from ..steam_api import fetch_app_details
 from .. import build_reviews_dataframe
-from ._shared import REVIEW_EXPORT_COLUMNS, SAMPLE_LIMIT
+from ._guards import require_destructive_access
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +279,7 @@ def generate_executive_summary(
 # ---------------------------------------------------------------------------
 
 @router.delete("/account")
-def delete_account() -> dict:
+def delete_account(_: None = Depends(require_destructive_access)) -> dict:
     user_id = "local"
     deleted = storage.delete_user_data(user_id)
     total = sum(deleted.values())

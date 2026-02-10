@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy installed Python packages from builder
 COPY --from=builder /install /usr/local
 
-COPY apps ./apps
+COPY apps/api ./apps/api
 RUN mkdir -p /app/data
 
 RUN adduser --disabled-password --no-create-home appuser \
@@ -48,6 +48,6 @@ USER appuser
 
 EXPOSE 8000
 
-# Workers = 2 * CPU + 1 (capped at 4 for typical 1-2 vCPU containers).
-# Override via WEB_CONCURRENCY env var.
-CMD ["sh", "-c", "uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --timeout-keep-alive 5 --timeout-graceful-shutdown 30"]
+# Single worker by default (in-memory state requires single process).
+# Set WEB_CONCURRENCY>1 only if Redis is configured for shared state.
+CMD ["sh", "-c", "uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-1} --timeout-keep-alive 5 --timeout-graceful-shutdown 30"]

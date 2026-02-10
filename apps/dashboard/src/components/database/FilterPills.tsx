@@ -1,7 +1,5 @@
 'use client';
 
-import { formatTaxonomyLabel } from '@/lib/taxonomyLabels';
-
 interface FilterPill {
   key: string;
   label: string;

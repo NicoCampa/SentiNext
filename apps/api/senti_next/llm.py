@@ -206,7 +206,7 @@ def _maybe_load_dotenv() -> None:
     global _dotenv_loaded
     if _dotenv_loaded:
         return
-    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("XAI_API_KEY") or os.getenv("OPENAI_API_KEY"):
         _dotenv_loaded = True
         return
 
@@ -1402,16 +1402,16 @@ def _extract_retry_delay(error: Exception, default: float = 20) -> float:
 
 def _run_llm(
     prompt: str,
+    response_schema: Optional[type] = None,
 ) -> tuple[str, str]:
     """Route through the active provider for general LLM calls."""
     from .providers import get_provider
     provider = get_provider()
-    try:
-        content = provider.generate(prompt)
-        return content, provider.model_id()
-    except Exception:
-        # Fallback to direct Gemini call if provider fails
-        return _run_gemini(prompt, GEMINI_MODEL), _model_id("google", GEMINI_MODEL)
+    json_schema = None
+    if response_schema is not None:
+        json_schema = response_schema.model_json_schema()
+    content = provider.generate(prompt, response_schema=json_schema)
+    return content, provider.model_id()
 
 
 def run_chat_completion(
@@ -1465,7 +1465,9 @@ def translate_text(text: str, target_language: str) -> tuple[str, str]:
         Tuple of (translated_text, model_id)
     """
     if not text or not text.strip():
-        return text, _model_id("google", GEMINI_MODEL_CHEAP)
+        from .providers import get_provider
+        provider = get_provider()
+        return text, provider.model_id()
 
     target_name = LANGUAGE_NAMES.get(target_language, target_language)
 
@@ -1476,9 +1478,7 @@ If the text is already in {target_name}, return it unchanged.
 Text to translate:
 {text}"""
 
-    # Use cheap model for translation
-    translated = _run_gemini(prompt, GEMINI_MODEL_CHEAP)
-    model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+    translated, model_used = _run_llm(prompt)
     return translated.strip(), model_used
 
 
@@ -1726,8 +1726,7 @@ def classify_review_single(
 
     if provider_name == "xai":
         # xAI two-tier strategy: fast non-reasoning -> reasoning fallback
-        from .providers.xai import XAIProvider
-        xai_provider = XAIProvider()
+        xai_provider = get_provider()
 
         # Tier 1: fast non-reasoning model
         try:
@@ -1743,35 +1742,20 @@ def classify_review_single(
             )
 
         # Tier 2: reasoning model fallback
-        try:
-            raw = xai_provider._call_xai(prompt, xai_provider.reasoning_model, parse_model=ReviewClassification)
-            payload = _load_json_mapping(raw)
-            validated = _parse_payload_mapping(payload)
-            logger.debug("Tier 2 (%s) succeeded for review %s", xai_provider.reasoning_model, item.get("review_id"))
-            return validated, _model_id("xai", xai_provider.reasoning_model)
-        except (ValueError, LLMError) as tier2_err:
-            logger.warning(
-                "Tier 2 (%s) also failed for review %s: %s, using default label",
-                xai_provider.reasoning_model, item.get("review_id"), tier2_err,
-            )
-
-        return _DEFAULT_LABEL.copy(), xai_provider.model_id()
+        raw = xai_provider._call_xai(prompt, xai_provider.reasoning_model, parse_model=ReviewClassification)
+        payload = _load_json_mapping(raw)
+        validated = _parse_payload_mapping(payload)
+        logger.debug("Tier 2 (%s) succeeded for review %s", xai_provider.reasoning_model, item.get("review_id"))
+        return validated, _model_id("xai", xai_provider.reasoning_model)
 
     else:
         # Generic provider path (Gemini, OpenAI, Ollama)
         provider = get_provider()
-        try:
-            raw = provider.generate_with_pydantic(prompt, ReviewClassification)
-            payload = _load_json_mapping(raw)
-            validated = _parse_payload_mapping(payload)
-            logger.debug("Provider %s succeeded for review %s", provider.name, item.get("review_id"))
-            return validated, provider.model_id()
-        except (ValueError, Exception) as err:
-            logger.warning(
-                "Provider %s failed for review %s: %s, using default label",
-                provider.name, item.get("review_id"), err,
-            )
-            return _DEFAULT_LABEL.copy(), provider.model_id()
+        raw = provider.generate_with_pydantic(prompt, ReviewClassification)
+        payload = _load_json_mapping(raw)
+        validated = _parse_payload_mapping(payload)
+        logger.debug("Provider %s succeeded for review %s", provider.name, item.get("review_id"))
+        return validated, provider.model_id()
 
 
 def classify_review(
@@ -1799,13 +1783,15 @@ def ensure_review_labels(
     game_context: Optional[Dict[str, Any]] = None,
     cache_enabled: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
+    from .providers.config import get_active_provider
+
     if not reviews:
         if progress_callback is not None:
             progress_callback(0, 0)
         return {}
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    # Accept labels from both current xAI models and old Gemini models
+    # Accept labels from the active provider and known legacy models
     valid_cached_models = {
         _model_id("xai", XAI_MODEL),
         _model_id("xai", XAI_MODEL_REASONING),
@@ -1813,6 +1799,10 @@ def ensure_review_labels(
         "short_review",
         "empty_review",
     }
+    # Also accept labels produced by the currently active provider
+    active_name, active_model = get_active_provider()
+    if active_name and active_model:
+        valid_cached_models.add(_model_id(active_name, active_model))
     results: Dict[str, Dict[str, Any]] = {}
     total_reviews = len(reviews)
     processed_count = 0
@@ -1928,12 +1918,18 @@ def ensure_review_labels(
             }
         )
 
-    logger.info(f"{len(pending_reviews)} reviews to classify via xAI two-tier strategy")
+    provider_label = active_name or "unknown"
+    logger.info(f"{len(pending_reviews)} reviews to classify via {provider_label} provider")
 
-    # Process reviews in parallel (one xAI call per review, two-tier fallback)
+    # Process reviews in parallel (one LLM call per review, two-tier fallback)
     if pending_reviews:
         max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "10"))
         logger.info(f"Processing {len(pending_reviews)} reviews in parallel (max_workers={max_workers})")
+
+        # Abort if too many consecutive failures (e.g. provider down / connection refused)
+        CONSECUTIVE_FAIL_LIMIT = 5
+        consecutive_failures = 0
+        last_failure_error: Optional[str] = None
 
         # Bulk write buffer
         BULK_WRITE_SIZE = 20
@@ -1981,6 +1977,7 @@ def ensure_review_labels(
 
                         results[review_id] = payload
                         processed_count += 1
+                        consecutive_failures = 0  # Reset on success
 
                         # Bulk write periodically
                         if len(label_write_buffer) >= BULK_WRITE_SIZE:
@@ -1996,6 +1993,20 @@ def ensure_review_labels(
                         logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
                         failed_count += 1
                         processed_count += 1
+                        consecutive_failures += 1
+                        last_failure_error = str(exc)
+
+                        # Abort early if the provider is clearly broken
+                        if consecutive_failures >= CONSECUTIVE_FAIL_LIMIT:
+                            # Cancel remaining futures
+                            for f in future_to_item:
+                                if not f.done():
+                                    f.cancel()
+                            raise RuntimeError(
+                                f"LLM provider failed {CONSECUTIVE_FAIL_LIMIT} times in a row. "
+                                f"Last error: {last_failure_error}"
+                            )
+
                         if progress_callback is not None:
                             try:
                                 progress_callback(processed_count, total_reviews)
@@ -2007,14 +2018,14 @@ def ensure_review_labels(
                 # Some worker threads hung — count remaining futures as failures
                 hung_count = sum(1 for f in future_to_item if not f.done())
                 logger.error(f"Classification timed out after {global_timeout}s with {hung_count} reviews still pending")
-                failed_count += hung_count
-                processed_count += hung_count
+                raise RuntimeError(
+                    f"Classification timed out after {global_timeout}s with {hung_count} reviews still pending"
+                )
         finally:
             # Don't wait for hung threads — cancel queued futures and move on
             executor.shutdown(wait=False, cancel_futures=True)
-
-        # Flush remaining labels
-        _flush_label_buffer(label_write_buffer)
+            # Flush remaining labels (inside finally so we don't lose cached work)
+            _flush_label_buffer(label_write_buffer)
 
     if progress_callback is not None and processed_count < total_reviews:
         progress_callback(total_reviews, total_reviews)
@@ -2033,6 +2044,9 @@ def estimate_review_labeling(
 
     This mirrors the cache/refresh logic from `ensure_review_labels` but never calls an LLM.
     """
+    from .providers.config import get_active_provider
+    active_name, active_model = get_active_provider()
+
     if not reviews:
         return {
             "total_reviews": 0,
@@ -2044,7 +2058,7 @@ def estimate_review_labeling(
             "reasons": {},
             "prompt_version": ACTIVE_PROMPT_VERSION,
             "model_id": "",
-            "labeling_strategy": "xai_two_tier",
+            "labeling_strategy": f"{active_name}_two_tier" if active_name == "xai" else active_name or "unknown",
         }
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
@@ -2055,6 +2069,10 @@ def estimate_review_labeling(
         "short_review",
         "empty_review",
     }
+    # Also accept labels produced by the currently active provider
+    active_name, active_model = get_active_provider()
+    if active_name and active_model:
+        valid_cached_models.add(_model_id(active_name, active_model))
 
     counts = {
         "total_reviews": len(reviews),
@@ -2113,8 +2131,8 @@ def estimate_review_labeling(
         **counts,
         "reasons": reasons,
         "prompt_version": ACTIVE_PROMPT_VERSION,
-        "model_id": _model_id("xai", XAI_MODEL),
-        "labeling_strategy": "xai_two_tier",
+        "model_id": _model_id(active_name, active_model) if active_name and active_model else "",
+        "labeling_strategy": f"{active_name}_two_tier" if active_name == "xai" else active_name or "unknown",
     }
 
 
@@ -2839,8 +2857,7 @@ def summarize_monthly_report(
     )
 
     try:
-        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=ReportSummary)
-        _model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+        raw, _model_used = _run_llm(prompt, response_schema=ReportSummary)
         parsed = ReportSummary.model_validate_json(raw)
         summary = parsed.summary.strip() or "Unable to generate summary."
         key_points = [s.strip() for s in parsed.key_points if s][:3]
@@ -2990,8 +3007,7 @@ def summarize_subcategory_reviews(
     )
 
     try:
-        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=SubcategorySummary)
-        model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+        raw, model_used = _run_llm(prompt, response_schema=SubcategorySummary)
         parsed = SubcategorySummary.model_validate_json(raw)
         summary = parsed.summary.strip() or "Unable to generate summary."
         pros = [s.strip() for s in parsed.pros if s][:5]
@@ -3259,8 +3275,7 @@ def summarize_widget_reviews(
     )
 
     try:
-        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=ReportSummary)
-        _model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+        raw, _model_used = _run_llm(prompt, response_schema=ReportSummary)
         parsed = ReportSummary.model_validate_json(raw)
         summary = parsed.summary.strip() or "Unable to generate summary."
         key_points = [s.strip() for s in parsed.key_points if s][:6]
@@ -3493,7 +3508,7 @@ def generate_health_overview(
     )
 
     try:
-        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=HealthOverview)
+        raw, _model_used = _run_llm(prompt, response_schema=HealthOverview)
         parsed = HealthOverview.model_validate_json(raw)
 
         # Clamp and validate
@@ -3781,54 +3796,22 @@ REVIEW SAMPLES (filtered for {subcategory}):
         subcategory=subcategory or "",
     )
 
-    # Call LLM
+    # Call LLM via provider abstraction
     try:
         logger.info(f"Comparing {len(games_data)} games (type: {comparison_type})")
 
-        # Get API key and model
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise LLMError(
-                "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
-                LLMErrorType.BAD_REQUEST,
-                retryable=False
-            )
+        content, model_id = _run_llm(prompt, response_schema=GameComparison)
 
-        model_name = GEMINI_MODEL_CHEAP
-
-        try:
-            from google import genai
-            from google.genai.errors import ClientError
-        except ImportError:
-            raise LLMError(
-                "google-genai package not installed. Run: pip install google-genai",
-                LLMErrorType.BAD_REQUEST,
-                retryable=False
-            )
-
-        client = genai.Client(api_key=api_key)
-
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config={
-                "temperature": 0.3,
-                "response_mime_type": "application/json",
-                "response_json_schema": GameComparison.model_json_schema(),
-            },
-        )
-
-        if not response or not response.text:
+        if not content or not content.strip():
             raise ValueError("Empty response from LLM")
 
-        _record_llm_usage(response, model_name)
-        logger.debug(f"LLM response length: {len(response.text)}")
+        logger.debug(f"LLM response length: {len(content)}")
 
         try:
-            result = json.loads(response.text)
+            result = json.loads(content)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM JSON response: {e}")
-            logger.error(f"Response text: {response.text[:500]}")
+            logger.error(f"Response text: {content[:500]}")
             raise ValueError(f"Invalid JSON response from LLM: {str(e)}")
 
         # Convert string keys to int for per-game dicts
@@ -3968,7 +3951,7 @@ def summarize_news_updates(
     """).strip()
 
     try:
-        raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=NewsUpdateSummary)
+        raw, _model_used = _run_llm(prompt, response_schema=NewsUpdateSummary)
         result = NewsUpdateSummary.model_validate_json(raw)
         return {
             "summary": result.summary,

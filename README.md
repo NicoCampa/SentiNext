@@ -45,7 +45,8 @@ Provider and model can be changed at runtime via the Settings page or `PUT /sett
 
 ## Notes
 - The API persists reviews/labels to PostgreSQL via `DATABASE_URL`.
-- All endpoints are open — self-hosted means you own everything.
+- Endpoints are open by default for self-hosted usage.
+- Optional hardening: set `SENTINEXT_ADMIN_TOKEN` to protect admin/destructive endpoints and set `SENTINEXT_ENABLE_DESTRUCTIVE=false` to block destructive actions entirely.
 - LLM classification uses a two-tier approach (fast model → reasoning fallback) for xAI, or single-call for other providers.
 
 ## License

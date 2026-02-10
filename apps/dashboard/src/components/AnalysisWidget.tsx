@@ -222,8 +222,8 @@ export function AnalysisWidget() {
                         )}
 
                         {task.status === 'error' && (
-                          <div className="text-xs text-rose-400">
-                            Error: {task.error}
+                          <div className="mt-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-400">
+                            {task.error}
                           </div>
                         )}
                       </div>

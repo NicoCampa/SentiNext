@@ -17,8 +17,6 @@ const translations: Record<string, string> = {
   'nav.compare': 'Compare',
   'nav.database': 'Database',
   'nav.reports': 'Reports',
-  'nav.support': 'Support',
-  'nav.inbox': 'Inbox',
   'nav.settings': 'Settings',
 
   // Common
@@ -187,9 +185,7 @@ const translations: Record<string, string> = {
 
   // Database
   'database.title': 'Database Explorer',
-  'database.subtitle': 'Browse every stored review across all accounts.',
-  'database.myData': 'My data',
-  'database.allUsers': 'All users',
+  'database.subtitle': 'Browse every stored review.',
   'database.stats': 'Database statistics',
   'database.loadingStats': 'Loading stats...',
   'database.games': 'Games',
@@ -224,15 +220,13 @@ const translations: Record<string, string> = {
   'database.previewExport': 'Preview export',
   'database.preparingExport': 'Preparing…',
   'database.applyFilters': 'Apply filters',
-  'database.scope': 'Scope',
-
   // Settings
   'settings.title': 'Settings',
   'settings.subtitle': 'Account, storage, and diagnostics for this service.',
   'settings.appearance': 'Appearance',
   'settings.notifications': 'Notifications',
   'settings.account': 'Account',
-  'settings.accountDesc': 'Manage your session and sign out.',
+  'settings.accountDesc': 'Manage your local instance settings.',
   'settings.diagnostics': 'Diagnostics',
   'settings.diagnosticsDesc': 'Use this when the backend is slow or unresponsive.',
   'settings.recheckBackend': 'Recheck backend',

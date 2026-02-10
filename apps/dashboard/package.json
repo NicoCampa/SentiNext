@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "generate-types": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.generated.ts"
   },
   "dependencies": {

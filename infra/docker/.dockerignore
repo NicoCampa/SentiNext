@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+*.pyc
+__pycache__
+.env*
+data/
+*.log
+.DS_Store
+web/
+apps/dashboard/node_modules
+apps/dashboard/.next

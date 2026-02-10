@@ -17,7 +17,7 @@ from ..llm import normalize_taxonomy_payload
 
 # Review limits - configurable via environment
 SAMPLE_LIMIT = int(os.getenv("SENTINEXT_SAMPLE_LIMIT", "1000"))
-FETCH_LIMIT = int(os.getenv("SENTINEXT_FETCH_LIMIT", "1000"))
+FETCH_LIMIT = int(os.getenv("SENTINEXT_FETCH_LIMIT", "0"))  # 0 = unlimited
 EXPORT_MAX_ROWS = max(1, int(os.getenv("SENTINEXT_EXPORT_MAX_ROWS", "50000")))
 
 REVIEW_EXPORT_COLUMNS = [
@@ -219,8 +219,3 @@ def _serialize_export_value(value: Any) -> str:
     return str(value)
 
 
-def resolve_scope_user_id(scope: Optional[str], user_id: str) -> Optional[str]:
-    """Resolve scope to user_id. In local mode all users have admin access."""
-    if scope and scope.strip().lower() == "all":
-        return None
-    return user_id

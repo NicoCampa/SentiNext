@@ -6,16 +6,15 @@ import csv
 import io
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import storage, llm
-from ..steam_api import fetch_app_details, SteamAPIError
+from ..steam_api import fetch_app_details
 from .. import build_reviews_dataframe, ingest
 from ._shared import (
     DatabaseReviewItem,
@@ -26,8 +25,8 @@ from ._shared import (
     EXPORT_MAX_ROWS,
     _database_row_to_item,
     _serialize_export_value,
-    resolve_scope_user_id,
 )
+from ._guards import require_destructive_access
 
 logger = logging.getLogger(__name__)
 
@@ -148,14 +147,12 @@ def export_reviews(
 # ---------------------------------------------------------------------------
 
 @router.get("/database/stats")
-def database_stats(scope: Optional[str] = None) -> dict:
-    user_id = "local"
-    scope_user_id = resolve_scope_user_id(scope, user_id)
-    return storage.get_database_stats(scope_user_id)
+def database_stats() -> dict:
+    return storage.get_database_stats(None)
 
 
 @router.delete("/database/labels", status_code=200)
-def clear_labels(old_schema_only: bool = False) -> dict:
+def clear_labels(old_schema_only: bool = False, _: None = Depends(require_destructive_access)) -> dict:
     if old_schema_only:
         count = storage.clear_old_schema_labels()
         return {"deleted": count, "scope": "old_schema_labels"}
@@ -165,19 +162,14 @@ def clear_labels(old_schema_only: bool = False) -> dict:
 
 
 @router.delete("/database/clear", status_code=200)
-def clear_database() -> dict:
+def clear_database(_: None = Depends(require_destructive_access)) -> dict:
     counts = storage.clear_entire_database()
     return {"deleted": counts, "scope": "entire_database"}
 
 
 @router.get("/database/games", response_model=List[DatabaseGameOption])
-def database_games(scope: Optional[str] = None) -> List[DatabaseGameOption]:
-    user_id = "local"
-    scope_user_id = resolve_scope_user_id(scope, user_id)
-    if scope_user_id is None:
-        entries = storage.list_database_games_all()
-    else:
-        entries = storage.list_database_games(scope_user_id)
+def database_games() -> List[DatabaseGameOption]:
+    entries = storage.list_database_games_all()
     return [DatabaseGameOption(**entry) for entry in entries]
 
 
@@ -204,23 +196,15 @@ def database_reviews(
     app_id: Optional[int] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
-    scope: Optional[str] = None,
 ) -> DatabaseReviewsResponse:
-    user_id = "local"
-    scope_user_id = resolve_scope_user_id(scope, user_id)
-    if scope_user_id is None:
-        user_games = storage.list_database_games_all()
-        user_app_ids = None
-    else:
-        user_games = storage.list_database_games(scope_user_id)
-        user_app_ids = [entry["app_id"] for entry in user_games]
+    user_games = storage.list_database_games_all()
     rows, total = storage.load_database_reviews(
         limit=limit,
         offset=offset,
         app_id=app_id,
         language=language,
         query=query,
-        app_ids=user_app_ids,
+        app_ids=None,
     )
     games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
     items: List[DatabaseReviewItem] = []
@@ -236,16 +220,8 @@ def database_reviews_count(
     app_id: Optional[int] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
-    scope: Optional[str] = None,
 ):
-    user_id = "local"
-    scope_user_id = resolve_scope_user_id(scope, user_id)
-    if scope_user_id is None:
-        user_games = storage.list_database_games_all()
-        user_app_ids = None
-    else:
-        user_games = storage.list_database_games(scope_user_id)
-        user_app_ids = [entry["app_id"] for entry in user_games]
+    user_games = storage.list_database_games_all()
 
     _, total = storage.load_database_reviews(
         limit=1,
@@ -253,37 +229,20 @@ def database_reviews_count(
         app_id=app_id,
         language=language,
         query=query,
-        app_ids=user_app_ids,
+        app_ids=None,
     )
 
     top_games = []
     if not app_id:
-        game_counts: Dict[int, int] = {}
-        offset_value = 0
-        page_size = 1000
-        while offset_value < total:
-            rows, _ = storage.load_database_reviews(
-                limit=page_size,
-                offset=offset_value,
-                app_id=app_id,
-                language=language,
-                query=query,
-                app_ids=user_app_ids,
-            )
-            if not rows:
-                break
-            for row in rows:
-                game_app_id = row["app_id"]
-                game_counts[game_app_id] = game_counts.get(game_app_id, 0) + 1
-            offset_value += len(rows)
-            if len(rows) < page_size:
-                break
-
         games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
-        sorted_games = sorted(game_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_rows = storage.get_top_games_by_review_count(
+            limit=5,
+            language=language,
+            query=query,
+        )
         top_games = [
-            {"app_id": gid, "name": games_map.get(gid, f"App {gid}"), "count": count}
-            for gid, count in sorted_games
+            {"app_id": row["app_id"], "name": games_map.get(row["app_id"], f"App {row['app_id']}"), "count": row["count"]}
+            for row in top_rows
         ]
 
     return {
@@ -299,23 +258,13 @@ def database_export(
     app_id: Optional[int] = None,
     language: Optional[str] = None,
     query: Optional[str] = None,
-    scope: Optional[str] = None,
     max_rows: Optional[int] = None,
 ):
-    user_id = "local"
     export_format = (format or "csv").strip().lower()
     if export_format not in {"csv", "jsonl"}:
         raise HTTPException(status_code=400, detail="Unsupported export format. Use csv or jsonl.")
 
-    scope_user_id = resolve_scope_user_id(scope, user_id)
-    if scope_user_id is None:
-        user_games = storage.list_database_games_all()
-        user_app_ids = None
-        scope_label = "all"
-    else:
-        user_games = storage.list_database_games(scope_user_id)
-        user_app_ids = [entry["app_id"] for entry in user_games]
-        scope_label = "me"
+    user_games = storage.list_database_games_all()
     games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
 
     if max_rows is None:
@@ -332,7 +281,7 @@ def database_export(
     now_stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     app_label = str(app_id) if app_id else "all"
     ext = "csv" if export_format == "csv" else "jsonl"
-    filename = f"sentinext-dataset-{scope_label}-{app_label}-{now_stamp}.{ext}"
+    filename = f"sentinext-dataset-{app_label}-{now_stamp}.{ext}"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
 
     def iter_review_items():
@@ -347,7 +296,7 @@ def database_export(
                 app_id=app_id,
                 language=language,
                 query=query,
-                app_ids=user_app_ids,
+                app_ids=None,
             )
             if not rows:
                 break

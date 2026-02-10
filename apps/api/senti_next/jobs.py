@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from . import storage
@@ -136,7 +136,7 @@ def run_analysis_job(
                     prev_date = prev_metadata.get("fetched_at") or ""
                     if not prev_date and prev_result.get("updated_at"):
                         try:
-                            prev_date = datetime.utcfromtimestamp(prev_result["updated_at"]).strftime("%Y-%m-%d")
+                            prev_date = datetime.fromtimestamp(prev_result["updated_at"], tz=timezone.utc).strftime("%Y-%m-%d")
                         except Exception:
                             prev_date = ""
                     if prev_insights:

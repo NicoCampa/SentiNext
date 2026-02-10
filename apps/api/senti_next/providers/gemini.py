@@ -144,6 +144,7 @@ class GeminiProvider(LLMProvider):
             self._model,
             response_json_schema=response_schema,
             system=system,
+            temperature=temperature,
         )
 
     def generate_structured(
@@ -158,6 +159,7 @@ class GeminiProvider(LLMProvider):
             self._model,
             response_json_schema=response_schema,
             system=system,
+            temperature=temperature,
         )
         return json.loads(raw)
 
@@ -215,6 +217,7 @@ class GeminiProvider(LLMProvider):
         *,
         response_json_schema: Optional[dict] = None,
         system: str | None = None,
+        temperature: float = 0.0,
     ) -> str:
         """Call Gemini with retry, schema-stripping fallback, and timeout."""
         from google.genai.errors import ClientError
@@ -237,11 +240,15 @@ class GeminiProvider(LLMProvider):
                 if system:
                     generate_kwargs["contents"] = f"{system}\n\n{prompt}"
 
+                config: Dict[str, Any] = {
+                    "http_options": {"timeout": LLM_TIMEOUT_SECONDS},
+                }
                 if working_schema is not None:
-                    generate_kwargs["config"] = {
-                        "response_mime_type": "application/json",
-                        "response_json_schema": working_schema,
-                    }
+                    config["response_mime_type"] = "application/json"
+                    config["response_json_schema"] = working_schema
+                if temperature > 0:
+                    config["temperature"] = temperature
+                generate_kwargs["config"] = config
 
                 response = client.models.generate_content(**generate_kwargs)
                 content = response.text

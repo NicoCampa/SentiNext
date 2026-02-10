@@ -65,7 +65,8 @@ class XAIProvider(LLMProvider):
         response_schema: dict | None = None,
         temperature: float = 0.0,
     ) -> str:
-        return self._call_xai(prompt, self._model)
+        full_prompt = f"{system}\n\n{prompt}" if system else prompt
+        return self._call_xai(full_prompt, self._model, temperature=temperature or 0.1)
 
     def generate_structured(
         self,
@@ -75,7 +76,8 @@ class XAIProvider(LLMProvider):
         temperature: float = 0.0,
     ) -> dict:
         import json
-        raw = self._call_xai(prompt, self._model)
+        full_prompt = f"{system}\n\n{prompt}" if system else prompt
+        raw = self._call_xai(full_prompt, self._model, temperature=temperature or 0.1)
         return json.loads(raw)
 
     def generate_with_pydantic(
@@ -104,7 +106,12 @@ class XAIProvider(LLMProvider):
         system: str | None = None,
         temperature: float = 0.0,
     ) -> dict:
-        """xAI does not currently support tool calling. Raise NotImplementedError."""
+        """xAI does not currently support tool calling.
+
+        When tool-calling is required, the caller should fall back to the first
+        available provider that supports it (Gemini or OpenAI).  The provider
+        resolution logic lives in the route/chat layer, not here.
+        """
         raise NotImplementedError("xAI provider does not support tool calling yet.")
 
     # ---- internal call with retry logic ----
@@ -115,6 +122,7 @@ class XAIProvider(LLMProvider):
         model: str,
         *,
         parse_model: type | None = None,
+        temperature: float = 0.1,
     ) -> str:
         """Run xAI API call with timeout and retry handling."""
         from xai_sdk import Client as XaiClient
@@ -131,7 +139,7 @@ class XAIProvider(LLMProvider):
                 client = XaiClient(api_key=api_key, timeout=LLM_TIMEOUT_SECONDS)
                 create_kwargs: Dict[str, Any] = {
                     "model": model,
-                    "temperature": 0.1,
+                    "temperature": temperature,
                     "max_tokens": 8192,
                 }
                 if parse_model is None:

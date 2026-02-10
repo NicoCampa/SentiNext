@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 LLM_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_LLM_TIMEOUT", "30"))
 LLM_MAX_RETRIES = int(os.getenv("SENTINEXT_LLM_MAX_RETRIES", "3"))
 
-_DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+def _default_ollama_url() -> str:
+    """Return the default Ollama base URL, auto-detecting Docker environments."""
+    # Inside Docker, localhost doesn't reach the host — use host.docker.internal
+    if os.path.exists("/.dockerenv"):
+        return "http://host.docker.internal:11434/v1"
+    return "http://localhost:11434/v1"
 
 
 def _calculate_retry_delay(attempt: int, error_type: str) -> float:
@@ -44,12 +49,10 @@ class OpenAICompatProvider(LLMProvider):
             from .config import DEFAULT_MODELS
             self._model = model_name or os.getenv("SENTINEXT_OPENAI_MODEL", DEFAULT_MODELS.get("openai", "gpt-4o-mini"))
             self._base_url = "https://api.openai.com/v1"
-            self._api_key = os.getenv("OPENAI_API_KEY", "")
         else:
             from .config import DEFAULT_MODELS
             self._model = model_name or os.getenv("SENTINEXT_OLLAMA_MODEL", DEFAULT_MODELS.get("ollama", "llama3.1:8b"))
-            self._base_url = os.getenv("SENTINEXT_OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL)
-            self._api_key = "ollama"  # Ollama doesn't need a real key but the SDK requires one
+            self._base_url = os.getenv("SENTINEXT_OLLAMA_BASE_URL", _default_ollama_url())
 
     @property
     def name(self) -> str:
@@ -59,19 +62,26 @@ class OpenAICompatProvider(LLMProvider):
     def model(self) -> str:
         return self._model
 
+    def _get_api_key(self) -> str:
+        """Return the API key, reading from env at call time for OpenAI so runtime key updates work."""
+        if self._provider_type == "openai":
+            return os.getenv("OPENAI_API_KEY", "")
+        return "ollama"  # Ollama doesn't need a real key but the SDK requires one
+
     def _get_client(self) -> Any:
-        """Create an AsyncOpenAI client (used synchronously via asyncio.run or threads)."""
+        """Create a synchronous OpenAI client."""
         from openai import OpenAI
         return OpenAI(
-            api_key=self._api_key,
+            api_key=self._get_api_key(),
             base_url=self._base_url,
             timeout=LLM_TIMEOUT_SECONDS,
         )
 
     def _get_async_client(self) -> Any:
+        """Create an async OpenAI client."""
         from openai import AsyncOpenAI
         return AsyncOpenAI(
-            api_key=self._api_key,
+            api_key=self._get_api_key(),
             base_url=self._base_url,
             timeout=LLM_TIMEOUT_SECONDS,
         )
@@ -225,7 +235,7 @@ class OpenAICompatProvider(LLMProvider):
                 error_str = str(e).lower()
                 is_transient = any(
                     tok in error_str
-                    for tok in ("timeout", "429", "rate", "temporar", "unavailable", "503", "502", "500")
+                    for tok in ("timeout", "429", "rate", "temporar", "unavailable", "503", "502", "500", "connection")
                 )
                 logger.warning("OpenAI-compat tool-calling error: %s (attempt %d/%d)", e, attempt, LLM_MAX_RETRIES)
 
@@ -269,7 +279,7 @@ class OpenAICompatProvider(LLMProvider):
                 error_str = str(e).lower()
                 is_transient = any(
                     tok in error_str
-                    for tok in ("timeout", "429", "rate", "temporar", "unavailable", "503", "502", "500")
+                    for tok in ("timeout", "429", "rate", "temporar", "unavailable", "503", "502", "500", "connection")
                 )
 
                 logger.warning(

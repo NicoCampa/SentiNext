@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -23,7 +23,6 @@ from .. import (
     fetch_reviews,
     fetch_reviews_multi_language,
     build_reviews_dataframe,
-    SteamAPIError,
 )
 from ._shared import (
     AnalyzeMetadata,
@@ -43,7 +42,7 @@ router = APIRouter()
 
 class AnalyzeRequest(BaseModel):
     app_id: int = Field(..., gt=0)
-    review_count: int = Field(FETCH_LIMIT, ge=0, le=FETCH_LIMIT)
+    review_count: int = Field(FETCH_LIMIT, ge=0)  # 0 = fetch all available reviews
     language: str = Field("all", min_length=2, max_length=32)
     languages: Optional[List[str]] = Field(None, description="List of language codes for multi-language analysis")
     filter: str = Field("recent")
@@ -253,7 +252,7 @@ def _run_analysis_job(
                     prev_date = prev_metadata.get("fetched_at") or ""
                     if not prev_date and prev_result.get("updated_at"):
                         try:
-                            prev_date = datetime.utcfromtimestamp(prev_result["updated_at"]).strftime("%Y-%m-%d")
+                            prev_date = datetime.fromtimestamp(prev_result["updated_at"], tz=timezone.utc).strftime("%Y-%m-%d")
                         except Exception:
                             prev_date = ""
                     if prev_insights:
@@ -436,7 +435,7 @@ def analyze(
     else:
         all_reviews = fetched_reviews
 
-    if request.review_count and len(all_reviews) > request.review_count:
+    if request.review_count > 0 and len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
     all_reviews.sort(key=lambda r: (r.get("language", "english"), -(r.get("timestamp_created") or 0)))
@@ -462,6 +461,11 @@ def analyze(
             text("SELECT pg_try_advisory_lock(:lock_id)"),
             {"lock_id": request.app_id + 1_000_000_000},
         ).scalar()
+        if lock_acquired:
+            conn.execute(
+                text("SELECT pg_advisory_unlock(:lock_id)"),
+                {"lock_id": request.app_id + 1_000_000_000},
+            )
     if not lock_acquired:
         return AnalyzeResponse(
             metadata=AnalyzeMetadata(
@@ -473,11 +477,6 @@ def analyze(
             ),
             insights=None,
             reviews=[],
-        )
-    with db_mod.get_connection() as conn:
-        conn.execute(
-            text("SELECT pg_advisory_unlock(:lock_id)"),
-            {"lock_id": request.app_id + 1_000_000_000},
         )
 
     game_context = fetch_app_details(request.app_id)
@@ -585,7 +584,7 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     all_reviews = stored_reviews if stored_reviews else fetched_reviews
-    if request.review_count and len(all_reviews) > request.review_count:
+    if request.review_count > 0 and len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
     cached_labels = storage.load_review_labels(request.app_id)
@@ -928,7 +927,7 @@ def summarize_recent_reviews(request: SummarizeRecentReviewsRequest) -> Summariz
         prev_date = prev_metadata.get("fetched_at") or ""
         if not prev_date and result.get("updated_at"):
             try:
-                prev_date = datetime.utcfromtimestamp(result["updated_at"]).strftime("%Y-%m-%d")
+                prev_date = datetime.fromtimestamp(result["updated_at"], tz=timezone.utc).strftime("%Y-%m-%d")
             except Exception:
                 prev_date = ""
         if prev_insights:

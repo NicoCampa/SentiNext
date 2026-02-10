@@ -405,8 +405,31 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             handleCompletion(appId, task);
           },
           onError: (error) => {
-            console.warn(`SSE error for ${appId}, falling back to polling:`, error);
-            startPollingFallback(appId, task);
+            // Backend analysis errors (LLM failures) come as SSE error events with a message.
+            // Connection-level errors are generic ("Connection lost", "Connection failed").
+            const isConnectionError = !error || error === 'Connection lost' || error === 'Connection failed';
+            if (isConnectionError) {
+              console.warn(`SSE connection error for ${appId}, falling back to polling:`, error);
+              startPollingFallback(appId, task);
+            } else {
+              // Backend reported an actual analysis failure — show it immediately
+              console.error(`Analysis error for ${appId}:`, error);
+              resetProgressStats(appId);
+              setTasks((prev) => {
+                const newTasks = new Map(prev);
+                const existing = newTasks.get(appId);
+                if (existing) {
+                  newTasks.set(appId, {
+                    ...existing,
+                    status: 'error',
+                    progress: null,
+                    error,
+                  });
+                }
+                return newTasks;
+              });
+              processQueueRef.current();
+            }
           },
           onTimeout: () => {
             console.warn(`SSE timeout for ${appId}`);

@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .. import storage
@@ -18,7 +18,7 @@ from ..steam_api import (
     fetch_achievements_with_stats,
     SteamAPIError,
 )
-from .. import search_applications, STEAM_LANGUAGES, SteamAPIError
+from .. import search_applications, STEAM_LANGUAGES
 from ._shared import (
     AnalyzeMetadata,
     StarredGamePayload,
@@ -26,6 +26,7 @@ from ._shared import (
     NewsItemResponse,
     SAMPLE_LIMIT,
 )
+from ._guards import require_destructive_access
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +249,7 @@ def list_favorite_games() -> List[StarredGameResponse]:
 
 
 @router.delete("/games/{app_id}", status_code=204)
-def delete_game_data(app_id: int) -> Response:
+def delete_game_data(app_id: int, _: None = Depends(require_destructive_access)) -> Response:
     storage.delete_all_game_data(app_id)
     return Response(status_code=204)
 
