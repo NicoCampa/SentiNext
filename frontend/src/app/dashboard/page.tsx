@@ -2413,43 +2413,32 @@ function AnalysisResults({
         )}
 
         {/* Hero KPI cards */}
-        <div className="mt-5 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
+        <div className="mt-5 grid gap-2 sm:gap-3 grid-cols-3">
           {/* Recommendation Rate */}
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
+          <div className={`rounded-xl border border-white/10 bg-slate-900/30 px-3 py-2 flex items-center gap-2 ${mounted ? 'animate-fade-slide-up animation-delay-100' : 'opacity-0'}`}>
             <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-slate-400">{t('dashboard.recommendation')}</p>
-            <div className="mt-2 flex items-end justify-between">
-              <p
-                className="text-2xl sm:text-3xl font-semibold"
-                style={{ color: getRecommendationColor(summaryRecommendationRate ?? 0) }}
-              >
-                {formatPercentOrDash(summaryRecommendationRate)}
-              </p>
-              {recDelta !== null && (
-                <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border border-white/10 ${recDeltaClass}`}>
-                  {recDeltaLabel}
-                </span>
-              )}
-            </div>
+            <p
+              className="text-lg sm:text-xl font-semibold ml-auto"
+              style={{ color: getRecommendationColor(summaryRecommendationRate ?? 0) }}
+            >
+              {formatPercentOrDash(summaryRecommendationRate)}
+            </p>
           </div>
           {/* Issue Rate */}
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-fade-slide-up animation-delay-150' : 'opacity-0'}`}>
+          <div className={`rounded-xl border border-white/10 bg-slate-900/30 px-3 py-2 flex items-center gap-2 ${mounted ? 'animate-fade-slide-up animation-delay-150' : 'opacity-0'}`}>
             <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-slate-400">{t('dashboard.issueRate')}</p>
-            <div className="mt-2 flex items-end justify-between">
-              <p className="text-2xl sm:text-3xl font-semibold text-white">{formatPercentOrDash(summaryIssueRate)}</p>
-              {issueItems.length > 0 && (
-                <span className="text-[10px] sm:text-xs text-slate-500">{issueItems.reduce((s, e) => s + Number(e.issue_count ?? 0), 0).toLocaleString()} issues</span>
-              )}
-            </div>
+            <p className="text-lg sm:text-xl font-semibold text-white ml-auto">{formatPercentOrDash(summaryIssueRate)}</p>
+            {issueItems.length > 0 && (
+              <span className="text-[10px] text-slate-500">{issueItems.reduce((s, e) => s + Number(e.issue_count ?? 0), 0).toLocaleString()}</span>
+            )}
           </div>
           {/* Request Rate */}
-          <div className={`rounded-2xl border border-white/10 bg-slate-900/30 p-4 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
+          <div className={`rounded-xl border border-white/10 bg-slate-900/30 px-3 py-2 flex items-center gap-2 ${mounted ? 'animate-fade-slide-up animation-delay-200' : 'opacity-0'}`}>
             <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-slate-400">{t('dashboard.requestRate')}</p>
-            <div className="mt-2 flex items-end justify-between">
-              <p className="text-2xl sm:text-3xl font-semibold text-white">{formatPercentOrDash(summaryRequestRate)}</p>
-              {requestItems.length > 0 && (
-                <span className="text-[10px] sm:text-xs text-slate-500">{requestItems.reduce((s, e) => s + Number(e.request_count ?? 0), 0).toLocaleString()} requests</span>
-              )}
-            </div>
+            <p className="text-lg sm:text-xl font-semibold text-white ml-auto">{formatPercentOrDash(summaryRequestRate)}</p>
+            {requestItems.length > 0 && (
+              <span className="text-[10px] text-slate-500">{requestItems.reduce((s, e) => s + Number(e.request_count ?? 0), 0).toLocaleString()}</span>
+            )}
           </div>
         </div>
       </Card>
