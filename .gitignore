@@ -59,7 +59,9 @@ data/*.pdf
 /reports/
 
 # Excluded directories
+.agent/
 .agents/
+.claude/skills/
 
 # Benchmarks
 /tooling/benchmarks/results/
