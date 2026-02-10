@@ -4,11 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SentiNext ingests Steam game reviews, classifies them using LLM (Google Gemini) into a structured taxonomy, and surfaces actionable insights like top issues and feature requests.
+SentiNext is an open-source tool that ingests Steam game reviews, classifies them using LLM into a structured taxonomy, and surfaces actionable insights like top issues and feature requests. It is designed for self-hosting.
 
 ## Build & Run Commands
 
-### Environment Setup
+### Quick Start (Docker Compose)
+```bash
+cp .env.example .env.local
+# Edit .env.local with your API key
+docker compose up --build
+```
+
+### Environment Setup (Manual)
 ```bash
 conda env create -f environment.yml
 conda activate SentiNext
@@ -29,12 +36,13 @@ cd frontend && npm run lint
 ## Architecture
 
 ### Deployment Modes
-1. **Web Deployment**: Separate frontend (Next.js server) and backend (FastAPI) services
+1. **Docker Compose**: One-command self-hosting with PostgreSQL, backend, and frontend
+2. **Manual**: Separate frontend (Next.js) and backend (FastAPI) services
 
 ### Backend Structure (`backend/`)
-- `main.py` - FastAPI REST API (~25 endpoints)
+- `main.py` - FastAPI REST API
 - `senti_next/` - Core package:
-  - `llm.py` - Google Gemini integration, review classification with batching (3 reviews/batch), taxonomy parsing
+  - `llm.py` - LLM integration (Gemini/xAI), review classification, taxonomy parsing
   - `storage.py` - PostgreSQL persistence (reviews, labels, starred games, analysis results)
   - `steam_api.py` - Steam API wrapper for fetching reviews and game details
   - `insights.py` - Aggregates classification results into dashboard metrics
@@ -54,23 +62,24 @@ cd frontend && npm run lint
 5. Frontend polls `/progress/{app_id}` for classification status
 
 ### Authentication
-- Clerk integration for web deployment (`SENTINEXT_AUTH_ENABLED=1`)
+- Optional Clerk integration (`SENTINEXT_AUTH_ENABLED=1`)
 - JWT validation via `SENTINEXT_CLERK_JWKS_URL`
-- Local mode uses `user_id="local"` (no auth)
+- Local/self-hosted mode uses `user_id="local"` (no auth required)
 - Admin actions require `SENTINEXT_ADMIN_TOKEN` or inclusion in `SENTINEXT_ADMIN_USER_IDS`
 
 ## Key Environment Variables
 
 **Backend:**
-- `GEMINI_API_KEY` - Required for LLM classification
+- `GEMINI_API_KEY` or `XAI_API_KEY` - At least one LLM API key required
 - `SENTINEXT_GEMINI_MODEL` - Optional, defaults to gemini-flash-lite-latest
 - `DATABASE_URL` - PostgreSQL connection string
-- `SENTINEXT_AUTH_ENABLED` - Enable Clerk auth
+- `SENTINEXT_AUTH_ENABLED` - Enable Clerk auth (default: false)
 - `SENTINEXT_ENABLE_DESTRUCTIVE` - Allow delete endpoints
 
 **Frontend:**
 - `NEXT_PUBLIC_API_BASE_URL` - Backend URL (dev defaults to `http://localhost:8000`)
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk public key
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk public key (optional)
+- `NEXT_PUBLIC_CLERK_DOMAIN` - Custom Clerk domain for CSP headers (optional)
 
 ## LLM Classification Taxonomy
 

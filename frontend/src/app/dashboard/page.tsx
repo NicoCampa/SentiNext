@@ -31,7 +31,6 @@ import {
   SteamGameDetailsResponse,
 } from "@/lib/api";
 import { CurrentPlayersWidget, NewsWithSummary } from "@/components/SteamLiveContext";
-import { useCredits } from "@/contexts/CreditsContext";
 import type {
   AnalyzeResponse,
   AnalyzeEstimateResponse,
@@ -56,7 +55,6 @@ import { SteamImage } from "@/components/SteamImage";
 import HealthOverviewCard from "@/components/HealthOverviewCard";
 import { PageTransition } from "@/components/PageTransition";
 import { Portal } from "@/components/Portal";
-import { UpgradeModal } from "@/components/UpgradeModal";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useGameContext } from "@/contexts/GameContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -474,10 +472,7 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
   const [pendingAnalyzeGame, setPendingAnalyzeGame] = useState<SearchResult | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [upgradeMessage, setUpgradeMessage] = useState<string | undefined>(undefined);
   const fetchFilter = "recent"; // Fixed to recent (latest reviews)
-  const { credits, refresh: refreshCredits } = useCredits();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -562,12 +557,11 @@ function DashboardContent() {
       setUpdateSuccess("You are up to date");
       setTimeout(() => setUpdateSuccess(null), 3000);
       refreshGames().catch(() => null);
-      refreshCredits().catch(() => null);
       if (selectedGame) {
         selectGameById(selectedGame.appid);
       }
     }
-  }, [currentTask, refreshGames, refreshCredits, selectGameById, selectedGame]);
+  }, [currentTask, refreshGames, selectGameById, selectedGame]);
 
   async function handleSearch() {
     if (!searchQuery.trim()) return;
@@ -614,12 +608,7 @@ function DashboardContent() {
       });
     } catch (err) {
       const msg = (err as Error).message || "Failed to start analysis";
-      if (/credit|insufficient/i.test(msg)) {
-        setUpgradeMessage(msg);
-        setShowUpgradeModal(true);
-      } else {
-        setError(msg);
-      }
+      setError(msg);
     }
   }
 
@@ -972,7 +961,6 @@ function DashboardContent() {
             selectedGame={selectedGame}
             updateSuccess={updateSuccess}
             error={error}
-            onCreditError={(msg) => { setUpgradeMessage(msg); setShowUpgradeModal(true); }}
             onUpdate={async () => {
               if (!selectedGame || !analysis?.metadata?.fetched_at) return;
 
@@ -1000,12 +988,7 @@ function DashboardContent() {
                 // dashboard (and Last run date) when the job finishes.
               } catch (err) {
                 const msg = (err as Error).message || "Failed to update analysis";
-                if (/credit|insufficient/i.test(msg)) {
-                  setUpgradeMessage(msg);
-                  setShowUpgradeModal(true);
-                } else {
-                  setError(msg);
-                }
+                setError(msg);
               }
             }}
           />
@@ -1013,12 +996,6 @@ function DashboardContent() {
       </div>
       </PageTransition>
 
-      {showUpgradeModal && (
-        <UpgradeModal
-          message={upgradeMessage}
-          onClose={() => setShowUpgradeModal(false)}
-        />
-      )}
     </AppLayout>
   );
 }
@@ -1131,17 +1108,14 @@ function AnalysisResults({
   onUpdate,
   updateSuccess,
   error,
-  onCreditError,
 }: {
   analysis: AnalyzeResponse;
   selectedGame: SearchResult | null;
   onUpdate?: () => void;
   updateSuccess?: string | null;
   error?: string | null;
-  onCreditError?: (message: string) => void;
 }) {
   const { t, language: userLanguage } = useLanguage();
-  const { silentRefresh: refreshCredits } = useCredits();
   const router = useRouter();
   const insights = analysis.insights ?? null;
   const theme = (insights?.theme as ThemeDefinition | undefined) ?? DEFAULT_THEME;
@@ -1933,8 +1907,6 @@ function AnalysisResults({
         })),
       });
       setSubcategorySummary(result);
-      // Refresh credits after consuming them
-      refreshCredits();
     } catch (err) {
       setSummaryError((err as Error).message || "Failed to generate summary");
     } finally {
@@ -1981,7 +1953,6 @@ function AnalysisResults({
       });
 
       setTrendWeekSummary(result);
-      refreshCredits();
     } catch (err) {
       setTrendWeekSummaryError((err as Error).message || "Failed to generate summary");
     } finally {
@@ -2082,7 +2053,6 @@ function AnalysisResults({
       });
 
       setSegmentSummary(result);
-      refreshCredits();
     } catch (err) {
       setSegmentSummaryError((err as Error).message || "Failed to generate summary");
     } finally {
@@ -2140,7 +2110,6 @@ function AnalysisResults({
       });
 
       setTopIssuesSummary(result);
-      refreshCredits();
     } catch (err) {
       setTopIssuesSummaryError((err as Error).message || "Failed to generate summary");
     } finally {
@@ -2198,7 +2167,6 @@ function AnalysisResults({
       });
 
       setTopRequestsSummary(result);
-      refreshCredits();
     } catch (err) {
       setTopRequestsSummaryError((err as Error).message || "Failed to generate summary");
     } finally {
@@ -2235,14 +2203,13 @@ function AnalysisResults({
         start_date: result.start_date,
         end_date: result.end_date,
       });
-      refreshCredits();
     } catch {
       // Silently fail — the card still shows previous data or empty state
     } finally {
       if (healthOverviewRequestIdRef.current !== requestId) return;
       setHealthOverviewRefreshing(false);
     }
-  }, [selectedGame, refreshCredits, filterScopeLabel]);
+  }, [selectedGame, filterScopeLabel]);
 
   return (
     <div className="space-y-8">
@@ -2317,16 +2284,8 @@ function AnalysisResults({
         )}
 
         {error && (
-          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 sm:p-3 flex items-center justify-between gap-3">
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 sm:p-3">
             <p className="text-xs sm:text-sm text-rose-400">{error}</p>
-            {(/credit|insufficient/i.test(error)) && onCreditError && (
-              <button
-                onClick={() => onCreditError(error)}
-                className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 transition-colors"
-              >
-                Upgrade Plan
-              </button>
-            )}
           </div>
         )}
 
@@ -3244,8 +3203,6 @@ function AnalysisResults({
                         next.set(reviewKey, { text: result.translated_text, loading: false, show: true });
                         return next;
                       });
-                      // Refresh credits after translation
-                      refreshCredits();
                     } catch (error) {
                       console.error('Translation failed:', error);
                       setTranslations((prev) => {
@@ -3529,7 +3486,6 @@ function AnalysisResults({
                           next.set(reviewKey, { text: result.translated_text, loading: false, show: true });
                           return next;
                         });
-                        refreshCredits();
                       } catch (error) {
                         console.error("Translation error:", error);
                         setTranslations((prev) => {
@@ -3806,7 +3762,6 @@ function AnalysisResults({
                           next.set(reviewKey, { text: result.translated_text, loading: false, show: true });
                           return next;
                         });
-                        refreshCredits();
                       } catch (error) {
                         console.error('Translation failed:', error);
                         setTranslations((prev) => {

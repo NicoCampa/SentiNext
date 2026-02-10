@@ -7,9 +7,7 @@ import { Button } from './ui/button';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SentiNextLogo } from './SentiNextLogo';
-import { createCheckoutSession } from '@/lib/api';
-
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 
 export function Onboarding() {
   const { showOnboarding, markOnboardingComplete } = useOnboarding();
@@ -105,7 +103,6 @@ export function Onboarding() {
             {currentStep === 1 && <StepSearchAnalyze />}
             {currentStep === 2 && <StepInsights />}
             {currentStep === 3 && <StepAIFeatures />}
-            {currentStep === 4 && <StepPricing onComplete={markOnboardingComplete} />}
           </div>
 
           {/* Navigation buttons */}
@@ -468,150 +465,3 @@ function StepAIFeatures() {
   );
 }
 
-function StepPricing({ onComplete }: { onComplete: () => void }) {
-  const { t } = useLanguage();
-  const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
-
-  async function handleSubscribe(tier: "indie") {
-    setUpgradeLoading(tier);
-    try {
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-      const result = await createCheckoutSession(
-        tier,
-        `${baseUrl}/dashboard?view=home&upgrade=success`,
-        `${baseUrl}/dashboard?view=home&upgrade=cancelled`,
-        "monthly"
-      );
-      if (result.checkout_url) {
-        onComplete(); // Mark onboarding done before redirect so it won't reappear on cancel
-        window.location.href = result.checkout_url;
-      }
-    } catch (err) {
-      console.error("Failed to create checkout session", err);
-    } finally {
-      setUpgradeLoading(null);
-    }
-  }
-
-  const tiers = [
-    {
-      name: t('onboarding.tier.free'),
-      price: '$0',
-      priceLabel: '',
-      credits: t('onboarding.tier.trialCredits'),
-      color: 'border-t-slate-400',
-      textColor: 'text-slate-300',
-      btnClass: 'border-slate-500/30 text-slate-300 hover:bg-slate-500/10',
-      badge: null,
-      action: 'free' as const,
-      features: [t('onboarding.tier.freeFeat1'), t('onboarding.tier.freeFeat2')],
-    },
-    {
-      name: t('onboarding.tier.indie'),
-      price: '$8',
-      priceLabel: t('onboarding.tier.perMonth'),
-      credits: t('onboarding.tier.indieCredits'),
-      color: 'border-t-emerald-500',
-      textColor: 'text-emerald-400',
-      btnClass: 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10',
-      badge: null,
-      action: 'indie' as const,
-      features: [t('onboarding.tier.indieFeat1'), t('onboarding.tier.indieFeat2'), t('onboarding.tier.indieFeat3')],
-    },
-    {
-      name: t('onboarding.tier.enterprise'),
-      price: t('onboarding.tier.custom'),
-      priceLabel: '',
-      credits: t('onboarding.tier.custom'),
-      color: 'border-t-purple-500',
-      textColor: 'text-purple-400',
-      btnClass: 'border-purple-500/30 text-purple-400 hover:bg-purple-500/10',
-      badge: null,
-      action: 'enterprise' as const,
-      features: [t('onboarding.tier.entFeat1'), t('onboarding.tier.entFeat2')],
-    },
-  ];
-
-  return (
-    <div className="flex flex-col flex-1">
-      {/* Header */}
-      <div className="mb-5">
-        <div className="w-10 h-10 mb-4 flex items-center justify-center bg-[rgb(0,255,255)]/10 border border-[rgb(0,255,255)]/30">
-          <svg className="w-5 h-5 text-[rgb(0,255,255)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold text-white mb-2">
-          {t('onboarding.step4.title')}
-        </h2>
-        <p className="text-[rgb(150,150,170)] text-sm">
-          {t('onboarding.step4.desc')}
-        </p>
-      </div>
-
-      {/* Tier cards */}
-      <div className="grid grid-cols-3 gap-3 mb-8">
-        {tiers.map((tier, i) => (
-          <div
-            key={i}
-            className={`relative bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 border-t-2 ${tier.color} p-3 animate-fade-slide-up flex flex-col min-h-[220px]`}
-            style={{ animationDelay: `${i * 80}ms` }}
-          >
-            {tier.badge && (
-              <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-sky-500 text-white text-[8px] uppercase tracking-wider px-2 py-0.5 font-semibold">
-                {tier.badge}
-              </div>
-            )}
-            <p className={`text-xs font-semibold ${tier.textColor} mb-2`}>{tier.name}</p>
-            <p className="text-lg font-bold text-white leading-tight">
-              {tier.price}
-              {tier.priceLabel && <span className="text-[10px] font-normal text-[rgb(100,100,120)]">/{tier.priceLabel}</span>}
-            </p>
-            <div className="mt-3 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[rgb(100,100,120)]">{t('onboarding.tier.creditsLabel')}</span>
-                <span className="text-[10px] text-white font-medium ml-auto">{tier.credits}</span>
-              </div>
-            </div>
-            {/* Included features */}
-            <div className="mt-3 pt-3 border-t border-[rgb(0,255,255)]/5 space-y-1.5">
-              <p className="text-[9px] uppercase tracking-wider text-[rgb(100,100,120)] mb-1">{t('onboarding.tier.includes')}</p>
-              {tier.features.map((feat, j) => (
-                <div key={j} className="flex items-center gap-1.5">
-                  <svg className="w-3 h-3 text-[rgb(0,255,255)]/50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="text-[10px] text-[rgb(150,150,170)]">{feat}</span>
-                </div>
-              ))}
-            </div>
-            {/* Action button */}
-            <button
-              onClick={() => {
-                if (tier.action === 'free') {
-                  onComplete();
-                } else if (tier.action === 'enterprise') {
-                  onComplete();
-                  window.location.href = '/support';
-                } else {
-                  handleSubscribe(tier.action);
-                }
-              }}
-              disabled={upgradeLoading !== null}
-              className={`mt-auto pt-3 w-full py-1.5 border text-[10px] uppercase tracking-wider transition-all disabled:opacity-50 ${tier.btnClass}`}
-            >
-              {upgradeLoading === tier.action
-                ? '...'
-                : tier.action === 'free'
-                ? t('onboarding.tier.tryFree')
-                : tier.action === 'enterprise'
-                ? t('onboarding.tier.contactUs')
-                : t('onboarding.tier.subscribe')}
-            </button>
-          </div>
-        ))}
-      </div>
-
-    </div>
-  );
-}

@@ -1,6 +1,15 @@
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV !== "production";
 
+// Build Clerk CSP sources from environment variable
+const clerkDomain = process.env.NEXT_PUBLIC_CLERK_DOMAIN;
+const clerkSources = clerkDomain
+  ? ` https://${clerkDomain}`
+  : "";
+const clerkAccountsSrc = clerkDomain
+  ? ` https://${clerkDomain.replace(/^clerk\./, 'accounts.')}`
+  : "";
+
 const nextConfig = {
   reactStrictMode: true,
   images: {
@@ -33,12 +42,12 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.clerk.dev https://*.clerk.accounts.dev https://clerk.app.sentinext.nicolocampagnoli.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.clerk.dev https://*.clerk.accounts.dev" + clerkSources,
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https://cdn.cloudflare.steamstatic.com https://shared.akamai.steamstatic.com https://img.clerk.com",
-              "connect-src 'self' " + (process.env.NEXT_PUBLIC_API_BASE_URL || "") + " https://api.clerk.dev https://*.clerk.accounts.dev https://clerk.app.sentinext.nicolocampagnoli.com",
-              "frame-src 'self' https://accounts.clerk.dev https://*.clerk.accounts.dev https://accounts.app.sentinext.nicolocampagnoli.com",
+              "connect-src 'self' " + (process.env.NEXT_PUBLIC_API_BASE_URL || "") + " https://api.clerk.dev https://*.clerk.accounts.dev" + clerkSources,
+              "frame-src 'self' https://accounts.clerk.dev https://*.clerk.accounts.dev" + clerkAccountsSrc,
             ].join("; "),
           },
         ],

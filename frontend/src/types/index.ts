@@ -487,5 +487,4 @@ export interface ComparisonSummary {
   weaknesses_per_game: Record<number, string[]>;
   recommendations: Record<number, string>;
   cached: boolean;
-  credits_charged: number;
 }

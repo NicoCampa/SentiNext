@@ -349,31 +349,10 @@ def get_user_summary(days: int = 30) -> Dict[str, int]:
     since = datetime.now(timezone.utc) - timedelta(days=safe_days)
 
     with db_module.get_connection() as conn:
-        totals = conn.execute(
-            text("SELECT COUNT(*) as total FROM user_subscriptions")
-        ).mappings().fetchone()
-        new_users = conn.execute(
-            text("""
-                SELECT COUNT(*) as total
-                FROM user_subscriptions
-                WHERE created_at >= :since
-            """),
-            {"since": since},
-        ).mappings().fetchone()
-        paid_users = conn.execute(
-            text("""
-                SELECT COUNT(*) as total
-                FROM user_subscriptions
-                WHERE tier IS NOT NULL AND tier != 'free'
-            """)
-        ).mappings().fetchone()
-
         active_users = conn.execute(
             text("""
                 SELECT COUNT(DISTINCT user_id) as total
                 FROM (
-                    SELECT user_id FROM credit_transactions WHERE created_at >= :since
-                    UNION
                     SELECT user_id FROM llm_usage WHERE created_at >= :since
                     UNION
                     SELECT user_id FROM chat_messages WHERE created_at >= :since
@@ -383,95 +362,7 @@ def get_user_summary(days: int = 30) -> Dict[str, int]:
         ).mappings().fetchone()
 
     return {
-        "total": int(totals["total"] or 0) if totals else 0,
-        "new": int(new_users["total"] or 0) if new_users else 0,
-        "paid": int(paid_users["total"] or 0) if paid_users else 0,
         "active": int(active_users["total"] or 0) if active_users else 0,
-    }
-
-
-def get_subscription_tier_counts() -> List[Dict[str, Any]]:
-    """Return counts per subscription tier."""
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT tier, COUNT(*) as count
-                FROM user_subscriptions
-                GROUP BY tier
-                ORDER BY count DESC
-            """)
-        ).mappings().fetchall()
-
-    return [dict(row) for row in rows]
-
-
-def get_credit_usage_summary(days: int = 30, limit: int = 10) -> Dict[str, Any]:
-    """Return credit usage totals and breakdowns (admin use)."""
-    from . import db as db_module
-
-    safe_days = max(1, min(int(days or 30), 365))
-    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
-
-    with db_module.get_connection() as conn:
-        totals = conn.execute(
-            text("""
-                SELECT
-                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as used
-                FROM credit_transactions
-                WHERE created_at >= :since
-            """),
-            {"since": since},
-        ).mappings().fetchone()
-
-        by_operation = conn.execute(
-            text("""
-                SELECT
-                    operation,
-                    COUNT(*) as transactions,
-                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as credits_used
-                FROM credit_transactions
-                WHERE created_at >= :since AND amount < 0
-                GROUP BY operation
-                ORDER BY credits_used DESC
-            """),
-            {"since": since},
-        ).mappings().fetchall()
-
-        top_users = conn.execute(
-            text("""
-                SELECT
-                    user_id,
-                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as credits_used
-                FROM credit_transactions
-                WHERE created_at >= :since AND amount < 0
-                GROUP BY user_id
-                ORDER BY credits_used DESC
-                LIMIT :limit
-            """),
-            {"since": since, "limit": int(limit)},
-        ).mappings().fetchall()
-
-        top_apps = conn.execute(
-            text("""
-                SELECT
-                    app_id,
-                    COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as credits_used
-                FROM credit_transactions
-                WHERE created_at >= :since AND amount < 0 AND app_id IS NOT NULL
-                GROUP BY app_id
-                ORDER BY credits_used DESC
-                LIMIT :limit
-            """),
-            {"since": since, "limit": int(limit)},
-        ).mappings().fetchall()
-
-    return {
-        "used": int(totals["used"] or 0) if totals else 0,
-        "by_operation": [dict(row) for row in by_operation],
-        "top_users": [dict(row) for row in top_users],
-        "top_apps": [dict(row) for row in top_apps],
     }
 
 
@@ -3679,37 +3570,6 @@ def load_comparison_summary(cache_key: str) -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Stripe webhook idempotency
-# ---------------------------------------------------------------------------
-
-def is_stripe_event_processed(event_id: str) -> bool:
-    """Check if a Stripe webhook event has already been processed."""
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        row = conn.execute(
-            text("SELECT 1 FROM processed_stripe_events WHERE event_id = :event_id"),
-            {"event_id": event_id},
-        ).fetchone()
-        return row is not None
-
-
-def mark_stripe_event_processed(event_id: str) -> None:
-    """Record a Stripe webhook event as processed."""
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        conn.execute(
-            text("""
-                INSERT INTO processed_stripe_events (event_id, processed_at)
-                VALUES (:event_id, NOW())
-                ON CONFLICT (event_id) DO NOTHING
-            """),
-            {"event_id": event_id},
-        )
-
-
-# ---------------------------------------------------------------------------
 # GDPR: User data deletion
 # ---------------------------------------------------------------------------
 
@@ -3717,9 +3577,8 @@ def delete_user_data(user_id: str) -> Dict[str, int]:
     """Delete all user-owned data for GDPR compliance.
 
     Deletes: starred_games, chat_messages, chat_sessions, chat_context,
-    citation_feedback, support_messages, credit_transactions,
-    user_subscriptions, analysis_results, progress, job_registry,
-    comparison_summaries, api_requests, llm_usage.
+    citation_feedback, support_messages, analysis_results, progress,
+    job_registry, comparison_summaries, api_requests, llm_usage.
 
     Reviews/labels are shared game data and not user-owned, so excluded.
 
@@ -3735,8 +3594,6 @@ def delete_user_data(user_id: str) -> Dict[str, int]:
         "chat_context",
         "citation_feedback",
         "support_messages",
-        "credit_transactions",
-        "user_subscriptions",
         "analysis_results",
         "progress",
         "job_registry",

@@ -6,7 +6,7 @@ PostgreSQL-only backend for Steam review analysis.
 
 - Python 3.10+
 - PostgreSQL database (required)
-- Google Gemini API key
+- Google Gemini API key or xAI API key
 
 ## Environment Variables
 
@@ -20,7 +20,6 @@ Optional:
 ```bash
 SENTINEXT_ALLOWED_ORIGINS=http://localhost:3000
 SENTINEXT_AUTH_ENABLED=false
-SENTINEXT_LICENSE_ENFORCE=false
 SENTINEXT_ENABLE_DESTRUCTIVE=true
 SENTINEXT_ADMIN_USER_IDS=local
 ```
@@ -31,18 +30,13 @@ See `../LOCAL_DEVELOPMENT.md` for setup instructions.
 
 ## Database
 
-The app uses PostgreSQL exclusively. No SQLite support.
-
-Schema is initialized automatically on first run via `storage.init_db()`.
+The app uses PostgreSQL exclusively. Schema is initialized automatically on first run.
 
 Run migrations if needed:
 ```bash
-python backend/migrate_postgres_schema.py
+cd backend && alembic upgrade head
 ```
 
-## Production Deployment
+## Deployment
 
-Deploy on Render with:
-- PostgreSQL database (managed)
-- Environment variables configured
-- Internal DATABASE_URL for optimal performance
+Use `docker compose up --build` from the project root. See `../LOCAL_DEVELOPMENT.md` for details.

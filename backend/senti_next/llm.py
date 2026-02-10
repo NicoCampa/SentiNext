@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import contextvars
-import threading
 import types
 from collections import Counter
 from contextlib import contextmanager
@@ -29,7 +28,6 @@ from pydantic import BaseModel, Field
 import requests
 
 from . import storage
-from . import credits
 
 logger = logging.getLogger(__name__)
 
@@ -54,27 +52,6 @@ _LLM_USAGE_CONTEXT: contextvars.ContextVar[Dict[str, Any]] = contextvars.Context
 )
 
 
-class CreditAccumulator:
-    """Thread-safe accumulator for tracking credits spent during an analysis job."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._total = 0
-
-    def add(self, amount: int) -> None:
-        with self._lock:
-            self._total += amount
-
-    def subtract(self, amount: int) -> None:
-        with self._lock:
-            self._total = max(self._total - amount, 0)
-
-    @property
-    def total(self) -> int:
-        with self._lock:
-            return self._total
-
-
 @contextmanager
 def llm_usage_context(
     *,
@@ -82,7 +59,6 @@ def llm_usage_context(
     operation: Optional[str] = None,
     app_id: Optional[int] = None,
     session_id: Optional[str] = None,
-    credit_accumulator: Optional[CreditAccumulator] = None,
 ) -> Any:
     """Attach context for LLM usage logging within the current task."""
     current = _LLM_USAGE_CONTEXT.get() or {}
@@ -92,8 +68,6 @@ def llm_usage_context(
         "app_id": app_id,
         "session_id": session_id,
     }.items() if v is not None}
-    if credit_accumulator is not None:
-        updates["credit_accumulator"] = credit_accumulator
     merged = {**current, **updates}
     token = _LLM_USAGE_CONTEXT.set(types.MappingProxyType(merged))
     try:
@@ -147,77 +121,6 @@ def _record_llm_usage(
         )
     except Exception as exc:
         logger.debug("Failed to record LLM usage: %s", exc)
-
-
-def _billing_context() -> tuple[Optional[str], Optional[str], Optional[int], Optional[str]]:
-    ctx = _LLM_USAGE_CONTEXT.get() or {}
-    return (
-        ctx.get("user_id"),
-        ctx.get("operation"),
-        ctx.get("app_id"),
-        ctx.get("session_id"),
-    )
-
-
-def _reserve_credits_for_operation(
-    operation: str,
-    *,
-    amount: Optional[int] = None,
-    description: Optional[str] = None,
-    app_id: Optional[int] = None,
-    session_id: Optional[str] = None,
-) -> Optional[dict]:
-    user_id, _ctx_operation, ctx_app_id, ctx_session_id = _billing_context()
-    if not user_id:
-        return None
-
-    op = operation
-    cost = amount if amount is not None else credits.CREDIT_COSTS.get(op)
-    if cost is None or cost <= 0:
-        return None
-
-    credits.reserve_credits_or_raise(
-        user_id=str(user_id),
-        amount=int(cost),
-        operation=op,
-        description=description,
-        app_id=app_id if app_id is not None else ctx_app_id,
-        session_id=session_id if session_id is not None else ctx_session_id,
-    )
-
-    # Track in accumulator if present in context
-    ctx = _LLM_USAGE_CONTEXT.get() or {}
-    accumulator = ctx.get("credit_accumulator")
-    if accumulator is not None:
-        accumulator.add(int(cost))
-
-    return {
-        "user_id": str(user_id),
-        "amount": int(cost),
-        "operation": op,
-        "app_id": app_id if app_id is not None else ctx_app_id,
-        "session_id": session_id if session_id is not None else ctx_session_id,
-    }
-
-
-def _refund_reserved_credits(reservation: Optional[dict], reason: str) -> None:
-    if not reservation:
-        return
-
-    # Track refund in accumulator if present in context
-    ctx = _LLM_USAGE_CONTEXT.get() or {}
-    accumulator = ctx.get("credit_accumulator")
-    if accumulator is not None:
-        accumulator.subtract(reservation["amount"])
-
-    credits.refund_credits(
-        user_id=reservation["user_id"],
-        amount=reservation["amount"],
-        operation=reservation["operation"],
-        description=reason,
-        app_id=reservation.get("app_id"),
-        session_id=reservation.get("session_id"),
-    )
 
 
 class LLMErrorType(Enum):
@@ -1575,8 +1478,6 @@ async def call_llm_with_tools(
     model_name = model or GEMINI_MODEL
     effective_timeout = timeout if timeout is not None else LLM_TIMEOUT_SECONDS
 
-    reservation: Optional[dict] = None
-
     try:
         from google import genai
         from google.genai import types
@@ -1586,16 +1487,6 @@ async def call_llm_with_tools(
         start_time = time.time()
 
         client = genai.Client(api_key=api_key)
-
-        # Reserve credits per agent iteration (per LLM call)
-        user_id, ctx_operation, ctx_app_id, ctx_session_id = _billing_context()
-        billing_operation = ctx_operation if ctx_operation in credits.CREDIT_COSTS else "chat_agent"
-        reservation = _reserve_credits_for_operation(
-            billing_operation,
-            description="Agentic chat LLM call",
-            app_id=ctx_app_id,
-            session_id=ctx_session_id,
-        )
 
         # Convert messages to Gemini format
         gemini_contents = _convert_messages_to_gemini(messages)
@@ -1810,19 +1701,14 @@ async def call_llm_with_tools(
         )
 
     except ImportError:
-        _refund_reserved_credits(reservation, "Refund: tool-calling LLM import failed")
         raise LLMError(
             "google-genai package not installed. Run: pip install google-genai",
             LLMErrorType.BAD_REQUEST,
             retryable=False
         )
     except LLMError:
-        _refund_reserved_credits(reservation, "Refund: tool-calling LLM failed")
         raise  # Re-raise our custom errors
-    except credits.InsufficientCreditsError:
-        raise
     except Exception as e:
-        _refund_reserved_credits(reservation, "Refund: tool-calling LLM error")
         logger.error(f"Unexpected Gemini tool-calling API error: {e}")
         raise LLMError(f"Gemini tool-calling API error: {str(e)}", LLMErrorType.UNKNOWN, retryable=False)
 
@@ -1958,22 +1844,7 @@ def run_chat_completion(
     prompt: str,
 ) -> tuple[str, str]:
     """Run a chat completion with a pre-built prompt and return (content, model_id)."""
-    reservation: Optional[dict] = None
-    try:
-        user_id, operation, app_id, session_id = _billing_context()
-        if operation in credits.CREDIT_COSTS:
-            reservation = _reserve_credits_for_operation(
-                operation,
-                description="Chat completion",
-                app_id=app_id,
-                session_id=session_id,
-            )
-        return _run_llm(prompt)
-    except credits.InsufficientCreditsError:
-        raise
-    except Exception:
-        _refund_reserved_credits(reservation, "Refund: chat completion failed")
-        raise
+    return _run_llm(prompt)
 
 
 # Language name mapping for translation prompts
@@ -2031,21 +1902,10 @@ If the text is already in {target_name}, return it unchanged.
 Text to translate:
 {text}"""
 
-    reservation: Optional[dict] = None
-    try:
-        reservation = _reserve_credits_for_operation(
-            "translate",
-            description=f"Translate to {target_name}",
-        )
-        # Use cheap model for translation
-        translated = _run_gemini(prompt, GEMINI_MODEL_CHEAP)
-        model_used = _model_id("google", GEMINI_MODEL_CHEAP)
-        return translated.strip(), model_used
-    except credits.InsufficientCreditsError:
-        raise
-    except Exception:
-        _refund_reserved_credits(reservation, "Refund: translation failed")
-        raise
+    # Use cheap model for translation
+    translated = _run_gemini(prompt, GEMINI_MODEL_CHEAP)
+    model_used = _model_id("google", GEMINI_MODEL_CHEAP)
+    return translated.strip(), model_used
 
 
 def _parse_payload(raw: str) -> Dict[str, Any]:
@@ -2203,23 +2063,10 @@ def classify_reviews_batch(
         raise ValueError("Missing review_id in batch input.")
 
     logger.info(f"Classifying batch of {len(items)} reviews with LLM")
-    reservation: Optional[dict] = None
-    try:
-        reservation = _reserve_credits_for_operation(
-            "classify",
-            amount=len(items) * credits.CREDIT_COSTS["classify"],
-            description=f"Classify {len(items)} reviews",
-        )
-
-        prompt = _build_batch_prompt(items, game_context=game_context)
-        raw, model_used = _run_llm(prompt)
-        logger.info(f"LLM batch classification complete: {len(items)} reviews processed")
-        payload = _load_json_mapping(raw)
-    except credits.InsufficientCreditsError:
-        raise
-    except Exception:
-        _refund_reserved_credits(reservation, "Refund: review classification failed")
-        raise
+    prompt = _build_batch_prompt(items, game_context=game_context)
+    raw, model_used = _run_llm(prompt)
+    logger.info(f"LLM batch classification complete: {len(items)} reviews processed")
+    payload = _load_json_mapping(raw)
 
     results: Dict[str, Dict[str, Any]] = {}
     failed_ids = []
@@ -2250,8 +2097,6 @@ def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Option
 
     try:
         return classify_reviews_batch(items, game_context=game_context)
-    except credits.InsufficientCreditsError:
-        raise
     except Exception as batch_error:
         # Batch failed completely - retry each review individually
         if len(items) == 1:
@@ -2299,16 +2144,6 @@ def classify_review_single(
         item.get("review_language"),
     )
 
-    reservation: Optional[dict] = None
-    try:
-        reservation = _reserve_credits_for_operation(
-            "classify",
-            amount=credits.CREDIT_COSTS["classify"],
-            description="Classify single review (xai two-tier)",
-        )
-    except credits.InsufficientCreditsError:
-        raise
-
     # Tier 1: fast non-reasoning model
     try:
         raw = _run_xai(prompt, XAI_MODEL, parse_model=ReviewClassification)
@@ -2334,7 +2169,6 @@ def classify_review_single(
             f"Tier 2 ({XAI_MODEL_REASONING}) also failed for review {item.get('review_id')}: {tier2_err}, "
             f"using default label"
         )
-        _refund_reserved_credits(reservation, "Refund: both tiers failed for review classification")
 
     # Tier 3: default label
     return _DEFAULT_LABEL.copy(), _model_id("xai", XAI_MODEL)
@@ -2495,22 +2329,6 @@ def ensure_review_labels(
         )
 
     logger.info(f"{len(pending_reviews)} reviews to classify via xAI two-tier strategy")
-
-    # Charge for cached label reuse (no LLM call, still billed)
-    if cached_reuse_count > 0:
-        try:
-            _reserve_credits_for_operation(
-                "classify_cached",
-                amount=cached_reuse_count * credits.CREDIT_COSTS["classify_cached"],
-                description=f"Cached labels reused ({cached_reuse_count})",
-                app_id=app_id,
-            )
-        except credits.InsufficientCreditsError:
-            logger.warning(
-                "Insufficient credits for cached label billing (%d cached); "
-                "returning cached results anyway since no LLM work was needed.",
-                cached_reuse_count,
-            )
 
     # Process reviews in parallel (one xAI call per review, two-tier fallback)
     if pending_reviews:
@@ -3420,16 +3238,7 @@ def summarize_monthly_report(
         top_requests=_format_issue_list(insights.get("top_requests")),
     )
 
-    reservation: Optional[dict] = None
     try:
-        _user_id, ctx_operation, ctx_app_id, ctx_session_id = _billing_context()
-        billing_operation = ctx_operation if ctx_operation in credits.CREDIT_COSTS else "report_summary"
-        reservation = _reserve_credits_for_operation(
-            billing_operation,
-            description="Monthly report summary",
-            app_id=ctx_app_id,
-            session_id=ctx_session_id,
-        )
         raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=ReportSummary)
         _model_used = _model_id("google", GEMINI_MODEL_CHEAP)
         parsed = ReportSummary.model_validate_json(raw)
@@ -3442,10 +3251,7 @@ def summarize_monthly_report(
             "key_points": key_points,
             "actions": actions,
         }
-    except credits.InsufficientCreditsError:
-        raise
     except Exception as exc:
-        _refund_reserved_credits(reservation, "Refund: report summary failed")
         logger.error("Failed to generate monthly report summary: %s", exc)
         return {
             "summary": "Unable to generate summary.",
@@ -3583,16 +3389,7 @@ def summarize_subcategory_reviews(
         reviews_text=reviews_text,
     )
 
-    reservation: Optional[dict] = None
     try:
-        _user_id, ctx_operation, ctx_app_id, ctx_session_id = _billing_context()
-        billing_operation = ctx_operation if ctx_operation in credits.CREDIT_COSTS else "summarize"
-        reservation = _reserve_credits_for_operation(
-            billing_operation,
-            description="Subcategory summary",
-            app_id=ctx_app_id,
-            session_id=ctx_session_id,
-        )
         raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=SubcategorySummary)
         model_used = _model_id("google", GEMINI_MODEL_CHEAP)
         parsed = SubcategorySummary.model_validate_json(raw)
@@ -3605,10 +3402,7 @@ def summarize_subcategory_reviews(
             "pros": pros,
             "cons": cons,
         }
-    except credits.InsufficientCreditsError:
-        raise
     except Exception as exc:
-        _refund_reserved_credits(reservation, "Refund: summary generation failed")
         logger.error(f"Failed to summarize reviews: {exc}")
         return {
             "summary": f"Failed to generate summary: {str(exc)}",
@@ -3864,16 +3658,7 @@ def summarize_widget_reviews(
         reviews_text=reviews_text,
     )
 
-    reservation: Optional[dict] = None
     try:
-        _user_id, ctx_operation, ctx_app_id, ctx_session_id = _billing_context()
-        billing_operation = ctx_operation if ctx_operation in credits.CREDIT_COSTS else "summarize"
-        reservation = _reserve_credits_for_operation(
-            billing_operation,
-            description="Widget summary",
-            app_id=ctx_app_id,
-            session_id=ctx_session_id,
-        )
         raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=ReportSummary)
         _model_used = _model_id("google", GEMINI_MODEL_CHEAP)
         parsed = ReportSummary.model_validate_json(raw)
@@ -3886,10 +3671,7 @@ def summarize_widget_reviews(
             "key_points": key_points,
             "actions": actions,
         }
-    except credits.InsufficientCreditsError:
-        raise
     except Exception as exc:
-        _refund_reserved_credits(reservation, "Refund: widget summary failed")
         logger.error("Failed to summarize widget reviews: %s", exc)
         return {
             "summary": "Unable to generate summary.",
@@ -4110,15 +3892,7 @@ def generate_health_overview(
         reviews_text=reviews_text,
     )
 
-    reservation: Optional[dict] = None
     try:
-        _user_id, ctx_operation, ctx_app_id, ctx_session_id = _billing_context()
-        reservation = _reserve_credits_for_operation(
-            "health_overview",
-            description="Health overview generation",
-            app_id=ctx_app_id,
-            session_id=ctx_session_id,
-        )
         raw = _run_gemini(prompt, GEMINI_MODEL_CHEAP, response_schema=HealthOverview)
         parsed = HealthOverview.model_validate_json(raw)
 
@@ -4136,10 +3910,7 @@ def generate_health_overview(
             "sentiment_trend": sentiment_trend,
             "top_strengths": [s.strip() for s in parsed.top_strengths if s][:3],
         }
-    except credits.InsufficientCreditsError:
-        raise
     except Exception as exc:
-        _refund_reserved_credits(reservation, "Refund: health overview failed")
         logger.error("Failed to generate health overview: %s", exc)
         return {
             "summary": "Unable to generate health overview.",
@@ -4621,7 +4392,6 @@ __all__ = [
     "classify_review",
     "classify_review_single",
     "compare_games",
-    "CreditAccumulator",
     "ensure_review_labels",
     "LLMError",
     "LLMErrorType",

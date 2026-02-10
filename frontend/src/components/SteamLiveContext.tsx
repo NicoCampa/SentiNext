@@ -368,7 +368,7 @@ export function NewsWithSummary({
           )}
 
           <p className="text-[9px] text-slate-600 text-right">
-            Based on {summary.news_count} updates • {summary.credits_charged} credits
+            Based on {summary.news_count} updates
           </p>
         </div>
       )}

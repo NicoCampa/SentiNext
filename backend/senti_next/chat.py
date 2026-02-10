@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Callable
 import re
 import time
 
-from . import credits, llm, storage
+from . import llm, storage
 from .llm import _sanitize_review_text
 from .steam_api import fetch_app_details
 
@@ -1389,8 +1389,6 @@ def answer_game_aware_chat(
             ):
                 response_text, model_id = llm.run_chat_completion(prompt)
             break
-        except credits.InsufficientCreditsError:
-            raise
         except Exception as e:
             logger.warning(f"LLM call attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt == max_retries - 1:

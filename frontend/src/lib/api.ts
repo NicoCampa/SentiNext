@@ -101,15 +101,6 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (response.status === 429) {
     throw new Error("You're making requests too quickly. Please wait a moment and try again.");
   }
-  if (response.status === 402) {
-    let message = "Insufficient credits";
-    try {
-      const body = await response.json();
-      message = body?.detail?.message || body?.detail || body?.message || message;
-      if (typeof message !== "string") message = "Insufficient credits";
-    } catch { /* use default */ }
-    throw new Error(message);
-  }
   if (!response.ok) {
     let detail: string | undefined;
     try {
@@ -952,42 +943,10 @@ export async function fetchAdminSupportUnreadCount(): Promise<UnreadCountRespons
   return handleResponse<UnreadCountResponse>(response);
 }
 
-export interface AdminDashboardTierCount {
-  tier: string | null;
-  count: number;
-}
-
 export interface AdminDashboardUsers {
-  total: number;
-  new: number;
   active: number;
-  paid: number;
-  mrr_estimate: number;
-  tier_counts: AdminDashboardTierCount[];
 }
 
-export interface AdminDashboardCreditsBreakdown {
-  operation?: string | null;
-  transactions: number;
-  credits_used: number;
-}
-
-export interface AdminDashboardTopUser {
-  user_id: string;
-  credits_used: number;
-}
-
-export interface AdminDashboardTopApp {
-  app_id: number;
-  credits_used: number;
-}
-
-export interface AdminDashboardCredits {
-  used: number;
-  by_operation: AdminDashboardCreditsBreakdown[];
-  top_users: AdminDashboardTopUser[];
-  top_apps: AdminDashboardTopApp[];
-}
 
 export interface AdminDashboardLlmBreakdown {
   key: string;
@@ -1012,21 +971,11 @@ export interface AdminDashboardLlm {
   by_model: AdminDashboardLlmBreakdown[];
 }
 
-export interface TierCostEstimate {
-  tier: string;
-  credits: number;
-  light_usd: number;
-  typical_usd: number;
-  heavy_usd: number;
-}
-
 export interface AdminDashboardSummary {
   since: string;
   days: number;
   users: AdminDashboardUsers;
-  credits: AdminDashboardCredits;
   llm: AdminDashboardLlm;
-  cost_per_user: TierCostEstimate[];
 }
 
 export async function fetchAdminDashboardSummary(params: {
@@ -1131,82 +1080,6 @@ export async function fetchAdminApiUsage(params: {
   return handleResponse<ApiUsageSummary>(response);
 }
 
-export interface GrantCreditsPayload {
-  user_id: string;
-  amount: number;
-  reason: string;
-}
-
-export interface GrantCreditsResponse {
-  user_id: string;
-  amount_granted: number;
-  new_balance: number;
-  reason: string;
-}
-
-export async function grantCredits(
-  payload: GrantCreditsPayload
-): Promise<GrantCreditsResponse> {
-  const response = await authFetch(apiUrl("/admin/credits/grant"), {
-    method: "POST",
-    headers: {
-      ...optionalAdminHeaders(),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<GrantCreditsResponse>(response);
-}
-
-export interface UserSubscriptionInfo {
-  user_id: string;
-  tier: string;
-  credits_balance: number;
-  credits_monthly_limit: number;
-  credits_used_this_period: number;
-  current_period_start: string | null;
-  current_period_end: string | null;
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export async function fetchUserSubscriptions(
-  limit: number = 100
-): Promise<UserSubscriptionInfo[]> {
-  const response = await authFetch(apiUrl(`/admin/users/subscriptions?limit=${limit}`), {
-    headers: optionalAdminHeaders(),
-    cache: "no-store",
-  });
-  return handleResponse<UserSubscriptionInfo[]>(response);
-}
-
-export interface UpdateTierPayload {
-  user_id: string;
-  tier: "free" | "indie" | "pro" | "max";
-}
-
-export interface UpdateTierResponse {
-  user_id: string;
-  tier: string;
-  credits_monthly_limit: number;
-  credits_balance: number;
-}
-
-export async function updateUserTier(
-  payload: UpdateTierPayload
-): Promise<UpdateTierResponse> {
-  const response = await authFetch(apiUrl("/admin/update-tier"), {
-    method: "POST",
-    headers: {
-      ...optionalAdminHeaders(),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<UpdateTierResponse>(response);
-}
 
 // ============================================================================
 // Translation API
@@ -1233,135 +1106,6 @@ export async function translateText(
   return handleResponse<TranslateResponse>(response);
 }
 
-// ============================================================================
-// Credit System API
-// ============================================================================
-
-export type SubscriptionTier = "free" | "indie" | "pro" | "max";
-
-export interface CreditStatus {
-  balance: number;
-  limit: number;
-  used: number;
-  tier: SubscriptionTier;
-  period_end: string | null;
-  percent_used: number;
-  approaching_limit: boolean;  // True if 80-99% of limit used
-  warning: boolean;            // True if 100%+ of limit used
-  blocked: boolean;            // Now based on game limit
-  stripe_customer_id: string | null;
-  cancel_at_period_end: boolean;
-  payment_failed: boolean;
-  // Game-based limits (new system)
-  games_used: number;
-  games_limit: number | null;  // null = unlimited
-  games_remaining: number | null;  // null = unlimited
-  at_game_limit: boolean;
-}
-
-export interface InvoiceItem {
-  id: string;
-  date: number;
-  amount_due: number;
-  amount_paid: number;
-  currency: string;
-  status: string;
-  invoice_pdf: string | null;
-  hosted_invoice_url: string | null;
-}
-
-export interface CreditEstimate {
-  review_count: number;
-  credits_needed: number;
-  current_balance: number;
-  can_afford: boolean;
-}
-
-export interface CheckoutResponse {
-  checkout_url: string;
-}
-
-export interface BillingPortalResponse {
-  portal_url: string;
-}
-
-/**
- * Fetch current credit status for the authenticated user.
- */
-export async function fetchCreditStatus(): Promise<CreditStatus> {
-  const response = await authFetch(apiUrl("/credits"), { cache: "no-store" });
-  return handleResponse<CreditStatus>(response);
-}
-
-/**
- * Estimate credits needed for an analysis operation.
- */
-export async function fetchCreditEstimate(
-  reviewCount: number,
-  newReviews?: number,
-  cachedReviews?: number
-): Promise<CreditEstimate> {
-  const url = new URL(apiUrl("/credits/estimate"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  url.searchParams.set("review_count", String(reviewCount));
-  if (newReviews !== undefined) {
-    url.searchParams.set("new_reviews", String(newReviews));
-  }
-  if (cachedReviews !== undefined) {
-    url.searchParams.set("cached_reviews", String(cachedReviews));
-  }
-  const response = await authFetch(url.toString(), { cache: "no-store" });
-  return handleResponse<CreditEstimate>(response);
-}
-
-/**
- * Create a Stripe checkout session for subscription upgrade.
- */
-export async function createCheckoutSession(
-  tier: "indie",
-  successUrl: string,
-  cancelUrl: string,
-  billingPeriod: "monthly" | "annual" = "monthly"
-): Promise<CheckoutResponse> {
-  const response = await authFetch(apiUrl("/credits/checkout"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      tier,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      billing_period: billingPeriod,
-    }),
-  });
-  return handleResponse<CheckoutResponse>(response);
-}
-
-/**
- * Get Stripe customer portal URL for subscription management.
- */
-export async function getBillingPortalUrl(returnUrl: string): Promise<BillingPortalResponse> {
-  const url = new URL(apiUrl("/credits/portal"), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  url.searchParams.set("return_url", returnUrl);
-  const response = await authFetch(url.toString(), { cache: "no-store" });
-  return handleResponse<BillingPortalResponse>(response);
-}
-
-/**
- * Sync subscription status from Stripe (for debugging).
- */
-export async function syncCreditStatus(): Promise<{ synced: boolean; tier?: string; message?: string }> {
-  const response = await authFetch(apiUrl("/credits/sync"), {
-    method: "POST",
-  });
-  return handleResponse<{ synced: boolean; tier?: string; message?: string }>(response);
-}
-
-/**
- * Fetch billing invoice history from Stripe.
- */
-export async function fetchInvoices(): Promise<InvoiceItem[]> {
-  const response = await authFetch(apiUrl("/credits/invoices"), { cache: "no-store" });
-  return handleResponse<InvoiceItem[]>(response);
-}
 
 // ============================================================================
 // Subcategory Summary API
@@ -1815,7 +1559,6 @@ export interface SummarizeNewsResponse {
   potential_impacts: string[];
   correlation_insights: string | null;
   news_count: number;
-  credits_charged: number;
 }
 
 /**
@@ -1869,30 +1612,6 @@ export interface EventsSummary {
     metadata: Record<string, unknown>;
     created_at: string;
   }[];
-}
-
-// ============================================================================
-// Capacity & Waitlist API (public, no auth)
-// ============================================================================
-
-export interface CapacityStatus {
-  accepting_new_users: boolean;
-  current_users: number;
-  capacity: number;
-}
-
-export async function fetchCapacity(): Promise<CapacityStatus> {
-  const response = await fetch(apiUrl("/capacity"), { cache: "no-store" });
-  return handleResponse<CapacityStatus>(response);
-}
-
-export async function joinWaitlist(email: string, referralSource?: string): Promise<{status: string; message: string}> {
-  const response = await fetch(apiUrl("/waitlist/join"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, referral_source: referralSource }),
-  });
-  return handleResponse<{status: string; message: string}>(response);
 }
 
 export async function fetchAdminAnalytics(hours: number = 24): Promise<EventsSummary> {

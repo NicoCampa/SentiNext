@@ -53,14 +53,11 @@ from .senti_next.insights import prepare_insights
 from .senti_next.analysis import recommended_share_over_time
 from .senti_next import storage
 from .senti_next import llm
-from .senti_next import license as license_guard
 from .senti_next import chat
 from .senti_next import chat_agent
 from .senti_next import redis_client
 from .senti_next import jobs as job_runner
 from .senti_next import logging_config
-from .senti_next import credits
-from .senti_next import stripe_billing
 from .senti_next import db as db_module
 
 # ---------------------------------------------------------------------------
@@ -147,7 +144,6 @@ def _validate_redirect_url(url: str, label: str = "URL") -> None:
 
 
 ADMIN_TOKEN = os.getenv("SENTINEXT_ADMIN_TOKEN")
-USER_CAPACITY = int(os.getenv("SENTINEXT_USER_CAPACITY", "0"))
 DESTRUCTIVE_ENABLED = os.getenv("SENTINEXT_ENABLE_DESTRUCTIVE", "false").lower() in {"1", "true", "yes"}
 AUTH_ENABLED = os.getenv("SENTINEXT_AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}
 AUTH_JWKS_URL = os.getenv("SENTINEXT_AUTH_JWKS_URL") or os.getenv("SENTINEXT_CLERK_JWKS_URL")
@@ -289,14 +285,6 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Global exception handler — prevent stack traces from leaking to clients
 # ---------------------------------------------------------------------------
-@app.exception_handler(credits.CapacityExceededError)
-async def _capacity_exceeded_handler(request: Request, exc: credits.CapacityExceededError):
-    return JSONResponse(
-        status_code=403,
-        content={"detail": str(exc), "code": "capacity_exceeded"},
-    )
-
-
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
@@ -318,11 +306,6 @@ _RATE_LIMITS: Dict[str, int] = {
     "/analyze": 5,
     "/chat": 20,
     "/chat/simple": 20,
-    "/credits/stripe-webhook": 30,
-    "/admin/credits/grant": 10,
-    "/admin/update-tier": 10,
-    "/admin/update-user-tier": 10,
-    "/waitlist/join": 5,
 }
 _DEFAULT_RATE_LIMIT = 60
 _RATE_WINDOW_SECONDS = 60
@@ -410,7 +393,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
     return await call_next(request)
 
-AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/credits/stripe-webhook", "/capacity", "/waitlist/join"}
+AUTH_EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 SSE_PATHS = {"/progress/{app_id}/stream"}  # SSE endpoints get token from query param
 
 
@@ -592,19 +575,6 @@ def resolve_scope_user_id(scope: Optional[str], user_id: str) -> Optional[str]:
     return user_id
 
 
-def _raise_insufficient_credits(user_id: str, exc: credits.InsufficientCreditsError) -> None:
-    status = exc.status or credits.get_credit_status(user_id)
-    raise HTTPException(
-        status_code=402,
-        detail={
-            "message": str(exc),
-            "credits_needed": exc.amount,
-            "credits_available": status.get("balance"),
-            "tier": status.get("tier"),
-        },
-    ) from exc
-
-
 class SearchResult(BaseModel):
     appid: int
     name: str
@@ -706,15 +676,6 @@ class AnalysisStatusResponse(BaseModel):
     stale: bool = False
     stale_reason: Optional[str] = None
     data_refreshed: bool = False
-
-
-class LicenseStatusResponse(BaseModel):
-    valid: bool
-    reason: str
-    license_id: Optional[str] = None
-    issued_to: Optional[str] = None
-    expires_at: Optional[str] = None
-    features: List[str] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
@@ -849,41 +810,8 @@ class LLMUsageSummaryResponse(BaseModel):
     by_model: List[LLMUsageBreakdownItem] = Field(default_factory=list)
 
 
-class TierCount(BaseModel):
-    tier: Optional[str] = None
-    count: int = 0
-
-
-class CreditsBreakdownItem(BaseModel):
-    operation: Optional[str] = None
-    transactions: int = 0
-    credits_used: int = 0
-
-
-class TopUserCredits(BaseModel):
-    user_id: str
-    credits_used: int = 0
-
-
-class TopAppCredits(BaseModel):
-    app_id: int
-    credits_used: int = 0
-
-
 class UsersSummary(BaseModel):
-    total: int = 0
-    new: int = 0
     active: int = 0
-    paid: int = 0
-    mrr_estimate: float = 0.0
-    tier_counts: List[TierCount] = Field(default_factory=list)
-
-
-class CreditsSummary(BaseModel):
-    used: int = 0
-    by_operation: List[CreditsBreakdownItem] = Field(default_factory=list)
-    top_users: List[TopUserCredits] = Field(default_factory=list)
-    top_apps: List[TopAppCredits] = Field(default_factory=list)
 
 
 class LLMCostBreakdown(BaseModel):
@@ -909,21 +837,11 @@ class LLMCostSummary(BaseModel):
     by_model: List[LLMCostBreakdown] = Field(default_factory=list)
 
 
-class TierCostEstimate(BaseModel):
-    tier: str
-    credits: int
-    light_usd: float = 0.0
-    typical_usd: float = 0.0
-    heavy_usd: float = 0.0
-
-
 class AdminDashboardResponse(BaseModel):
     since: str
     days: int
     users: UsersSummary
-    credits: CreditsSummary
     llm: LLMCostSummary
-    cost_per_user: List[TierCostEstimate] = Field(default_factory=list)
 
 
 class ApiEndpointUsage(BaseModel):
@@ -1021,34 +939,6 @@ class DatabaseReviewsResponse(BaseModel):
 class DatabaseGameOption(BaseModel):
     app_id: int
     name: Optional[str] = None
-
-
-class CreditStatusResponse(BaseModel):
-    balance: int
-    limit: int
-    used: int
-    tier: str
-    period_end: Optional[str] = None
-    percent_used: float
-    warning: bool
-    blocked: bool
-    stripe_customer_id: Optional[str] = None
-    cancel_at_period_end: bool = False
-    payment_failed: bool = False
-
-
-class CreditEstimateResponse(BaseModel):
-    review_count: int
-    credits_needed: int
-    current_balance: int
-    can_afford: bool
-
-
-class CheckoutSessionRequest(BaseModel):
-    tier: str = Field(..., pattern="^(indie)$")
-    success_url: str
-    cancel_url: str
-    billing_period: str = Field(default="monthly", pattern="^(monthly|annual)$")
 
 
 REVIEW_EXPORT_COLUMNS = [
@@ -1188,13 +1078,6 @@ def require_admin(request: Request) -> None:
     raise HTTPException(status_code=403, detail="Admin access not configured.")
 
 
-def require_license() -> None:
-    try:
-        license_guard.require_license()
-    except PermissionError as exc:
-        raise HTTPException(status_code=402, detail=str(exc)) from exc
-
-
 @app.get("/health")
 def healthcheck(response: Response) -> dict:
     db_ok = db_module.check_db_health()
@@ -1255,18 +1138,6 @@ def logs_tail(bytes: int = 20000) -> dict:
         logger.warning("Failed to read log file: %s", exc)
         return {"log_file": str(path), "tail": ""}
 
-@app.get("/license/status", response_model=LicenseStatusResponse)
-def license_status() -> LicenseStatusResponse:
-    status = license_guard.get_license_status()
-    return LicenseStatusResponse(
-        valid=status.valid,
-        reason=status.reason,
-        license_id=status.license_id,
-        issued_to=status.issued_to,
-        expires_at=status.expires_at,
-        features=status.features or [],
-    )
-
 @app.get("/admin/status")
 def admin_status() -> dict:
     """Expose whether destructive endpoints are available (no secrets)."""
@@ -1290,160 +1161,6 @@ class AuthStatusResponse(BaseModel):
 @app.get("/auth/status", response_model=AuthStatusResponse)
 def auth_status(user_id: str = Depends(require_user_id)) -> AuthStatusResponse:
     return AuthStatusResponse(user_id=user_id, is_admin=is_admin_user_id(user_id))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Credit System Endpoints
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@app.get("/credits", response_model=CreditStatusResponse)
-def get_credit_status(user_id: str = Depends(require_user_id)) -> CreditStatusResponse:
-    """Get current credit status for the authenticated user."""
-    status = credits.get_credit_status(user_id)
-    return CreditStatusResponse(**status)
-
-
-@app.get("/credits/estimate", response_model=CreditEstimateResponse)
-def get_credit_estimate(
-    review_count: int = 0,
-    new_reviews: int = 0,
-    cached_reviews: int = 0,
-    user_id: str = Depends(require_user_id),
-) -> CreditEstimateResponse:
-    """Estimate credits needed for an analysis operation.
-
-    Args:
-        review_count: Total review count (legacy param, used if new_reviews not specified)
-        new_reviews: Number of new reviews requiring LLM classification (1 credit each)
-        cached_reviews: Number of cached reviews (1 credit each)
-    """
-    # If new_reviews/cached_reviews provided, use them; otherwise treat all as new
-    if new_reviews > 0 or cached_reviews > 0:
-        credits_needed = credits.estimate_analysis_cost(new_reviews, cached_reviews)
-    else:
-        credits_needed = credits.estimate_analysis_cost(review_count)
-
-    subscription = credits.get_user_subscription(user_id)
-    balance = subscription["credits_balance"]
-    limit = subscription["credits_monthly_limit"]
-    used = subscription["credits_used_this_period"]
-    hard_limit = credits.calculate_hard_limit(limit, used, balance)
-
-    return CreditEstimateResponse(
-        review_count=review_count or (new_reviews + cached_reviews),
-        credits_needed=credits_needed,
-        current_balance=balance,
-        can_afford=used + credits_needed <= hard_limit,
-    )
-
-
-@app.post("/credits/checkout")
-def create_checkout(
-    request: CheckoutSessionRequest,
-    http_request: Request,
-    user_id: str = Depends(require_user_id),
-) -> dict:
-    """Create a Stripe Checkout session for subscription upgrade."""
-    if not stripe_billing.is_stripe_configured():
-        raise HTTPException(status_code=503, detail="Stripe is not configured.")
-
-    # Validate redirect URLs to prevent open-redirect attacks
-    _validate_redirect_url(request.success_url, "success_url")
-    _validate_redirect_url(request.cancel_url, "cancel_url")
-
-    # Get user email from JWT if available
-    payload = getattr(http_request.state, "user", None) or {}
-    user_email = payload.get("email")
-
-    try:
-        checkout_url = stripe_billing.create_checkout_session(
-            user_id=user_id,
-            tier=request.tier,
-            success_url=request.success_url,
-            cancel_url=request.cancel_url,
-            user_email=user_email,
-            billing_period=request.billing_period,
-        )
-        return {"checkout_url": checkout_url}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Failed to create checkout session: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to create checkout session.") from exc
-
-
-@app.get("/credits/portal")
-def get_billing_portal(
-    return_url: str,
-    user_id: str = Depends(require_user_id),
-) -> dict:
-    """Get a Stripe Customer Portal URL for subscription management."""
-    if not stripe_billing.is_stripe_configured():
-        raise HTTPException(status_code=503, detail="Stripe is not configured.")
-
-    # Validate redirect URL to prevent open-redirect attacks
-    _validate_redirect_url(return_url, "return_url")
-
-    try:
-        portal_url = stripe_billing.create_customer_portal_session(
-            user_id=user_id,
-            return_url=return_url,
-        )
-        return {"portal_url": portal_url}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Failed to create portal session: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to create billing portal session.") from exc
-
-
-@app.post("/credits/stripe-webhook")
-async def stripe_webhook(request: Request) -> dict:
-    """Handle incoming Stripe webhook events."""
-    if not stripe_billing.is_stripe_configured():
-        raise HTTPException(status_code=503, detail="Stripe is not configured.")
-
-    signature = request.headers.get("stripe-signature")
-    if not signature:
-        raise HTTPException(status_code=400, detail="Missing Stripe signature header.")
-
-    try:
-        payload = await request.body()
-        result = stripe_billing.handle_webhook_event(payload, signature)
-        return result
-    except ValueError as exc:
-        logger.warning("Stripe webhook validation failed: %s", exc)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Stripe webhook processing failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Webhook processing failed.") from exc
-
-
-@app.post("/credits/sync")
-def sync_credits(user_id: str = Depends(require_user_id)) -> dict:
-    """Sync subscription status from Stripe (useful for debugging)."""
-    if not stripe_billing.is_stripe_configured():
-        raise HTTPException(status_code=503, detail="Stripe is not configured.")
-
-    result = stripe_billing.sync_subscription_status(user_id)
-    if result is None:
-        return {"synced": False, "message": "No Stripe customer found"}
-    return result
-
-
-@app.get("/credits/invoices")
-def get_invoices(user_id: str = Depends(require_user_id)) -> list:
-    """Get billing invoice history from Stripe."""
-    if not stripe_billing.is_stripe_configured():
-        raise HTTPException(status_code=503, detail="Stripe is not configured.")
-
-    subscription = credits.get_user_subscription(user_id)
-    customer_id = subscription.get("stripe_customer_id")
-    if not customer_id:
-        raise HTTPException(status_code=404, detail="No billing account found.")
-
-    return stripe_billing.get_invoices(customer_id)
 
 
 @app.get("/search", response_model=List[SearchResult])
@@ -1477,8 +1194,6 @@ def _run_analysis_job(
     run_id: Optional[str] = None
     snapshot_hash: Optional[str] = None
     context_hash: Optional[str] = None
-    credit_tracker = llm.CreditAccumulator()
-    analysis_failed = False
 
     try:
         run_id = hashlib.sha256(f"{app_id}-{datetime.now(timezone.utc).isoformat()}".encode("utf-8")).hexdigest()[:16]
@@ -1506,7 +1221,7 @@ def _run_analysis_job(
         storage.clear_progress(user_id, app_id)
 
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify", credit_accumulator=credit_tracker):
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
             llm_labels = llm.ensure_review_labels(
                 app_id,
                 all_reviews,
@@ -1560,7 +1275,7 @@ def _run_analysis_job(
                         }
             except Exception:
                 pass
-            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="health_overview", credit_accumulator=credit_tracker):
+            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="health_overview"):
                 health_overview = llm.generate_health_overview(
                     reviews=reviews_payload,
                     game_context=game_context,
@@ -1584,23 +1299,7 @@ def _run_analysis_job(
             snapshot_hash=snapshot_hash,
             context_hash=context_hash,
         )
-    except credits.InsufficientCreditsError as exc:
-        analysis_failed = True
-        logger.info(f"Analysis failed due to insufficient credits for app {app_id}: {exc}")
-        storage.save_analysis_result(
-            user_id=user_id,
-            app_id=app_id,
-            metadata=metadata.dict(),
-            insights=None,
-            reviews=[],
-            status="failed",
-            error=str(exc),
-            run_id=run_id,
-            snapshot_hash=snapshot_hash,
-            context_hash=context_hash,
-        )
     except InterruptedError as exc:
-        analysis_failed = True
         # User cancelled the analysis
         logger.info(f"Analysis cancelled for app {app_id}: {exc}")
         storage.save_analysis_result(
@@ -1616,7 +1315,6 @@ def _run_analysis_job(
             context_hash=context_hash,
         )
     except Exception as exc:  # pragma: no cover - defensive
-        analysis_failed = True
         logger.exception("Analysis job failed: %s", exc)
         storage.save_analysis_result(
             user_id=user_id,
@@ -1642,22 +1340,8 @@ def _run_analysis_job(
             # active=true which prevents the SSE completion check).
             storage.update_progress_phase(user_id, app_id, "classifying")
 
-        # Refund credits if analysis failed and produced no usable result
-        if analysis_failed and credit_tracker.total > 0:
-            try:
-                credits.refund_credits(
-                    user_id=user_id,
-                    amount=credit_tracker.total,
-                    operation="classify_refund",
-                    description=f"Refund for failed analysis of app {app_id} ({credit_tracker.total} credits)",
-                    app_id=app_id,
-                )
-                logger.info(f"Refunded {credit_tracker.total} credits to user {user_id} for failed analysis of app {app_id}")
-            except Exception as refund_exc:
-                logger.error(f"Failed to refund {credit_tracker.total} credits for user {user_id}: {refund_exc}")
 
-
-@app.post("/analyze", response_model=AnalyzeResponse, status_code=202, dependencies=[Depends(require_license)])
+@app.post("/analyze", response_model=AnalyzeResponse, status_code=202)
 def analyze(
     request: AnalyzeRequest,
     background_tasks: BackgroundTasks,
@@ -1731,23 +1415,6 @@ def analyze(
     has_enough_cached = request.review_count > 0 and len(language_filtered_reviews) >= request.review_count
     should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
 
-    # --- Early credit pre-check before expensive fetching ---
-    # Use review_count as a rough upper bound (worst case: all reviews need labeling).
-    # The precise check happens later after we know cached vs new, but this catches
-    # obvious cases (e.g. 0 credits) before wasting time fetching from Steam.
-    if request.review_count and request.review_count > 0:
-        can_preflight, preflight_msg, preflight_status = credits.check_credits_available(user_id, request.review_count)
-        if not can_preflight:
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "message": preflight_msg,
-                    "credits_needed": request.review_count,
-                    "credits_available": preflight_status.get("balance"),
-                    "tier": preflight_status.get("tier"),
-                },
-            )
-
     fetched_reviews: List[dict] = []
     if should_fetch:
         # Set up fetch progress tracking
@@ -1820,25 +1487,6 @@ def analyze(
         )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to estimate cached labels for app %s: %s", request.app_id, exc)
-
-    # Credit preflight for review labeling (cached + LLM labels)
-    credits_needed = None
-    if label_estimate is not None:
-        credits_needed = int(label_estimate.cached_reviews + label_estimate.llm_reviews)
-    else:
-        credits_needed = len(all_reviews)
-    if credits_needed and credits_needed > 0:
-        can_proceed, credit_message, credit_status = credits.check_credits_available(user_id, credits_needed)
-        if not can_proceed:
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "message": credit_message,
-                    "credits_needed": credits_needed,
-                    "credits_available": credit_status.get("balance"),
-                    "tier": credit_status.get("tier"),
-                },
-            )
 
     # Check if there's already a running analysis for this game (any user).
     # Use a database advisory lock keyed by app_id to prevent concurrent analyses.
@@ -1931,7 +1579,7 @@ def analyze(
 
     return AnalyzeResponse(metadata=metadata, insights=None, reviews=[], label_estimate=label_estimate)
 
-@app.post("/analyze/estimate", response_model=AnalyzeEstimateResponse, dependencies=[Depends(require_license)])
+@app.post("/analyze/estimate", response_model=AnalyzeEstimateResponse)
 def analyze_estimate(request: AnalyzeRequest, user_id: str = Depends(require_user_id)) -> AnalyzeEstimateResponse:
     """Estimate how many labels will be reused vs require new work (no LLM calls)."""
     filter_type = (request.filter or "recent").lower()
@@ -2010,7 +1658,7 @@ def analyze_estimate(request: AnalyzeRequest, user_id: str = Depends(require_use
     )
 
 
-@app.get("/analysis/{app_id}", response_model=AnalysisStatusResponse, dependencies=[Depends(require_license)])
+@app.get("/analysis/{app_id}", response_model=AnalysisStatusResponse)
 def get_analysis_result(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -2135,7 +1783,7 @@ def get_analysis_result(
     )
 
 
-@app.post("/analysis/{app_id}/rebuild-insights", dependencies=[Depends(require_license)])
+@app.post("/analysis/{app_id}/rebuild-insights")
 def rebuild_insights(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -2213,7 +1861,7 @@ def rebuild_insights(
     return {"status": "ok", "message": "Insights rebuilt successfully", "app_id": app_id}
 
 
-@app.post("/analysis/{app_id}/rebuild-trends", dependencies=[Depends(require_license)])
+@app.post("/analysis/{app_id}/rebuild-trends")
 def rebuild_trends(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -2297,7 +1945,7 @@ class SummarizeSubcategoryResponse(BaseModel):
     cons: List[str]
 
 
-@app.post("/summarize/subcategory", response_model=SummarizeSubcategoryResponse, dependencies=[Depends(require_license)])
+@app.post("/summarize/subcategory", response_model=SummarizeSubcategoryResponse)
 def summarize_subcategory(
     request: SummarizeSubcategoryRequest,
     user_id: str = Depends(require_user_id),
@@ -2316,8 +1964,6 @@ def summarize_subcategory(
                 summary_context=request.summary_context,
             )
         return SummarizeSubcategoryResponse(**result)
-    except credits.InsufficientCreditsError as exc:
-        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate summary.") from exc
@@ -2337,7 +1983,7 @@ class SummarizeWidgetResponse(BaseModel):
     actions: List[str] = Field(default_factory=list)
 
 
-@app.post("/summarize/widget", response_model=SummarizeWidgetResponse, dependencies=[Depends(require_license)])
+@app.post("/summarize/widget", response_model=SummarizeWidgetResponse)
 def summarize_widget(
     request: SummarizeWidgetRequest,
     user_id: str = Depends(require_user_id),
@@ -2355,8 +2001,6 @@ def summarize_widget(
                 game_context=game_context,
             )
         return SummarizeWidgetResponse(**result)
-    except credits.InsufficientCreditsError as exc:
-        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Widget summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate widget summary.") from exc
@@ -2380,7 +2024,7 @@ class SummarizeRecentReviewsResponse(BaseModel):
     end_date: Optional[str] = None
 
 
-@app.post("/summarize/recent-reviews", response_model=SummarizeRecentReviewsResponse, dependencies=[Depends(require_license)])
+@app.post("/summarize/recent-reviews", response_model=SummarizeRecentReviewsResponse)
 def summarize_recent_reviews(
     request: SummarizeRecentReviewsRequest,
     user_id: str = Depends(require_user_id),
@@ -2488,8 +2132,6 @@ def summarize_recent_reviews(
             start_date=start_date,
             end_date=end_date,
         )
-    except credits.InsufficientCreditsError as exc:
-        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Recent reviews summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate recent reviews summary.") from exc
@@ -2507,10 +2149,9 @@ class SummarizeNewsResponse(BaseModel):
     potential_impacts: List[str] = Field(default_factory=list)
     correlation_insights: Optional[str] = None
     news_count: int
-    credits_charged: int
 
 
-@app.post("/summarize/news", response_model=SummarizeNewsResponse, dependencies=[Depends(require_license)])
+@app.post("/summarize/news", response_model=SummarizeNewsResponse)
 def summarize_news(
     request: SummarizeNewsRequest,
     user_id: str = Depends(require_user_id),
@@ -2530,7 +2171,6 @@ def summarize_news(
             potential_impacts=[],
             correlation_insights=None,
             news_count=0,
-            credits_charged=0,
         )
 
     # Get game context
@@ -2559,18 +2199,6 @@ def summarize_news(
         except Exception as exc:
             logger.warning("Failed to load sentiment data for news summary: %s", exc)
 
-    # Reserve credits
-    credit_cost = credits.CREDIT_COSTS.get("summarize", 2)
-    try:
-        credits.reserve_credits_or_raise(
-            user_id=user_id,
-            amount=credit_cost,
-            operation="summarize_news",
-            description="Summarize game news/updates",
-        )
-    except credits.InsufficientCreditsError as exc:
-        _raise_insufficient_credits(user_id, exc)
-
     # Convert news items to dicts for the LLM function
     news_dicts = [
         {
@@ -2594,7 +2222,6 @@ def summarize_news(
         return SummarizeNewsResponse(
             **result,
             news_count=len(news_items),
-            credits_charged=credit_cost,
         )
     except Exception as exc:
         logger.exception("News summarize failed: %s", exc)
@@ -2623,10 +2250,9 @@ class ComparisonSummaryResponse(BaseModel):
     weaknesses_per_game: Dict[int, List[str]]
     recommendations: Dict[int, str]
     cached: bool
-    credits_charged: int
 
 
-@app.post("/compare/summarize", response_model=ComparisonSummaryResponse, dependencies=[Depends(require_license)])
+@app.post("/compare/summarize", response_model=ComparisonSummaryResponse)
 def compare_games_summarize(
     request: ComparisonSummarizeRequest,
     user_id: str = Depends(require_user_id),
@@ -2638,30 +2264,12 @@ def compare_games_summarize(
         app_ids, request.comparison_type, request.category, request.subcategory
     )
 
-    # 2. Determine credit cost and reserve upfront (cached + uncached)
-    credit_operation = {
-        "overview": "compare_overview",
-        "category": "compare_category",
-        "subcategory": "compare_subcategory",
-    }[request.comparison_type]
-    credit_cost = credits.CREDIT_COSTS[credit_operation]
-
-    try:
-        credits.reserve_credits_or_raise(
-            user_id=user_id,
-            amount=credit_cost,
-            operation=credit_operation,
-            description=f"Compare {request.comparison_type}",
-        )
-    except credits.InsufficientCreditsError as exc:
-        _raise_insufficient_credits(user_id, exc)
-
-    # 3. Check cache
+    # 2. Check cache
     cached = storage.load_comparison_summary(cache_key)
     if cached:
-        return ComparisonSummaryResponse(**cached, cached=True, credits_charged=credit_cost)
+        return ComparisonSummaryResponse(**cached, cached=True)
 
-    # 4. Call LLM
+    # 3. Call LLM
     try:
         logger.info(f"Generating comparison for {len(app_ids)} games (type: {request.comparison_type})")
         with llm.llm_usage_context(user_id=user_id, operation="compare"):
@@ -2672,7 +2280,7 @@ def compare_games_summarize(
                 subcategory=request.subcategory,
             )
 
-        # 6. Save to cache
+        # 4. Save to cache
         storage.save_comparison_summary(
             user_id=user_id,
             app_ids=app_ids,
@@ -2683,29 +2291,17 @@ def compare_games_summarize(
         )
 
         logger.info(f"Successfully generated comparison for {len(app_ids)} games")
-        return ComparisonSummaryResponse(**result, cached=False, credits_charged=credit_cost)
+        return ComparisonSummaryResponse(**result, cached=False)
 
     except llm.LLMError as exc:
-        credits.refund_credits(
-            user_id=user_id,
-            amount=credit_cost,
-            operation=credit_operation,
-            description="Refund: comparison LLM failed",
-        )
         logger.exception("LLM comparison failed: %s", exc)
         raise HTTPException(status_code=500, detail="AI comparison failed. Please try again.") from exc
     except Exception as exc:
-        credits.refund_credits(
-            user_id=user_id,
-            amount=credit_cost,
-            operation=credit_operation,
-            description="Refund: comparison failed",
-        )
         logger.exception("Comparison failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate comparison. Please try again.") from exc
 
 
-@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_license)])
+@app.post("/chat", response_model=ChatResponse)
 def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id)) -> ChatResponse:
     question = (request.question or "").strip()
     if not question:
@@ -2728,8 +2324,6 @@ def chat_insights(request: ChatRequest, user_id: str = Depends(require_user_id))
             max_reviews=request.max_reviews,
             max_snippets=request.max_snippets,
         )
-    except credits.InsufficientCreditsError as exc:
-        _raise_insufficient_credits(user_id, exc)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -2749,7 +2343,7 @@ class TranslateResponse(BaseModel):
     model_id: str
 
 
-@app.post("/translate", response_model=TranslateResponse, dependencies=[Depends(require_license)])
+@app.post("/translate", response_model=TranslateResponse)
 def translate_text_endpoint(
     request: TranslateRequest,
     user_id: str = Depends(require_user_id),
@@ -2767,14 +2361,12 @@ def translate_text_endpoint(
         with llm.llm_usage_context(user_id=user_id, operation="translate"):
             translated, model_id = llm.translate_text(text, target_language)
         return TranslateResponse(translated_text=translated, model_id=model_id)
-    except credits.InsufficientCreditsError as exc:
-        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Translation failed: %s", exc)
         raise HTTPException(status_code=500, detail="Translation failed.") from exc
 
 
-@app.post("/chat/simple", response_model=SimpleChatResponse, dependencies=[Depends(require_license)])
+@app.post("/chat/simple", response_model=SimpleChatResponse)
 async def simple_chat(request: SimpleChatRequest, user_id: str = Depends(require_user_id)) -> SimpleChatResponse:
     """Simple chatbot endpoint that uses Gemini for general conversation with memory.
 
@@ -2993,10 +2585,6 @@ Example:
             suggest_search_game=False,
             search_game_name="",
         )
-    except credits.InsufficientCreditsError as exc:
-        if session_id:
-            _clear_chat_status(session_id)
-        _raise_insufficient_credits(user_id, exc)
     except Exception as exc:
         logger.exception("Simple chat failed: %s", exc)
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc
@@ -3260,70 +2848,6 @@ def get_admin_usage(
         raise HTTPException(status_code=500, detail="Failed to load API usage summary.") from exc
 
 
-def _llm_pricing_for_model(model_id: str) -> tuple:
-    """Return (input_per_1m, output_per_1m) for a model ID."""
-    return credits.LLM_MODEL_PRICING.get(model_id, credits.DEFAULT_LLM_PRICING)
-
-
-def _llm_pricing_for_operation(operation: str) -> tuple:
-    """Return (input_per_1m, output_per_1m) for an operation name."""
-    return credits.OPERATION_LLM_PRICING.get(operation, credits.DEFAULT_LLM_PRICING)
-
-
-def _compute_costs(prompt_tokens: int, response_tokens: int, pricing: tuple) -> Dict[str, float]:
-    input_rate, output_rate = pricing
-    input_cost = (prompt_tokens * input_rate) / 1_000_000
-    output_cost = (response_tokens * output_rate) / 1_000_000
-    return {
-        "input": round(input_cost, 6),
-        "output": round(output_cost, 6),
-        "total": round(input_cost + output_cost, 6),
-    }
-
-
-def _estimate_cost_per_credit(operation: str) -> float:
-    """Estimate LLM cost (USD) per credit spent on an operation."""
-    pricing = _llm_pricing_for_operation(operation)
-    tokens = credits.OPERATION_TOKEN_ESTIMATES.get(operation, (1500, 400))
-    credit_cost = credits.CREDIT_COSTS.get(operation, 1)
-    input_rate, output_rate = pricing
-    llm_cost = (tokens[0] * input_rate + tokens[1] * output_rate) / 1_000_000
-    return llm_cost / max(credit_cost, 1)
-
-
-def _compute_tier_cost_estimates() -> List[TierCostEstimate]:
-    """Compute estimated LLM cost per user for each tier at different usage levels."""
-    # Light: all credits on classify (cheapest per credit)
-    light_cpc = _estimate_cost_per_credit("classify")
-    # Heavy: all credits on chat_agent (most expensive per credit)
-    heavy_cpc = _estimate_cost_per_credit("chat_agent")
-    # Typical: weighted mix — 55% classify, 20% chat, 15% summarize, 5% translate, 5% compare
-    typical_cpc = (
-        0.55 * _estimate_cost_per_credit("classify")
-        + 0.20 * _estimate_cost_per_credit("chat_insights")
-        + 0.15 * _estimate_cost_per_credit("summarize")
-        + 0.05 * _estimate_cost_per_credit("translate")
-        + 0.05 * _estimate_cost_per_credit("compare_overview")
-    )
-
-    estimates = []
-    tiers = [
-        ("free", credits.TRIAL_CREDITS),
-        ("indie", credits.TIER_LIMITS["indie"]),
-        ("pro", credits.TIER_LIMITS["pro"]),
-        ("max", credits.TIER_LIMITS["max"]),
-    ]
-    for tier, cr in tiers:
-        estimates.append(TierCostEstimate(
-            tier=tier,
-            credits=cr,
-            light_usd=round(cr * light_cpc, 4),
-            typical_usd=round(cr * typical_cpc, 4),
-            heavy_usd=round(cr * heavy_cpc, 4),
-        ))
-    return estimates
-
-
 @app.get("/admin/dashboard", response_model=AdminDashboardResponse)
 def get_admin_dashboard(
     days: int = 30,
@@ -3333,22 +2857,15 @@ def get_admin_dashboard(
     try:
         safe_days = max(1, min(int(days or 30), 365))
         user_summary = storage.get_user_summary(safe_days)
-        tier_counts = storage.get_subscription_tier_counts()
-        credit_summary = storage.get_credit_usage_summary(safe_days, limit=10)
 
         llm_usage = storage.get_llm_usage_summary(days=safe_days)
 
-        # --- per-model costs (most accurate: uses model-specific pricing) ---
+        # --- per-model token aggregation ---
         by_model_costs = []
-        total_input_cost = 0.0
-        total_output_cost = 0.0
         for item in llm_usage.get("by_model", []) or []:
             model_id = str(item.get("model") or "unknown")
             prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
             response_tokens = int(item.get("response_tokens", 0) or 0)
-            costs = _compute_costs(prompt_tokens, response_tokens, _llm_pricing_for_model(model_id))
-            total_input_cost += costs["input"]
-            total_output_cost += costs["output"]
             by_model_costs.append(
                 LLMCostBreakdown(
                     key=model_id,
@@ -3356,19 +2873,15 @@ def get_admin_dashboard(
                     prompt_tokens=prompt_tokens,
                     response_tokens=response_tokens,
                     total_tokens=int(item.get("total_tokens", 0) or 0),
-                    cost_input_usd=costs["input"],
-                    cost_output_usd=costs["output"],
-                    cost_total_usd=costs["total"],
                 )
             )
 
-        # --- per-operation costs (uses operation→model mapping) ---
+        # --- per-operation token aggregation ---
         by_operation_costs = []
         for item in llm_usage.get("by_operation", []) or []:
             operation = str(item.get("operation") or "unknown")
             prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
             response_tokens = int(item.get("response_tokens", 0) or 0)
-            costs = _compute_costs(prompt_tokens, response_tokens, _llm_pricing_for_operation(operation))
             by_operation_costs.append(
                 LLMCostBreakdown(
                     key=operation,
@@ -3376,40 +2889,11 @@ def get_admin_dashboard(
                     prompt_tokens=prompt_tokens,
                     response_tokens=response_tokens,
                     total_tokens=int(item.get("total_tokens", 0) or 0),
-                    cost_input_usd=costs["input"],
-                    cost_output_usd=costs["output"],
-                    cost_total_usd=costs["total"],
                 )
             )
 
-        # Total cost derived from per-model sums (most accurate)
-        total_cost_usd = round(total_input_cost + total_output_cost, 6)
-
-        mrr = 0.0
-        for entry in tier_counts:
-            tier = (entry.get("tier") or "free").lower()
-            count = int(entry.get("count", 0) or 0)
-            price = float(credits.TIER_PRICES.get(tier, 0))
-            mrr += price * count
-
         users_payload = UsersSummary(
-            total=user_summary.get("total", 0),
-            new=user_summary.get("new", 0),
             active=user_summary.get("active", 0),
-            paid=user_summary.get("paid", 0),
-            mrr_estimate=round(mrr, 2),
-            tier_counts=[TierCount(**item) for item in tier_counts],
-        )
-
-        credits_payload = CreditsSummary(
-            used=credit_summary.get("used", 0),
-            by_operation=[CreditsBreakdownItem(**item) for item in credit_summary.get("by_operation", [])],
-            top_users=[TopUserCredits(**item) for item in credit_summary.get("top_users", [])],
-            top_apps=[
-                TopAppCredits(app_id=int(item.get("app_id")), credits_used=int(item.get("credits_used", 0) or 0))
-                for item in credit_summary.get("top_apps", [])
-                if item.get("app_id") is not None
-            ],
         )
 
         llm_payload = LLMCostSummary(
@@ -3417,9 +2901,6 @@ def get_admin_dashboard(
             prompt_tokens=int(llm_usage.get("prompt_tokens", 0) or 0),
             response_tokens=int(llm_usage.get("response_tokens", 0) or 0),
             total_tokens=int(llm_usage.get("total_tokens", 0) or 0),
-            cost_input_usd=round(total_input_cost, 6),
-            cost_output_usd=round(total_output_cost, 6),
-            cost_total_usd=total_cost_usd,
             by_operation=by_operation_costs,
             by_model=by_model_costs,
         )
@@ -3428,144 +2909,11 @@ def get_admin_dashboard(
             since=str(llm_usage.get("since") or ""),
             days=int(llm_usage.get("days", safe_days) or safe_days),
             users=users_payload,
-            credits=credits_payload,
             llm=llm_payload,
-            cost_per_user=_compute_tier_cost_estimates(),
         )
     except Exception as exc:
         logger.exception("Failed to load admin dashboard: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load admin dashboard.") from exc
-
-
-class GrantCreditsRequest(BaseModel):
-    user_id: str
-    amount: int = Field(..., ge=-100000, le=100000)
-    reason: str = Field(..., min_length=1, max_length=200)
-
-
-class GrantCreditsResponse(BaseModel):
-    user_id: str
-    amount_granted: int
-    new_balance: int
-    reason: str
-
-
-@app.post("/admin/credits/grant", response_model=GrantCreditsResponse)
-def grant_credits_to_user(
-    payload: GrantCreditsRequest,
-    _: None = Depends(require_admin),
-) -> GrantCreditsResponse:
-    """Grant credits to a user (admin only)."""
-    try:
-        if payload.amount == 0:
-            raise HTTPException(status_code=400, detail="Amount cannot be zero")
-        action = "deduct" if payload.amount < 0 else "grant"
-        new_balance = credits.add_credits(
-            user_id=payload.user_id,
-            amount=payload.amount,
-            reason=payload.reason,
-            description=f"Admin {action}: {payload.reason}",
-        )
-        logger.info(f"Admin {action} {abs(payload.amount)} credits for user {payload.user_id}")
-        return GrantCreditsResponse(
-            user_id=payload.user_id,
-            amount_granted=payload.amount,
-            new_balance=new_balance,
-            reason=payload.reason,
-        )
-    except Exception as exc:
-        logger.exception("Failed to grant credits: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-class UpdateTierRequest(BaseModel):
-    user_id: str
-    tier: str = Field(..., pattern="^(free|indie|pro|max)$")
-
-
-class UpdateTierResponse(BaseModel):
-    user_id: str
-    tier: str
-    credits_monthly_limit: int
-    credits_balance: int
-
-
-@app.post("/admin/update-tier", response_model=UpdateTierResponse)
-def admin_update_tier(
-    payload: UpdateTierRequest,
-    _: None = Depends(require_admin),
-) -> UpdateTierResponse:
-    """Update user subscription tier (admin only)."""
-    try:
-        credits.update_tier(user_id=payload.user_id, new_tier=payload.tier)
-        subscription = credits.get_user_subscription(payload.user_id)
-        logger.info(f"Admin updated user {payload.user_id} to tier {payload.tier}")
-        return UpdateTierResponse(
-            user_id=payload.user_id,
-            tier=subscription["tier"],
-            credits_monthly_limit=subscription["credits_monthly_limit"],
-            credits_balance=subscription["credits_balance"],
-        )
-    except Exception as exc:
-        logger.exception("Failed to update tier: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-class UserSubscriptionInfo(BaseModel):
-    user_id: str
-    tier: str
-    credits_balance: int
-    credits_monthly_limit: int
-    credits_used_this_period: int
-    current_period_start: Optional[str]
-    current_period_end: Optional[str]
-    stripe_customer_id: Optional[str]
-    stripe_subscription_id: Optional[str]
-    created_at: Optional[str]
-    updated_at: Optional[str]
-
-
-@app.get("/admin/users/subscriptions", response_model=List[UserSubscriptionInfo])
-def admin_list_user_subscriptions(
-    limit: int = 100,
-    _: None = Depends(require_admin),
-) -> List[UserSubscriptionInfo]:
-    """List all user subscriptions (admin only)."""
-    try:
-        from .senti_next import db as db_module
-        with db_module.get_connection() as conn:
-            result = conn.execute(
-                text("""
-                    SELECT user_id, tier, credits_balance, credits_monthly_limit,
-                           credits_used_this_period, current_period_start, current_period_end,
-                           stripe_customer_id, stripe_subscription_id, created_at, updated_at
-                    FROM user_subscriptions
-                    ORDER BY updated_at DESC
-                    LIMIT :limit
-                """),
-                {"limit": limit},
-            )
-            rows = result.fetchall()
-
-        return [
-            UserSubscriptionInfo(
-                user_id=row[0],
-                tier=row[1],
-                credits_balance=row[2],
-                credits_monthly_limit=row[3],
-                credits_used_this_period=row[4],
-                current_period_start=row[5].isoformat() if row[5] else None,
-                current_period_end=row[6].isoformat() if row[6] else None,
-                stripe_customer_id=row[7],
-                stripe_subscription_id=row[8],
-                created_at=row[9].isoformat() if row[9] else None,
-                updated_at=row[10].isoformat() if row[10] else None,
-            )
-            for row in rows
-        ]
-    except Exception as exc:
-        logger.exception("Failed to list user subscriptions: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -3706,7 +3054,7 @@ async def chat_stream(
     )
 
 
-@app.get("/feedback/{app_id}", response_model=List[FeedbackItem], dependencies=[Depends(require_license)])
+@app.get("/feedback/{app_id}", response_model=List[FeedbackItem])
 def aggregate_feedback(
     app_id: int,
     include_reddit: bool = True,
@@ -3739,7 +3087,7 @@ def aggregate_feedback(
     return [FeedbackItem(**item) for item in combined]
 
 
-@app.get("/reviews/{app_id}", dependencies=[Depends(require_license)])
+@app.get("/reviews/{app_id}")
 def export_reviews(
     app_id: int,
     limit: Optional[int] = None,
@@ -3758,11 +3106,8 @@ def export_reviews(
 
     if refresh:
         game_context = fetch_app_details(app_id)
-        try:
-            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
-                llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
-        except credits.InsufficientCreditsError as exc:
-            _raise_insufficient_credits(user_id, exc)
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
+            llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
     else:
         cached_labels = storage.load_review_labels(app_id)
         if not cached_labels:
@@ -3799,7 +3144,7 @@ def export_reviews(
     )
 
 
-@app.get("/reports/available-months/{app_id}", dependencies=[Depends(require_license)])
+@app.get("/reports/available-months/{app_id}")
 def get_report_months(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -3819,7 +3164,7 @@ def get_report_months(
     return {"months": months}
 
 
-@app.get("/reports/executive-summary/{app_id}", dependencies=[Depends(require_license)])
+@app.get("/reports/executive-summary/{app_id}")
 def generate_executive_summary(
     app_id: int,
     year: int,
@@ -3897,21 +3242,14 @@ def generate_executive_summary(
     # Optional LLM executive summary (generated on report download)
     if include_llm_summary and format in {"pdf", "html"}:
         try:
-            summarize_cost = credits.CREDIT_COSTS["report_summary"]
-            can_proceed, credit_message, _credit_status = credits.check_credits_available(user_id, summarize_cost)
-            if can_proceed:
-                with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="report_summary"):
-                    llm_summary = llm.summarize_monthly_report(
-                        game_name=game_name,
-                        period=period,
-                        insights=insights,
-                    )
-                llm_summary["generated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
-                insights = {**insights, "llm_summary": llm_summary}
-            else:
-                logger.info("Skipping report summary (credits unavailable): %s", credit_message)
-        except credits.InsufficientCreditsError as exc:
-            logger.info("Skipping report summary (insufficient credits): %s", exc)
+            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="report_summary"):
+                llm_summary = llm.summarize_monthly_report(
+                    game_name=game_name,
+                    period=period,
+                    insights=insights,
+                )
+            llm_summary["generated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+            insights = {**insights, "llm_summary": llm_summary}
         except Exception as exc:
             logger.exception("Failed to generate report summary: %s", exc)
 
@@ -3977,7 +3315,7 @@ def generate_executive_summary(
         raise HTTPException(status_code=400, detail="Format must be 'pdf', 'html', or 'legacy'")
 
 
-@app.get("/progress/{app_id}", dependencies=[Depends(require_license)])
+@app.get("/progress/{app_id}")
 def classification_progress(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -4043,7 +3381,7 @@ def classification_progress(
     }
 
 
-@app.get("/progress/{app_id}/stream", dependencies=[Depends(require_license)])
+@app.get("/progress/{app_id}/stream")
 async def progress_stream(
     app_id: int,
     user_id: str = Depends(_optional_user_id),
@@ -4162,7 +3500,7 @@ async def progress_stream(
     )
 
 
-@app.post("/progress/{app_id}/cancel", dependencies=[Depends(require_license)])
+@app.post("/progress/{app_id}/cancel")
 def cancel_analysis(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -4176,7 +3514,7 @@ def cancel_analysis(
     return {"cancelled": cancelled, "app_id": app_id}
 
 
-@app.get("/starred", response_model=List[StarredGameResponse], dependencies=[Depends(require_license)])
+@app.get("/starred", response_model=List[StarredGameResponse])
 def list_starred_games(
     user_id: str = Depends(require_user_id),
 ) -> List[StarredGameResponse]:
@@ -4204,7 +3542,7 @@ def list_starred_games(
     return response
 
 
-@app.post("/starred", status_code=204, dependencies=[Depends(require_license)])
+@app.post("/starred", status_code=204)
 def save_starred_game(
     payload: StarredGamePayload,
     user_id: str = Depends(require_user_id),
@@ -4232,7 +3570,7 @@ def save_starred_game(
     return Response(status_code=204)
 
 
-@app.delete("/starred/{app_id}", status_code=204, dependencies=[Depends(require_license)])
+@app.delete("/starred/{app_id}", status_code=204)
 def remove_starred_game(app_id: int, user_id: str = Depends(require_user_id)) -> Response:
     storage.delete_starred_game(user_id, app_id)
     return Response(status_code=204)
@@ -4242,7 +3580,7 @@ class FavoriteStatusPayload(BaseModel):
     is_favorite: bool
 
 
-@app.patch("/starred/{app_id}/favorite", status_code=200, dependencies=[Depends(require_license)])
+@app.patch("/starred/{app_id}/favorite", status_code=200)
 def toggle_favorite_status(
     app_id: int,
     payload: FavoriteStatusPayload,
@@ -4255,7 +3593,7 @@ def toggle_favorite_status(
     return {"app_id": app_id, "is_favorite": payload.is_favorite}
 
 
-@app.get("/starred/favorites", response_model=List[StarredGameResponse], dependencies=[Depends(require_license)])
+@app.get("/starred/favorites", response_model=List[StarredGameResponse])
 def list_favorite_games(
     user_id: str = Depends(require_user_id),
 ) -> List[StarredGameResponse]:
@@ -4291,7 +3629,7 @@ def delete_game_data(app_id: int, _: None = Depends(require_admin)) -> Response:
     return Response(status_code=204)
 
 
-@app.get("/database/stats", dependencies=[Depends(require_license)])
+@app.get("/database/stats")
 def database_stats(scope: Optional[str] = None, user_id: str = Depends(require_user_id)) -> dict:
     """Get database statistics (games, reviews, labels counts)."""
     scope_user_id = resolve_scope_user_id(scope, user_id)
@@ -4316,7 +3654,7 @@ def clear_database(_: None = Depends(require_admin)) -> dict:
     return {"deleted": counts, "scope": "entire_database"}
 
 
-@app.get("/database/games", response_model=List[DatabaseGameOption], dependencies=[Depends(require_license)])
+@app.get("/database/games", response_model=List[DatabaseGameOption])
 def database_games(scope: Optional[str] = None, user_id: str = Depends(require_user_id)) -> List[DatabaseGameOption]:
     scope_user_id = resolve_scope_user_id(scope, user_id)
     if scope_user_id is None:
@@ -4326,7 +3664,7 @@ def database_games(scope: Optional[str] = None, user_id: str = Depends(require_u
     return [DatabaseGameOption(**entry) for entry in entries]
 
 
-@app.get("/database/reviews/{review_id}", dependencies=[Depends(require_license)])
+@app.get("/database/reviews/{review_id}")
 def get_database_review_by_id(
     review_id: str,
     user_id: str = Depends(require_user_id),
@@ -4355,7 +3693,7 @@ def get_database_review_by_id(
     return {"review": review_item}
 
 
-@app.get("/database/reviews", response_model=DatabaseReviewsResponse, dependencies=[Depends(require_license)])
+@app.get("/database/reviews", response_model=DatabaseReviewsResponse)
 def database_reviews(
     limit: int = Query(default=200, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -4389,7 +3727,7 @@ def database_reviews(
     return DatabaseReviewsResponse(items=items, total=int(total), offset=int(offset), limit=int(limit))
 
 
-@app.get("/database/reviews/count", dependencies=[Depends(require_license)])
+@app.get("/database/reviews/count")
 def database_reviews_count(
     app_id: Optional[int] = None,
     language: Optional[str] = None,
@@ -4459,7 +3797,7 @@ def database_reviews_count(
     }
 
 
-@app.get("/database/export", dependencies=[Depends(require_license)])
+@app.get("/database/export")
 def database_export(
     format: str = "csv",
     app_id: Optional[int] = None,
@@ -4579,7 +3917,7 @@ class NewsResponse(BaseModel):
     news_items: List[NewsItemResponse]
 
 
-@app.get("/steam/news/{app_id}", response_model=NewsResponse, dependencies=[Depends(require_license)])
+@app.get("/steam/news/{app_id}", response_model=NewsResponse)
 def get_steam_news(
     app_id: int,
     count: int = 20,
@@ -4624,7 +3962,7 @@ class PlayerCountResponse(BaseModel):
     timestamp: int
 
 
-@app.get("/steam/players/{app_id}", response_model=PlayerCountResponse, dependencies=[Depends(require_license)])
+@app.get("/steam/players/{app_id}", response_model=PlayerCountResponse)
 def get_steam_player_count(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -4661,7 +3999,7 @@ class PriceResponse(BaseModel):
     timestamp: int
 
 
-@app.get("/steam/price/{app_id}", response_model=PriceResponse, dependencies=[Depends(require_license)])
+@app.get("/steam/price/{app_id}", response_model=PriceResponse)
 def get_steam_price(
     app_id: int,
     cc: str = "us",  # Country code for regional pricing (default USD)
@@ -4718,7 +4056,7 @@ class GameDetailsResponse(BaseModel):
     timestamp: int
 
 
-@app.get("/steam/details/{app_id}", response_model=GameDetailsResponse, dependencies=[Depends(require_license)])
+@app.get("/steam/details/{app_id}", response_model=GameDetailsResponse)
 def get_steam_details(
     app_id: int,
     user_id: str = Depends(require_user_id),
@@ -4777,7 +4115,7 @@ class AchievementsResponse(BaseModel):
     completion_rate: Optional[float]  # Average completion rate across all achievements
 
 
-@app.get("/steam/achievements/{app_id}", response_model=AchievementsResponse, dependencies=[Depends(require_license)])
+@app.get("/steam/achievements/{app_id}", response_model=AchievementsResponse)
 def get_steam_achievements(
     app_id: int,
     limit: int = 50,
@@ -4836,7 +4174,7 @@ class GameContextResponse(BaseModel):
     recent_news: List[NewsItemResponse]
 
 
-@app.get("/steam/context/{app_id}", response_model=GameContextResponse, dependencies=[Depends(require_license)])
+@app.get("/steam/context/{app_id}", response_model=GameContextResponse)
 def get_steam_game_context(
     app_id: int,
     news_count: int = 5,
@@ -4899,7 +4237,7 @@ def get_steam_game_context(
 def delete_account(user_id: str = Depends(require_user_id)) -> dict:
     """Delete all user-owned data (GDPR right to erasure).
 
-    Removes starred games, chat history, support messages, credit records,
+    Removes starred games, chat history, support messages,
     analysis results, and other user-specific data. Shared data (reviews,
     labels) is not affected.
     """
@@ -4912,77 +4250,6 @@ def delete_account(user_id: str = Depends(require_user_id)) -> dict:
         "deleted": deleted,
         "total_rows": total,
     }
-
-
-# ============================================================================
-# Capacity & Waitlist Endpoints
-# ============================================================================
-
-
-@app.get("/capacity")
-def check_capacity():
-    """Public endpoint: check if the service is accepting new users."""
-    if USER_CAPACITY <= 0:
-        return {"accepting_new_users": True, "current_users": 0, "capacity": 0}
-    with db_module.get_connection() as conn:
-        current = conn.execute(text("SELECT COUNT(*) FROM user_subscriptions")).fetchone()[0]
-    return {"accepting_new_users": current < USER_CAPACITY, "current_users": current, "capacity": USER_CAPACITY}
-
-
-class WaitlistJoinRequest(BaseModel):
-    email: str = Field(..., min_length=3, max_length=320)
-    referral_source: Optional[str] = Field(default=None, max_length=200)
-
-
-@app.post("/waitlist/join")
-def join_waitlist(payload: WaitlistJoinRequest):
-    """Public endpoint: join the waitlist when capacity is full."""
-    email = payload.email.strip().lower()
-    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
-        raise HTTPException(status_code=400, detail="Invalid email address.")
-    with db_module.get_connection() as conn:
-        conn.execute(
-            text("""
-                INSERT INTO waitlist (email, referral_source)
-                VALUES (:email, :referral_source)
-                ON CONFLICT (email) DO NOTHING
-            """),
-            {"email": email, "referral_source": payload.referral_source},
-        )
-    return {"status": "ok", "message": "You've been added to the waitlist. We'll notify you when a spot opens up."}
-
-
-@app.get("/admin/waitlist")
-def get_waitlist(
-    limit: int = Query(default=100, le=500),
-    offset: int = Query(default=0, ge=0),
-    _: None = Depends(require_admin),
-):
-    """Admin endpoint: view waitlist entries."""
-    with db_module.get_connection() as conn:
-        total_row = conn.execute(text("SELECT COUNT(*) FROM waitlist")).fetchone()
-        total = total_row[0] if total_row else 0
-        rows = conn.execute(
-            text("""
-                SELECT id, email, referral_source, created_at, notified_at, converted_at
-                FROM waitlist
-                ORDER BY created_at DESC
-                LIMIT :limit OFFSET :offset
-            """),
-            {"limit": limit, "offset": offset},
-        ).fetchall()
-    entries = [
-        {
-            "id": r[0],
-            "email": r[1],
-            "referral_source": r[2],
-            "created_at": r[3].isoformat() if r[3] else None,
-            "notified_at": r[4].isoformat() if r[4] else None,
-            "converted_at": r[5].isoformat() if r[5] else None,
-        }
-        for r in rows
-    ]
-    return {"total": total, "entries": entries}
 
 
 if __name__ == "__main__":

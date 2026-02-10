@@ -1,20 +1,18 @@
 'use client';
 
 import type { ComponentType, SVGProps } from "react";
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
-import { useCredits } from "@/contexts/CreditsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
 import { useSupportNotification } from "@/contexts/SupportNotificationContext";
 import { useTracking } from "@/hooks/useTracking";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 import { SentiNextLogo } from "@/components/SentiNextLogo";
-import { createCheckoutSession } from "@/lib/api";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -48,42 +46,9 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const { openUserProfile, signOut } = useClerk();
   const { user } = useUser();
   const { isAdmin } = useAdminStatus();
-  const { credits } = useCredits();
-  const [sidebarUpgradeLoading, setSidebarUpgradeLoading] = useState<string | null>(null);
-
-  async function handleSidebarUpgrade(tier: "indie") {
-    setSidebarUpgradeLoading(tier);
-    try {
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-      const result = await createCheckoutSession(
-        tier,
-        `${baseUrl}/settings?upgrade=success`,
-        `${baseUrl}/settings?upgrade=cancelled`,
-        "monthly"
-      );
-      if (result.checkout_url) {
-        window.location.href = result.checkout_url;
-      }
-    } catch (err) {
-      console.error("Failed to create checkout session", err);
-    } finally {
-      setSidebarUpgradeLoading(null);
-    }
-  }
   const { userUnreadCount, adminUnreadCount, showWelcomeBadge } = useSupportNotification();
   const track = useTracking();
   const compact = density === "compact";
-  const tierLabelMap: Record<string, string> = {
-    free: "Free",
-    indie: "Indie",
-    max: "Enterprise",
-  };
-  const tierLabel = credits?.tier ? (tierLabelMap[credits.tier] ?? credits.tier) : null;
-  const tierBadgeClass = credits?.tier === "max"
-    ? "border-purple-500/30 bg-purple-500/10 text-purple-400"
-    : credits?.tier === "indie"
-    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-    : "border-slate-500/30 bg-slate-500/10 text-slate-300";
 
   // Get notification count for support/inbox (include welcome badge for first-time users)
   const supportNotificationCount = isAdmin ? adminUnreadCount : userUnreadCount;
@@ -196,29 +161,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
 
             {/* Bottom section */}
             <div className="mt-auto pt-6 border-t border-[rgb(0,255,255)]/10 space-y-3">
-              {/* Upgrade Banner for Free Users */}
-              {credits?.tier === "free" && (
-                <div className="border border-[rgb(0,255,255)]/20 bg-gradient-to-b from-[rgb(0,255,255)]/5 to-transparent p-3 space-y-2.5">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-[rgb(0,255,255)]/70 mb-1">
-                      {t('upgrade.banner')}
-                    </p>
-                    <p className="text-[10px] text-[rgb(150,150,170)] leading-snug">
-                      {t('upgrade.unlockMore')}
-                    </p>
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => handleSidebarUpgrade("indie")}
-                      disabled={sidebarUpgradeLoading !== null}
-                      className="w-full py-1.5 border border-emerald-500/30 text-[10px] uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50"
-                    >
-                      {sidebarUpgradeLoading === "indie" ? "..." : "Indie $8/mo"}
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Combined User Profile + Settings */}
               <SignedIn>
                 <div className="border border-[rgb(0,255,255)]/10 bg-[rgb(10,10,25)]/50 overflow-hidden">
@@ -253,14 +195,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                         Account
                       </p>
                     </div>
-                    {tierLabel && (
-                      <span className={clsx(
-                        "rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.2em]",
-                        tierBadgeClass
-                      )}>
-                        {tierLabel}
-                      </span>
-                    )}
                   </button>
 
                   {/* Settings Link */}

@@ -65,7 +65,6 @@ export function OverviewComparisonCard({ selectedGames }: OverviewComparisonCard
       >
         <span className="text-lg font-bold text-[rgb(0,255,255)]">//</span>
         <span>AI Comparison</span>
-        <span className="text-xs opacity-80">(5 credits)</span>
       </button>
 
       {/* Modal Dialog */}

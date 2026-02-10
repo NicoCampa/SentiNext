@@ -4,12 +4,10 @@ numpy==2.2.6
 fastapi==0.117.1
 uvicorn[standard]==0.36.0
 platformdirs==4.3.6
-cryptography==46.0.4
 PyJWT[crypto]==2.11.0
 redis==7.1.0
 rq==2.6.1
 rq-scheduler>=0.13
-stripe>=7.0
 psycopg2-binary==2.9.11
 sqlalchemy==2.0.46
 google-genai==1.61.0

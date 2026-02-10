@@ -25,7 +25,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useCredits } from "@/contexts/CreditsContext";
 import { SourceReviewsWidget } from "@/components/chat/SourceReviewsWidget";
 
 const markdownComponents = {
@@ -143,7 +142,6 @@ type StarredGame = {
 
 export default function ChatPage() {
   const { language, t } = useLanguage();
-  const { silentRefresh: refreshCredits } = useCredits();
   const { games: allStarredGames, loading: loadingGames } = useStarredGames();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -418,9 +416,6 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Refresh credits after chat (chat consumes credits)
-      refreshCredits();
-
       // Reload sessions to update sidebar
       reloadSessions();
     } catch (error) {
@@ -430,8 +425,6 @@ export default function ChatPage() {
       let tip = "";
       if (lowerMsg.includes("rate limit") || lowerMsg.includes("too quickly")) {
         tip = "\n\nPlease wait a moment before sending another message.";
-      } else if (lowerMsg.includes("credit") || lowerMsg.includes("insufficient")) {
-        tip = "\n\nYou can upgrade your plan or wait for your credits to reset.";
       }
       const errorMessage: Message = {
         role: "assistant",

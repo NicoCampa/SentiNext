@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import { SteamImage } from './SteamImage';
-import { UpgradeModal } from './UpgradeModal';
 import clsx from 'clsx';
 
 function formatRemainingTime(seconds?: number | null) {
@@ -22,41 +21,18 @@ function formatRemainingTime(seconds?: number | null) {
   return `${remainder}s`;
 }
 
-// Module-level set so dismissed credit errors survive component remounts
-// (AppLayout remounts on every page navigation)
-const shownCreditErrors = new Set<number>();
-
 export function AnalysisWidget() {
   const { tasks, clearTask } = useAnalysis();
   const [isMinimized, setIsMinimized] = useState(false);
-  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
 
   const activeTasks = Array.from(tasks.entries());
   const hasActiveTasks = activeTasks.length > 0;
 
-  // Auto-show upgrade modal when a credit error first appears
-  useEffect(() => {
-    for (const [appId, task] of tasks.entries()) {
-      if (
-        task.status === 'error' &&
-        task.error &&
-        /credit|insufficient/i.test(task.error) &&
-        !shownCreditErrors.has(appId)
-      ) {
-        shownCreditErrors.add(appId);
-        setUpgradeMessage(task.error);
-        break;
-      }
-    }
-  }, [tasks]);
-
-  if (!hasActiveTasks && !upgradeMessage) {
+  if (!hasActiveTasks) {
     return null;
   }
 
   return (
-    <>
-    {hasActiveTasks && (
     <div className="fixed bottom-24 right-4 z-50 w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:bottom-6 sm:right-6 sm:w-96 sm:max-w-[calc(100vw-3rem)]">
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur">
         {/* Header */}
@@ -248,14 +224,6 @@ export function AnalysisWidget() {
                         {task.status === 'error' && (
                           <div className="text-xs text-rose-400">
                             Error: {task.error}
-                            {task.error && /credit|insufficient/i.test(task.error) && (
-                              <button
-                                onClick={() => setUpgradeMessage(task.error ?? null)}
-                                className="ml-2 text-amber-400 hover:text-amber-300 underline"
-                              >
-                                Upgrade
-                              </button>
-                            )}
                           </div>
                         )}
                       </div>
@@ -266,13 +234,5 @@ export function AnalysisWidget() {
         )}
       </div>
     </div>
-    )}
-    {upgradeMessage && (
-      <UpgradeModal
-        onClose={() => setUpgradeMessage(null)}
-        message={upgradeMessage}
-      />
-    )}
-    </>
   );
 }

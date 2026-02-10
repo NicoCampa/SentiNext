@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef, useMemo } from 'react';
-import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis, trackEvent, fetchCreditStatus } from '@/lib/api';
+import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis, trackEvent } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
@@ -142,30 +142,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const { game, options } = next;
     const appId = game.appid;
 
-    // Check credits before auto-starting
-    try {
-      const creditStatus = await fetchCreditStatus();
-      if (creditStatus.blocked) {
-        setTasks((prev) => {
-          const newTasks = new Map(prev);
-          const existing = newTasks.get(appId);
-          if (existing && existing.status === 'queued') {
-            newTasks.set(appId, {
-              ...existing,
-              status: 'error',
-              waitingFor: null,
-              error: 'Insufficient credits to start this analysis. Please upgrade your plan or wait for your credits to renew.',
-            });
-          }
-          return newTasks;
-        });
-        // Continue processing — maybe more queued tasks should also be marked
-        processQueueRef.current();
-        return;
-      }
-    } catch {
-      // Credit check failed — let the /analyze endpoint handle it
-    }
+
 
     // Transition from queued → analyzing
     resetProgressStats(appId);
@@ -548,7 +525,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       if (err instanceof Error) {
         errorMessage = err.message;
       }
-      // Try to extract structured error detail (e.g. 402 credit errors)
+      // Try to extract structured error detail
       try {
         const parsed = JSON.parse(errorMessage);
         if (parsed?.message) errorMessage = parsed.message;

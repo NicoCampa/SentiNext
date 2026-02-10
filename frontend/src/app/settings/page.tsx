@@ -1,17 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, createCheckoutSession, getBillingPortalUrl, fetchInvoices, grantCredits } from "@/lib/api";
-import type { InvoiceItem } from "@/lib/api";
+import { fetchLogTail } from "@/lib/api";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAdminStatus } from "@/hooks/useAdminStatus";
-import { useCredits } from "@/contexts/CreditsContext";
 import { SignedIn, useClerk, useUser } from "@clerk/nextjs";
 import { useOnboarding } from "@/contexts/OnboardingContext";
 
@@ -24,44 +21,14 @@ export default function SettingsPage() {
   const { t } = useLanguage();
   const [showLogs, setShowLogs] = useState(false);
   const { isAdmin } = useAdminStatus();
-  const { credits, loading: creditsLoading } = useCredits();
-  const [upgradeLoading, setUpgradeLoading] = useState<string | null>(null);
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [showInvoices, setShowInvoices] = useState(false);
-  const [invoices, setInvoices] = useState<InvoiceItem[] | null>(null);
-  const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { openUserProfile, signOut } = useClerk();
   const { user } = useUser();
   const { resetOnboarding } = useOnboarding();
-  const [creditUserId, setCreditUserId] = useState("");
-  const [creditAmount, setCreditAmount] = useState("");
-  const [creditReason, setCreditReason] = useState("");
-  const [creditAdjusting, setCreditAdjusting] = useState(false);
-  const [creditResult, setCreditResult] = useState<string | null>(null);
-  const [creditError, setCreditError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  const tierLabelMap: Record<string, string> = {
-    free: "Free",
-    indie: "Indie",
-    max: "Enterprise",
-  };
-
-  const tierCreditsMap: Record<string, string> = {
-    free: "1,000 one-time trial credits",
-    indie: "5,000 credits / month",
-    max: "Custom credits / month",
-  };
-
-  const tierColorMap: Record<string, string> = {
-    free: "text-[rgb(150,150,170)]",
-    indie: "text-emerald-400",
-    max: "text-purple-400",
-  };
 
   const loadLogTail = useCallback(async () => {
     try {
@@ -77,91 +44,6 @@ export default function SettingsPage() {
   useEffect(() => {
     if (isAdmin) loadLogTail();
   }, [isAdmin, loadLogTail]);
-
-  async function handleUpgrade(tier: "indie") {
-    setUpgradeLoading(tier);
-    try {
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-      const result = await createCheckoutSession(
-        tier,
-        `${baseUrl}/settings?upgrade=success`,
-        `${baseUrl}/settings?upgrade=cancelled`,
-        "monthly"
-      );
-      if (result.checkout_url) {
-        window.location.href = result.checkout_url;
-      }
-    } catch (err) {
-      console.error("Failed to create checkout session", err);
-      alert("Failed to start upgrade. Please try again.");
-    } finally {
-      setUpgradeLoading(null);
-    }
-  }
-
-  async function handleManageSubscription() {
-    setPortalLoading(true);
-    try {
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-      const result = await getBillingPortalUrl(`${baseUrl}/settings`);
-      if (result.portal_url) {
-        window.location.href = result.portal_url;
-      }
-    } catch (err) {
-      console.error("Failed to open billing portal", err);
-      alert("Failed to open billing portal. Please try again.");
-    } finally {
-      setPortalLoading(false);
-    }
-  }
-
-  async function handleToggleInvoices() {
-    if (showInvoices) {
-      setShowInvoices(false);
-      return;
-    }
-    setShowInvoices(true);
-    if (invoices === null) {
-      setInvoicesLoading(true);
-      try {
-        const data = await fetchInvoices();
-        setInvoices(data);
-      } catch (err) {
-        console.error("Failed to load invoices", err);
-        setInvoices([]);
-      } finally {
-        setInvoicesLoading(false);
-      }
-    }
-  }
-
-  async function handleCreditAdjust(e: React.FormEvent) {
-    e.preventDefault();
-    setCreditAdjusting(true);
-    setCreditResult(null);
-    setCreditError(null);
-    try {
-      const amount = parseInt(creditAmount, 10);
-      if (!creditUserId || !amount || !creditReason) {
-        setCreditError("All fields are required and amount must be non-zero");
-        return;
-      }
-      const result = await grantCredits({
-        user_id: creditUserId,
-        amount,
-        reason: creditReason,
-      });
-      const action = result.amount_granted < 0 ? "Deducted" : "Granted";
-      setCreditResult(`${action} ${Math.abs(result.amount_granted)} credits. New balance: ${result.new_balance}`);
-      setCreditUserId("");
-      setCreditAmount("");
-      setCreditReason("");
-    } catch (err) {
-      setCreditError((err as Error).message || "Failed to adjust credits");
-    } finally {
-      setCreditAdjusting(false);
-    }
-  }
 
   async function handleCopyDiagnostics() {
     try {
@@ -331,252 +213,6 @@ export default function SettingsPage() {
                 </div>
               </div>
             </Card>
-
-            {/* Subscription & Credits */}
-            <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-300 lg:animation-delay-200' : 'opacity-0'}`}>
-              <div className="mb-4 sm:mb-5">
-                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[rgb(0,255,255)]/70">
-                    Subscription & Credits
-                  </p>
-                </div>
-                <p className="text-xs sm:text-sm text-[rgb(150,150,170)]">Manage your plan and credit balance</p>
-              </div>
-
-              {creditsLoading && !credits ? (
-                <div className="space-y-2 sm:space-y-3 animate-pulse">
-                  <div className="h-8 sm:h-10 bg-[rgb(0,255,255)]/10 rounded" />
-                  <div className="h-3 bg-[rgb(0,255,255)]/10 rounded w-2/3" />
-                </div>
-              ) : credits ? (
-                <>
-                  {/* Current Plan */}
-                  <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
-                    <div className="flex items-center justify-between mb-2 sm:mb-3">
-                      <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
-                        Current Plan
-                      </span>
-                      <span className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${
-                        tierColorMap[credits.tier] ?? "text-[rgb(150,150,170)]"
-                      }`}>
-                        {tierLabelMap[credits.tier] ?? credits.tier}
-                      </span>
-                    </div>
-
-                    {/* Tier Benefits */}
-                    <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)]">
-                      {tierCreditsMap[credits.tier] ?? ""}
-                    </p>
-                  </div>
-
-                  {/* Cancellation Warning */}
-                  {credits.cancel_at_period_end && (
-                    <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-amber-500/10 border border-amber-500/30">
-                      <p className="text-[10px] sm:text-xs text-amber-400 font-medium mb-1">Subscription Cancelled</p>
-                      <p className="text-[10px] sm:text-xs text-amber-400/70">
-                        You&apos;ll retain access to your current plan until{" "}
-                        {credits.period_end
-                          ? new Date(credits.period_end).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
-                          : "the end of your billing period"}
-                        . After that, you&apos;ll be moved to the Free tier.
-                      </p>
-                      <button
-                        onClick={handleManageSubscription}
-                        className="mt-2 text-[10px] sm:text-xs text-amber-400 underline hover:text-amber-300 transition-colors"
-                      >
-                        Resubscribe
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Payment Failure Warning */}
-                  {credits.payment_failed && (
-                    <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-rose-500/10 border border-rose-500/30">
-                      <p className="text-[10px] sm:text-xs text-rose-400 font-medium mb-1">Payment Failed</p>
-                      <p className="text-[10px] sm:text-xs text-rose-400/70">
-                        Your last payment could not be processed. Please update your payment method to avoid losing access to your plan.
-                      </p>
-                      <button
-                        onClick={handleManageSubscription}
-                        className="mt-2 text-[10px] sm:text-xs text-rose-400 underline hover:text-rose-300 transition-colors"
-                      >
-                        Update Payment Method
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Credits */}
-                  <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/20">
-                    {(() => {
-                      const effectiveMax = Math.max(credits.limit ?? 0, (credits.balance ?? 0) + (credits.used ?? 0));
-                      const percentRemaining = effectiveMax > 0
-                        ? Math.min(100, Math.max(0, ((credits.balance ?? 0) / effectiveMax) * 100))
-                        : 0;
-                      const resetDate = credits.period_end
-                        ? new Date(credits.period_end).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-                        : null;
-                      const isWallet = !credits.limit || credits.limit <= 0;
-
-                      return (
-                        <>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] sm:text-xs text-[rgb(150,150,170)] uppercase tracking-wider">
-                              Credits
-                            </span>
-                            <span className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
-                              {Math.max(0, credits.balance).toLocaleString()} left
-                            </span>
-                          </div>
-
-                          <div className="h-1.5 sm:h-2 bg-[rgb(0,255,255)]/10 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full transition-all duration-300 ${
-                                credits.warning ? "bg-amber-500" : "bg-[rgb(0,255,255)]"
-                              }`}
-                              style={{ width: `${percentRemaining}%` }}
-                            />
-                          </div>
-
-                          <div className="mt-2 sm:mt-3 grid grid-cols-2 gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-[rgb(150,150,170)]">
-                            <div>
-                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Balance</span>
-                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.balance).toLocaleString()}</div>
-                            </div>
-                            <div>
-                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Used</span>
-                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">{Math.max(0, credits.used).toLocaleString()}</div>
-                            </div>
-                            <div>
-                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Monthly limit</span>
-                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
-                                {isWallet ? "No monthly reset" : credits.limit.toLocaleString()}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="uppercase tracking-wider text-[8px] sm:text-[9px] text-[rgb(0,255,255)]/50">Resets</span>
-                              <div className="font-mono text-[10px] sm:text-xs text-[rgb(0,255,255)]">
-                                {isWallet ? "—" : (resetDate || "—")}
-                              </div>
-                            </div>
-                          </div>
-
-                          {isWallet && (
-                            <p className="mt-2 text-[10px] sm:text-[11px] text-[rgb(150,150,170)]">
-                              One-time trial credits (no monthly reset).
-                            </p>
-                          )}
-
-                          {!isWallet && credits.balance > credits.limit && !credits.cancel_at_period_end && (
-                            <p className="mt-2 text-[10px] sm:text-[11px] text-sky-400/70">
-                              You have {(credits.balance - credits.limit).toLocaleString()} bonus credits from a previous plan. These won&apos;t renew next cycle.
-                            </p>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Upgrade Options */}
-                  {credits.tier !== "max" && (
-                    <div className="space-y-2 sm:space-y-3 mb-3 sm:mb-4">
-                      <p className="text-[10px] sm:text-xs uppercase tracking-[0.15em] sm:tracking-[0.2em] text-[rgb(0,255,255)]/50">
-                        Upgrade Your Plan
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                        {credits.tier === "free" && (
-                          <button
-                            onClick={() => handleUpgrade("indie")}
-                            disabled={upgradeLoading !== null}
-                            className="p-2.5 sm:p-3 border border-emerald-500/30 bg-[rgb(10,10,25)] hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-                          >
-                            <p className="text-xs sm:text-sm font-bold text-emerald-400">Indie</p>
-                            <p className="text-[10px] sm:text-xs text-emerald-400/50 mt-0.5 sm:mt-1">5,000 credits / month</p>
-                          </button>
-                        )}
-                        {(credits.tier === "free" || credits.tier === "indie") && (
-                          <Link
-                            href="/support"
-                            className="p-2.5 sm:p-3 border border-purple-500/30 bg-[rgb(10,10,25)] hover:bg-purple-500/10 hover:border-purple-500/50 transition-all active:scale-[0.98]"
-                          >
-                            <p className="text-xs sm:text-sm font-bold text-purple-400">Enterprise</p>
-                            <p className="text-[10px] sm:text-xs text-purple-400/50 mt-0.5 sm:mt-1">Custom pricing</p>
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Manage Subscription (for paid users) */}
-                  {credits.stripe_customer_id && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={handleManageSubscription}
-                        disabled={portalLoading}
-                        className="w-full"
-                      >
-                        {portalLoading ? "Loading..." : "Manage Subscription"}
-                      </Button>
-
-                      {/* Billing History */}
-                      <div className="mt-3 sm:mt-4">
-                        <button
-                          onClick={handleToggleInvoices}
-                          className="flex items-center gap-1.5 text-[10px] sm:text-xs text-[rgb(150,150,170)] hover:text-[rgb(0,255,255)] transition-colors uppercase tracking-wider"
-                        >
-                          <span className="transition-transform" style={{ display: "inline-block", transform: showInvoices ? "rotate(90deg)" : "rotate(0deg)" }}>
-                            &#9654;
-                          </span>
-                          Billing History
-                        </button>
-
-                        {showInvoices && (
-                          <div className="mt-2 space-y-1">
-                            {invoicesLoading ? (
-                              <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)] animate-pulse">Loading invoices...</p>
-                            ) : invoices && invoices.length > 0 ? (
-                              <div className="border border-[rgb(0,255,255)]/10 divide-y divide-[rgb(0,255,255)]/10">
-                                {invoices.map((inv) => (
-                                  <div key={inv.id} className="flex items-center justify-between px-3 py-2 text-[10px] sm:text-xs">
-                                    <span className="text-[rgb(150,150,170)]">
-                                      {new Date(inv.date * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                                    </span>
-                                    <span className="font-mono text-[rgb(0,255,255)]">
-                                      ${(inv.amount_paid / 100).toFixed(2)}
-                                    </span>
-                                    <span className={`uppercase tracking-wider ${inv.status === "paid" ? "text-emerald-400" : "text-amber-400"}`}>
-                                      {inv.status}
-                                    </span>
-                                    {inv.invoice_pdf && (
-                                      <a
-                                        href={inv.invoice_pdf}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[rgb(0,255,255)]/60 hover:text-[rgb(0,255,255)] transition-colors"
-                                      >
-                                        PDF
-                                      </a>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-[10px] sm:text-xs text-[rgb(150,150,170)]">No invoices found.</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <p className="text-xs text-rose-400">Failed to load subscription information</p>
-              )}
-            </Card>
           </div>
 
           {/* Right Column - Diagnostics (Admin Only) */}
@@ -651,57 +287,6 @@ export default function SettingsPage() {
                 </div>
               </Card>
 
-              {/* Credit Adjustment */}
-              <Card variant="glass" className={`p-4 sm:p-6 ${mounted ? 'animate-fade-slide-up animation-delay-400' : 'opacity-0'}`}>
-                <div className="mb-4">
-                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-[rgb(0,255,255)]/70 mb-1">Credit Adjustment</p>
-                  <p className="text-xs text-slate-500">Grant or deduct credits for a user</p>
-                </div>
-                <form onSubmit={handleCreditAdjust} className="space-y-3">
-                  <div>
-                    <label className="block text-[10px] sm:text-xs text-slate-400 mb-1">User ID</label>
-                    <input
-                      type="text"
-                      value={creditUserId}
-                      onChange={(e) => setCreditUserId(e.target.value)}
-                      placeholder="user_xxx"
-                      className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-                      disabled={creditAdjusting}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] sm:text-xs text-slate-400 mb-1">Amount (negative to deduct)</label>
-                    <input
-                      type="number"
-                      value={creditAmount}
-                      onChange={(e) => setCreditAmount(e.target.value)}
-                      placeholder="e.g. 500 or -200"
-                      className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-                      disabled={creditAdjusting}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] sm:text-xs text-slate-400 mb-1">Reason</label>
-                    <input
-                      type="text"
-                      value={creditReason}
-                      onChange={(e) => setCreditReason(e.target.value)}
-                      placeholder="e.g. promotional_grant or billing_correction"
-                      className="w-full px-3 py-2 text-sm bg-slate-900/50 border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-                      disabled={creditAdjusting}
-                    />
-                  </div>
-                  <Button type="submit" variant="primary" size="sm" disabled={creditAdjusting} className="w-full">
-                    {creditAdjusting ? "Processing..." : "Adjust Credits"}
-                  </Button>
-                  {creditResult && (
-                    <p className="text-xs text-emerald-400">{creditResult}</p>
-                  )}
-                  {creditError && (
-                    <p className="text-xs text-rose-400">{creditError}</p>
-                  )}
-                </form>
-              </Card>
             </div>
           )}
         </div>

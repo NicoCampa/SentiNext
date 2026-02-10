@@ -8,12 +8,6 @@ import {
   type AdminDashboardSummary,
 } from '@/lib/api';
 
-const TIER_LABELS: Record<string, string> = {
-  free: 'Free',
-  indie: 'Indie',
-  max: 'Enterprise',
-};
-
 interface DashboardTabProps {
   isAdmin: boolean;
 }
@@ -90,28 +84,8 @@ export function DashboardTab({ isAdmin }: DashboardTabProps) {
           <>
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-slate-950/40 border border-white/10">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total Users</p>
-                <p className="font-mono text-xs text-amber-300">{dashboard.users.total.toLocaleString()}</p>
-              </div>
-              <div className="p-3 bg-slate-950/40 border border-white/10">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">New Users</p>
-                <p className="font-mono text-xs text-amber-300">{dashboard.users.new.toLocaleString()}</p>
-              </div>
-              <div className="p-3 bg-slate-950/40 border border-white/10">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Active Users</p>
                 <p className="font-mono text-xs text-amber-300">{dashboard.users.active.toLocaleString()}</p>
-              </div>
-              <div className="p-3 bg-slate-950/40 border border-white/10">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Paid Users</p>
-                <p className="font-mono text-xs text-amber-300">{dashboard.users.paid.toLocaleString()}</p>
-              </div>
-              <div className="p-3 bg-slate-950/40 border border-white/10">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">MRR (Est.)</p>
-                <p className="font-mono text-xs text-amber-300">${dashboard.users.mrr_estimate.toLocaleString()}</p>
-              </div>
-              <div className="p-3 bg-slate-950/40 border border-white/10">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Credits Used</p>
-                <p className="font-mono text-xs text-amber-300">{dashboard.credits.used.toLocaleString()}</p>
               </div>
               <div className="p-3 bg-slate-950/40 border border-white/10">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">LLM Cost</p>
@@ -127,68 +101,6 @@ export function DashboardTab({ isAdmin }: DashboardTabProps) {
               <div className="p-3 bg-slate-950/40 border border-white/10">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">LLM Tokens</p>
                 <p className="font-mono text-xs text-amber-300">{dashboard.llm.total_tokens.toLocaleString()}</p>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Top Credit Operations</p>
-              <div className="space-y-2">
-                {dashboard.credits.by_operation.slice(0, 5).map((item, idx) => (
-                  <div key={`${item.operation ?? 'unknown'}-${idx}`} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">{item.operation ?? 'unknown'}</span>
-                    <span className="font-mono text-amber-300">{item.credits_used.toLocaleString()} credits</span>
-                  </div>
-                ))}
-                {dashboard.credits.by_operation.length === 0 && (
-                  <p className="text-xs text-slate-500">No usage recorded yet.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Tier Breakdown</p>
-              <div className="space-y-2">
-                {dashboard.users.tier_counts.map((item, idx) => (
-                  <div key={`${item.tier ?? 'unknown'}-${idx}`} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">
-                      {item.tier ? (TIER_LABELS[item.tier] ?? item.tier) : 'unknown'}
-                    </span>
-                    <span className="font-mono text-amber-300">{item.count.toLocaleString()}</span>
-                  </div>
-                ))}
-                {dashboard.users.tier_counts.length === 0 && (
-                  <p className="text-xs text-slate-500">No tier data available.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Top Users by Credits</p>
-              <div className="space-y-2">
-                {dashboard.credits.top_users.slice(0, 5).map((item, idx) => (
-                  <div key={`${item.user_id}-${idx}`} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">{item.user_id}</span>
-                    <span className="font-mono text-amber-300">{item.credits_used.toLocaleString()}</span>
-                  </div>
-                ))}
-                {dashboard.credits.top_users.length === 0 && (
-                  <p className="text-xs text-slate-500">No user data available.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Top Apps by Credits</p>
-              <div className="space-y-2">
-                {dashboard.credits.top_apps.slice(0, 5).map((item, idx) => (
-                  <div key={`${item.app_id}-${idx}`} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">App {item.app_id}</span>
-                    <span className="font-mono text-amber-300">{item.credits_used.toLocaleString()}</span>
-                  </div>
-                ))}
-                {dashboard.credits.top_apps.length === 0 && (
-                  <p className="text-xs text-slate-500">No app data available.</p>
-                )}
               </div>
             </div>
 
@@ -225,53 +137,6 @@ export function DashboardTab({ isAdmin }: DashboardTabProps) {
               </div>
             </div>
 
-            {dashboard.cost_per_user && dashboard.cost_per_user.length > 0 && (
-              <div className="mt-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-1">
-                  Expected LLM Cost Per User
-                </p>
-                <p className="text-[10px] text-slate-600 mb-3">
-                  Estimated provider cost per user if all credits are consumed
-                </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-white/10">
-                        <th className="text-left py-1.5 text-slate-500 font-medium">Tier</th>
-                        <th className="text-right py-1.5 text-slate-500 font-medium">Credits</th>
-                        <th className="text-right py-1.5 text-green-400/70 font-medium">Light</th>
-                        <th className="text-right py-1.5 text-amber-400/70 font-medium">Typical</th>
-                        <th className="text-right py-1.5 text-red-400/70 font-medium">Heavy</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dashboard.cost_per_user.map((est) => (
-                        <tr key={est.tier} className="border-b border-white/5">
-                          <td className="py-1.5 text-slate-300">
-                            {TIER_LABELS[est.tier] ?? est.tier}
-                          </td>
-                          <td className="py-1.5 text-right font-mono text-slate-400">
-                            {est.credits.toLocaleString()}
-                          </td>
-                          <td className="py-1.5 text-right font-mono text-green-400">
-                            ${est.light_usd.toFixed(2)}
-                          </td>
-                          <td className="py-1.5 text-right font-mono text-amber-300">
-                            ${est.typical_usd.toFixed(2)}
-                          </td>
-                          <td className="py-1.5 text-right font-mono text-red-400">
-                            ${est.heavy_usd.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[10px] text-slate-600 mt-2">
-                  Light = all classify &middot; Typical = 55% classify + 20% chat + 15% summary + 10% other &middot; Heavy = all chat agent
-                </p>
-              </div>
-            )}
           </>
         ) : (
           <p className="text-xs text-rose-400">{error ?? 'No dashboard data available.'}</p>

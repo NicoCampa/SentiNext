@@ -58,6 +58,10 @@ data/*.pdf
 # Generated reports (repo-local, root level only)
 /reports/
 
+# Excluded directories
+web/
+.agents/
+
 # Benchmarks
 /benchmarks/results/
 /benchmarks/.cache/

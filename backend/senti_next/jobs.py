@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional
 
 from . import storage
 from . import llm
-from . import credits
 from .insights import prepare_insights
 from .analysis import build_reviews_dataframe
 
@@ -86,11 +85,10 @@ def run_analysis_job(
     else:
         storage.clear_progress(user_id, app_id)
 
-    credit_tracker = llm.CreditAccumulator()
     analysis_failed = False
 
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify", credit_accumulator=credit_tracker):
+        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
             llm_labels = llm.ensure_review_labels(
                 app_id,
                 all_reviews,
@@ -150,7 +148,7 @@ def run_analysis_job(
                         }
             except Exception:
                 pass
-            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="health_overview", credit_accumulator=credit_tracker):
+            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="health_overview"):
                 health_overview = llm.generate_health_overview(
                     reviews=reviews_payload,
                     game_context=game_context,
@@ -177,24 +175,6 @@ def run_analysis_job(
         if job_id:
             storage.update_job_registry(job_id, status="completed")
 
-    except credits.InsufficientCreditsError as exc:
-        analysis_failed = True
-        logger.info("Analysis failed due to insufficient credits: %s", exc)
-        storage.save_analysis_result(
-            user_id=user_id,
-            app_id=app_id,
-            metadata=metadata_dict,
-            insights=None,
-            reviews=[],
-            status="failed",
-            error=str(exc),
-            run_id=run_id,
-            snapshot_hash=snapshot_hash,
-            context_hash=context_hash,
-        )
-        if job_id:
-            storage.update_job_registry(job_id, status="failed", error=str(exc))
-        return
     except Exception as exc:
         analysis_failed = True
         logger.exception("Analysis job failed: %s", exc)
@@ -226,16 +206,3 @@ def run_analysis_job(
             # active=true which prevents the SSE completion check).
             storage.update_progress_phase(user_id, app_id, "classifying")
 
-        # Refund credits if analysis failed and produced no usable result
-        if analysis_failed and credit_tracker.total > 0:
-            try:
-                credits.refund_credits(
-                    user_id=user_id,
-                    amount=credit_tracker.total,
-                    operation="classify_refund",
-                    description=f"Refund for failed analysis of app {app_id} ({credit_tracker.total} credits)",
-                    app_id=app_id,
-                )
-                logger.info(f"Refunded {credit_tracker.total} credits to user {user_id} for failed analysis of app {app_id}")
-            except Exception as refund_exc:
-                logger.error(f"Failed to refund {credit_tracker.total} credits for user {user_id}: {refund_exc}")

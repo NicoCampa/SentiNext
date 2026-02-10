@@ -14,8 +14,6 @@ from .chat_tools import (
     generate_follow_up_questions,
     ToolErrorCode,
 )
-from . import credits
-
 logger = logging.getLogger(__name__)
 
 
@@ -542,8 +540,6 @@ async def run_agent(
         try:
             # Call LLM with tools
             response = await call_llm_with_tools(messages, tools_schema)
-        except credits.InsufficientCreditsError:
-            raise
         except Exception as e:
             logger.exception("LLM call failed")
             return AgentResult(

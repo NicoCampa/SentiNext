@@ -5,7 +5,6 @@ import { Card } from '@/components/ui/card';
 import { formatTaxonomyLabel } from '@/lib/taxonomyLabels';
 import { translateText } from '@/lib/api';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useCredits } from '@/contexts/CreditsContext';
 import type { DatabaseReviewItem } from '@/types';
 
 // Map Steam language codes to our app language codes
@@ -152,7 +151,6 @@ export function ReviewDetailPanel({
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
   const { language: userLanguage } = useLanguage();
-  const { silentRefresh: refreshCredits } = useCredits();
 
   const reviewLangCode = STEAM_TO_APP_LANGUAGE[review.language?.toLowerCase() || ''] || review.language?.toLowerCase();
   const needsTranslation = reviewLangCode !== userLanguage && review.language;
@@ -183,7 +181,6 @@ export function ReviewDetailPanel({
       });
       setTranslatedText(result.translated_text);
       setShowTranslation(true);
-      refreshCredits();
     } catch (error) {
       console.error('Translation failed:', error);
       setCopyToast('Translation failed. Please try again.');

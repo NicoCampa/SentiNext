@@ -425,53 +425,6 @@ def init_postgresql_schema() -> None:
             END $$;
         """))
 
-        # User subscriptions table for credit tier system
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS user_subscriptions (
-                user_id TEXT PRIMARY KEY,
-                tier TEXT NOT NULL DEFAULT 'free',
-                credits_balance INTEGER NOT NULL DEFAULT 500,
-                credits_monthly_limit INTEGER NOT NULL DEFAULT 500,
-                credits_used_this_period INTEGER NOT NULL DEFAULT 0,
-                current_period_start TIMESTAMP NOT NULL DEFAULT NOW(),
-                current_period_end TIMESTAMP NOT NULL DEFAULT NOW() + INTERVAL '1 month',
-                stripe_customer_id TEXT,
-                stripe_subscription_id TEXT,
-                stripe_price_id TEXT,
-                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-            )
-        """))
-
-        # Add cancel_at_period_end and payment_failed columns (migration)
-        conn.execute(text("""
-            ALTER TABLE user_subscriptions
-            ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT FALSE
-        """))
-        conn.execute(text("""
-            ALTER TABLE user_subscriptions
-            ADD COLUMN IF NOT EXISTS payment_failed BOOLEAN DEFAULT FALSE
-        """))
-
-        # Credit transactions table for tracking usage
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS credit_transactions (
-                id SERIAL PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                amount INTEGER NOT NULL,
-                operation TEXT NOT NULL,
-                description TEXT,
-                app_id INTEGER,
-                session_id TEXT,
-                balance_after INTEGER NOT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT NOW()
-            )
-        """))
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_credit_transactions_user
-            ON credit_transactions(user_id, created_at DESC)
-        """))
-
         # LLM usage table for token metrics
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS llm_usage (
@@ -602,14 +555,6 @@ def init_postgresql_schema() -> None:
             ON comparison_summaries(user_id)
         """))
 
-        # Processed Stripe events for webhook idempotency
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS processed_stripe_events (
-                event_id TEXT PRIMARY KEY,
-                processed_at TIMESTAMP NOT NULL DEFAULT NOW()
-            )
-        """))
-
         # User event tracking for frontend analytics
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS user_events (
@@ -634,21 +579,6 @@ def init_postgresql_schema() -> None:
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_user_events_created
             ON user_events(created_at DESC)
-        """))
-
-        # Waitlist table for capacity-gated signups
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS waitlist (
-                id SERIAL PRIMARY KEY,
-                email TEXT NOT NULL UNIQUE,
-                referral_source TEXT,
-                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                notified_at TIMESTAMP,
-                converted_at TIMESTAMP
-            )
-        """))
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_waitlist_created ON waitlist(created_at DESC)
         """))
 
         logger.info("PostgreSQL schema initialized and migrated")
