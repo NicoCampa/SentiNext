@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SentiNext is an open-source tool that ingests Steam game reviews, classifies them using LLM into a structured taxonomy, and surfaces actionable insights like top issues and feature requests. It is designed for self-hosting.
+SentiNext is an open-source tool that ingests Steam game reviews, classifies them using LLMs into a structured taxonomy, and surfaces actionable insights like top issues and feature requests. It is designed for self-hosting.
 
 ## Build & Run Commands
 
@@ -28,9 +28,9 @@ See `LOCAL_DEVELOPMENT.md` for full setup. Quick start:
 ./run_frontend_local.sh
 ```
 
-### Frontend Lint
+### Frontend TypeScript Check
 ```bash
-cd frontend && npm run lint
+cd apps/dashboard && npx tsc --noEmit
 ```
 
 ## Architecture
@@ -39,19 +39,32 @@ cd frontend && npm run lint
 1. **Docker Compose**: One-command self-hosting with PostgreSQL, backend, and frontend
 2. **Manual**: Separate frontend (Next.js) and backend (FastAPI) services
 
-### Backend Structure (`backend/`)
-- `main.py` - FastAPI REST API
-- `senti_next/` - Core package:
-  - `llm.py` - LLM integration (Gemini/xAI), review classification, taxonomy parsing
-  - `storage.py` - PostgreSQL persistence (reviews, labels, starred games, analysis results)
-  - `steam_api.py` - Steam API wrapper for fetching reviews and game details
-  - `insights.py` - Aggregates classification results into dashboard metrics
-  - `chat.py` - Chat interface using review context
+### Backend Structure (`apps/api/`)
+- `main.py` - Slim FastAPI app: creation, CORS, rate limiting, router includes
+- `senti_next/routes/` - API route handlers split into modules:
+  - `analysis.py` - /analyze, /progress, /analysis/* endpoints
+  - `games.py` - /search, /game, /starred/* endpoints
+  - `reviews.py` - /reviews, /labels, /database/* endpoints
+  - `chat.py` - /chat, /chat/simple, /chat/* endpoints
+  - `settings.py` - /config, /settings/*, /health, /admin/* endpoints
+  - `misc.py` - /translate, /compare/*, /report/* endpoints
+  - `_shared.py` - Shared models and helpers across routes
+- `senti_next/providers/` - LLM provider abstraction:
+  - `base.py` - Abstract LLMProvider interface
+  - `gemini.py` - Google Gemini provider
+  - `xai.py` - xAI Grok provider
+  - `openai_compat.py` - OpenAI + Ollama (both use openai SDK)
+  - `config.py` - Runtime provider/model configuration
+- `senti_next/llm.py` - Classification logic, taxonomy, prompts (uses providers/)
+- `senti_next/storage.py` - PostgreSQL persistence
+- `senti_next/steam_api.py` - Steam API wrapper
+- `senti_next/insights.py` - Dashboard metrics aggregation
+- `senti_next/chat.py` - Chat interface using review context
 
-### Frontend Structure (`frontend/`)
-- Next.js 14 App Router with TypeScript
+### Frontend Structure (`apps/dashboard/`)
+- Next.js App Router with TypeScript
 - `src/app/` - Pages: dashboard, reviews, chat, compare, database, settings
-- `src/lib/api.ts` - API client with auth token injection
+- `src/lib/api.ts` - API client
 - `src/components/` - React components (charts, review explorer, filters)
 
 ### Data Flow
@@ -61,25 +74,16 @@ cd frontend && npm run lint
 4. `/analysis/{app_id}` returns insights when ready
 5. Frontend polls `/progress/{app_id}` for classification status
 
-### Authentication
-- Optional Clerk integration (`SENTINEXT_AUTH_ENABLED=1`)
-- JWT validation via `SENTINEXT_CLERK_JWKS_URL`
-- Local/self-hosted mode uses `user_id="local"` (no auth required)
-- Admin actions require `SENTINEXT_ADMIN_TOKEN` or inclusion in `SENTINEXT_ADMIN_USER_IDS`
-
 ## Key Environment Variables
 
 **Backend:**
-- `GEMINI_API_KEY` or `XAI_API_KEY` - At least one LLM API key required
-- `SENTINEXT_GEMINI_MODEL` - Optional, defaults to gemini-flash-lite-latest
+- `GEMINI_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY` - LLM API keys (at least one required, or use Ollama)
+- `SENTINEXT_OLLAMA_BASE_URL` - Ollama endpoint (default: http://localhost:11434/v1)
+- `SENTINEXT_LLM_PROVIDER` / `SENTINEXT_LLM_MODEL` - Override active provider/model
 - `DATABASE_URL` - PostgreSQL connection string
-- `SENTINEXT_AUTH_ENABLED` - Enable Clerk auth (default: false)
-- `SENTINEXT_ENABLE_DESTRUCTIVE` - Allow delete endpoints
 
 **Frontend:**
 - `NEXT_PUBLIC_API_BASE_URL` - Backend URL (dev defaults to `http://localhost:8000`)
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk public key (optional)
-- `NEXT_PUBLIC_CLERK_DOMAIN` - Custom Clerk domain for CSP headers (optional)
 
 ## LLM Classification Taxonomy
 

@@ -1,0 +1,73 @@
+{
+    "common": {
+        "getStarted": "Get Started",
+        "requestDemo": "Request a Demo",
+        "viewOnGithub": "View on GitHub",
+        "product": "Product",
+        "pricing": "Get Started",
+        "docs": "Docs",
+        "github": "GitHub",
+        "faq": "FAQ",
+        "privacy": "Privacy",
+        "terms": "Terms",
+        "impressum": "Impressum",
+        "back": "Back",
+        "footerDesc": "Open-source Steam review intelligence for game teams.",
+        "valveDisclaimer": "SENTINEXT is an independent tool that analyzes public Steam reviews via Steam APIs. We are not endorsed by, affiliated with, or supported by Valve Corporation. Steam and the Steam logo are trademarks of Valve Corporation."
+    },
+    "hero": {
+        "badge": "Open-Source Steam Review AI",
+        "title1": "Review",
+        "title2": "Intelligence",
+        "subtitle": "An open-source AI agent that turns Steam reviews into a prioritized backlog of issues, feature requests, and player pain points -- backed by evidence quotes. Self-host with Docker Compose.",
+        "bullet1": "Issues & requests, prioritized",
+        "bullet2": "Audit-ready evidence quotes",
+        "bullet3": "Self-hosted: your data stays yours"
+    },
+    "demo": {
+        "badge": "Guided Walkthrough",
+        "title1": "Request a",
+        "title2": "Demo",
+        "subtitle": "See SentiNext in action with a guided walkthrough of the full analysis pipeline.",
+        "card1Title": "Live Analysis",
+        "card1Desc": "Watch the full pipeline in action: search a game, ingest reviews, and see AI classification happen in real time.",
+        "card2Title": "Dashboard Walkthrough",
+        "card2Desc": "Explore the insights dashboard, review explorer, category breakdowns, and evidence quotes.",
+        "card3Title": "AI Chat",
+        "card3Desc": "Ask natural-language questions about analyzed data and get answers with charts and evidence.",
+        "card4Title": "Deployment Guidance",
+        "card4Desc": "Get help setting up SentiNext on your own infrastructure with Docker Compose or manual deployment.",
+        "ctaTitle": "Ready to see it in action?",
+        "ctaSubtitle": "Send us an email and we will schedule a walkthrough.",
+        "ctaButton": "Request a Demo"
+    },
+    "docs": {
+        "title": "Documentation",
+        "subtitle": "Guides for deploying and using SENTINEXT.",
+        "quickStart": {
+            "title": "Quick Start",
+            "description": "Deploy SentiNext and analyze your first game."
+        },
+        "dataIngestion": {
+            "title": "Data Ingestion",
+            "description": "How SENTINEXT fetches and stores Steam reviews."
+        },
+        "aiTaxonomy": {
+            "title": "AI Taxonomy",
+            "description": "How reviews are labeled and cited with evidence."
+        },
+        "sidebar": {
+            "overview": "Overview",
+            "introduction": "Introduction",
+            "gettingStarted": "Getting Started",
+            "coreFeatures": "Core Features",
+            "ingestingReviews": "Ingesting Reviews",
+            "insightsTaxonomy": "Insights & Taxonomy",
+            "configuration": "Configuration",
+            "authentication": "Authentication",
+            "adminData": "Admin & Data",
+            "support": "Support",
+            "faq": "FAQ"
+        }
+    }
+}

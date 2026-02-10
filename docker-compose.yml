@@ -13,13 +13,11 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: infra/docker/Dockerfile.backend
     depends_on:
       - db
     environment:
       DATABASE_URL: postgresql://sentinext:sentinext@db:5432/sentinext
-      SENTINEXT_AUTH_ENABLED: "false"
-      SENTINEXT_ADMIN_USER_IDS: "local"
       SENTINEXT_ALLOWED_ORIGINS: "http://localhost:3000"
     env_file:
       - path: .env.local
@@ -29,7 +27,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./apps/dashboard
       dockerfile: Dockerfile
     depends_on:
       - backend
@@ -38,5 +36,15 @@ services:
     ports:
       - "3000:3000"
 
+  # Optional: Ollama for local LLM inference
+  # Uncomment to use Ollama as your LLM provider
+  # ollama:
+  #   image: ollama/ollama
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   ports:
+  #     - "11434:11434"
+
 volumes:
   pgdata:
+  # ollama_data:

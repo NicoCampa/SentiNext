@@ -8,4 +8,4 @@ set +a
 echo "DATABASE_URL is set"
 
 # Run backend with hot reload
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000

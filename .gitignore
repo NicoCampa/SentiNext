@@ -7,17 +7,17 @@ dist/
 build/
 *.log
 *.tsbuildinfo
-frontend/node_modules/
-frontend/.next/
-frontend/.next.bak*
-frontend/out/
+apps/dashboard/node_modules/
+apps/dashboard/.next/
+apps/dashboard/.next.bak*
+apps/dashboard/out/
 
 # Env & local
 .env
 .env.*
-scripts/llm_validation/.env
-scripts/llm_validation/*.jsonl
-scripts/llm_validation/validation_report.json
+tooling/scripts/llm_validation/.env
+tooling/scripts/llm_validation/*.jsonl
+tooling/scripts/llm_validation/validation_report.json
 .env.*
 *.local
 !*.env.example
@@ -40,7 +40,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .venv*/
-backend/.venv/
+apps/api/.venv/
 .pytest_cache/
 
 # App data
@@ -59,11 +59,10 @@ data/*.pdf
 /reports/
 
 # Excluded directories
-web/
 .agents/
 
 # Benchmarks
-/benchmarks/results/
-/benchmarks/.cache/
-/benchmarks/datasets/steam_*/
-/benchmarks/datasets/steam-*/
+/tooling/benchmarks/results/
+/tooling/benchmarks/.cache/
+/tooling/benchmarks/datasets/steam_*/
+/tooling/benchmarks/datasets/steam-*/

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd frontend
+cd apps/dashboard
 
 # Make sure dependencies are installed
 if [ ! -d "node_modules" ]; then

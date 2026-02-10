@@ -1,0 +1,214 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-space);
+  --font-heading: var(--font-space);
+  --font-mono: "Space Mono", monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-accent-dash: #00F0FF;
+  --color-accent-dash-glow: rgba(0, 240, 255, 0.4);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-border: var(--border);
+
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-full: 0px;
+}
+
+:root {
+  /* Deep Void Background */
+  --background: #030014;
+  --foreground: #E0E0E0;
+
+  /* Electric Indigo (Primary) */
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+
+  /* Deep Purple (Secondary) */
+  --secondary: #7C3AED;
+  --secondary-foreground: #FFFFFF;
+
+  /* Cyberpunk Muted Tones (Purple/Blue tinted grays) */
+  --muted: #1A1625;
+  --muted-foreground: #9D9AB4;
+
+  /* Accents */
+  --accent: #2A2438;
+  --accent-foreground: #00F0FF;
+
+  /* Glass/Card Backgrounds */
+  --card: #0A0812;
+  --card-foreground: #E0E0E0;
+
+  /* Borders - Subtle purple/grid lines */
+  --border: #2E2842;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-space), sans-serif;
+  background-image:
+    linear-gradient(rgba(71, 85, 105, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(71, 85, 105, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@layer utilities {
+  .rounded-none,
+  .rounded,
+  .rounded-sm,
+  .rounded-md,
+  .rounded-lg,
+  .rounded-xl,
+  .rounded-2xl,
+  .rounded-3xl,
+  .rounded-full {
+    border-radius: 0 !important;
+  }
+}
+
+/* Force Space Grotesk Everywhere */
+*,
+*::before,
+*::after {
+  font-family: var(--font-space), sans-serif !important;
+}
+
+/* Glassmorphism Utilities */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-morphism {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Modern Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-20px) rotate(2deg);
+  }
+
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes pulse-soft {
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Corner Markers Component Logic */
+.corner-marker {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-color: var(--color-accent-dash);
+  opacity: 0.6;
+}
+
+.corner-tl {
+  top: 12px;
+  left: 12px;
+  border-top: 2px solid;
+  border-left: 2px solid;
+}
+
+.corner-tr {
+  top: 12px;
+  right: 12px;
+  border-top: 2px solid;
+  border-right: 2px solid;
+}
+
+.corner-bl {
+  bottom: 12px;
+  left: 12px;
+  border-bottom: 2px solid;
+  border-left: 2px solid;
+}
+
+.corner-br {
+  bottom: 12px;
+  right: 12px;
+  border-bottom: 2px solid;
+  border-right: 2px solid;
+}
+
+/* Dashboard Scanline Effect */
+.scanline {
+  width: 100%;
+  height: 2px;
+  z-index: 20;
+  background: rgba(0, 240, 255, 0.1);
+  opacity: 0.15;
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes scanline {
+  0% {
+    top: 0;
+  }
+
+  100% {
+    top: 100%;
+  }
+}
+
+/* Terminal Text Style */
+.terminal-text {
+  color: #00F0FF;
+  font-family: var(--font-mono) !important;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}

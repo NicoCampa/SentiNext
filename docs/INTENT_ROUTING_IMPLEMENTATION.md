@@ -6,13 +6,13 @@ Your proposed architecture for SQL-based analytics has been fully implemented!
 
 ### Changes Made
 
-#### 1. **Intent Router** (`backend/senti_next/intent.py`)
+#### 1. **Intent Router** (`apps/api/senti_next/intent.py`)
 - Classifies questions into: `AGGREGATION`, `EXAMPLES`, or `MIXED`
 - Pattern-based detection (fast, no extra LLM calls)
 - Detects chart/stats keywords → SQL aggregation
 - Detects content search keywords → keyword search
 
-#### 2. **SQL Aggregation Functions** (`backend/senti_next/storage.py`)
+#### 2. **SQL Aggregation Functions** (`apps/api/senti_next/storage.py`)
 - `get_recommendation_split(app_id, date_filter)` - Returns accurate counts
   - Uses `data->>'voted_up'` from Steam reviews
   - Supports all date filters (30d, 90d, 365d, all)
@@ -22,7 +22,7 @@ Your proposed architecture for SQL-based analytics has been fully implemented!
   - Fetches top reviews by sentiment (not keyword search!)
   - Ordered by `votes_up` for representative samples
 
-#### 3. **Updated Chat Flow** (`backend/senti_next/chat.py`)
+#### 3. **Updated Chat Flow** (`apps/api/senti_next/chat.py`)
 - `answer_game_aware_chat()` now routes based on intent:
   - **AGGREGATION**: Uses SQL → accurate stats from ALL reviews
   - **EXAMPLES**: Uses keyword search → content-based retrieval

@@ -1,0 +1,36 @@
+# Summarization prompt comparison: v1 vs v2 for subcategory_summary and monthly_report
+# Uses Gemini Flash as the model (production model for summarization tasks)
+
+[run]
+dataset = "tooling/benchmarks/datasets/bench_v1"
+suite = "quick"
+seed = 42
+max_concurrency = 4
+timeout_s = 90
+retries = 2
+cache_db = "tooling/benchmarks/.cache/cache.sqlite"
+results_dir = "tooling/benchmarks/results"
+pricing_table = "tooling/benchmarks/pricing/prices.example.json"
+tasks = [
+    "subcategory_summary",
+    "subcategory_summary_v2",
+    "monthly_report_summary",
+    "monthly_report_summary_v2",
+]
+
+[providers.openai]
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+
+[judge]
+provider = "openai"
+model = "gpt-5.1"
+temperature = 0.0
+max_tokens = 8192
+
+[[models]]
+id = "google:gemini-2.0-flash"
+provider = "google"
+model = "gemini-2.0-flash"
+temperature = 0.2
+max_tokens = 8192

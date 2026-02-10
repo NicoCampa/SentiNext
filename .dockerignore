@@ -4,11 +4,11 @@
 node_modules/
 __pycache__/
 *.pyc
-frontend/
-web/
+apps/dashboard/
+apps/marketing/
 data/
-benchmarks/
+tooling/benchmarks/
 .venv*/
 *.md
 .claude/
-scripts/
+tooling/scripts/

@@ -83,15 +83,15 @@ Question → ENTITY_EXAMPLES intent
 ## 🗂️ Files Modified/Created
 
 ### NEW Files:
-1. **`backend/senti_next/intent.py`** (250 lines)
+1. **`apps/api/senti_next/intent.py`** (250 lines)
    - Intent classification logic
    - Topic vs entity detection
    - Known topics list
 
-2. **`backend/tools/diagnostics/intent_routing_check.py`** (60 lines)
+2. **`apps/api/tools/diagnostics/intent_routing_check.py`** (60 lines)
    - Test cases for intent classification
 
-3. **`backend/tools/diagnostics/topic_vs_entity_check.py`** (100 lines)
+3. **`apps/api/tools/diagnostics/topic_vs_entity_check.py`** (100 lines)
    - Test cases for topic/entity detection
 
 4. **`docs/INTENT_ROUTING_IMPLEMENTATION.md`**
@@ -104,12 +104,12 @@ Question → ENTITY_EXAMPLES intent
    - Complete overview
 
 ### MODIFIED Files:
-1. **`backend/senti_next/storage.py`** (+160 lines)
+1. **`apps/api/senti_next/storage.py`** (+160 lines)
    - `get_recommendation_split()` - SQL aggregation
    - `sample_reviews_by_sentiment()` - Evidence sampling
    - `get_reviews_by_subcategory()` - Topic-based retrieval
 
-2. **`backend/senti_next/chat.py`** (~100 lines modified)
+2. **`apps/api/senti_next/chat.py`** (~100 lines modified)
    - Updated `answer_game_aware_chat()` with 3-way routing
    - Updated `build_game_aware_prompt()` with two-channel structure
    - Intent-based retrieval logic
@@ -330,7 +330,7 @@ Found 12 reviews mentioning Sonic:
 
 ### Customizing Known Topics
 
-Edit `backend/senti_next/intent.py`:
+Edit `apps/api/senti_next/intent.py`:
 
 ```python
 KNOWN_TOPICS = {
@@ -366,7 +366,7 @@ entity_reviews = storage.search_reviews_with_date_filter(
 
 ### Run Intent Classification Tests
 ```bash
-cd backend
+cd apps/api
 python test_intent_routing.py
 ```
 
