@@ -57,7 +57,7 @@ export default function GettingStartedPage() {
                     <div className="grid gap-6">
                         <div className="p-4 bg-black/40 border border-[#00F0FF]/10 rounded-sm font-mono text-xs text-[#00F0FF]/80 space-y-2">
                             <p className="text-[#00F0FF]/40"># Clone and configure</p>
-                            <p>git clone https://github.com/nicolo-nico/SentiNext.git</p>
+                            <p>git clone https://github.com/NicoCampa/SentiNext.git</p>
                             <p>cd SentiNext</p>
                             <p>cp .env.example .env.local</p>
                             <p className="text-[#00F0FF]/40"># Edit .env.local with your LLM API key</p>
@@ -90,7 +90,7 @@ export default function GettingStartedPage() {
                         </div>
                         <p>
                             See{' '}
-                            <Link href="https://github.com/nicolo-nico/SentiNext" target="_blank" className="font-bold underline decoration-[#00F0FF]/30 hover:decoration-[#00F0FF]">
+                            <Link href="https://github.com/NicoCampa/SentiNext" target="_blank" className="font-bold underline decoration-[#00F0FF]/30 hover:decoration-[#00F0FF]">
                                 LOCAL_DEVELOPMENT.md
                             </Link>{' '}
                             in the repository for full setup instructions.

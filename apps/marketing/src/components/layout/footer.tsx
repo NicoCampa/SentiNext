@@ -30,13 +30,13 @@ export function Footer({ lang }: { lang: SupportedLocale }) {
                         <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00F0FF]">Resources</h4>
                         <Link href={`/${lang}/docs`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">Documentation</Link>
                         <Link href={`/${lang}/docs/faq`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">FAQ</Link>
-                        <a href="https://github.com/nicolo-nico/SentiNext" target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">GitHub</a>
+                        <a href="https://github.com/NicoCampa/SentiNext" target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-[#00F0FF] transition-colors">GitHub</a>
                     </div>
 
                     <div className="flex flex-col gap-4">
                         <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00F0FF]">Connect</h4>
                         <div className="flex items-center gap-6 mt-2">
-                            <a href="https://github.com/nicolo-nico/SentiNext" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-[#00F0FF] transition-colors">
+                            <a href="https://github.com/NicoCampa/SentiNext" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-[#00F0FF] transition-colors">
                                 <Github className="h-5 w-5" />
                                 <span className="sr-only">GitHub</span>
                             </a>

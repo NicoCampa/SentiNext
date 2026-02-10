@@ -390,7 +390,7 @@ export default function ProductClient({ dict }: { dict: Dictionary }) {
                 <h2 className="text-4xl font-bold mb-10 tracking-tighter uppercase">System Ready.</h2>
                 <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
                     <Button size="lg" className="h-16 px-12 bg-[#00F0FF] text-black hover:bg-[#00F0FF]/90 font-bold uppercase tracking-[0.2em] rounded-none shadow-[0_0_30px_rgba(0,240,255,0.4)]" asChild>
-                        <a href="https://github.com/nicolo-nico/SentiNext" target="_blank" rel="noopener noreferrer">
+                        <a href="https://github.com/NicoCampa/SentiNext" target="_blank" rel="noopener noreferrer">
                             {dict.common.viewOnGithub}
                         </a>
                     </Button>

@@ -14,7 +14,7 @@ export function Header({ lang }: { lang: string }) {
         { name: 'Product', href: `/${lang}/product` },
         { name: 'Get Started', href: `/${lang}/pricing` },
         { name: 'Docs', href: `/${lang}/docs` },
-        { name: 'GitHub', href: 'https://github.com/nicolo-nico/SentiNext', external: true },
+        { name: 'GitHub', href: 'https://github.com/NicoCampa/SentiNext', external: true },
     ];
 
     return (

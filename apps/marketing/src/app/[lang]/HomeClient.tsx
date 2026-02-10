@@ -116,7 +116,7 @@ export default function HomeClient({ dict }: { dict: Dictionary }) {
                                 </Link>
                             </Button>
                             <Button size="lg" variant="outline" className="h-14 px-12 border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-[0.2em] text-xs rounded-none relative group" asChild>
-                                <a href="https://github.com/nicolo-nico/SentiNext" target="_blank" rel="noopener noreferrer">
+                                <a href="https://github.com/NicoCampa/SentiNext" target="_blank" rel="noopener noreferrer">
                                     {dict.common.viewOnGithub}
                                 </a>
                             </Button>
@@ -231,7 +231,7 @@ export default function HomeClient({ dict }: { dict: Dictionary }) {
                                 </Link>
                             </Button>
                             <Button size="lg" variant="outline" className="h-14 px-12 border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/10 font-bold uppercase tracking-[0.2em] text-xs rounded-none" asChild>
-                                <a href="https://github.com/nicolo-nico/SentiNext" target="_blank" rel="noopener noreferrer">
+                                <a href="https://github.com/NicoCampa/SentiNext" target="_blank" rel="noopener noreferrer">
                                     {dict.common.viewOnGithub}
                                 </a>
                             </Button>

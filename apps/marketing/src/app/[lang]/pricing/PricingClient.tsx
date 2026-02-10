@@ -53,7 +53,7 @@ export default function PricingClient({ dict }: { dict: Dictionary }) {
                                 "Production-ready defaults",
                             ]}
                             cta={dict.common.viewOnGithub}
-                            href="https://github.com/nicolo-nico/SentiNext"
+                            href="https://github.com/NicoCampa/SentiNext"
                             external
                             popular
                         />
