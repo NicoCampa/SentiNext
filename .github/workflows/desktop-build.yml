@@ -65,16 +65,30 @@ jobs:
                 throw error;
               }
 
-              const { data } = await github.rest.repos.createRelease({
-                owner,
-                repo,
-                tag_name: tag,
-                name: releaseName,
-                body: releaseBody,
-                draft: true,
-                prerelease: false,
-              });
-              release = data;
+              try {
+                const { data } = await github.rest.repos.createRelease({
+                  owner,
+                  repo,
+                  tag_name: tag,
+                  name: releaseName,
+                  body: releaseBody,
+                  draft: true,
+                  prerelease: false,
+                });
+                release = data;
+              } catch (createError) {
+                // Handle race conditions where another run created the release after our initial lookup.
+                if (createError.status === 422) {
+                  const { data: existing } = await github.rest.repos.getReleaseByTag({
+                    owner,
+                    repo,
+                    tag,
+                  });
+                  release = existing;
+                } else {
+                  throw createError;
+                }
+              }
             }
 
             return String(release.id);
