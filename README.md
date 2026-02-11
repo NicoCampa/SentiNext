@@ -70,10 +70,15 @@ Provider/model can be changed in Settings or via `PUT /settings/llm`.
 
 ## Technical Notes
 
-- PostgreSQL is required (`DATABASE_URL`).
-- Endpoints are open by default for self-hosted use.
-- Optional hardening: set `SENTINEXT_ADMIN_TOKEN` to protect admin/destructive actions, and set `SENTINEXT_ENABLE_DESTRUCTIVE=false` to fully block destructive operations.
-- xAI supports a two-tier flow (fast model, then reasoning fallback); other providers use single-call classification.
+- Database:
+PostgreSQL is the default/recommended setup (`DATABASE_URL` in `.env.example` and Docker Compose), and SQLite is also supported as a local fallback when no DB config is provided.
+- API access:
+Endpoints are open by default for self-hosted use (no global auth layer).
+- Admin/destructive safety:
+Set `SENTINEXT_ADMIN_TOKEN` to require `x-admin-token` on admin endpoints.
+Destructive routes are disabled by default and only enabled when `SENTINEXT_ENABLE_DESTRUCTIVE=true`.
+- Review classification strategy:
+xAI uses a two-tier flow (fast model, then reasoning fallback). Other providers use a single-call classification path.
 
 ## License
 
