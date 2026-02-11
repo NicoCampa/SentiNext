@@ -64,7 +64,7 @@ pub fn run() {
             // Spawn the Python sidecar — handle errors gracefully so the
             // window still opens and can show an error message to the user.
             let shell = handle.shell();
-            let sidecar = match shell.sidecar("binaries/sentinext-backend") {
+            let sidecar = match shell.sidecar("sentinext-backend") {
                 Ok(cmd) => cmd.args(["--port", &port.to_string()]),
                 Err(err) => {
                     eprintln!("Failed to create sidecar command: {err}");

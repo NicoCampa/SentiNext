@@ -68,3 +68,7 @@ data/*.pdf
 /tooling/benchmarks/.cache/
 /tooling/benchmarks/datasets/steam_*/
 /tooling/benchmarks/datasets/steam-*/
+
+# Desktop (Tauri) generated/build artifacts
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/

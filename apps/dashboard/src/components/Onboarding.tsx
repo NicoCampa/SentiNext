@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Portal } from './Portal';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -12,6 +13,7 @@ const TOTAL_STEPS = 4;
 export function Onboarding() {
   const { showOnboarding, markOnboardingComplete } = useOnboarding();
   const { t } = useLanguage();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [mounted, setMounted] = useState(false);
 
@@ -39,6 +41,11 @@ export function Onboarding() {
   const handleSkip = useCallback(() => {
     markOnboardingComplete();
   }, [markOnboardingComplete]);
+
+  const handleConfigureGenAI = useCallback(() => {
+    markOnboardingComplete();
+    router.push('/settings');
+  }, [markOnboardingComplete, router]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -102,7 +109,7 @@ export function Onboarding() {
             {currentStep === 0 && <StepWelcome />}
             {currentStep === 1 && <StepSearchAnalyze />}
             {currentStep === 2 && <StepInsights />}
-            {currentStep === 3 && <StepAIFeatures />}
+            {currentStep === 3 && <StepAIFeatures onConfigureGenAI={handleConfigureGenAI} />}
           </div>
 
           {/* Navigation buttons */}
@@ -348,7 +355,7 @@ function StepInsights() {
   );
 }
 
-function StepAIFeatures() {
+function StepAIFeatures({ onConfigureGenAI }: { onConfigureGenAI: () => void }) {
   const { t } = useLanguage();
 
   // Mini chart data for the response
@@ -423,6 +430,22 @@ function StepAIFeatures() {
         ))}
       </div>
 
+      <div className="mb-4 rounded-lg border border-[rgb(0,255,255)]/25 bg-[rgb(0,255,255)]/8 p-3">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[rgb(0,255,255)]">
+              {t('onboarding.step3.genaiPowered')}
+            </p>
+            <p className="mt-1.5 text-xs text-[rgb(190,190,210)]">
+              {t('onboarding.step3.llmSetupPrompt')}
+            </p>
+          </div>
+          <Button size="sm" variant="secondary" onClick={onConfigureGenAI} className="text-xs whitespace-nowrap">
+            {t('onboarding.step3.configureLlm')}
+          </Button>
+        </div>
+      </div>
+
       {/* Compact chat preview */}
       <div className="flex-1 bg-[rgb(10,10,25)]/50 border border-[rgb(0,255,255)]/10 p-3">
         {/* User message */}
@@ -464,4 +487,3 @@ function StepAIFeatures() {
     </div>
   );
 }
-

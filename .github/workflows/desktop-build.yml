@@ -112,7 +112,7 @@ jobs:
 
       - name: Build static frontend
         working-directory: apps/dashboard
-        run: npx -y cross-env DESKTOP_BUILD=1 next build
+        run: npm run build:desktop
 
       # Build PyInstaller sidecar
       - name: Install Python dependencies
