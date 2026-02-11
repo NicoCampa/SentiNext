@@ -8,6 +8,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
 import { StarredGamesProvider } from "@/contexts/StarredGamesContext";
 import { Onboarding } from "@/components/Onboarding";
+import { BackendStatusBanner } from "@/components/BackendStatusBanner";
 
 export function ClientProviders({ children }: { children: ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export function ClientProviders({ children }: { children: ReactNode }) {
             <StarredGamesProvider>
               <GameProvider>
                 <AnalysisProvider>
+                  <BackendStatusBanner />
                   {children}
                   <Onboarding />
                 </AnalysisProvider>

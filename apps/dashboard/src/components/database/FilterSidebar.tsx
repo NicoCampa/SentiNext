@@ -52,7 +52,7 @@ export function FilterSidebar({
   activeFilterCount,
   t,
 }: FilterSidebarProps) {
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(true);
 
   return (
     <>
@@ -73,7 +73,10 @@ export function FilterSidebar({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 p-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-medium text-white">{t('common.filters')}</h2>
+              <div>
+                <h2 className="text-sm font-medium text-white">{t('common.filters')}</h2>
+                <p className="text-[11px] text-slate-500">Search + narrow with labels and language</p>
+              </div>
               {activeFilterCount > 0 && (
                 <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-xs text-sky-300">
                   {activeFilterCount}
@@ -113,6 +116,7 @@ export function FilterSidebar({
                   Go
                 </Button>
               </div>
+              <p className="text-[11px] text-slate-500">Press Enter to apply search.</p>
             </div>
 
             {/* Game */}

@@ -1,40 +1,102 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SentiNextLogo } from '@/components/SentiNextLogo';
+import { fetchHealth } from '@/lib/api';
 
-const BOOT_MESSAGES = [
+const COSMETIC_MESSAGES = [
   '> INITIALIZING SYSTEM...',
   '> LOADING NEURAL CORE...',
-  '> CONNECTING TO DATA STREAMS...',
-  '> REVIEW ANALYSIS MODULE: ONLINE',
-  '> REVIEW PROCESSOR: ACTIVE',
-  '> SYSTEM READY',
 ];
+
+const TIMEOUT_MS = 30_000;
+const POLL_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** True once we can resolve a real backend URL (not the Tauri `/api` fallback). */
+function hasResolvedApiBase(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (window.__SENTINEXT_API_BASE__) return true;
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) return true;
+  if (window.location.port === '3000') return true; // Next.js dev server
+  return false;
+}
 
 export default function RootPage() {
   const router = useRouter();
-  const [bootSequence, setBootSequence] = useState<string[]>([]);
+  const [messages, setMessages] = useState<string[]>([]);
   const [showLogo, setShowLogo] = useState(false);
-  const indexRef = useRef(0);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (indexRef.current < BOOT_MESSAGES.length) {
-        setBootSequence(prev => [...prev, BOOT_MESSAGES[indexRef.current]]);
-        indexRef.current++;
-      } else {
-        clearInterval(interval);
-        setShowLogo(true);
-        setTimeout(() => {
-          router.replace('/dashboard?view=home');
-        }, 800);
-      }
-    }, 200);
+    let active = true;
 
-    return () => clearInterval(interval);
-  }, [router]);
+    const push = (msg: string) => {
+      if (active) setMessages(prev => [...prev, msg]);
+    };
+
+    async function boot() {
+      // Phase 1: cosmetic boot messages
+      for (const msg of COSMETIC_MESSAGES) {
+        if (!active) return;
+        push(msg);
+        await sleep(200);
+      }
+
+      if (!active) return;
+      push('> CONNECTING TO BACKEND...');
+
+      // Phase 2: poll backend health
+      const deadline = Date.now() + TIMEOUT_MS;
+      while (active && Date.now() < deadline) {
+        // Check for Tauri sidecar boot error
+        if (typeof window !== 'undefined' && window.__SENTINEXT_BACKEND_BOOT_ERROR__) {
+          if (active) setError(window.__SENTINEXT_BACKEND_BOOT_ERROR__);
+          return;
+        }
+
+        // Wait for a real API base URL (avoids tauri://localhost/api fetch failures)
+        if (!hasResolvedApiBase()) {
+          await sleep(POLL_MS);
+          continue;
+        }
+
+        try {
+          await fetchHealth();
+          if (!active) return;
+          push('> REVIEW ANALYSIS MODULE: ONLINE');
+          await sleep(200);
+          if (!active) return;
+          push('> SYSTEM READY');
+          setShowLogo(true);
+          await sleep(500);
+          if (active) router.replace('/dashboard?view=home');
+          return;
+        } catch {
+          await sleep(POLL_MS);
+        }
+      }
+
+      if (active) {
+        setError('Backend failed to start within 30 seconds. Check your backend logs.');
+      }
+    }
+
+    boot();
+    return () => { active = false; };
+  }, [router, retryKey]);
+
+  const handleRetry = () => {
+    setError(null);
+    setMessages([]);
+    setShowLogo(false);
+    setRetryKey(k => k + 1);
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center relative overflow-hidden">
@@ -62,21 +124,34 @@ export default function RootPage() {
       <div className="text-center space-y-8 z-10 p-8">
         {/* Boot sequence terminal */}
         <div className="text-left font-mono text-xs space-y-1 mb-12 min-h-[180px]">
-          {bootSequence.filter(m => m).map((message, index) => (
+          {messages.map((message, index) => (
             <div
               key={index}
               className={
-                message?.includes('ONLINE') || message?.includes('ACTIVE') || message?.includes('READY')
+                message.includes('ONLINE') || message.includes('ACTIVE') || message.includes('READY')
                   ? 'text-[rgb(0,255,136)]'
                   : 'text-[rgb(0,255,255)]/70'
               }
             >
               {message}
-              {index === bootSequence.length - 1 && (
+              {index === messages.length - 1 && !error && (
                 <span className="inline-block w-2 h-4 bg-[rgb(0,255,255)] ml-1 animate-pulse" />
               )}
             </div>
           ))}
+          {error && (
+            <div className="mt-4 space-y-3">
+              <div className="text-red-400">
+                {'>'} ERROR: {error}
+              </div>
+              <button
+                onClick={handleRetry}
+                className="text-[rgb(0,255,255)] hover:text-white border border-[rgb(0,255,255)]/40 hover:border-[rgb(0,255,255)] px-3 py-1 text-xs font-mono transition-colors"
+              >
+                [ RETRY ]
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Logo */}

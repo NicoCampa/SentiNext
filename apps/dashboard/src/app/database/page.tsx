@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageTransition } from '@/components/PageTransition';
 import { ReviewsTab } from '@/components/database/tabs/ReviewsTab';
@@ -124,7 +124,15 @@ export default function DatabasePage() {
           </div>
 
           {/* Reviews explorer */}
-          <ReviewsTab games={games} t={t} />
+          <Suspense
+            fallback={
+              <Card variant="glass" className="p-6 text-sm text-slate-400">
+                Loading reviews explorer...
+              </Card>
+            }
+          >
+            <ReviewsTab games={games} t={t} />
+          </Suspense>
 
           {/* Danger zone - collapsible */}
           <div>

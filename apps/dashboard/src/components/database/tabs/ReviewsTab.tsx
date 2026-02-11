@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,8 @@ interface ReviewsTabProps {
 }
 
 export function ReviewsTab({ games, t }: ReviewsTabProps) {
+  const searchParams = useSearchParams();
+  const deepLinkedReviewId = searchParams.get('review');
   const { density } = useUiPreferences();
   const compact = density === 'compact';
 
@@ -129,7 +132,7 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
     loadReviews();
   }, [activeQuery, languageFilter, limit, offset, selectedAppId]);
 
-  const pageItems = reviewsResponse?.items ?? [];
+  const pageItems = useMemo(() => reviewsResponse?.items ?? [], [reviewsResponse]);
   const pageTotal = reviewsResponse?.total ?? 0;
 
   // Category/subcategory options derived from loaded data
@@ -242,6 +245,21 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
   useEffect(() => {
     if (!isDesktop) setExpandedReview(null);
   }, [isDesktop]);
+
+  useEffect(() => {
+    if (!deepLinkedReviewId || !sortedReviews.length) return;
+    const targetIndex = sortedReviews.findIndex(
+      (review) => String(review.review_id ?? '') === deepLinkedReviewId,
+    );
+    if (targetIndex === -1) return;
+    setSelectedIndex(targetIndex);
+    setExpandedReview(sortedReviews[targetIndex] ?? null);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`db-review-item-${targetIndex}`)
+        ?.scrollIntoView({ block: 'nearest' });
+    });
+  }, [deepLinkedReviewId, sortedReviews]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -443,6 +461,29 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
 
   const totalPages = Math.max(1, Math.ceil(pageTotal / limit));
   const currentPage = Math.floor(offset / limit) + 1;
+  const loadedStart = pageTotal === 0 ? 0 : offset + 1;
+  const loadedEnd = Math.min(pageTotal, offset + pageItems.length);
+  const selectedGameLabel =
+    selectedAppId === null
+      ? t('database.allGames')
+      : games.find((game) => game.app_id === selectedAppId)?.name || `App ${selectedAppId}`;
+
+  function openReviewAt(index: number) {
+    const next = sortedReviews[index];
+    if (!next) return;
+    setSelectedIndex(index);
+    setExpandedReview(next);
+  }
+
+  function goToPreviousReview() {
+    if (selectedIndex === null || selectedIndex <= 0) return;
+    openReviewAt(selectedIndex - 1);
+  }
+
+  function goToNextReview() {
+    if (selectedIndex === null || selectedIndex >= sortedReviews.length - 1) return;
+    openReviewAt(selectedIndex + 1);
+  }
 
   return (
     <>
@@ -493,105 +534,151 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
         {/* Main content */}
         <div className="space-y-4">
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                className="rounded-lg border border-white/10 bg-slate-900/50 p-2 text-slate-400 hover:text-white lg:hidden"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
-              </button>
-              <p className="text-sm text-slate-300">
-                {loadingReviews
-                  ? 'Loading...'
-                  : `${sortedReviews.length} of ${pageTotal.toLocaleString()} reviews`}
-              </p>
+          <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-3 sm:p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(true)}
+                  className="rounded-lg border border-white/10 bg-slate-900/50 p-2 text-slate-400 hover:text-white lg:hidden"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 6h16M4 12h16M4 18h16"
+                    />
+                  </svg>
+                </button>
+                <div>
+                  <p className="text-sm text-slate-200">
+                    {loadingReviews
+                      ? 'Loading reviews...'
+                      : `${sortedReviews.length.toLocaleString()} visible of ${pageTotal.toLocaleString()}`}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Navigate faster with <span className="text-slate-400">J/K</span> or arrow
+                    keys.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+                  className="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:outline-none"
+                  aria-label="Sort reviews"
+                >
+                  <option value="recent">Recent</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="helpful">Helpful</option>
+                </select>
+
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setOffset(0);
+                  }}
+                  className="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:outline-none"
+                  aria-label="Rows per page"
+                >
+                  <option value={100}>100 rows</option>
+                  <option value={200}>200 rows</option>
+                  <option value={500}>500 rows</option>
+                </select>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleExportPreview}
+                  disabled={downloadBusy}
+                >
+                  {t('database.export')}
+                </Button>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Quick sentiment filter */}
-              {(['all', 'positive', 'negative'] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setQuickSentiment(v)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                    quickSentiment === v
-                      ? 'border-sky-400 bg-sky-500/20 text-sky-100'
-                      : 'border-white/10 text-slate-400 hover:border-sky-400/40'
-                  }`}
-                >
-                  {v === 'all'
-                    ? t('common.all')
-                    : v === 'positive'
-                      ? t('common.recommended')
-                      : t('common.notRecommended')}
-                </button>
-              ))}
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-white/10 pt-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  Recommendation
+                </span>
+                {(['all', 'positive', 'negative'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setQuickSentiment(v)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                      quickSentiment === v
+                        ? 'border-sky-400 bg-sky-500/20 text-sky-100'
+                        : 'border-white/10 text-slate-400 hover:border-sky-400/40'
+                    }`}
+                  >
+                    {v === 'all'
+                      ? t('common.all')
+                      : v === 'positive'
+                        ? t('common.recommended')
+                        : t('common.notRecommended')}
+                  </button>
+                ))}
+              </div>
 
-              <div className="mx-1 h-4 w-px bg-white/10" />
+              <div className="hidden h-4 w-px bg-white/10 sm:block" />
 
-              {/* Quick type filter */}
-              {(['all', 'issue', 'request'] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setQuickType(v)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                    quickType === v
-                      ? 'border-fuchsia-400 bg-fuchsia-500/20 text-fuchsia-100'
-                      : 'border-white/10 text-slate-400 hover:border-fuchsia-400/40'
-                  }`}
-                >
-                  {v === 'all'
-                    ? t('common.all')
-                    : v === 'issue'
-                      ? t('common.issues')
-                      : t('common.requests')}
-                </button>
-              ))}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  Focus
+                </span>
+                {(['all', 'issue', 'request'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setQuickType(v)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                      quickType === v
+                        ? 'border-fuchsia-400 bg-fuchsia-500/20 text-fuchsia-100'
+                        : 'border-white/10 text-slate-400 hover:border-fuchsia-400/40'
+                    }`}
+                  >
+                    {v === 'all'
+                      ? t('common.all')
+                      : v === 'issue'
+                        ? t('common.issues')
+                        : t('common.requests')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
-              <div className="mx-1 h-4 w-px bg-white/10" />
-
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
-                className="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:outline-none"
-              >
-                <option value="recent">Recent</option>
-                <option value="oldest">Oldest</option>
-                <option value="helpful">Helpful</option>
-              </select>
-
-              <select
-                value={limit}
-                onChange={(e) => {
-                  setLimit(Number(e.target.value));
-                  setOffset(0);
-                }}
-                className="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1 text-xs text-slate-200 focus:outline-none"
-              >
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-                <option value={500}>500</option>
-              </select>
-
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleExportPreview}
-                disabled={downloadBusy}
-              >
-                {t('database.export')}
-              </Button>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Visible now</p>
+              <p className="mt-1 text-sm font-medium text-slate-200">
+                {sortedReviews.length.toLocaleString()} reviews
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Loaded window</p>
+              <p className="mt-1 text-sm font-medium text-slate-200">
+                {loadedStart.toLocaleString()}-{loadedEnd.toLocaleString()} of{' '}
+                {pageTotal.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Scope</p>
+              <p className="mt-1 line-clamp-1 text-sm font-medium text-slate-200">
+                {selectedGameLabel}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Active filters</p>
+              <p className="mt-1 text-sm font-medium text-slate-200">
+                {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'}
+              </p>
             </div>
           </div>
 
@@ -622,8 +709,18 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
               ) : error ? (
                 <p className="text-sm text-rose-400">{error}</p>
               ) : sortedReviews.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-6 text-center text-sm text-slate-400">
-                  {t('database.noReviews')}
+                <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-6 text-center">
+                  <p className="text-sm text-slate-400">{t('database.noReviews')}</p>
+                  {activeFilterCount > 0 ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="mt-3"
+                      onClick={handleClearAll}
+                    >
+                      {t('common.clearFilters')}
+                    </Button>
+                  ) : null}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -633,19 +730,25 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
                       review.author_playtime_hours ??
                       (review.author_playtime_forever || 0) / 60;
                     const appLabel = review.app_name || `App ${review.app_id}`;
+                    const reviewLanguage = review.language
+                      ? languageLabelFor(review.language.toLowerCase())
+                      : null;
+                    const spotlightSubcategory =
+                      review.llm_subcategories?.[0] ??
+                      review.llm_issue_subcategories?.[0] ??
+                      review.llm_request_subcategories?.[0];
                     return (
                       <button
                         key={`${review.review_id}-${idx}`}
                         id={`db-review-item-${idx}`}
                         type="button"
                         onClick={() => {
-                          setSelectedIndex(idx);
-                          setExpandedReview(review);
+                          openReviewAt(idx);
                         }}
                         className={`w-full rounded-xl border text-left transition ${
                           isActive
-                            ? 'border-sky-400/60 bg-sky-500/10'
-                            : 'border-white/10 bg-slate-900/30 hover:border-sky-500/40'
+                            ? 'border-sky-400/70 bg-sky-500/15 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]'
+                            : 'border-white/10 bg-slate-900/30 hover:border-sky-500/40 hover:bg-slate-900/50'
                         } ${compact ? 'p-3' : 'p-4'}`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
@@ -665,6 +768,11 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
                             {review.llm_main_category && (
                               <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] text-indigo-200">
                                 {formatTaxonomyLabel(review.llm_main_category)}
+                              </span>
+                            )}
+                            {spotlightSubcategory && (
+                              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-200">
+                                {formatTaxonomyLabel(spotlightSubcategory)}
                               </span>
                             )}
                             {hasIssue(review) && (
@@ -688,6 +796,8 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
                         <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
                           <span>{playtime.toFixed(1)}h played</span>
                           {review.votes_up ? <span>{review.votes_up} helpful</span> : null}
+                          {review.votes_funny ? <span>{review.votes_funny} funny</span> : null}
+                          {reviewLanguage ? <span>{reviewLanguage}</span> : null}
                         </div>
                       </button>
                     );
@@ -730,20 +840,8 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
                   review={expandedReview}
                   currentIndex={selectedIndex}
                   totalCount={sortedReviews.length}
-                  onPrevious={() => {
-                    if (selectedIndex > 0) {
-                      const n = selectedIndex - 1;
-                      setSelectedIndex(n);
-                      setExpandedReview(sortedReviews[n]);
-                    }
-                  }}
-                  onNext={() => {
-                    if (selectedIndex < sortedReviews.length - 1) {
-                      const n = selectedIndex + 1;
-                      setSelectedIndex(n);
-                      setExpandedReview(sortedReviews[n]);
-                    }
-                  }}
+                  onPrevious={goToPreviousReview}
+                  onNext={goToNextReview}
                   t={t}
                 />
               ) : (
@@ -763,20 +861,8 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
           currentIndex={selectedIndex}
           totalCount={sortedReviews.length}
           onClose={() => setExpandedReview(null)}
-          onPrevious={() => {
-            if (selectedIndex > 0) {
-              const n = selectedIndex - 1;
-              setSelectedIndex(n);
-              setExpandedReview(sortedReviews[n]);
-            }
-          }}
-          onNext={() => {
-            if (selectedIndex < sortedReviews.length - 1) {
-              const n = selectedIndex + 1;
-              setSelectedIndex(n);
-              setExpandedReview(sortedReviews[n]);
-            }
-          }}
+          onPrevious={goToPreviousReview}
+          onNext={goToNextReview}
           t={t}
         />
       )}

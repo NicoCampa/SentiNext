@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { formatTaxonomyLabel } from '@/lib/taxonomyLabels';
+import { languageLabelFor } from '@/lib/languageOptions';
 import { translateText } from '@/lib/api';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { DatabaseReviewItem } from '@/types';
@@ -152,6 +153,10 @@ export function ReviewDetailPanel({
 
   const reviewLangCode = STEAM_TO_APP_LANGUAGE[review.language?.toLowerCase() || ''] || review.language?.toLowerCase();
   const needsTranslation = reviewLangCode !== userLanguage && review.language;
+  const playtimeHours = review.author_playtime_hours ?? (review.author_playtime_forever || 0) / 60;
+  const reviewLanguage = review.language
+    ? languageLabelFor(review.language.toLowerCase())
+    : 'Unknown';
 
   useEffect(() => {
     setTranslatedText(null);
@@ -207,8 +212,11 @@ export function ReviewDetailPanel({
   }
 
   function handleShareLink() {
-    const url = `${window.location.origin}/database?review=${review.review_id}`;
-    navigator.clipboard.writeText(url);
+    const url = new URL(window.location.href);
+    if (review.review_id !== null && review.review_id !== undefined) {
+      url.searchParams.set('review', String(review.review_id));
+    }
+    navigator.clipboard.writeText(url.toString());
     setCopyToast('Link copied to clipboard!');
   }
 
@@ -257,11 +265,6 @@ export function ReviewDetailPanel({
       </div>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs text-slate-400">
-            {formatReviewDate(review.created_at)} - {review.votes_up || 0} helpful
-          </p>
-        </div>
         <div className="flex flex-wrap gap-2">
           <span
             className={`rounded-full px-3 py-1 text-xs ${
@@ -275,6 +278,25 @@ export function ReviewDetailPanel({
               {formatTaxonomyLabel(review.llm_main_category)}
             </span>
           ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+        <div className="rounded-lg border border-white/10 bg-slate-950/45 px-2.5 py-2">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Date</p>
+          <p className="mt-1 text-slate-200">{formatReviewDate(review.created_at)}</p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-slate-950/45 px-2.5 py-2">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Helpful</p>
+          <p className="mt-1 text-slate-200">{(review.votes_up || 0).toLocaleString()}</p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-slate-950/45 px-2.5 py-2">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Language</p>
+          <p className="mt-1 text-slate-200">{reviewLanguage}</p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-slate-950/45 px-2.5 py-2">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Playtime</p>
+          <p className="mt-1 text-slate-200">{playtimeHours.toFixed(1)}h</p>
         </div>
       </div>
 
