@@ -5,7 +5,7 @@
   "identifier": "com.sentinext.desktop",
   "build": {
     "frontendDist": "../../dashboard/out",
-    "beforeBuildCommand": "cd ../../dashboard && npm run build:desktop"
+    "beforeBuildCommand": "cd ../dashboard && npm run build:desktop"
   },
   "app": {
     "windows": [
