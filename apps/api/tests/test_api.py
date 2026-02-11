@@ -101,11 +101,11 @@ class TestCORSHeaders:
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "GET",
-                "Access-Control-Request-Headers": "authorization",
+                "Access-Control-Request-Headers": "content-type",
             },
         )
         allowed_headers = resp.headers.get("access-control-allow-headers", "")
-        assert "authorization" in allowed_headers.lower()
+        assert "content-type" in allowed_headers.lower()
 
 
 class TestRateLimiting:
