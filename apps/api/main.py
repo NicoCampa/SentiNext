@@ -4,12 +4,11 @@ import asyncio
 import collections
 import logging
 import os
-import re
 import time
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 # Load environment variables from .env.local (for local development)
 from dotenv import load_dotenv
@@ -21,7 +20,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .senti_next import storage
 from .senti_next import redis_client
 from .senti_next import logging_config
 from .senti_next import db as db_module
@@ -61,7 +59,7 @@ def _validate_startup_env() -> None:
 
 _validate_startup_env()
 
-storage.init_db()
+db_module.init_db()
 
 # Configure structured logging (JSON or text based on SENTINEXT_LOG_FORMAT)
 logging_config.configure_logging()
@@ -256,55 +254,6 @@ async def rate_limit_middleware(request: Request, call_next):
         )
 
     return await call_next(request)
-
-
-# ---------------------------------------------------------------------------
-# API request logging middleware
-# ---------------------------------------------------------------------------
-
-_USAGE_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
-
-_NUMERIC_SEGMENT_RE = re.compile(r"/(\d+)(?=/|$)")
-
-def _normalize_api_path(path: str) -> str:
-    return _NUMERIC_SEGMENT_RE.sub("/{id}", path)
-
-_APP_ID_RE = re.compile(
-    r"(?:/analysis|/progress|/starred|/steam|/reviews|/export|/chat)"
-    r"/(\d+)"
-)
-
-def _extract_app_id(path: str) -> Optional[int]:
-    m = _APP_ID_RE.search(path)
-    return int(m.group(1)) if m else None
-
-
-@app.middleware("http")
-async def usage_logging_middleware(request: Request, call_next):
-    start = time.time()
-    response = await call_next(request)
-    duration_ms = int((time.time() - start) * 1000)
-
-    if request.url.path in _USAGE_SKIP_PATHS:
-        return response
-
-    user_id = "local"
-    path = _normalize_api_path(request.url.path)
-    app_id = _extract_app_id(request.url.path)
-
-    try:
-        storage.log_api_request(
-            user_id=user_id,
-            method=request.method,
-            path=path,
-            status_code=response.status_code,
-            duration_ms=duration_ms,
-            app_id=app_id,
-        )
-    except Exception:
-        pass
-
-    return response
 
 
 # ---------------------------------------------------------------------------

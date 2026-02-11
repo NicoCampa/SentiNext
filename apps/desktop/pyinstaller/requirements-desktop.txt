@@ -1,0 +1,16 @@
+# Desktop-specific requirements (trimmed from full requirements.txt)
+# Excluded: weasyprint, psycopg2-binary, redis, rq, rq-scheduler, sentry-sdk, alembic, pytest
+requests==2.32.3
+pandas==2.2.3
+numpy==2.2.6
+fastapi==0.117.1
+uvicorn[standard]==0.36.0
+platformdirs==4.3.6
+openai>=1.40.0
+sqlalchemy==2.0.46
+google-genai==1.61.0
+xai-sdk==1.6.1
+python-dotenv==1.1.1
+reportlab==4.4.6
+jinja2>=3.1.6
+pyinstaller>=6.0

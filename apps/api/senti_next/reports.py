@@ -38,14 +38,17 @@ def get_available_months(app_id: int, user_id: str) -> List[Dict[str, Any]]:
     Ordered by most recent first, limited to last 24 months.
     """
     from . import db as db_module
+    from . import dialect as d
     from sqlalchemy import text
+
+    year_expr, month_expr = d.extract_year_month("timestamp_created")
 
     with db_module.get_connection() as conn:
         result = conn.execute(
-            text("""
+            text(f"""
                 SELECT
-                    EXTRACT(YEAR FROM to_timestamp(timestamp_created))::int as year,
-                    EXTRACT(MONTH FROM to_timestamp(timestamp_created))::int as month,
+                    {year_expr} as year,
+                    {month_expr} as month,
                     COUNT(*) as review_count
                 FROM reviews
                 WHERE app_id = :app_id

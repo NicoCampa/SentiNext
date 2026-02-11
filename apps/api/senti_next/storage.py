@@ -11,8 +11,24 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from sqlalchemy import text
 
+from . import dialect as d
+
 logger = logging.getLogger(__name__)
 
+
+
+def _format_ts(val: Any) -> Optional[str]:
+    """Format a timestamp value to ISO string.
+
+    Handles both datetime objects (PostgreSQL) and strings (SQLite).
+    """
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    return str(val)
 
 
 def _parse_json_field(val: Any, default: Any = None) -> Any:
@@ -54,10 +70,10 @@ _DEFAULT_USER_ID = "local"
 
 
 def init_db() -> None:
-    """Initialize PostgreSQL database schema."""
+    """Initialize database schema (PostgreSQL or SQLite)."""
     from . import db as db_module
-    db_module.init_postgresql_schema()
-    logger.info("Initialized PostgreSQL backend")
+    db_module.init_db()
+    logger.info("Initialized database backend")
 
 
 def log_llm_usage(
@@ -88,7 +104,7 @@ def log_llm_usage(
                      app_id, session_id, created_at)
                     VALUES (:user_id, :operation, :model, :prompt_tokens, :response_tokens, :total_tokens,
                             :cached_tokens, :tool_use_prompt_tokens, :thoughts_tokens, :traffic_type,
-                            :app_id, :session_id, NOW())
+                            :app_id, :session_id, :created_at)
                 """),
                 {
                     "user_id": user_id,
@@ -103,144 +119,11 @@ def log_llm_usage(
                     "traffic_type": traffic_type,
                     "app_id": app_id,
                     "session_id": session_id,
+                    "created_at": datetime.now(timezone.utc),
                 },
             )
     except Exception as exc:  # best-effort logging
         logger.debug("Failed to log LLM usage: %s", exc)
-
-
-def log_api_request(
-    *,
-    user_id: Optional[str],
-    method: str,
-    path: str,
-    status_code: Optional[int],
-    duration_ms: Optional[int],
-    app_id: Optional[int] = None,
-) -> None:
-    """Persist an API request log entry (best-effort, never raises)."""
-    from . import db as db_module
-
-    try:
-        with db_module.get_connection() as conn:
-            conn.execute(
-                text("""
-                    INSERT INTO api_requests
-                    (user_id, method, path, status_code, duration_ms, app_id, created_at)
-                    VALUES (:user_id, :method, :path, :status_code, :duration_ms, :app_id, NOW())
-                """),
-                {
-                    "user_id": user_id,
-                    "method": method,
-                    "path": path,
-                    "status_code": status_code,
-                    "duration_ms": duration_ms,
-                    "app_id": app_id,
-                },
-            )
-    except Exception as exc:
-        logger.debug("Failed to log API request: %s", exc)
-
-
-def get_api_usage_summary(
-    *,
-    days: int = 30,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Aggregate API request metrics over a time window (admin use)."""
-    from . import db as db_module
-
-    safe_days = max(1, min(int(days or 30), 365))
-    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
-
-    base_where = "WHERE created_at >= :since"
-    params: Dict[str, Any] = {"since": since}
-    if user_id:
-        base_where += " AND user_id = :user_id"
-        params["user_id"] = user_id
-
-    with db_module.get_connection() as conn:
-        # Total requests and unique users
-        totals = conn.execute(
-            text(f"""
-                SELECT
-                    COUNT(*) as total_requests,
-                    COUNT(DISTINCT user_id) as unique_users
-                FROM api_requests
-                {base_where}
-            """),
-            params,
-        ).mappings().fetchone()
-
-        # Top endpoints by count with avg response time
-        by_endpoint = conn.execute(
-            text(f"""
-                SELECT
-                    method || ' ' || path as path,
-                    COUNT(*) as count,
-                    COALESCE(ROUND(AVG(duration_ms)), 0) as avg_ms
-                FROM api_requests
-                {base_where}
-                GROUP BY method, path
-                ORDER BY count DESC
-                LIMIT 30
-            """),
-            params,
-        ).mappings().fetchall()
-
-        # By user breakdown
-        by_user = conn.execute(
-            text(f"""
-                SELECT
-                    user_id,
-                    COUNT(*) as count,
-                    MIN(created_at) as first_seen,
-                    MAX(created_at) as last_seen
-                FROM api_requests
-                {base_where}
-                  AND user_id IS NOT NULL
-                GROUP BY user_id
-                ORDER BY count DESC
-            """),
-            params,
-        ).mappings().fetchall()
-
-        # Daily request counts
-        daily = conn.execute(
-            text(f"""
-                SELECT
-                    DATE(created_at) as date,
-                    COUNT(*) as count
-                FROM api_requests
-                {base_where}
-                GROUP BY DATE(created_at)
-                ORDER BY date
-            """),
-            params,
-        ).mappings().fetchall()
-
-    return {
-        "period_days": safe_days,
-        "total_requests": int(totals["total_requests"] or 0) if totals else 0,
-        "unique_users": int(totals["unique_users"] or 0) if totals else 0,
-        "by_endpoint": [
-            {"path": row["path"], "count": int(row["count"]), "avg_ms": int(row["avg_ms"])}
-            for row in by_endpoint
-        ],
-        "by_user": [
-            {
-                "user_id": row["user_id"],
-                "count": int(row["count"]),
-                "first_seen": row["first_seen"].isoformat() if row["first_seen"] else None,
-                "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
-            }
-            for row in by_user
-        ],
-        "daily": [
-            {"date": str(row["date"]), "count": int(row["count"])}
-            for row in daily
-        ],
-    }
 
 
 def get_llm_usage_summary(
@@ -339,31 +222,6 @@ def get_llm_usage_summary(
     }
 
 
-def get_user_summary(days: int = 30) -> Dict[str, int]:
-    """Return user counts for admin dashboard."""
-    from . import db as db_module
-
-    safe_days = max(1, min(int(days or 30), 365))
-    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
-
-    with db_module.get_connection() as conn:
-        active_users = conn.execute(
-            text("""
-                SELECT COUNT(DISTINCT user_id) as total
-                FROM (
-                    SELECT user_id FROM llm_usage WHERE created_at >= :since
-                    UNION
-                    SELECT user_id FROM chat_messages WHERE created_at >= :since
-                ) AS active
-            """),
-            {"since": since},
-        ).mappings().fetchone()
-
-    return {
-        "active": int(active_users["total"] or 0) if active_users else 0,
-    }
-
-
 def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
     """Insert or update the provided reviews. Returns number of upserts."""
     rows = list(reviews)
@@ -408,18 +266,28 @@ def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
 
         # Bulk update search vectors after all inserts
         if search_vector_updates:
-            conn.execute(
-                text("""
-                    UPDATE reviews
-                    SET search_vector = to_tsvector('simple', batch.review_text)
-                    FROM (SELECT unnest(:review_ids) AS review_id, unnest(:review_texts) AS review_text) AS batch
-                    WHERE reviews.review_id = batch.review_id
-                """),
-                {
-                    "review_ids": [item["review_id"] for item in search_vector_updates],
-                    "review_texts": [item["review_text"] for item in search_vector_updates],
-                },
-            )
+            if d.is_sqlite():
+                for item in search_vector_updates:
+                    conn.execute(
+                        text("""
+                            INSERT INTO reviews_fts(review_id, review_text)
+                            VALUES (:review_id, :review_text)
+                        """),
+                        item,
+                    )
+            else:
+                conn.execute(
+                    text("""
+                        UPDATE reviews
+                        SET search_vector = to_tsvector('simple', batch.review_text)
+                        FROM (SELECT unnest(:review_ids) AS review_id, unnest(:review_texts) AS review_text) AS batch
+                        WHERE reviews.review_id = batch.review_id
+                    """),
+                    {
+                        "review_ids": [item["review_id"] for item in search_vector_updates],
+                        "review_texts": [item["review_text"] for item in search_vector_updates],
+                    },
+                )
 
     return count
 
@@ -518,14 +386,14 @@ def load_reviews_by_ids(app_id: int, review_ids: Sequence[str]) -> List[dict]:
     with db_module.get_connection() as conn:
         for start in range(0, len(ids), chunk_size):
             chunk = ids[start : start + chunk_size]
-            # PostgreSQL supports ANY with array parameter
+            arr_sql, params = d.any_array("review_ids", chunk, {"app_id": int(app_id)})
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT review_id, data
                     FROM reviews
-                    WHERE app_id = :app_id AND review_id = ANY(:review_ids)
+                    WHERE app_id = :app_id AND review_id {arr_sql}
                 """),
-                {"app_id": int(app_id), "review_ids": chunk},
+                params,
             )
             rows = result.fetchall()
             for row in rows:
@@ -551,29 +419,32 @@ def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Op
 
     lang = (language or "").strip().lower()
 
+    fts_where = d.fts_match("reviews")
+    fts_order = d.fts_rank("reviews")
+    lang_col = d.json_extract("data", "language")
+
     with db_module.get_connection() as conn:
         if lang and lang != "all":
-            # Filter by language using JSONB
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT review_id
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND data->>'language' = :language
-                      AND search_vector @@ plainto_tsquery('simple', :query)
-                    ORDER BY ts_rank(search_vector, plainto_tsquery('simple', :query)) DESC
+                      AND {lang_col} = :language
+                      AND {fts_where}
+                    ORDER BY {fts_order} DESC
                     LIMIT :limit
                 """),
                 {"app_id": int(app_id), "language": lang, "query": raw, "limit": int(limit)},
             )
         else:
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT review_id
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND search_vector @@ plainto_tsquery('simple', :query)
-                    ORDER BY ts_rank(search_vector, plainto_tsquery('simple', :query)) DESC
+                      AND {fts_where}
+                    ORDER BY {fts_order} DESC
                     LIMIT :limit
                 """),
                 {"app_id": int(app_id), "query": raw, "limit": int(limit)},
@@ -593,15 +464,26 @@ def get_reviews_fingerprint(app_id: int) -> Optional[str]:
     from . import db as db_module
 
     with db_module.get_connection() as conn:
-        result = conn.execute(
-            text("""
-                SELECT md5(string_agg(review_id, ',' ORDER BY review_id))
-                FROM reviews WHERE app_id = :app_id
-            """),
-            {"app_id": app_id},
-        )
-        row = result.fetchone()
-    return row[0] if row and row[0] else None
+        if d.is_sqlite():
+            result = conn.execute(
+                text("SELECT GROUP_CONCAT(review_id, ',') FROM (SELECT review_id FROM reviews WHERE app_id = :app_id ORDER BY review_id)"),
+                {"app_id": app_id},
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                import hashlib
+                return hashlib.md5(row[0].encode()).hexdigest()
+            return None
+        else:
+            result = conn.execute(
+                text("""
+                    SELECT md5(string_agg(review_id, ',' ORDER BY review_id))
+                    FROM reviews WHERE app_id = :app_id
+                """),
+                {"app_id": app_id},
+            )
+            row = result.fetchone()
+            return row[0] if row and row[0] else None
 
 
 def count_reviews(app_id: int) -> int:
@@ -750,13 +632,14 @@ def update_fetch_progress(user_id: str, app_id: int, fetched_count: int) -> None
     from . import db as db_module
 
     timestamp = datetime.now(timezone.utc)
+    greatest_fetched = d.greatest("progress.fetched_count", "EXCLUDED.fetched_count")
     with db_module.get_connection() as conn:
         conn.execute(
-            text("""
+            text(f"""
                 INSERT INTO progress (user_id, app_id, total, processed, phase, fetched_count, updated_at)
                 VALUES (:user_id, :app_id, 0, 0, 'fetching', :fetched_count, :updated_at)
                 ON CONFLICT(user_id, app_id) DO UPDATE SET
-                    fetched_count = GREATEST(progress.fetched_count, EXCLUDED.fetched_count),
+                    fetched_count = {greatest_fetched},
                     phase = 'fetching',
                     updated_at = EXCLUDED.updated_at
             """),
@@ -782,16 +665,17 @@ def update_progress(user_id: str, app_id: int, processed: int, total: Optional[i
     new_total = int(total) if total is not None else None
     processed_int = int(processed)
 
+    greatest_processed = d.greatest("progress.processed", "EXCLUDED.processed")
     with db_module.get_connection() as conn:
         # Use UPSERT with GREATEST to ensure progress only increases (monotonic).
         # Preserve the current phase — don't overwrite phases like 'building_insights'
         # that were set by update_progress_phase().
         conn.execute(
-            text("""
+            text(f"""
                 INSERT INTO progress (user_id, app_id, total, processed, phase, updated_at)
                 VALUES (:user_id, :app_id, COALESCE(:total, 0), :processed, 'classifying', :updated_at)
                 ON CONFLICT(user_id, app_id) DO UPDATE SET
-                    processed = GREATEST(progress.processed, EXCLUDED.processed),
+                    processed = {greatest_processed},
                     updated_at = EXCLUDED.updated_at,
                     total = COALESCE(EXCLUDED.total, progress.total)
             """),
@@ -1036,10 +920,10 @@ def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
             result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
             labels_count = result.fetchone()[0]
 
-            # PostgreSQL JSONB syntax: payload->>'main_category'
-            result = conn.execute(text("""
+            main_cat_expr = d.json_extract("payload", "main_category")
+            result = conn.execute(text(f"""
                 SELECT COUNT(*) FROM review_labels
-                WHERE payload->>'main_category' IS NOT NULL
+                WHERE {main_cat_expr} IS NOT NULL
             """))
             new_schema_count = result.fetchone()[0]
 
@@ -1065,25 +949,29 @@ def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
                     "starred_games": 0,
                 }
 
+            arr_sql_r, params_r = d.any_array("app_ids", app_ids, {})
             result = conn.execute(
-                text("SELECT COUNT(*) FROM reviews WHERE app_id = ANY(:app_ids)"),
-                {"app_ids": app_ids},
+                text(f"SELECT COUNT(*) FROM reviews WHERE app_id {arr_sql_r}"),
+                params_r,
             )
             reviews_count = result.fetchone()[0]
 
+            arr_sql_l, params_l = d.any_array("app_ids", app_ids, {})
             result = conn.execute(
-                text("SELECT COUNT(*) FROM review_labels WHERE app_id = ANY(:app_ids)"),
-                {"app_ids": app_ids},
+                text(f"SELECT COUNT(*) FROM review_labels WHERE app_id {arr_sql_l}"),
+                params_l,
             )
             labels_count = result.fetchone()[0]
 
+            main_cat_expr = d.json_extract("payload", "main_category")
+            arr_sql_n, params_n = d.any_array("app_ids", app_ids, {})
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT COUNT(*) FROM review_labels
-                    WHERE app_id = ANY(:app_ids)
-                      AND payload->>'main_category' IS NOT NULL
+                    WHERE app_id {arr_sql_n}
+                      AND {main_cat_expr} IS NOT NULL
                 """),
-                {"app_ids": app_ids},
+                params_n,
             )
             new_schema_count = result.fetchone()[0]
 
@@ -1116,11 +1004,11 @@ def clear_old_schema_labels() -> int:
     """Delete labels with old schema (missing main_category field). Returns count of deleted labels."""
     from . import db as db_module
 
+    main_cat_expr = d.json_extract("payload", "main_category")
     with db_module.get_connection() as conn:
-        # PostgreSQL JSONB syntax
-        result = conn.execute(text("""
+        result = conn.execute(text(f"""
             DELETE FROM review_labels
-            WHERE payload->>'main_category' IS NULL
+            WHERE {main_cat_expr} IS NULL
         """))
         count = result.rowcount
         return count
@@ -1280,10 +1168,10 @@ def get_top_games_by_review_count(
     raw_query = (query or "").strip()
 
     if raw_query:
-        where_parts.append("search_vector @@ plainto_tsquery('simple', :query)")
+        where_parts.append(d.fts_match("reviews"))
         params["query"] = raw_query
     if lang and lang != "all":
-        where_parts.append("data->>'language' = :lang")
+        where_parts.append(f"{d.json_extract('data', 'language')} = :lang")
         params["lang"] = lang
 
     where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
@@ -1366,7 +1254,7 @@ def load_database_reviews(
     from . import db as db_module
     with db_module.get_connection() as conn:
         if raw_query:
-            where_parts = ["reviews.search_vector @@ plainto_tsquery('simple', :query)"]
+            where_parts = [d.fts_match("reviews")]
             params: Dict[str, Any] = {"query": raw_query}
             if app_id:
                 if allowed_ids is not None and int(app_id) not in allowed_ids:
@@ -1379,7 +1267,7 @@ def load_database_reviews(
                 for i, aid in enumerate(allowed_ids):
                     params[f"app_id_{i}"] = aid
             if lang and lang != "all":
-                where_parts.append("reviews.data->>'language' = :lang")
+                where_parts.append(f"{d.json_extract('reviews.data', 'language')} = :lang")
                 params["lang"] = lang
             where_sql = " AND ".join(where_parts)
 
@@ -1393,6 +1281,7 @@ def load_database_reviews(
             """
             total = conn.execute(text(total_query), params).fetchone()[0]
 
+            fts_order = d.fts_rank("reviews")
             query_sql = f"""
                 SELECT reviews.review_id, reviews.app_id, reviews.data, reviews.timestamp_created,
                        review_labels.payload AS label_payload
@@ -1400,7 +1289,7 @@ def load_database_reviews(
                 LEFT JOIN review_labels
                   ON reviews.review_id = review_labels.review_id AND reviews.app_id = review_labels.app_id
                 WHERE {where_sql}
-                ORDER BY ts_rank(reviews.search_vector, plainto_tsquery('simple', :query)) DESC
+                ORDER BY {fts_order} DESC
                 LIMIT :limit OFFSET :offset
             """
             rows = conn.execute(text(query_sql), params).mappings().fetchall()
@@ -1418,7 +1307,7 @@ def load_database_reviews(
                 for i, aid in enumerate(allowed_ids):
                     params[f"app_id_{i}"] = aid
             if lang and lang != "all":
-                where_parts.append("reviews.data->>'language' = :lang")
+                where_parts.append(f"{d.json_extract('reviews.data', 'language')} = :lang")
                 params["lang"] = lang
             where_sql = " AND ".join(where_parts)
             where_clause = f"WHERE {where_sql}" if where_sql else ""
@@ -1476,12 +1365,14 @@ def save_analysis_result(
     payload_reviews = json.dumps(reviews) if reviews is not None else None
     timestamp = _get_timestamp()
     from . import db as db_module
+    ts_expr = d.to_timestamp_expr(":updated_at") if not d.is_sqlite() else ":updated_at"
+    updated_at_val = datetime.fromtimestamp(timestamp, tz=timezone.utc) if d.is_sqlite() else timestamp
     with db_module.get_connection() as conn:
         from sqlalchemy import text
         conn.execute(
-            text("""
+            text(f"""
             INSERT INTO analysis_results (user_id, app_id, metadata, insights, reviews, status, error, updated_at, run_id, snapshot_hash, stale, context_hash, stale_reason)
-            VALUES (:user_id, :app_id, :metadata, :insights, :reviews, :status, :error, to_timestamp(:updated_at), :run_id, :snapshot_hash, :stale, :context_hash, :stale_reason)
+            VALUES (:user_id, :app_id, :metadata, :insights, :reviews, :status, :error, {ts_expr}, :run_id, :snapshot_hash, :stale, :context_hash, :stale_reason)
             ON CONFLICT(user_id, app_id) DO UPDATE SET
                 metadata = EXCLUDED.metadata,
                 insights = EXCLUDED.insights,
@@ -1503,7 +1394,7 @@ def save_analysis_result(
                 "reviews": payload_reviews,
                 "status": status,
                 "error": error,
-                "updated_at": timestamp,
+                "updated_at": updated_at_val,
                 "run_id": run_id,
                 "snapshot_hash": snapshot_hash,
                 "stale": stale,
@@ -1587,12 +1478,14 @@ def create_job_registry(
     timestamp = _get_timestamp()
     metadata_json = json.dumps(metadata) if metadata else None
     from . import db as db_module
+    ts_expr = d.to_timestamp_expr(":created_at") if not d.is_sqlite() else ":created_at"
+    created_at_val = datetime.fromtimestamp(timestamp, tz=timezone.utc) if d.is_sqlite() else timestamp
     with db_module.get_connection() as conn:
         from sqlalchemy import text
         conn.execute(
-            text("""
+            text(f"""
             INSERT INTO job_registry (job_id, user_id, app_id, job_type, status, created_at, metadata)
-            VALUES (:job_id, :user_id, :app_id, :job_type, 'pending', to_timestamp(:created_at), :metadata)
+            VALUES (:job_id, :user_id, :app_id, :job_type, 'pending', {ts_expr}, :metadata)
             ON CONFLICT(job_id) DO UPDATE SET
                 status = 'pending',
                 created_at = EXCLUDED.created_at,
@@ -1603,7 +1496,7 @@ def create_job_registry(
                 "user_id": user_id,
                 "app_id": app_id,
                 "job_type": job_type,
-                "created_at": timestamp,
+                "created_at": created_at_val,
                 "metadata": metadata_json,
             },
         )
@@ -1617,17 +1510,20 @@ def update_job_registry(
     """Update job registry entry status."""
     timestamp = _get_timestamp()
     from . import db as db_module
+    ts_val = datetime.fromtimestamp(timestamp, tz=timezone.utc) if d.is_sqlite() else timestamp
     with db_module.get_connection() as conn:
         from sqlalchemy import text
         if status == "running":
+            ts_expr = ":started_at" if d.is_sqlite() else d.to_timestamp_expr(":started_at")
             conn.execute(
-                text("UPDATE job_registry SET status = :status, started_at = to_timestamp(:started_at) WHERE job_id = :job_id"),
-                {"status": status, "started_at": timestamp, "job_id": job_id},
+                text(f"UPDATE job_registry SET status = :status, started_at = {ts_expr} WHERE job_id = :job_id"),
+                {"status": status, "started_at": ts_val, "job_id": job_id},
             )
         elif status in ("completed", "failed"):
+            ts_expr = ":completed_at" if d.is_sqlite() else d.to_timestamp_expr(":completed_at")
             conn.execute(
-                text("UPDATE job_registry SET status = :status, completed_at = to_timestamp(:completed_at), error = :error WHERE job_id = :job_id"),
-                {"status": status, "completed_at": timestamp, "error": error, "job_id": job_id},
+                text(f"UPDATE job_registry SET status = :status, completed_at = {ts_expr}, error = :error WHERE job_id = :job_id"),
+                {"status": status, "completed_at": ts_val, "error": error, "job_id": job_id},
             )
         elif status:
             conn.execute(
@@ -1773,7 +1669,7 @@ def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> 
         messages.append({
             "role": row["role"],
             "content": row["content"],
-            "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
+            "timestamp": _format_ts(row["created_at"]),
             "session_id": row.get("session_id"),
         })
     logger.debug(f"Loaded {len(messages)} messages for user_id={user_id}, session_id={session_id}")
@@ -1811,8 +1707,8 @@ def get_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
         sessions.append({
             "session_id": row["session_id"],
             "message_count": row["message_count"],
-            "started_at": row["started_at"].isoformat() if row["started_at"] else None,
-            "last_message_at": row["last_message_at"].isoformat() if row["last_message_at"] else None,
+            "started_at": _format_ts(row["started_at"]),
+            "last_message_at": _format_ts(row["last_message_at"]),
             "first_user_message": row["first_user_message"],
         })
     return sessions
@@ -1908,7 +1804,7 @@ def search_reviews_with_date_filter(
         }
 
         if raw:
-            where_parts.append("r.search_vector @@ plainto_tsquery('simple', :query)")
+            where_parts.append(d.fts_match("r"))
             params["query"] = raw
 
         if max_days is not None:
@@ -1917,15 +1813,16 @@ def search_reviews_with_date_filter(
             params["cutoff"] = cutoff
 
         if sentiment_filter is not None:
-            where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
-            params["is_positive"] = sentiment_filter
+            voted_up_expr = d.json_extract("r.data", "voted_up")
+            where_parts.append(f"{d.coalesce_bool(voted_up_expr)} = :is_positive")
+            params["is_positive"] = 1 if d.is_sqlite() and sentiment_filter else (0 if d.is_sqlite() and not sentiment_filter else sentiment_filter)
 
         if language_value and language_value != "all":
-            where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+            where_parts.append(f"LOWER(COALESCE({d.json_extract('r.data', 'language')}, '')) = :language")
             params["language"] = language_value
 
         where_sql = " AND ".join(where_parts)
-        order_clause = "ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST"
+        order_clause = f"ORDER BY {d.cast_int(d.json_extract('r.data', 'votes_up'))} DESC NULLS LAST"
         if order_by == "timestamp_created":
             order_clause = "ORDER BY r.timestamp_created DESC NULLS LAST"
 
@@ -1998,24 +1895,26 @@ def get_subcategory_label_counts(
         where_parts.append("r.timestamp_created > :cutoff")
         params["cutoff"] = cutoff
 
+    voted_up_expr = d.json_extract("r.data", "voted_up")
     if sentiment_filter is not None:
-        where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
-        params["is_positive"] = sentiment_filter
+        where_parts.append(f"{d.coalesce_bool(voted_up_expr)} = :is_positive")
+        params["is_positive"] = 1 if d.is_sqlite() and sentiment_filter else (0 if d.is_sqlite() and not sentiment_filter else sentiment_filter)
 
     if language_value and language_value != "all":
-        where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+        where_parts.append(f"LOWER(COALESCE({d.json_extract('r.data', 'language')}, '')) = :language")
         params["language"] = language_value
 
+    subcat_val = d.json_array_element_value("subcat")
     if category_filter:
         params["subcategory_pattern"] = f"{category_filter}/%"
-        where_parts.append("LOWER(subcat) LIKE :subcategory_pattern")
+        where_parts.append(f"LOWER({subcat_val}) LIKE :subcategory_pattern")
 
     if subcategories:
         subcats = [s.lower() for s in subcategories if s]
         if not subcats:
             return []
-        params["subcategories"] = subcats
-        where_parts.append("LOWER(subcat) = ANY(:subcategories)")
+        arr_sql, params = d.any_array("subcategories", subcats, params)
+        where_parts.append(f"LOWER({subcat_val}) {arr_sql}")
 
     where_sql = " AND ".join(where_parts)
     limit_clause = ""
@@ -2023,14 +1922,17 @@ def get_subcategory_label_counts(
         params["limit"] = int(limit)
         limit_clause = "LIMIT :limit"
 
+    lateral_join = d.json_array_elements_join("rl", "payload", label_key, "subcat")
+    positive_expr = d.coalesce_bool(voted_up_expr)
+
     query_sql = f"""
-        SELECT LOWER(subcat) AS subcat_key,
-               MIN(subcat) AS subcategory,
+        SELECT LOWER({subcat_val}) AS subcat_key,
+               MIN({subcat_val}) AS subcategory,
                COUNT(*) AS count,
-               SUM(CASE WHEN COALESCE((r.data->>'voted_up')::boolean, false) THEN 1 ELSE 0 END) AS positive_count
+               SUM(CASE WHEN {positive_expr} THEN 1 ELSE 0 END) AS positive_count
         FROM reviews r
         JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
-        JOIN LATERAL jsonb_array_elements_text(rl.payload->'{label_key}') AS subcat ON true
+        {lateral_join}
         WHERE {where_sql}
         GROUP BY subcat_key
         ORDER BY COUNT(*) DESC
@@ -2120,15 +2022,17 @@ def get_subcategory_label_counts_range(
         subcats = [s.lower() for s in subcategories if s]
         if not subcats:
             return []
-        params["subcategories"] = subcats
-        where_parts.append("LOWER(subcat) = ANY(:subcategories)")
+        arr_sql, params = d.any_array("subcategories", subcats, params)
+        subcat_val = d.json_array_element_value("subcat")
+        where_parts.append(f"LOWER({subcat_val}) {arr_sql}")
 
+    voted_up_expr = d.json_extract("r.data", "voted_up")
     if sentiment_filter is not None:
-        where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
-        params["is_positive"] = sentiment_filter
+        where_parts.append(f"{d.coalesce_bool(voted_up_expr)} = :is_positive")
+        params["is_positive"] = (1 if sentiment_filter else 0) if d.is_sqlite() else sentiment_filter
 
     if language_value and language_value != "all":
-        where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+        where_parts.append(f"LOWER(COALESCE({d.json_extract('r.data', 'language')}, '')) = :language")
         params["language"] = language_value
 
     where_sql = " AND ".join(where_parts)
@@ -2137,14 +2041,18 @@ def get_subcategory_label_counts_range(
         params["limit"] = int(limit)
         limit_clause = "LIMIT :limit"
 
+    lateral_join = d.json_array_elements_join("rl", "payload", label_key, "subcat")
+    subcat_val = d.json_array_element_value("subcat")
+    positive_expr = d.coalesce_bool(voted_up_expr)
+
     query_sql = f"""
-        SELECT LOWER(subcat) AS subcat_key,
-               MIN(subcat) AS subcategory,
+        SELECT LOWER({subcat_val}) AS subcat_key,
+               MIN({subcat_val}) AS subcategory,
                COUNT(*) AS count,
-               SUM(CASE WHEN COALESCE((r.data->>'voted_up')::boolean, false) THEN 1 ELSE 0 END) AS positive_count
+               SUM(CASE WHEN {positive_expr} THEN 1 ELSE 0 END) AS positive_count
         FROM reviews r
         JOIN review_labels rl ON r.review_id = rl.review_id AND r.app_id = rl.app_id
-        JOIN LATERAL jsonb_array_elements_text(rl.payload->'{label_key}') AS subcat ON true
+        {lateral_join}
         WHERE {where_sql}
         GROUP BY subcat_key
         ORDER BY COUNT(*) DESC
@@ -2190,14 +2098,18 @@ def load_game_metadata_for_chat(user_id: str, app_ids: List[int]) -> List[Dict[s
 
     from . import db as db_module
 
+    ids_list = [int(aid) for aid in app_ids]
+    params: Dict[str, Any] = {"user_id": user_id}
+    arr_sql, params = d.any_array("app_ids", ids_list, params)
+
     with db_module.get_connection() as conn:
         result = conn.execute(
-            text("""
+            text(f"""
                 SELECT app_id, name, metadata, genres, categories
                 FROM starred_games
-                WHERE user_id = :user_id AND app_id = ANY(:app_ids)
+                WHERE user_id = :user_id AND app_id {arr_sql}
             """),
-            {"user_id": user_id, "app_ids": [int(aid) for aid in app_ids]},
+            params,
         )
         rows = result.fetchall()
 
@@ -2255,32 +2167,36 @@ def get_recommendation_split(
     max_days = _parse_date_filter(date_filter)
     cutoff = None
 
+    voted_up_col = d.json_extract("data", "voted_up")
+    rec_filter = d.count_filter(f"{voted_up_col} IN ('true', '1', 1)")
+    not_rec_filter = d.count_filter(f"{voted_up_col} NOT IN ('true', '1', 1)")
+
     with db_module.get_connection() as conn:
         if max_days is not None:
             cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended,
+                        {rec_filter} as recommended,
+                        {not_rec_filter} as not_recommended,
                         COUNT(*) as total
                     FROM reviews
                     WHERE app_id = :app_id
                       AND timestamp_created > :cutoff
-                      AND data->>'voted_up' IS NOT NULL
+                      AND {voted_up_col} IS NOT NULL
                 """),
                 {"app_id": int(app_id), "cutoff": cutoff},
             )
         else:
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended,
+                        {rec_filter} as recommended,
+                        {not_rec_filter} as not_recommended,
                         COUNT(*) as total
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND data->>'voted_up' IS NOT NULL
+                      AND {voted_up_col} IS NOT NULL
                 """),
                 {"app_id": int(app_id)},
             )
@@ -2370,17 +2286,21 @@ def get_time_period_comparison(
             period_end = window_end - (i * period_length)
             period_start = period_end - period_length
 
+            voted_up = d.json_extract("data", "voted_up")
+            rec_count = d.count_filter(f"{d.cast_bool(voted_up)} = {1 if d.is_sqlite() else 'true'}")
+            not_rec_count = d.count_filter(f"{d.cast_bool(voted_up)} = {0 if d.is_sqlite() else 'false'}")
+
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended,
+                        {rec_count} as recommended,
+                        {not_rec_count} as not_recommended,
                         COUNT(*) as total
                     FROM reviews
                     WHERE app_id = :app_id
                       AND timestamp_created >= :start_ts
                       AND timestamp_created < :end_ts
-                      AND data->>'voted_up' IS NOT NULL
+                      AND {voted_up} IS NOT NULL
                 """),
                 {
                     "app_id": int(app_id),
@@ -2445,20 +2365,25 @@ def get_language_breakdown(
     cutoff = None
 
     with db_module.get_connection() as conn:
+        lang_col = d.json_extract("data", "language")
+        voted_up = d.json_extract("data", "voted_up")
+        rec_count = d.count_filter(f"{d.cast_bool(voted_up)} = {1 if d.is_sqlite() else 'true'}")
+        not_rec_count = d.count_filter(f"{d.cast_bool(voted_up)} = {0 if d.is_sqlite() else 'false'}")
+
         if max_days is not None:
             cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT
-                        COALESCE(data->>'language', 'unknown') as language,
+                        COALESCE({lang_col}, 'unknown') as language,
                         COUNT(*) as total,
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended
+                        {rec_count} as recommended,
+                        {not_rec_count} as not_recommended
                     FROM reviews
                     WHERE app_id = :app_id
                       AND timestamp_created > :cutoff
-                      AND data->>'voted_up' IS NOT NULL
-                    GROUP BY COALESCE(data->>'language', 'unknown')
+                      AND {voted_up} IS NOT NULL
+                    GROUP BY COALESCE({lang_col}, 'unknown')
                     ORDER BY total DESC
                     LIMIT :limit
                 """),
@@ -2466,16 +2391,16 @@ def get_language_breakdown(
             )
         else:
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT
-                        COALESCE(data->>'language', 'unknown') as language,
+                        COALESCE({lang_col}, 'unknown') as language,
                         COUNT(*) as total,
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = true) as recommended,
-                        COUNT(*) FILTER (WHERE (data->>'voted_up')::boolean = false) as not_recommended
+                        {rec_count} as recommended,
+                        {not_rec_count} as not_recommended
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND data->>'voted_up' IS NOT NULL
-                    GROUP BY COALESCE(data->>'language', 'unknown')
+                      AND {voted_up} IS NOT NULL
+                    GROUP BY COALESCE({lang_col}, 'unknown')
                     ORDER BY total DESC
                     LIMIT :limit
                 """),
@@ -2528,39 +2453,47 @@ def sample_reviews_by_sentiment(
     max_days = _parse_date_filter(date_filter)
     voted_up_value = sentiment == "positive"
 
+    voted_up_col = d.cast_bool(d.json_extract("data", "voted_up"))
+    votes_up_col = d.cast_int(d.json_extract("data", "votes_up"))
+    # For SQLite, compare to 1/0; for PostgreSQL, compare to boolean param
+    if d.is_sqlite():
+        voted_up_param_val = 1 if voted_up_value else 0
+    else:
+        voted_up_param_val = voted_up_value
+
     with db_module.get_connection() as conn:
         if max_days is not None:
             cutoff = int(time.time()) - (max_days * 24 * 60 * 60)
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT data
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND (data->>'voted_up')::boolean = :voted_up
+                      AND {voted_up_col} = :voted_up
                       AND timestamp_created > :cutoff
-                    ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                    ORDER BY {votes_up_col} DESC NULLS LAST
                     LIMIT :limit
                 """),
                 {
                     "app_id": int(app_id),
-                    "voted_up": voted_up_value,
+                    "voted_up": voted_up_param_val,
                     "cutoff": cutoff,
                     "limit": int(limit),
                 },
             )
         else:
             result = conn.execute(
-                text("""
+                text(f"""
                     SELECT data
                     FROM reviews
                     WHERE app_id = :app_id
-                      AND (data->>'voted_up')::boolean = :voted_up
-                    ORDER BY (data->>'votes_up')::int DESC NULLS LAST
+                      AND {voted_up_col} = :voted_up
+                    ORDER BY {votes_up_col} DESC NULLS LAST
                     LIMIT :limit
                 """),
                 {
                     "app_id": int(app_id),
-                    "voted_up": voted_up_value,
+                    "voted_up": voted_up_param_val,
                     "limit": int(limit),
                 },
             )
@@ -2632,23 +2565,15 @@ def get_reviews_by_subcategory(
         "offset": offset,
     }
 
+    # Build subcategory EXISTS clauses (dialect-aware)
+    subcat_exists_1 = d.json_array_exists("rl.payload", "subcategories", "LOWER(subcat) LIKE :subcategory_pattern")
+    subcat_exists_2 = d.json_array_exists("rl.payload", "issue_subcategories", "LOWER(subcat) LIKE :subcategory_pattern")
+    subcat_exists_3 = d.json_array_exists("rl.payload", "request_subcategories", "LOWER(subcat) LIKE :subcategory_pattern")
+
     where_parts = [
         "r.app_id = :app_id",
         "rl.payload IS NOT NULL",
-        "("
-        "EXISTS ("
-        " SELECT 1 FROM jsonb_array_elements_text(rl.payload->'subcategories') AS subcat"
-        " WHERE LOWER(subcat) LIKE :subcategory_pattern"
-        ")"
-        " OR EXISTS ("
-        " SELECT 1 FROM jsonb_array_elements_text(rl.payload->'issue_subcategories') AS subcat"
-        " WHERE LOWER(subcat) LIKE :subcategory_pattern"
-        ")"
-        " OR EXISTS ("
-        " SELECT 1 FROM jsonb_array_elements_text(rl.payload->'request_subcategories') AS subcat"
-        " WHERE LOWER(subcat) LIKE :subcategory_pattern"
-        ")"
-        ")",
+        f"({subcat_exists_1} OR {subcat_exists_2} OR {subcat_exists_3})",
     ]
 
     if max_days is not None:
@@ -2657,15 +2582,18 @@ def get_reviews_by_subcategory(
         params["cutoff"] = cutoff
 
     if sentiment_filter is not None:
-        where_parts.append("COALESCE((r.data->>'voted_up')::boolean, false) = :is_positive")
-        params["is_positive"] = sentiment_filter
+        voted_up = d.json_extract("r.data", "voted_up")
+        where_parts.append(f"{d.coalesce_bool(voted_up)} = :is_positive")
+        params["is_positive"] = (1 if sentiment_filter else 0) if d.is_sqlite() else sentiment_filter
 
     if language_value and language_value != "all":
-        where_parts.append("LOWER(COALESCE(r.data->>'language', '')) = :language")
+        lang_col = d.json_extract("r.data", "language")
+        where_parts.append(f"LOWER(COALESCE({lang_col}, '')) = :language")
         params["language"] = language_value
 
     where_sql = " AND ".join(where_parts)
-    order_clause = "ORDER BY (r.data->>'votes_up')::int DESC NULLS LAST"
+    votes_up_col = d.cast_int(d.json_extract("r.data", "votes_up"))
+    order_clause = f"ORDER BY {votes_up_col} DESC NULLS LAST"
     if order_by == "timestamp_created":
         order_clause = "ORDER BY r.timestamp_created DESC NULLS LAST"
 
@@ -2739,9 +2667,9 @@ def save_chat_context(
             {
                 "session_id": session_id,
                 "user_id": user_id,
-                "app_ids": app_ids or [],
+                "app_ids": d.serialize_array(app_ids or []),
                 "last_intent": last_intent,
-                "last_subcategories": last_subcategories or [],
+                "last_subcategories": d.serialize_array(last_subcategories or []),
                 "accumulated_facts": facts_json,
                 "game_names": names_json,
                 "turn_count": turn_count,
@@ -2779,14 +2707,14 @@ def load_chat_context(session_id: str) -> Optional[Dict[str, Any]]:
     return {
         "session_id": session_id,
         "user_id": row["user_id"],
-        "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+        "app_ids": d.deserialize_array(row["app_ids"]),
         "last_intent": row["last_intent"],
-        "last_subcategories": list(row["last_subcategories"]) if row["last_subcategories"] else [],
+        "last_subcategories": d.deserialize_array(row["last_subcategories"]),
         "accumulated_facts": _parse_json_field(row["accumulated_facts"], {}),
         "game_names": game_names,
         "turn_count": int(row["turn_count"]) if row["turn_count"] else 0,
-        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        "created_at": _format_ts(row["created_at"]),
+        "updated_at": _format_ts(row["updated_at"]),
     }
 
 
@@ -2811,12 +2739,13 @@ def update_chat_context_turn(
     with db_module.get_connection() as conn:
         if new_facts:
             # Merge new facts into existing accumulated_facts
+            facts_merge = d.jsonb_merge("accumulated_facts", ":new_facts")
             conn.execute(
-                text("""
+                text(f"""
                     UPDATE chat_context
                     SET last_intent = COALESCE(:last_intent, last_intent),
                         last_subcategories = COALESCE(:last_subcategories, last_subcategories),
-                        accumulated_facts = accumulated_facts || :new_facts,
+                        accumulated_facts = {facts_merge},
                         turn_count = turn_count + 1,
                         updated_at = :updated_at
                     WHERE session_id = :session_id
@@ -2894,10 +2823,11 @@ def save_session_context(
 
     with db_module.get_connection() as conn:
         # Merge into existing accumulated_facts
+        facts_merge = d.jsonb_merge("accumulated_facts", ":new_facts")
         conn.execute(
-            text("""
+            text(f"""
                 UPDATE chat_context
-                SET accumulated_facts = accumulated_facts || :new_facts,
+                SET accumulated_facts = {facts_merge},
                     updated_at = :updated_at
                 WHERE session_id = :session_id
             """),
@@ -2972,12 +2902,15 @@ def get_citation_feedback_stats(review_id: str) -> Dict[str, int]:
     """
     from . import db as db_module
 
+    helpful_count = d.count_filter("helpful = 1" if d.is_sqlite() else "helpful = true")
+    not_helpful_count = d.count_filter("helpful = 0" if d.is_sqlite() else "helpful = false")
+
     with db_module.get_connection() as conn:
         result = conn.execute(
-            text("""
+            text(f"""
                 SELECT
-                    COUNT(*) FILTER (WHERE helpful = true) as helpful_count,
-                    COUNT(*) FILTER (WHERE helpful = false) as not_helpful_count,
+                    {helpful_count} as helpful_count,
+                    {not_helpful_count} as not_helpful_count,
                     COUNT(*) as total
                 FROM citation_feedback
                 WHERE review_id = :review_id
@@ -3064,7 +2997,7 @@ def save_chat_session(
                 "session_id": session_id,
                 "user_id": user_id,
                 "title": title,
-                "app_ids": app_ids or [],
+                "app_ids": d.serialize_array(app_ids or []),
                 "first_user_message": first_user_message,
                 "created_at": timestamp,
                 "updated_at": timestamp,
@@ -3110,10 +3043,10 @@ def get_chat_session(session_id: str) -> Optional[Dict[str, Any]]:
         "session_id": session_id,
         "user_id": row["user_id"],
         "title": row["title"],
-        "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+        "app_ids": d.deserialize_array(row["app_ids"]),
         "first_user_message": row["first_user_message"],
-        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        "created_at": _format_ts(row["created_at"]),
+        "updated_at": _format_ts(row["updated_at"]),
     }
 
 
@@ -3146,10 +3079,10 @@ def list_chat_sessions_for_user(user_id: str, limit: int = 50) -> List[Dict[str,
         sessions.append({
             "session_id": row["session_id"],
             "title": row["title"],
-            "app_ids": list(row["app_ids"]) if row["app_ids"] else [],
+            "app_ids": d.deserialize_array(row["app_ids"]),
             "first_user_message": row["first_user_message"],
-            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            "created_at": _format_ts(row["created_at"]),
+            "updated_at": _format_ts(row["updated_at"]),
         })
 
     return sessions
@@ -3276,7 +3209,7 @@ def save_comparison_summary(
             """),
             {
                 "cache_key": cache_key,
-                "app_ids": app_ids,
+                "app_ids": d.serialize_array(app_ids),
                 "comparison_type": comparison_type,
                 "category": category,
                 "subcategory": subcategory,
@@ -3324,235 +3257,7 @@ def load_comparison_summary(cache_key: str) -> Optional[Dict[str, Any]]:
         return summary_data
 
 
-# ---------------------------------------------------------------------------
-# GDPR: User data deletion
-# ---------------------------------------------------------------------------
-
-def delete_user_data(user_id: str) -> Dict[str, int]:
-    """Delete all user-owned data for GDPR compliance.
-
-    Deletes: starred_games, chat_messages, chat_sessions, chat_context,
-    citation_feedback, analysis_results, progress,
-    job_registry, comparison_summaries, api_requests, llm_usage.
-
-    Reviews/labels are shared game data and not user-owned, so excluded.
-
-    Returns dict with count of deleted rows per table.
-    """
-    from . import db as db_module
-
-    deleted: Dict[str, int] = {}
-    _DELETABLE_TABLES = frozenset({
-        "starred_games",
-        "chat_messages",
-        "chat_sessions",
-        "chat_context",
-        "citation_feedback",
-        "analysis_results",
-        "progress",
-        "job_registry",
-        "comparison_summaries",
-        "api_requests",
-        "llm_usage",
-    })
-    tables = list(_DELETABLE_TABLES)
-
-    # Pre-built queries keyed by table name — avoids f-string SQL interpolation
-    _DELETE_QUERIES = {
-        t: text(f"DELETE FROM {t} WHERE user_id = :user_id")
-        for t in _DELETABLE_TABLES
-    }
-
-    with db_module.get_connection() as conn:
-        for table in tables:
-            result = conn.execute(
-                _DELETE_QUERIES[table],
-                {"user_id": user_id},
-            )
-            deleted[table] = result.rowcount
-
-    return deleted
 
 
-# ---------------------------------------------------------------------------
-# User event tracking
-# ---------------------------------------------------------------------------
-
-def track_event(
-    *,
-    user_id: str,
-    event_name: str,
-    event_category: str = "interaction",
-    page: Optional[str] = None,
-    target: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-) -> None:
-    """Record a frontend user event (best-effort)."""
-    from . import db as db_module
-
-    try:
-        with db_module.get_connection() as conn:
-            conn.execute(
-                text("""
-                    INSERT INTO user_events
-                    (user_id, event_name, event_category, page, target, metadata)
-                    VALUES (:user_id, :event_name, :event_category, :page, :target, :metadata)
-                """),
-                {
-                    "user_id": user_id,
-                    "event_name": event_name,
-                    "event_category": event_category,
-                    "page": page,
-                    "target": target,
-                    "metadata": json.dumps(metadata or {}),
-                },
-            )
-    except Exception as exc:
-        logger.warning("Failed to track event: %s", exc)
 
 
-def get_events_summary(
-    *,
-    since_hours: int = 24,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Get aggregated event analytics."""
-    from . import db as db_module
-
-    params: Dict[str, Any] = {"since_hours": since_hours}
-    user_filter = ""
-    if user_id:
-        user_filter = "AND user_id = :user_id"
-        params["user_id"] = user_id
-
-    with db_module.get_connection() as conn:
-        # Total events
-        row = conn.execute(
-            text(f"""
-                SELECT COUNT(*) FROM user_events
-                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
-                {user_filter}
-            """),
-            params,
-        ).fetchone()
-        total_events = row[0] if row else 0
-
-        # Unique users
-        row = conn.execute(
-            text(f"""
-                SELECT COUNT(DISTINCT user_id) FROM user_events
-                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
-                {user_filter}
-            """),
-            params,
-        ).fetchone()
-        unique_users = row[0] if row else 0
-
-        # Top events
-        rows = conn.execute(
-            text(f"""
-                SELECT event_name, event_category, COUNT(*) as count
-                FROM user_events
-                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
-                {user_filter}
-                GROUP BY event_name, event_category
-                ORDER BY count DESC
-                LIMIT 20
-            """),
-            params,
-        ).fetchall()
-        top_events = [
-            {"event_name": r[0], "event_category": r[1], "count": r[2]}
-            for r in rows
-        ]
-
-        # Top pages
-        rows = conn.execute(
-            text(f"""
-                SELECT page, COUNT(*) as count
-                FROM user_events
-                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
-                AND page IS NOT NULL
-                {user_filter}
-                GROUP BY page
-                ORDER BY count DESC
-                LIMIT 15
-            """),
-            params,
-        ).fetchall()
-        top_pages = [{"page": r[0], "count": r[1]} for r in rows]
-
-        # Events over time (hourly buckets)
-        rows = conn.execute(
-            text(f"""
-                SELECT date_trunc('hour', created_at) as hour, COUNT(*) as count
-                FROM user_events
-                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
-                {user_filter}
-                GROUP BY hour
-                ORDER BY hour
-            """),
-            params,
-        ).fetchall()
-        events_over_time = [
-            {"hour": r[0].isoformat() if r[0] else None, "count": r[1]}
-            for r in rows
-        ]
-
-        # Active users list (with event counts)
-        rows = conn.execute(
-            text(f"""
-                SELECT user_id, COUNT(*) as event_count,
-                       MAX(created_at) as last_active
-                FROM user_events
-                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
-                {user_filter}
-                GROUP BY user_id
-                ORDER BY event_count DESC
-                LIMIT 20
-            """),
-            params,
-        ).fetchall()
-        active_users = [
-            {
-                "user_id": r[0],
-                "event_count": r[1],
-                "last_active": r[2].isoformat() if r[2] else None,
-            }
-            for r in rows
-        ]
-
-        # Recent events (last 50)
-        rows = conn.execute(
-            text(f"""
-                SELECT user_id, event_name, event_category, page, target, metadata, created_at
-                FROM user_events
-                WHERE created_at > NOW() - INTERVAL '1 hour' * :since_hours
-                {user_filter}
-                ORDER BY created_at DESC
-                LIMIT 50
-            """),
-            params,
-        ).fetchall()
-        recent_events = [
-            {
-                "user_id": r[0],
-                "event_name": r[1],
-                "event_category": r[2],
-                "page": r[3],
-                "target": r[4],
-                "metadata": _parse_json_field(r[5], {}),
-                "created_at": r[6].isoformat() if r[6] else None,
-            }
-            for r in rows
-        ]
-
-    return {
-        "total_events": total_events,
-        "unique_users": unique_users,
-        "top_events": top_events,
-        "top_pages": top_pages,
-        "events_over_time": events_over_time,
-        "active_users": active_users,
-        "recent_events": recent_events,
-    }

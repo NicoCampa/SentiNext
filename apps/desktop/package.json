@@ -1,0 +1,15 @@
+{
+  "name": "sentinext-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:frontend": "cd ../dashboard && npm run build:desktop",
+    "build:backend": "python pyinstaller/build.py",
+    "build:tauri": "cargo tauri build",
+    "build": "npm run build:frontend && npm run build:backend && npm run build:tauri",
+    "dev": "cargo tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

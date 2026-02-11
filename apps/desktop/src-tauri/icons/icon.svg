@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Black background -->
+  <rect x="0" y="0" width="512" height="512" rx="80" ry="80" fill="#000000"/>
+
+  <!-- Cyan border (top + left sides) -->
+  <line x1="40" y1="32" x2="472" y2="32" stroke="rgb(0,255,255)" stroke-width="6" stroke-linecap="round"/>
+  <line x1="32" y1="40" x2="32" y2="472" stroke="rgb(0,255,255)" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Magenta border (bottom + right sides) -->
+  <line x1="40" y1="480" x2="472" y2="480" stroke="rgb(255,0,128)" stroke-width="6" stroke-linecap="round"/>
+  <line x1="480" y1="40" x2="480" y2="472" stroke="rgb(255,0,128)" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Corner accents — cyan top-left -->
+  <line x1="24" y1="24" x2="80" y2="24" stroke="rgb(0,255,255)" stroke-width="8" stroke-linecap="round"/>
+  <line x1="24" y1="24" x2="24" y2="80" stroke="rgb(0,255,255)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Corner accents — cyan top-right -->
+  <line x1="432" y1="24" x2="488" y2="24" stroke="rgb(0,255,255)" stroke-width="8" stroke-linecap="round"/>
+  <line x1="488" y1="24" x2="488" y2="80" stroke="rgb(0,255,255)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Corner accents — magenta bottom-left -->
+  <line x1="24" y1="432" x2="24" y2="488" stroke="rgb(255,0,128)" stroke-width="8" stroke-linecap="round"/>
+  <line x1="24" y1="488" x2="80" y2="488" stroke="rgb(255,0,128)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Corner accents — magenta bottom-right -->
+  <line x1="488" y1="432" x2="488" y2="488" stroke="rgb(255,0,128)" stroke-width="8" stroke-linecap="round"/>
+  <line x1="432" y1="488" x2="488" y2="488" stroke="rgb(255,0,128)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- SN text -->
+  <text x="256" y="310" font-family="Arial, Helvetica, sans-serif" font-size="220" font-weight="bold" fill="#ffffff" text-anchor="middle">SN</text>
+</svg>
