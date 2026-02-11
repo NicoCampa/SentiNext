@@ -62,10 +62,6 @@ class LLMUsageSummaryResponse(BaseModel):
     by_model: List[LLMUsageBreakdownItem] = Field(default_factory=list)
 
 
-class UsersSummary(BaseModel):
-    active: int = 0
-
-
 class LLMCostBreakdown(BaseModel):
     key: str
     calls: int = 0
@@ -92,43 +88,7 @@ class LLMCostSummary(BaseModel):
 class AdminDashboardResponse(BaseModel):
     since: str
     days: int
-    users: UsersSummary
     llm: LLMCostSummary
-
-
-class ApiEndpointUsage(BaseModel):
-    path: str
-    count: int = 0
-    avg_ms: int = 0
-
-
-class ApiUserUsage(BaseModel):
-    user_id: str
-    count: int = 0
-    first_seen: Optional[str] = None
-    last_seen: Optional[str] = None
-
-
-class ApiDailyCount(BaseModel):
-    date: str
-    count: int = 0
-
-
-class ApiUsageResponse(BaseModel):
-    period_days: int
-    total_requests: int = 0
-    unique_users: int = 0
-    by_endpoint: List[ApiEndpointUsage] = Field(default_factory=list)
-    by_user: List[ApiUserUsage] = Field(default_factory=list)
-    daily: List[ApiDailyCount] = Field(default_factory=list)
-
-
-class TrackEventRequest(BaseModel):
-    event_name: str = Field(..., min_length=1, max_length=100)
-    event_category: str = Field("interaction", max_length=50)
-    page: Optional[str] = Field(None, max_length=200)
-    target: Optional[str] = Field(None, max_length=200)
-    metadata: Optional[Dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -341,25 +301,10 @@ def get_admin_llm_usage_summary(
         raise HTTPException(status_code=500, detail="Failed to load LLM usage summary.") from exc
 
 
-@router.get("/admin/usage", response_model=ApiUsageResponse)
-def get_admin_usage(
-    days: int = 30,
-    user_id: Optional[str] = None,
-    _: None = Depends(require_admin_token),
-) -> ApiUsageResponse:
-    try:
-        summary = storage.get_api_usage_summary(days=days, user_id=user_id)
-        return ApiUsageResponse(**summary)
-    except Exception as exc:
-        logger.exception("Failed to load API usage summary: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to load API usage summary.") from exc
-
-
 @router.get("/admin/dashboard", response_model=AdminDashboardResponse)
 def get_admin_dashboard(days: int = 30, _: None = Depends(require_admin_token)) -> AdminDashboardResponse:
     try:
         safe_days = max(1, min(int(days or 30), 365))
-        user_summary = storage.get_user_summary(safe_days)
 
         llm_usage = storage.get_llm_usage_summary(days=safe_days)
 
@@ -393,10 +338,6 @@ def get_admin_dashboard(days: int = 30, _: None = Depends(require_admin_token)) 
                 )
             )
 
-        users_payload = UsersSummary(
-            active=user_summary.get("active", 0),
-        )
-
         llm_payload = LLMCostSummary(
             calls=int(llm_usage.get("total_calls", 0) or 0),
             prompt_tokens=int(llm_usage.get("prompt_tokens", 0) or 0),
@@ -409,32 +350,8 @@ def get_admin_dashboard(days: int = 30, _: None = Depends(require_admin_token)) 
         return AdminDashboardResponse(
             since=str(llm_usage.get("since") or ""),
             days=int(llm_usage.get("days", safe_days) or safe_days),
-            users=users_payload,
             llm=llm_payload,
         )
     except Exception as exc:
         logger.exception("Failed to load admin dashboard: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load admin dashboard.") from exc
-
-
-# ---------------------------------------------------------------------------
-# Frontend event tracking
-# ---------------------------------------------------------------------------
-
-@router.post("/track", status_code=204)
-def track_event(request: TrackEventRequest):
-    user_id = "local"
-    storage.track_event(
-        user_id=user_id,
-        event_name=request.event_name,
-        event_category=request.event_category,
-        page=request.page,
-        target=request.target,
-        metadata=request.metadata,
-    )
-
-
-@router.get("/admin/analytics")
-def admin_analytics(hours: int = 24, user_id: Optional[str] = None, _: None = Depends(require_admin_token)):
-    hours = min(max(hours, 1), 720)
-    return storage.get_events_summary(since_hours=hours, user_id=user_id)

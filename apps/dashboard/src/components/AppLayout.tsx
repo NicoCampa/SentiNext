@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { useUiPreferences } from "@/contexts/UiPreferencesContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useTracking } from "@/hooks/useTracking";
 import { AnalysisWidget } from "@/components/AnalysisWidget";
 import { SentiNextLogo } from "@/components/SentiNextLogo";
 
@@ -30,7 +29,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
   const pathname = usePathname();
   const { density } = useUiPreferences();
   const { t } = useLanguage();
-  const track = useTracking();
   const compact = density === "compact";
 
   const navItems = useMemo(() => {
@@ -89,7 +87,6 @@ export function AppLayout({ children, showSidebar = true, sidebarContent }: AppL
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() => track("nav_click", { category: "navigation", target: item.label })}
                     className={clsx(
                       "group flex items-center gap-3 px-4 py-3 transition-all duration-200 relative",
                       compact ? "py-2" : "py-3",

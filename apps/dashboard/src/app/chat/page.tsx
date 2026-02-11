@@ -16,7 +16,6 @@ import {
   subscribeToChatStream,
   submitCitationFeedback,
   downloadChatSession,
-  trackEvent,
   ChatCitationItem,
   EnhancedChatResponse,
 } from "@/lib/api";
@@ -350,13 +349,6 @@ export default function ChatPage() {
   async function sendMessage(messageText: string) {
     const message = messageText.trim();
     if (!message || loading || chatLocked) return;
-
-    trackEvent({
-      event_name: "send_chat_message",
-      event_category: "chat",
-      page: "/chat",
-      metadata: { game_count: selectedGames.length },
-    });
 
     const userMessage: Message = {
       role: "user",

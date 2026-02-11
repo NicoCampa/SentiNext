@@ -1164,27 +1164,6 @@ export async function summarizeNews(
   return handleResponse<SummarizeNewsResponse>(response);
 }
 
-// ---------------------------------------------------------------------------
-// User event tracking
-// ---------------------------------------------------------------------------
-
-export interface TrackEventPayload {
-  event_name: string;
-  event_category?: string;
-  page?: string;
-  target?: string;
-  metadata?: Record<string, unknown>;
-}
-
-/** Fire-and-forget event tracking — never throws, never blocks UI. */
-export function trackEvent(payload: TrackEventPayload): void {
-  apiFetch(apiUrl("/track"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-}
-
 // ============================================================================
 // LLM Settings API
 // ============================================================================

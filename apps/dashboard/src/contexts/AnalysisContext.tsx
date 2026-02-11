@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef, useMemo } from 'react';
-import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis, trackEvent } from '@/lib/api';
+import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
@@ -158,14 +158,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         });
       }
       return newTasks;
-    });
-
-    trackEvent({
-      event_name: "start_analysis",
-      event_category: "analysis",
-      page: "/dashboard",
-      target: game.name,
-      metadata: { app_id: appId, review_count: options.review_count, language: options.language },
     });
 
     const persist = options.persist ?? true;
@@ -490,15 +482,6 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
-
-    // Track the analysis start
-    trackEvent({
-      event_name: "start_analysis",
-      event_category: "analysis",
-      page: "/dashboard",
-      target: game.name,
-      metadata: { app_id: appId, review_count: reviewCount, language },
-    });
 
     // Reset progress stats before starting
     resetProgressStats(appId);

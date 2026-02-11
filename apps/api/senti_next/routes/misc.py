@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from .. import storage, llm
 from ..steam_api import fetch_app_details
 from .. import build_reviews_dataframe
-from ._guards import require_destructive_access
 
 logger = logging.getLogger(__name__)
 
@@ -274,19 +273,3 @@ def generate_executive_summary(
         raise HTTPException(status_code=400, detail="Format must be 'pdf', 'html', or 'legacy'")
 
 
-# ---------------------------------------------------------------------------
-# GDPR: Account / data deletion
-# ---------------------------------------------------------------------------
-
-@router.delete("/account")
-def delete_account(_: None = Depends(require_destructive_access)) -> dict:
-    user_id = "local"
-    deleted = storage.delete_user_data(user_id)
-    total = sum(deleted.values())
-    logger.info("GDPR deletion for user %s: %d rows across %d tables", user_id, total, len(deleted))
-    return {
-        "status": "deleted",
-        "user_id": user_id,
-        "deleted": deleted,
-        "total_rows": total,
-    }
