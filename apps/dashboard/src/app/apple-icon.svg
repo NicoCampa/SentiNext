@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
   <!-- Black background -->
   <rect x="0" y="0" width="180" height="180" fill="#000000"/>
-  <!-- SN text -->
-  <text x="90" y="115" font-family="Arial, sans-serif" font-size="80" font-weight="bold" fill="#ffffff" text-anchor="middle">SN</text>
+  <!-- S in cyan, N in magenta -->
+  <text x="90" y="115" font-family="Arial, sans-serif" font-size="80" font-weight="bold" text-anchor="middle">
+    <tspan fill="rgb(0,255,255)">S</tspan><tspan fill="rgb(255,0,128)">N</tspan>
+  </text>
 </svg>
