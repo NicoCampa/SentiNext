@@ -1,6 +1,6 @@
 [package]
 name = "sentinext-desktop"
-version = "0.4.3"
+version = "0.4.4"
 description = "SentiNext Desktop App"
 authors = ["SentiNext"]
 edition = "2021"
