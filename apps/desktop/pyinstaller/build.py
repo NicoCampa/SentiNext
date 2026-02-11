@@ -88,6 +88,23 @@ def main() -> None:
 
     shutil.copy2(src_exe, dest_exe)
 
+    # On macOS, re-sign the sidecar with entitlements to allow PyInstaller's
+    # extracted Python framework (which has a different Team ID) to load.
+    # Without this, hardened runtime's library validation rejects the dylib.
+    # We use ad-hoc signing here; Tauri re-signs with the real identity at bundle time.
+    if sys.platform == "darwin":
+        entitlements = script_dir / "entitlements.plist"
+        print(f"Signing sidecar with entitlements: {entitlements}")
+        subprocess.run(
+            [
+                "codesign", "--force", "--sign", "-",
+                "--entitlements", str(entitlements),
+                "--options", "runtime",
+                str(dest_exe),
+            ],
+            check=True,
+        )
+
     print(f"Sidecar binary: {dest_exe}")
     print(f"Size: {dest_exe.stat().st_size / (1024 * 1024):.1f} MB")
     print("Build complete!")
