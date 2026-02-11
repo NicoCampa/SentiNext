@@ -19,7 +19,7 @@
         "badge": "Open-Source Steam Review AI",
         "title1": "Review",
         "title2": "Intelligence",
-        "subtitle": "An open-source AI agent that turns Steam reviews into a prioritized backlog of issues, feature requests, and player pain points -- backed by evidence quotes. Self-host with Docker Compose.",
+        "subtitle": "Open-source AI that turns Steam reviews into a prioritized backlog of issues, requests, and player pain points.",
         "bullet1": "Issues & requests, prioritized",
         "bullet2": "Audit-ready evidence quotes",
         "bullet3": "Self-hosted: your data stays yours"

@@ -1,29 +1,46 @@
 # SentiNext
 
-SentiNext is an open-source, self-hosted tool that turns raw Steam reviews into clear, actionable insights. It ingests Steam reviews, classifies them using LLMs into a structured taxonomy, and surfaces top issues and feature requests.
+**Open-source Steam review intelligence for game teams.**
 
-## Structure
-- `apps/api/` – FastAPI app (`apps/api/main.py`) and core package (`senti_next/`)
-- `apps/dashboard/` – Next.js web application
-- `apps/marketing/` – Marketing site
-- `tooling/` – Internal scripts and benchmark suite
-- `infra/` – Deployment/build infrastructure files
-- `data/` – Local runtime data (logs, caches)
+SentiNext turns large volumes of Steam reviews into a clear, prioritized view of what players want you to fix next. It is self-hosted, evidence-driven, and built for teams that need decisions they can defend.
+
+## Why SentiNext
+
+- Turn noisy review data into a roadmap signal.
+- See the top issues and feature requests without reading thousands of reviews manually.
+- Keep every insight traceable with verbatim evidence quotes.
+- Self-host everything so your data stays in your environment.
+
+## Core Features
+
+1. **Review ingestion from Steam:** Pull public reviews by game name or App ID and store them for repeatable analysis.
+2. **AI classification with a structured taxonomy:** Label each review into consistent categories and separate issues from requests.
+3. **Evidence-first insights:** Every label is backed by short verbatim quotes so findings stay auditable.
+4. **Dashboard for product decisions:** Track category breakdowns, trend shifts, issue/request rates, and recommendation context.
+5. **Built-in analysis workflows:** Explore reviews, compare games, generate reports, export data, and query results with AI chat.
+
+## How It Works
+
+1. Ingest recent Steam reviews for a game.
+2. Classify each review with your configured LLM provider.
+3. Aggregate patterns into actionable insights.
+4. Explore, validate, and share outcomes from the dashboard.
 
 ## Quick Start (Docker)
 
 ```bash
 cp .env.example .env.local
-# Edit .env.local and set at least one LLM API key (GEMINI_API_KEY, XAI_API_KEY, OPENAI_API_KEY, or configure Ollama)
+# Edit .env.local and set at least one LLM API key
+# (GEMINI_API_KEY, XAI_API_KEY, OPENAI_API_KEY, or configure Ollama)
 
 docker compose up --build
 ```
 
-Open `http://localhost:3000` in your browser.
+Open `http://localhost:3000`.
 
-## Manual Setup
+## Local Development
 
-See `LOCAL_DEVELOPMENT.md` for step-by-step setup.
+For full local setup, see `LOCAL_DEVELOPMENT.md`.
 
 ```bash
 ./run_backend_local.sh
@@ -32,23 +49,32 @@ See `LOCAL_DEVELOPMENT.md` for step-by-step setup.
 
 ## LLM Providers
 
-SentiNext supports multiple LLM providers. Set at least one API key:
+Set at least one provider:
 
 | Provider | Env Variable | Suggested Models |
-|----------|-------------|------------------|
-| Google Gemini | `GEMINI_API_KEY` | gemini-flash-lite-latest, gemini-flash-latest |
-| xAI Grok | `XAI_API_KEY` | grok-4-1-fast-non-reasoning, grok-4-1-fast-reasoning |
-| OpenAI | `OPENAI_API_KEY` | gpt-5-mini, gpt-5-nano |
-| Ollama (local) | No key needed | llama3.1:8b, qwen2.5:7b, gemma2:9b |
+|----------|--------------|------------------|
+| Google Gemini | `GEMINI_API_KEY` | `gemini-flash-lite-latest`, `gemini-flash-latest` |
+| xAI Grok | `XAI_API_KEY` | `grok-4-1-fast-non-reasoning`, `grok-4-1-fast-reasoning` |
+| OpenAI | `OPENAI_API_KEY` | `gpt-5-mini`, `gpt-5-nano` |
+| Ollama (local) | No key needed | `llama3.1:8b`, `qwen2.5:7b`, `gemma2:9b` |
 
-Provider and model can be changed at runtime via the Settings page or `PUT /settings/llm`.
+Provider/model can be changed in Settings or via `PUT /settings/llm`.
 
-## Notes
-- The API persists reviews/labels to PostgreSQL via `DATABASE_URL`.
-- Endpoints are open by default for self-hosted usage.
-- Optional hardening: set `SENTINEXT_ADMIN_TOKEN` to protect admin/destructive endpoints and set `SENTINEXT_ENABLE_DESTRUCTIVE=false` to block destructive actions entirely.
-- LLM classification uses a two-tier approach (fast model → reasoning fallback) for xAI, or single-call for other providers.
+## Architecture At A Glance
+
+- `apps/api/`: FastAPI backend and core analysis logic
+- `apps/dashboard/`: Next.js product dashboard
+- `apps/marketing/`: Marketing website
+- `tooling/`: Benchmarks and internal scripts
+- `infra/`: Deployment/build infrastructure
+
+## Technical Notes
+
+- PostgreSQL is required (`DATABASE_URL`).
+- Endpoints are open by default for self-hosted use.
+- Optional hardening: set `SENTINEXT_ADMIN_TOKEN` to protect admin/destructive actions, and set `SENTINEXT_ENABLE_DESTRUCTIVE=false` to fully block destructive operations.
+- xAI supports a two-tier flow (fast model, then reasoning fallback); other providers use single-call classification.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0. See `LICENSE`.
