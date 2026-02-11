@@ -91,7 +91,7 @@ jobs:
               }
             }
 
-            return String(release.id);
+            return release.id;
 
   build:
     needs: create-release
