@@ -38,6 +38,18 @@ async fn wait_for_backend(port: u16, timeout: Duration) -> Result<(), String> {
     }
 }
 
+/// Inject a boot error into the webview so the frontend can display it.
+fn inject_boot_error(handle: &tauri::AppHandle, error: &str) {
+    let escaped = error.replace('\\', "\\\\").replace('\'', "\\'");
+    let js = format!(
+        "window.__SENTINEXT_BACKEND_BOOT_ERROR__ = '{}';",
+        escaped
+    );
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.eval(&js);
+    }
+}
+
 pub fn run() {
     let port = find_free_port();
 
@@ -49,44 +61,56 @@ pub fn run() {
             // Store port in app state for later access
             app.manage(Mutex::new(port));
 
-            // Spawn the Python sidecar
+            // Spawn the Python sidecar — handle errors gracefully so the
+            // window still opens and can show an error message to the user.
             let shell = handle.shell();
-            let sidecar = shell
-                .sidecar("binaries/sentinext-backend")
-                .expect("Failed to create sidecar command")
-                .args(["--port", &port.to_string()]);
-
-            let (mut _rx, child) = sidecar.spawn().expect("Failed to spawn sidecar");
-
-            // Store the child process for cleanup
-            app.manage(Mutex::new(Some(child)));
-
-            // Inject the API base URL and run health check
-            let handle_clone = handle.clone();
-            tauri::async_runtime::spawn(async move {
-                match wait_for_backend(port, Duration::from_secs(30)).await {
-                    Ok(()) => {
-                        // Inject API base URL into all webview windows
-                        let js = format!(
-                            "window.__SENTINEXT_API_BASE__ = 'http://127.0.0.1:{}';",
-                            port
-                        );
-                        if let Some(window) = handle_clone.get_webview_window("main") {
-                            let _ = window.eval(&js);
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("Backend boot failed: {}", err);
-                        let js = format!(
-                            "window.__SENTINEXT_BACKEND_BOOT_ERROR__ = '{}';",
-                            err.replace('\'', "\\'")
-                        );
-                        if let Some(window) = handle_clone.get_webview_window("main") {
-                            let _ = window.eval(&js);
-                        }
-                    }
+            let sidecar = match shell.sidecar("binaries/sentinext-backend") {
+                Ok(cmd) => cmd.args(["--port", &port.to_string()]),
+                Err(err) => {
+                    eprintln!("Failed to create sidecar command: {err}");
+                    let handle_clone = handle.clone();
+                    let err_msg = format!("Failed to create sidecar command: {err}");
+                    tauri::async_runtime::spawn(async move {
+                        inject_boot_error(&handle_clone, &err_msg);
+                    });
+                    return Ok(());
                 }
-            });
+            };
+
+            match sidecar.spawn() {
+                Ok((_rx, child)) => {
+                    // Store the child process for cleanup
+                    app.manage(Mutex::new(Some(child)));
+
+                    // Inject the API base URL and run health check
+                    let handle_clone = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match wait_for_backend(port, Duration::from_secs(30)).await {
+                            Ok(()) => {
+                                let js = format!(
+                                    "window.__SENTINEXT_API_BASE__ = 'http://127.0.0.1:{}';",
+                                    port
+                                );
+                                if let Some(window) = handle_clone.get_webview_window("main") {
+                                    let _ = window.eval(&js);
+                                }
+                            }
+                            Err(err) => {
+                                eprintln!("Backend boot failed: {err}");
+                                inject_boot_error(&handle_clone, &err);
+                            }
+                        }
+                    });
+                }
+                Err(err) => {
+                    eprintln!("Failed to spawn sidecar: {err}");
+                    let handle_clone = handle.clone();
+                    let err_msg = format!("Failed to spawn sidecar: {err}");
+                    tauri::async_runtime::spawn(async move {
+                        inject_boot_error(&handle_clone, &err_msg);
+                    });
+                }
+            }
 
             Ok(())
         })
