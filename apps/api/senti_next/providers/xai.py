@@ -34,9 +34,6 @@ class XAIProvider(LLMProvider):
         self._model = model_name or os.getenv(
             "SENTINEXT_XAI_MODEL", "grok-4-1-fast-non-reasoning"
         )
-        self._reasoning_model = os.getenv(
-            "SENTINEXT_XAI_MODEL_REASONING", "grok-4-1-fast-reasoning"
-        )
 
     @property
     def name(self) -> str:
@@ -45,10 +42,6 @@ class XAIProvider(LLMProvider):
     @property
     def model(self) -> str:
         return self._model
-
-    @property
-    def reasoning_model(self) -> str:
-        return self._reasoning_model
 
     def _get_api_key(self) -> str:
         key = os.getenv("XAI_API_KEY", "")

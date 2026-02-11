@@ -32,6 +32,7 @@ export default function RootPage() {
   const [showLogo, setShowLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [bootProgress, setBootProgress] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -52,7 +53,8 @@ export default function RootPage() {
       push('> CONNECTING TO BACKEND...');
 
       // Phase 2: poll backend health
-      const deadline = Date.now() + TIMEOUT_MS;
+      const startedAt = Date.now();
+      const deadline = startedAt + TIMEOUT_MS;
       while (active && Date.now() < deadline) {
         // Check for Tauri sidecar boot error
         if (typeof window !== 'undefined' && window.__SENTINEXT_BACKEND_BOOT_ERROR__) {
@@ -62,13 +64,17 @@ export default function RootPage() {
 
         // Wait for a real API base URL (avoids tauri://localhost/api fetch failures)
         if (!hasResolvedApiBase()) {
+          if (active) setBootProgress(Math.min(95, Math.round(((Date.now() - startedAt) / TIMEOUT_MS) * 100)));
           await sleep(POLL_MS);
           continue;
         }
 
+        if (active) setBootProgress(Math.min(95, Math.round(((Date.now() - startedAt) / TIMEOUT_MS) * 100)));
+
         try {
           await fetchHealth();
           if (!active) return;
+          setBootProgress(100);
           push('> REVIEW ANALYSIS MODULE: ONLINE');
           await sleep(200);
           if (!active) return;
@@ -95,6 +101,7 @@ export default function RootPage() {
     setError(null);
     setMessages([]);
     setShowLogo(false);
+    setBootProgress(0);
     setRetryKey(k => k + 1);
   };
 
@@ -139,6 +146,19 @@ export default function RootPage() {
               )}
             </div>
           ))}
+          {!error && !showLogo && bootProgress > 0 && (
+            <div className="mt-3 w-64">
+              <div className="h-[2px] bg-[rgb(0,255,255)]/20 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[rgb(0,255,255)] to-[rgb(255,0,128)] transition-all duration-700 ease-out"
+                  style={{ width: `${bootProgress}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-[10px] text-[rgb(0,255,255)]/40 font-mono tracking-wider">
+                {bootProgress < 100 ? `${bootProgress}%` : 'CONNECTED'}
+              </p>
+            </div>
+          )}
           {error && (
             <div className="mt-4 space-y-3">
               <div className="text-red-400">

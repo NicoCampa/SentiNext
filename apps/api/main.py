@@ -69,12 +69,21 @@ APP_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# Tauri desktop origins — always allowed regardless of SENTINEXT_ALLOWED_ORIGINS
+# since they are local-only and required for the desktop app to function.
+_TAURI_ORIGINS = [
+    "tauri://localhost",
+    "https://tauri.localhost",
+]
+
 def _parse_allowed_origins() -> list[str]:
     raw = os.getenv("SENTINEXT_ALLOWED_ORIGINS")
     if not raw:
-        return APP_ORIGINS
-    origins = [item.strip() for item in raw.split(",") if item.strip()]
-    return origins or APP_ORIGINS
+        return APP_ORIGINS + _TAURI_ORIGINS
+    user_origins = [item.strip() for item in raw.split(",") if item.strip()]
+    base = user_origins if user_origins else APP_ORIGINS
+    # Merge Tauri origins (deduplicated) so desktop always works
+    return list(dict.fromkeys(base + _TAURI_ORIGINS))
 
 ALLOWED_ORIGINS = _parse_allowed_origins()
 

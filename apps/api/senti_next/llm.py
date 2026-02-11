@@ -1702,16 +1702,14 @@ def classify_review_single(
 ) -> Tuple[Dict[str, Any], str]:
     """Classify a single review using the active provider.
 
-    For xAI: Two-tier strategy (fast non-reasoning -> reasoning fallback)
-    For other providers: Single call with structured output
+    Uses one structured-output call per review with the currently active provider.
     Falls back to _DEFAULT_LABEL if all attempts fail.
     """
     from .providers import get_provider
-    from .providers.config import get_active_provider
 
+    provider = get_provider()
     review_text = (item.get("review_text") or "").strip()
     if not review_text:
-        provider = get_provider()
         return _DEFAULT_LABEL.copy(), provider.model_id()
 
     prompt = _build_prompt(
@@ -1722,40 +1720,11 @@ def classify_review_single(
         item.get("review_language"),
     )
 
-    provider_name, _ = get_active_provider()
-
-    if provider_name == "xai":
-        # xAI two-tier strategy: fast non-reasoning -> reasoning fallback
-        xai_provider = get_provider()
-
-        # Tier 1: fast non-reasoning model
-        try:
-            raw = xai_provider._call_xai(prompt, xai_provider.model, parse_model=ReviewClassification)
-            payload = _load_json_mapping(raw)
-            validated = _parse_payload_mapping(payload)
-            logger.debug("Tier 1 (%s) succeeded for review %s", xai_provider.model, item.get("review_id"))
-            return validated, xai_provider.model_id()
-        except (ValueError, LLMError) as tier1_err:
-            logger.info(
-                "Tier 1 (%s) failed for review %s: %s, trying Tier 2 (%s)",
-                xai_provider.model, item.get("review_id"), tier1_err, xai_provider.reasoning_model,
-            )
-
-        # Tier 2: reasoning model fallback
-        raw = xai_provider._call_xai(prompt, xai_provider.reasoning_model, parse_model=ReviewClassification)
-        payload = _load_json_mapping(raw)
-        validated = _parse_payload_mapping(payload)
-        logger.debug("Tier 2 (%s) succeeded for review %s", xai_provider.reasoning_model, item.get("review_id"))
-        return validated, _model_id("xai", xai_provider.reasoning_model)
-
-    else:
-        # Generic provider path (Gemini, OpenAI, Ollama)
-        provider = get_provider()
-        raw = provider.generate_with_pydantic(prompt, ReviewClassification)
-        payload = _load_json_mapping(raw)
-        validated = _parse_payload_mapping(payload)
-        logger.debug("Provider %s succeeded for review %s", provider.name, item.get("review_id"))
-        return validated, provider.model_id()
+    raw = provider.generate_with_pydantic(prompt, ReviewClassification)
+    payload = _load_json_mapping(raw)
+    validated = _parse_payload_mapping(payload)
+    logger.debug("Provider %s succeeded for review %s", provider.name, item.get("review_id"))
+    return validated, provider.model_id()
 
 
 def classify_review(
@@ -1791,7 +1760,8 @@ def ensure_review_labels(
         return {}
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
-    # Accept labels from the active provider and known legacy models
+    # Accept labels from the active provider and known legacy models.
+    # Keep reasoning-model IDs for backward compatibility with older cached xAI labels.
     valid_cached_models = {
         _model_id("xai", XAI_MODEL),
         _model_id("xai", XAI_MODEL_REASONING),
@@ -1921,7 +1891,7 @@ def ensure_review_labels(
     provider_label = active_name or "unknown"
     logger.info(f"{len(pending_reviews)} reviews to classify via {provider_label} provider")
 
-    # Process reviews in parallel (one LLM call per review, two-tier fallback)
+    # Process reviews in parallel (one LLM call per review).
     if pending_reviews:
         max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "10"))
         logger.info(f"Processing {len(pending_reviews)} reviews in parallel (max_workers={max_workers})")
@@ -2058,7 +2028,7 @@ def estimate_review_labeling(
             "reasons": {},
             "prompt_version": ACTIVE_PROMPT_VERSION,
             "model_id": "",
-            "labeling_strategy": f"{active_name}_two_tier" if active_name == "xai" else active_name or "unknown",
+            "labeling_strategy": active_name or "unknown",
         }
 
     existing = storage.load_review_labels(app_id) if cache_enabled else {}
@@ -2132,7 +2102,7 @@ def estimate_review_labeling(
         "reasons": reasons,
         "prompt_version": ACTIVE_PROMPT_VERSION,
         "model_id": _model_id(active_name, active_model) if active_name and active_model else "",
-        "labeling_strategy": f"{active_name}_two_tier" if active_name == "xai" else active_name or "unknown",
+        "labeling_strategy": active_name or "unknown",
     }
 
 
