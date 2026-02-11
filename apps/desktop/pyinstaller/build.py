@@ -5,7 +5,10 @@ Usage:
     python build.py [--target-triple TARGET]
 
 The output is copied to src-tauri/binaries/ with Tauri's naming convention:
-    sentinext-backend-{target_triple}
+    sentinext-backend-{target_triple}  (directory with all --onedir files)
+
+Tauri's externalBin expects the main executable at:
+    binaries/sentinext-backend-{target_triple}[.exe]
 """
 from __future__ import annotations
 
@@ -53,43 +56,64 @@ def main() -> None:
     tauri_binaries_dir = desktop_dir / "src-tauri" / "binaries"
     spec_file = script_dir / "sentinext-backend.spec"
 
+    dist_dir = script_dir / "dist"
+    build_dir = script_dir / "build"
+
     print(f"Building for target: {target_triple}")
     print(f"Spec file: {spec_file}")
 
     # Run PyInstaller
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--distpath", str(script_dir / "dist"),
-        "--workpath", str(script_dir / "build"),
+        "--distpath", str(dist_dir),
+        "--workpath", str(build_dir),
         "--noconfirm",
         str(spec_file),
     ]
     print(f"Running: {' '.join(cmd)}")
     subprocess.run(cmd, check=True, cwd=str(repo_root))
 
-    # Copy output to Tauri binaries directory
-    dist_dir = script_dir / "dist" / "sentinext-backend"
-    if not dist_dir.exists():
-        print(f"ERROR: Build output not found at {dist_dir}")
+    # PyInstaller --onedir output is at dist/sentinext-backend/
+    pyinstaller_out = dist_dir / "sentinext-backend"
+    if not pyinstaller_out.exists():
+        print(f"ERROR: Build output not found at {pyinstaller_out}")
         sys.exit(1)
 
+    # Tauri externalBin "binaries/sentinext-backend" resolves to:
+    #   binaries/sentinext-backend-{target_triple}[.exe]
+    # For --onedir, we need the whole directory plus rename the executable.
     tauri_binaries_dir.mkdir(parents=True, exist_ok=True)
-    target_dir = tauri_binaries_dir / f"sentinext-backend-{target_triple}"
 
-    if target_dir.exists():
-        shutil.rmtree(target_dir)
-    shutil.copytree(dist_dir, target_dir)
+    is_windows = "windows" in target_triple
+    exe_suffix = ".exe" if is_windows else ""
+    src_exe = pyinstaller_out / f"sentinext-backend{exe_suffix}"
 
-    # Also copy the main executable with the Tauri sidecar naming
-    exe_name = "sentinext-backend.exe" if "windows" in target_triple else "sentinext-backend"
-    src_exe = target_dir / exe_name
-    dest_name = f"sentinext-backend-{target_triple}" + (".exe" if "windows" in target_triple else "")
-    dest_exe = tauri_binaries_dir / dest_name
+    # Tauri sidecar naming: the executable itself must be named
+    # sentinext-backend-{target_triple}[.exe]
+    dest_exe_name = f"sentinext-backend-{target_triple}{exe_suffix}"
+    dest_exe = tauri_binaries_dir / dest_exe_name
 
-    if src_exe.exists():
-        shutil.copy2(src_exe, dest_exe)
-        print(f"Sidecar binary: {dest_exe}")
+    if not src_exe.exists():
+        print(f"ERROR: Executable not found at {src_exe}")
+        sys.exit(1)
 
+    # Copy the main executable with Tauri sidecar naming
+    shutil.copy2(src_exe, dest_exe)
+
+    # Copy all supporting files (shared libs, etc.) alongside the executable
+    for item in pyinstaller_out.iterdir():
+        if item.name == f"sentinext-backend{exe_suffix}":
+            continue  # already copied with renamed name
+        dest = tauri_binaries_dir / item.name
+        if item.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy2(item, dest)
+
+    print(f"Sidecar binary: {dest_exe}")
+    print(f"Supporting files copied to: {tauri_binaries_dir}")
     print("Build complete!")
 
 

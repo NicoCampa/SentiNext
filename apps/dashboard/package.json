@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:desktop": "NEXT_CONFIG_FILE=next.config.desktop.js next build",
+    "build:desktop": "npx -y cross-env DESKTOP_BUILD=1 next build",
     "start": "next start",
     "lint": "eslint .",
     "generate-types": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.generated.ts"
