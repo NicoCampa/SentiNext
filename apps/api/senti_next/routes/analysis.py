@@ -207,6 +207,28 @@ def _run_analysis_job(
     else:
         storage.clear_progress(app_id)
 
+    def _save_starred_snapshot(insights_payload: Optional[dict], sample_payload: List[dict]) -> None:
+        """Best-effort server-side persistence of completed analysis for starred games."""
+        try:
+            # Only update existing starred entries — don't auto-star every analyzed game.
+            existing = storage.load_starred_games()
+            if not any(g.get("app_id") == app_id for g in existing):
+                return
+            game_name = (game_context or {}).get("name") or str(app_id)
+            genres = (game_context or {}).get("genres") or []
+            categories = (game_context or {}).get("categories") or []
+            storage.save_starred_game(
+                app_id=app_id,
+                name=game_name,
+                metadata=metadata.dict(),
+                insights=insights_payload,
+                sample=sample_payload,
+                genres=genres if isinstance(genres, list) else [],
+                categories=categories if isinstance(categories, list) else [],
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist starred snapshot for app %s: %s", app_id, exc)
+
     try:
         with llm.llm_usage_context(app_id=app_id, operation="classify"):
             llm_labels = llm.ensure_review_labels(
@@ -221,6 +243,7 @@ def _run_analysis_job(
 
         if df is None or df.empty:
             storage.save_analysis_result(app_id, metadata.dict(), None, [], status="completed", run_id=run_id, snapshot_hash=snapshot_hash, context_hash=context_hash)
+            _save_starred_snapshot(None, [])
             return
 
         storage.update_progress_phase(app_id, "building_insights")
@@ -284,6 +307,7 @@ def _run_analysis_job(
             snapshot_hash=snapshot_hash,
             context_hash=context_hash,
         )
+        _save_starred_snapshot(insights, reviews_payload)
     except InterruptedError as exc:
         logger.info(f"Analysis cancelled for app {app_id}: {exc}")
         storage.save_analysis_result(
@@ -476,7 +500,7 @@ def analyze(
         retrieved=len(all_reviews),
         language=request.language,
         languages=languages_to_fetch,
-        fetched_at=datetime.now(timezone.utc).isoformat() + "Z",
+        fetched_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         header_image=header_image,
     )
 

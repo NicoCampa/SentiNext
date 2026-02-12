@@ -23,35 +23,9 @@ export interface AnalyzeMetadata {
   is_free?: boolean;
 }
 
-export interface StoragePaths {
-  db_path: string;
-  data_dir: string;
-  logs_dir: string;
-  log_file: string;
-}
-
 export interface LogTailResponse {
   log_file: string;
   tail: string;
-}
-
-export interface ChatCitation {
-  review_id: string;
-  subcategory: string;
-  snippet: string;
-  votes_up?: number | null;
-  created_at?: string | null;
-  voted_up?: boolean | null;
-  review_text?: string | null;
-}
-
-export interface ChatResponse {
-  answer: string;
-  citations: ChatCitation[];
-  used_subcategories: string[];
-  model: string;
-  review_count: number;
-  filtered_review_count: number;
 }
 
 export interface TrendPoint {
@@ -340,24 +314,6 @@ export interface AnalyzeResponse {
   label_estimate?: LabelReuseEstimate | null;
 }
 
-export interface AnalyzeEstimateResponse {
-  app_id: number;
-  will_fetch: boolean;
-  will_persist: boolean;
-  review_count_requested: number;
-  reviews_considered: number;
-  cached_labels_total: number;
-  cached_reviews: number;
-  needs_refresh_reviews: number;
-  empty_reviews: number;
-  short_reviews: number;
-  llm_reviews: number;
-  prompt_version: string;
-  model_id: string;
-  labeling_strategy: string;
-  reasons: Record<string, number>;
-}
-
 export interface LabelReuseEstimate {
   total_reviews: number;
   cached_reviews: number;
@@ -376,19 +332,6 @@ export interface StarredGame {
   genres?: string[];
   categories?: string[];
   updated_at?: string;
-}
-
-export interface FeedbackItem {
-  feedback_id: string;
-  app_id: number;
-  source: string;
-  text: string;
-  created_at?: string | null;
-  author?: string | null;
-  language?: string | null;
-  engagement?: Record<string, unknown>;
-  url?: string | null;
-  context?: Record<string, unknown>;
 }
 
 export type AnalysisJobStatus = "pending" | "running" | "completed" | "failed" | "unknown";

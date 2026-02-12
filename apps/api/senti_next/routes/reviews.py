@@ -153,7 +153,7 @@ def export_reviews(
 
 @router.get("/database/stats")
 def database_stats() -> dict:
-    return storage.get_database_stats(None)
+    return storage.get_database_stats()
 
 
 @router.delete("/database/labels", status_code=200)

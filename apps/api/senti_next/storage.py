@@ -1,6 +1,6 @@
 """Database storage for persisted Steam reviews.
 
-PostgreSQL-only backend using SQLAlchemy.
+SQLite backend using SQLAlchemy.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def _format_ts(val: Any) -> Optional[str]:
     """Format a timestamp value to ISO string.
 
-    Handles both datetime objects (PostgreSQL) and strings (SQLite).
+    Handles both datetime objects and strings.
     """
     if val is None:
         return None
@@ -32,7 +32,7 @@ def _format_ts(val: Any) -> Optional[str]:
 
 
 def _parse_json_field(val: Any, default: Any = None) -> Any:
-    """Parse a JSON field (PostgreSQL JSONB returns dict/list directly)."""
+    """Parse a JSON field from TEXT storage."""
     if val is None:
         return default
     if isinstance(val, (dict, list)):
@@ -70,7 +70,7 @@ _DEFAULT_USER_ID = "local"
 
 
 def init_db() -> None:
-    """Initialize database schema (PostgreSQL or SQLite)."""
+    """Initialize database schema."""
     from . import db as db_module
     db_module.init_db()
     logger.info("Initialized database backend")
@@ -123,101 +123,6 @@ def log_llm_usage(
             )
     except Exception as exc:  # best-effort logging
         logger.debug("Failed to log LLM usage: %s", exc)
-
-
-def get_llm_usage_summary(
-    *,
-    days: int = 30,
-    app_id: Optional[int] = None,
-    session_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Aggregate LLM usage metrics over a time window (admin use)."""
-    from . import db as db_module
-
-    safe_days = max(1, min(int(days or 30), 365))
-    since = datetime.now(timezone.utc) - timedelta(days=safe_days)
-
-    where_clause = """
-        WHERE created_at >= :since
-          AND user_id = :user_id
-          AND (:app_id IS NULL OR app_id = :app_id)
-          AND (:session_id IS NULL OR session_id = :session_id)
-    """
-    params = {
-        "since": since,
-        "user_id": _DEFAULT_USER_ID,
-        "app_id": app_id,
-        "session_id": session_id,
-    }
-
-    with db_module.get_connection() as conn:
-        totals = conn.execute(
-            text(f"""
-                SELECT
-                    COUNT(*) as calls,
-                    COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-                    COALESCE(SUM(response_tokens), 0) as response_tokens,
-                    COALESCE(SUM(total_tokens), 0) as total_tokens,
-                    COALESCE(SUM(cached_tokens), 0) as cached_tokens,
-                    COALESCE(SUM(tool_use_prompt_tokens), 0) as tool_use_prompt_tokens,
-                    COALESCE(SUM(thoughts_tokens), 0) as thoughts_tokens
-                FROM llm_usage
-                {where_clause}
-            """),
-            params,
-        ).mappings().fetchone()
-
-        by_operation = conn.execute(
-            text(f"""
-                SELECT
-                    operation,
-                    COUNT(*) as calls,
-                    COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-                    COALESCE(SUM(response_tokens), 0) as response_tokens,
-                    COALESCE(SUM(total_tokens), 0) as total_tokens,
-                    COALESCE(SUM(cached_tokens), 0) as cached_tokens,
-                    COALESCE(SUM(tool_use_prompt_tokens), 0) as tool_use_prompt_tokens,
-                    COALESCE(SUM(thoughts_tokens), 0) as thoughts_tokens
-                FROM llm_usage
-                {where_clause}
-                GROUP BY operation
-                ORDER BY calls DESC
-            """),
-            params,
-        ).mappings().fetchall()
-
-        by_model = conn.execute(
-            text(f"""
-                SELECT
-                    model,
-                    COUNT(*) as calls,
-                    COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
-                    COALESCE(SUM(response_tokens), 0) as response_tokens,
-                    COALESCE(SUM(total_tokens), 0) as total_tokens,
-                    COALESCE(SUM(cached_tokens), 0) as cached_tokens,
-                    COALESCE(SUM(tool_use_prompt_tokens), 0) as tool_use_prompt_tokens,
-                    COALESCE(SUM(thoughts_tokens), 0) as thoughts_tokens
-                FROM llm_usage
-                {where_clause}
-                GROUP BY model
-                ORDER BY calls DESC
-            """),
-            params,
-        ).mappings().fetchall()
-
-    return {
-        "since": since.isoformat(),
-        "days": safe_days,
-        "total_calls": int(totals["calls"] or 0) if totals else 0,
-        "prompt_tokens": int(totals["prompt_tokens"] or 0) if totals else 0,
-        "response_tokens": int(totals["response_tokens"] or 0) if totals else 0,
-        "total_tokens": int(totals["total_tokens"] or 0) if totals else 0,
-        "cached_tokens": int(totals["cached_tokens"] or 0) if totals else 0,
-        "tool_use_prompt_tokens": int(totals["tool_use_prompt_tokens"] or 0) if totals else 0,
-        "thoughts_tokens": int(totals["thoughts_tokens"] or 0) if totals else 0,
-        "by_operation": [dict(row) for row in by_operation],
-        "by_model": [dict(row) for row in by_model],
-    }
 
 
 def upsert_reviews(app_id: int, reviews: Iterable[dict]) -> int:
@@ -405,9 +310,7 @@ def load_reviews_by_ids(app_id: int, review_ids: Sequence[str]) -> List[dict]:
 
 
 def search_review_ids(app_id: int, query: str, *, limit: int = 200, language: Optional[str] = None) -> List[str]:
-    """Return review ids matching the full-text query using PostgreSQL full-text search.
-
-    Uses PostgreSQL's tsvector and tsquery for full-text search with ranking.
+    """Return review ids matching the full-text query using FTS5 full-text search.
     """
     raw = (query or "").strip()
     if not raw:
@@ -1033,32 +936,6 @@ def load_starred_games() -> list[Dict[str, Any]]:
     return results
 
 
-def load_user_app_ids() -> List[int]:
-    """Load all app IDs for a user's starred games."""
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        result = conn.execute(
-            text("SELECT app_id FROM starred_games WHERE user_id = :user_id"),
-            {"user_id": _DEFAULT_USER_ID},
-        )
-        rows = result.fetchall()
-    return [int(row[0]) for row in rows if row[0] is not None]
-
-
-def count_starred_games() -> int:
-    """Count how many games a user has analyzed/starred."""
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        result = conn.execute(
-            text("SELECT COUNT(*) FROM starred_games WHERE user_id = :user_id"),
-            {"user_id": _DEFAULT_USER_ID},
-        )
-        row = result.fetchone()
-    return int(row[0]) if row else 0
-
-
 def user_has_game(app_id: int) -> bool:
     """Check if a user has starred a game."""
     from . import db as db_module
@@ -1413,146 +1290,6 @@ def load_analysis_result(app_id: int) -> Optional[Dict[str, Any]]:
     }
 
 
-# Job Registry Functions
-
-def create_job_registry(
-    job_id: str,
-    app_id: int,
-    job_type: str = "analysis",
-    metadata: Optional[Dict] = None,
-) -> None:
-    """Create a new job registry entry."""
-    timestamp = _get_timestamp()
-    metadata_json = json.dumps(metadata) if metadata else None
-    from . import db as db_module
-    ts_expr = d.to_timestamp_expr(":created_at") if not d.is_sqlite() else ":created_at"
-    created_at_val = datetime.fromtimestamp(timestamp, tz=timezone.utc) if d.is_sqlite() else timestamp
-    with db_module.get_connection() as conn:
-        from sqlalchemy import text
-        conn.execute(
-            text(f"""
-            INSERT INTO job_registry (job_id, user_id, app_id, job_type, status, created_at, metadata)
-            VALUES (:job_id, :user_id, :app_id, :job_type, 'pending', {ts_expr}, :metadata)
-            ON CONFLICT(job_id) DO UPDATE SET
-                status = 'pending',
-                created_at = EXCLUDED.created_at,
-                metadata = EXCLUDED.metadata
-            """),
-            {
-                "job_id": job_id,
-                "user_id": _DEFAULT_USER_ID,
-                "app_id": app_id,
-                "job_type": job_type,
-                "created_at": created_at_val,
-                "metadata": metadata_json,
-            },
-        )
-
-
-def update_job_registry(
-    job_id: str,
-    status: Optional[str] = None,
-    error: Optional[str] = None,
-) -> None:
-    """Update job registry entry status."""
-    timestamp = _get_timestamp()
-    from . import db as db_module
-    ts_val = datetime.fromtimestamp(timestamp, tz=timezone.utc) if d.is_sqlite() else timestamp
-    with db_module.get_connection() as conn:
-        from sqlalchemy import text
-        if status == "running":
-            ts_expr = ":started_at" if d.is_sqlite() else d.to_timestamp_expr(":started_at")
-            conn.execute(
-                text(f"UPDATE job_registry SET status = :status, started_at = {ts_expr} WHERE job_id = :job_id"),
-                {"status": status, "started_at": ts_val, "job_id": job_id},
-            )
-        elif status in ("completed", "failed"):
-            ts_expr = ":completed_at" if d.is_sqlite() else d.to_timestamp_expr(":completed_at")
-            conn.execute(
-                text(f"UPDATE job_registry SET status = :status, completed_at = {ts_expr}, error = :error WHERE job_id = :job_id"),
-                {"status": status, "completed_at": ts_val, "error": error, "job_id": job_id},
-            )
-        elif status:
-            conn.execute(
-                text("UPDATE job_registry SET status = :status WHERE job_id = :job_id"),
-                {"status": status, "job_id": job_id},
-            )
-
-
-def get_job_registry(job_id: str) -> Optional[Dict[str, Any]]:
-    """Get job registry entry by ID."""
-    from . import db as db_module
-    with db_module.get_connection() as conn:
-        row = conn.execute(
-            text("""
-            SELECT job_id, user_id, app_id, job_type, status, created_at, started_at, completed_at, error, metadata
-            FROM job_registry
-            WHERE job_id = :job_id
-            """),
-            {"job_id": job_id},
-        ).fetchone()
-
-    if row is None:
-        return None
-
-    return {
-        "job_id": row["job_id"],
-        "user_id": row["user_id"],
-        "app_id": int(row["app_id"]),
-        "job_type": row["job_type"],
-        "status": row["status"],
-        "created_at": _timestamp_to_int(row["created_at"]) or 0,
-        "started_at": _timestamp_to_int(row["started_at"]),
-        "completed_at": _timestamp_to_int(row["completed_at"]),
-        "error": row["error"],
-        "metadata": _parse_json_field(row["metadata"], None),
-    }
-
-
-def find_interrupted_jobs(age_minutes: int = 10) -> List[Dict[str, Any]]:
-    """Find jobs that are stuck in 'running' status for longer than age_minutes."""
-    cutoff = _get_cutoff_timestamp(age_minutes * 60)
-    from . import db as db_module
-    with db_module.get_connection() as conn:
-        rows = conn.execute(
-            text("""
-            SELECT job_id, user_id, app_id, job_type, status, created_at, started_at
-            FROM job_registry
-            WHERE status = 'running' AND started_at < :cutoff
-            """),
-            {"cutoff": cutoff},
-        ).fetchall()
-
-    return [
-        {
-            "job_id": row["job_id"],
-            "user_id": row["user_id"],
-            "app_id": int(row["app_id"]),
-            "job_type": row["job_type"],
-            "status": row["status"],
-            "created_at": _timestamp_to_int(row["created_at"]) or 0,
-            "started_at": _timestamp_to_int(row["started_at"]),
-        }
-        for row in rows
-    ]
-
-
-def cleanup_old_jobs(age_days: int = 7) -> int:
-    """Delete completed/failed jobs older than age_days. Returns count deleted."""
-    cutoff = _get_cutoff_timestamp(age_days * 24 * 3600)
-    from . import db as db_module
-    with db_module.get_connection() as conn:
-        cursor = conn.execute(
-            text("""
-            DELETE FROM job_registry
-            WHERE status IN ('completed', 'failed') AND completed_at < :cutoff
-            """),
-            {"cutoff": cutoff},
-        )
-        count = cursor.rowcount
-    return count
-
-
 # Chat Message Functions
 
 def save_chat_message(role: str, content: str, session_id: str = None) -> None:
@@ -1708,7 +1445,7 @@ def search_reviews_with_date_filter(
     sentiment: Optional[str] = None,
     language: Optional[str] = None,
 ) -> List[dict]:
-    """Search reviews using PostgreSQL FTS with date filtering.
+    """Search reviews using FTS with date filtering.
 
     Args:
         app_id: The Steam app ID to search
@@ -2401,7 +2138,7 @@ def sample_reviews_by_sentiment(
 
     voted_up_col = d.cast_bool(d.json_extract("data", "voted_up"))
     votes_up_col = d.cast_int(d.json_extract("data", "votes_up"))
-    # For SQLite, compare to 1/0; for PostgreSQL, compare to boolean param
+    # Compare to 1/0 for SQLite boolean handling
     if d.is_sqlite():
         voted_up_param_val = 1 if voted_up_value else 0
     else:
@@ -2562,69 +2299,6 @@ def get_reviews_by_subcategory(
 
 # Chat Context Functions (for agentic conversation memory)
 
-def save_chat_context(
-    session_id: str,
-    user_id: str,
-    app_ids: List[int],
-    last_intent: Optional[str] = None,
-    last_subcategories: Optional[List[str]] = None,
-    accumulated_facts: Optional[Dict[str, Any]] = None,
-    game_names: Optional[Dict[int, str]] = None,
-    turn_count: int = 0,
-) -> None:
-    """Save or update chat context for a session.
-
-    Args:
-        session_id: Unique session identifier
-        user_id: User ID
-        app_ids: List of game app IDs in context
-        last_intent: Last detected intent
-        last_subcategories: Last discussed subcategories
-        accumulated_facts: Key facts established in conversation
-        game_names: Mapping of app_id to game name
-        turn_count: Number of conversation turns
-    """
-    from . import db as db_module
-
-    facts_json = json.dumps(accumulated_facts) if accumulated_facts else "{}"
-    names_json = json.dumps({str(k): v for k, v in (game_names or {}).items()})
-    timestamp = datetime.now(timezone.utc)
-
-    with db_module.get_connection() as conn:
-        conn.execute(
-            text("""
-                INSERT INTO chat_context (
-                    session_id, user_id, app_ids, last_intent, last_subcategories,
-                    accumulated_facts, game_names, turn_count, created_at, updated_at
-                )
-                VALUES (
-                    :session_id, :user_id, :app_ids, :last_intent, :last_subcategories,
-                    :accumulated_facts, :game_names, :turn_count, :created_at, :updated_at
-                )
-                ON CONFLICT(session_id) DO UPDATE SET
-                    app_ids = EXCLUDED.app_ids,
-                    last_intent = EXCLUDED.last_intent,
-                    last_subcategories = EXCLUDED.last_subcategories,
-                    accumulated_facts = EXCLUDED.accumulated_facts,
-                    game_names = EXCLUDED.game_names,
-                    turn_count = EXCLUDED.turn_count,
-                    updated_at = EXCLUDED.updated_at
-            """),
-            {
-                "session_id": session_id,
-                "user_id": user_id,
-                "app_ids": d.serialize_array(app_ids or []),
-                "last_intent": last_intent,
-                "last_subcategories": d.serialize_array(last_subcategories or []),
-                "accumulated_facts": facts_json,
-                "game_names": names_json,
-                "turn_count": turn_count,
-                "created_at": timestamp,
-                "updated_at": timestamp,
-            },
-        )
-
-
 def load_chat_context(session_id: str) -> Optional[Dict[str, Any]]:
     """Load chat context for a session.
 
@@ -2662,76 +2336,6 @@ def load_chat_context(session_id: str) -> Optional[Dict[str, Any]]:
         "created_at": _format_ts(row["created_at"]),
         "updated_at": _format_ts(row["updated_at"]),
     }
-
-
-def update_chat_context_turn(
-    session_id: str,
-    last_intent: Optional[str] = None,
-    last_subcategories: Optional[List[str]] = None,
-    new_facts: Optional[Dict[str, Any]] = None,
-) -> None:
-    """Update chat context after a conversation turn.
-
-    Args:
-        session_id: Session to update
-        last_intent: New intent to set
-        last_subcategories: New subcategories to set
-        new_facts: Facts to merge into accumulated_facts
-    """
-    from . import db as db_module
-
-    timestamp = datetime.now(timezone.utc)
-
-    with db_module.get_connection() as conn:
-        if new_facts:
-            # Merge new facts into existing accumulated_facts
-            facts_merge = d.jsonb_merge("accumulated_facts", ":new_facts")
-            conn.execute(
-                text(f"""
-                    UPDATE chat_context
-                    SET last_intent = COALESCE(:last_intent, last_intent),
-                        last_subcategories = COALESCE(:last_subcategories, last_subcategories),
-                        accumulated_facts = {facts_merge},
-                        turn_count = turn_count + 1,
-                        updated_at = :updated_at
-                    WHERE session_id = :session_id
-                """),
-                {
-                    "session_id": session_id,
-                    "last_intent": last_intent,
-                    "last_subcategories": last_subcategories,
-                    "new_facts": json.dumps(new_facts),
-                    "updated_at": timestamp,
-                },
-            )
-        else:
-            conn.execute(
-                text("""
-                    UPDATE chat_context
-                    SET last_intent = COALESCE(:last_intent, last_intent),
-                        last_subcategories = COALESCE(:last_subcategories, last_subcategories),
-                        turn_count = turn_count + 1,
-                        updated_at = :updated_at
-                    WHERE session_id = :session_id
-                """),
-                {
-                    "session_id": session_id,
-                    "last_intent": last_intent,
-                    "last_subcategories": last_subcategories,
-                    "updated_at": timestamp,
-                },
-            )
-
-
-def delete_chat_context(session_id: str) -> None:
-    """Delete chat context for a session."""
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        conn.execute(
-            text("DELETE FROM chat_context WHERE session_id = :session_id"),
-            {"session_id": session_id},
-        )
 
 
 def save_session_context(
@@ -2837,235 +2441,6 @@ def save_citation_feedback(
             },
         )
 
-
-def get_citation_feedback_stats(review_id: str) -> Dict[str, int]:
-    """Get feedback statistics for a review citation.
-
-    Returns:
-        Dict with helpful_count, not_helpful_count, total keys
-    """
-    from . import db as db_module
-
-    helpful_count = d.count_filter("helpful = 1" if d.is_sqlite() else "helpful = true")
-    not_helpful_count = d.count_filter("helpful = 0" if d.is_sqlite() else "helpful = false")
-
-    with db_module.get_connection() as conn:
-        result = conn.execute(
-            text(f"""
-                SELECT
-                    {helpful_count} as helpful_count,
-                    {not_helpful_count} as not_helpful_count,
-                    COUNT(*) as total
-                FROM citation_feedback
-                WHERE review_id = :review_id
-            """),
-            {"review_id": review_id},
-        )
-        row = result.fetchone()
-
-    if not row:
-        return {"helpful_count": 0, "not_helpful_count": 0, "total": 0}
-
-    return {
-        "helpful_count": int(row[0]) if row[0] else 0,
-        "not_helpful_count": int(row[1]) if row[1] else 0,
-        "total": int(row[2]) if row[2] else 0,
-    }
-
-
-def get_user_citation_feedback(
-    session_id: str,
-) -> Dict[str, bool]:
-    """Get all citation feedback from a user in a session.
-
-    Returns:
-        Dict mapping review_id to helpful boolean
-    """
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        result = conn.execute(
-            text("""
-                SELECT review_id, helpful
-                FROM citation_feedback
-                WHERE user_id = :user_id AND session_id = :session_id
-            """),
-            {"user_id": _DEFAULT_USER_ID, "session_id": session_id},
-        )
-        rows = result.fetchall()
-
-    return {row[0]: row[1] for row in rows}
-
-
-# Chat Session Functions
-
-def save_chat_session(
-    session_id: str,
-    user_id: str,
-    title: Optional[str] = None,
-    app_ids: Optional[List[int]] = None,
-    first_user_message: Optional[str] = None,
-) -> None:
-    """Save or update a chat session metadata.
-
-    Args:
-        session_id: Unique session identifier
-        user_id: User ID
-        title: Optional session title
-        app_ids: List of game app IDs
-        first_user_message: First message from user (for preview)
-    """
-    from . import db as db_module
-
-    timestamp = datetime.now(timezone.utc)
-
-    with db_module.get_connection() as conn:
-        conn.execute(
-            text("""
-                INSERT INTO chat_sessions (
-                    session_id, user_id, title, app_ids, first_user_message,
-                    created_at, updated_at
-                )
-                VALUES (
-                    :session_id, :user_id, :title, :app_ids, :first_user_message,
-                    :created_at, :updated_at
-                )
-                ON CONFLICT(session_id) DO UPDATE SET
-                    title = COALESCE(EXCLUDED.title, chat_sessions.title),
-                    app_ids = COALESCE(EXCLUDED.app_ids, chat_sessions.app_ids),
-                    first_user_message = COALESCE(EXCLUDED.first_user_message, chat_sessions.first_user_message),
-                    updated_at = EXCLUDED.updated_at
-            """),
-            {
-                "session_id": session_id,
-                "user_id": user_id,
-                "title": title,
-                "app_ids": d.serialize_array(app_ids or []),
-                "first_user_message": first_user_message,
-                "created_at": timestamp,
-                "updated_at": timestamp,
-            },
-        )
-
-
-def update_chat_session_timestamp(session_id: str) -> None:
-    """Update the last activity timestamp for a session."""
-    from . import db as db_module
-
-    timestamp = datetime.now(timezone.utc)
-
-    with db_module.get_connection() as conn:
-        conn.execute(
-            text("""
-                UPDATE chat_sessions
-                SET updated_at = :updated_at
-                WHERE session_id = :session_id
-            """),
-            {"session_id": session_id, "updated_at": timestamp},
-        )
-
-
-def get_chat_session(session_id: str) -> Optional[Dict[str, Any]]:
-    """Get chat session metadata."""
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        row = conn.execute(
-            text("""
-                SELECT user_id, title, app_ids, first_user_message, created_at, updated_at
-                FROM chat_sessions
-                WHERE session_id = :session_id
-            """),
-            {"session_id": session_id},
-        ).mappings().fetchone()
-
-    if row is None:
-        return None
-
-    return {
-        "session_id": session_id,
-        "user_id": row["user_id"],
-        "title": row["title"],
-        "app_ids": d.deserialize_array(row["app_ids"]),
-        "first_user_message": row["first_user_message"],
-        "created_at": _format_ts(row["created_at"]),
-        "updated_at": _format_ts(row["updated_at"]),
-    }
-
-
-def list_chat_sessions_for_user(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-    """List all chat sessions for a user, most recent first.
-
-    Args:
-        user_id: User ID
-        limit: Maximum number of sessions to return
-
-    Returns:
-        List of session metadata dicts
-    """
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT session_id, title, app_ids, first_user_message, created_at, updated_at
-                FROM chat_sessions
-                WHERE user_id = :user_id
-                ORDER BY updated_at DESC
-                LIMIT :limit
-            """),
-            {"user_id": user_id, "limit": limit},
-        ).mappings().fetchall()
-
-    sessions = []
-    for row in rows:
-        sessions.append({
-            "session_id": row["session_id"],
-            "title": row["title"],
-            "app_ids": d.deserialize_array(row["app_ids"]),
-            "first_user_message": row["first_user_message"],
-            "created_at": _format_ts(row["created_at"]),
-            "updated_at": _format_ts(row["updated_at"]),
-        })
-
-    return sessions
-
-
-def delete_chat_session(session_id: str) -> int:
-    """Delete a chat session and all its messages.
-
-    Returns:
-        Number of messages deleted
-    """
-    from . import db as db_module
-
-    with db_module.get_connection() as conn:
-        # Delete messages
-        result = conn.execute(
-            text("DELETE FROM chat_messages WHERE session_id = :session_id"),
-            {"session_id": session_id},
-        )
-        messages_deleted = result.rowcount
-
-        # Delete context
-        conn.execute(
-            text("DELETE FROM chat_context WHERE session_id = :session_id"),
-            {"session_id": session_id},
-        )
-
-        # Delete citation feedback
-        conn.execute(
-            text("DELETE FROM citation_feedback WHERE session_id = :session_id"),
-            {"session_id": session_id},
-        )
-
-        # Delete session
-        conn.execute(
-            text("DELETE FROM chat_sessions WHERE session_id = :session_id"),
-            {"session_id": session_id},
-        )
-
-    return messages_deleted
 
 
 def _get_cutoff_timestamp(seconds_ago: int) -> datetime:

@@ -1,18 +1,16 @@
 # SentiNext Backend
 
-PostgreSQL-only backend for Steam review analysis.
+SQLite-powered backend for Steam review analysis.
 
 ## Requirements
 
 - Python 3.10+
-- PostgreSQL database (required)
 - At least one LLM provider (Gemini, xAI, OpenAI, or Ollama)
 
 ## Environment Variables
 
 Required:
 ```bash
-DATABASE_URL=postgresql://user:password@host:port/database
 # At least one of these:
 GEMINI_API_KEY=your_key_here
 # XAI_API_KEY=your_key_here
@@ -23,12 +21,9 @@ GEMINI_API_KEY=your_key_here
 Optional:
 ```bash
 SENTINEXT_ALLOWED_ORIGINS=http://localhost:3000
-SENTINEXT_ENABLE_DESTRUCTIVE=true
-SENTINEXT_ADMIN_TOKEN=change-me-if-you-need-admin-locks
+# Override default SQLite path (defaults to platformdirs location):
+# DATABASE_URL=sqlite:///path/to/sentinext.db
 ```
-
-When `SENTINEXT_ADMIN_TOKEN` is set, include `x-admin-token: <token>` for `/admin/*` endpoints and destructive operations (database/game deletion).
-When `SENTINEXT_ENABLE_DESTRUCTIVE=false`, destructive endpoints return `403`.
 
 ## Local Development
 
@@ -36,12 +31,7 @@ See `../../LOCAL_DEVELOPMENT.md` for setup instructions.
 
 ## Database
 
-The app uses PostgreSQL exclusively. Schema is initialized automatically on first run.
-
-Run migrations if needed:
-```bash
-cd apps/api && alembic upgrade head
-```
+The app uses SQLite. Schema is initialized automatically on first run. No migrations needed.
 
 ## Deployment
 

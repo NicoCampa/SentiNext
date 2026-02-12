@@ -1,15 +1,11 @@
 import {
   AnalyzeResponse,
-  AnalyzeEstimateResponse,
   ProgressStatus,
   SearchResult,
   StarredGameDTO,
   StarredGamePayload,
   AnalysisResultResponse,
-  FeedbackItem,
-  ChatResponse,
   LogTailResponse,
-  StoragePaths,
   DatabaseReviewsResponse,
   DatabaseGameOption,
   ComparisonSummarizeRequest,
@@ -99,19 +95,6 @@ export interface AnalyzePayload {
   refresh_days?: number | null;
 }
 
-export interface LanguagesResponse {
-  languages: string[];
-  default: string;
-  popular: string[];
-}
-
-export async function fetchLanguages(): Promise<LanguagesResponse> {
-  const response = await apiFetch(apiUrl("/languages"), {
-    cache: "force-cache",
-  });
-  return handleResponse<LanguagesResponse>(response);
-}
-
 export async function analyzeGame(payload: AnalyzePayload): Promise<AnalyzeResponse> {
   const response = await apiFetch(apiUrl("/analyze"), {
     method: "POST",
@@ -154,6 +137,27 @@ export interface ProgressStreamCallbacks {
 }
 
 /**
+ * Detect whether an SSE error string is a connection-level issue
+ * (as opposed to a backend-reported analysis failure).
+ */
+export function isSseConnectionError(error: string | undefined | null): boolean {
+  if (!error) return true;
+  if (error === "Connection lost" || error === "Connection failed") return true;
+  const lower = error.toLowerCase();
+  return (
+    lower.includes("expected pattern") ||
+    lower.includes("failed to construct") ||
+    lower.includes("eventsource")
+  );
+}
+
+function normalizeSseStartError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Failed to start stream";
+  if (isSseConnectionError(message)) return "Connection failed";
+  return message;
+}
+
+/**
  * Subscribe to real-time progress updates via Server-Sent Events.
  * Returns a cleanup function to close the connection.
  */
@@ -175,6 +179,10 @@ export function subscribeToProgress(
   const start = () => {
     try {
       if (aborted) return;
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        callbacks.onError?.("Connection failed");
+        return;
+      }
       eventSource = new EventSource(url.toString());
 
       eventSource.addEventListener("progress", (event) => {
@@ -223,9 +231,7 @@ export function subscribeToProgress(
         }
       };
     } catch (error) {
-      callbacks.onError?.(
-        error instanceof Error ? error.message : "Failed to start progress stream"
-      );
+      callbacks.onError?.(normalizeSseStartError(error));
     }
   };
 
@@ -251,32 +257,9 @@ export async function fetchAnalysisResult(appId: number): Promise<AnalysisResult
   return handleResponse<AnalysisResultResponse>(response);
 }
 
-export async function rebuildInsights(appId: number): Promise<{ status: string; message: string; app_id: number }> {
-  const response = await apiFetch(apiUrl(`/analysis/${appId}/rebuild-insights`), {
-    method: "POST",
-    cache: "no-store",
-  });
-  return handleResponse<{ status: string; message: string; app_id: number }>(response);
-}
-
-export async function rebuildTrends(appId: number): Promise<{ status: string; message: string; app_id: number }> {
-  const response = await apiFetch(apiUrl(`/analysis/${appId}/rebuild-trends`), {
-    method: "POST",
-    cache: "no-store",
-  });
-  return handleResponse<{ status: string; message: string; app_id: number }>(response);
-}
-
 export async function fetchHealth(): Promise<{ status: string; timestamp: string }> {
   const response = await apiFetch(apiUrl("/health"), { cache: "no-store" });
   return handleResponse<{ status: string; timestamp: string }>(response);
-}
-
-export async function fetchStoragePaths(): Promise<StoragePaths> {
-  const response = await apiFetch(apiUrl("/settings/storage"), {
-    cache: "no-store",
-  });
-  return handleResponse<StoragePaths>(response);
 }
 
 export async function fetchLogTail(bytes: number = 20000): Promise<LogTailResponse> {
@@ -284,60 +267,6 @@ export async function fetchLogTail(bytes: number = 20000): Promise<LogTailRespon
   url.searchParams.set("bytes", String(bytes));
   const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<LogTailResponse>(response);
-}
-
-export async function estimateAnalysis(payload: AnalyzePayload): Promise<AnalyzeEstimateResponse> {
-  const response = await apiFetch(apiUrl("/analyze/estimate"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<AnalyzeEstimateResponse>(response);
-}
-
-export interface FeedbackOptions {
-  include_reddit?: boolean;
-  include_discord?: boolean;
-  include_steam_forums?: boolean;
-  steam_limit?: number;
-  reddit_limit?: number;
-  discord_limit?: number;
-  forum_limit?: number;
-}
-
-export interface ChatRequestPayload {
-  app_id: number;
-  question: string;
-  sentiment?: "all" | "positive" | "negative";
-  min_helpful?: number;
-  max_days?: number | null;
-  playtime_bucket?: string;
-  language?: string;
-  max_reviews?: number;
-  max_snippets?: number;
-}
-
-export async function chatWithInsights(payload: ChatRequestPayload): Promise<ChatResponse> {
-  const response = await apiFetch(apiUrl("/chat"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<ChatResponse>(response);
-}
-
-export async function fetchFeedback(appId: number, options: FeedbackOptions = {}): Promise<FeedbackItem[]> {
-  const url = new URL(apiUrl(`/feedback/${appId}`), typeof window !== "undefined" ? window.location.origin : "http://localhost");
-  if (options.include_reddit === false) url.searchParams.set("include_reddit", "false");
-  if (options.include_discord === false) url.searchParams.set("include_discord", "false");
-  if (options.include_steam_forums === false) url.searchParams.set("include_steam_forums", "false");
-  if (options.steam_limit) url.searchParams.set("steam_limit", String(options.steam_limit));
-  if (options.reddit_limit) url.searchParams.set("reddit_limit", String(options.reddit_limit));
-  if (options.discord_limit) url.searchParams.set("discord_limit", String(options.discord_limit));
-  if (options.forum_limit) url.searchParams.set("forum_limit", String(options.forum_limit));
-
-  const response = await apiFetch(url.toString(), { cache: "no-store" });
-  return handleResponse<FeedbackItem[]>(response);
 }
 
 export async function saveStarredGame(payload: StarredGamePayload): Promise<void> {
@@ -366,12 +295,7 @@ export async function toggleFavorite(appId: number, isFavorite: boolean): Promis
   return handleResponse<{ app_id: number; is_favorite: boolean }>(response);
 }
 
-export async function fetchFavoriteGames(): Promise<StarredGameDTO[]> {
-  const response = await apiFetch(apiUrl("/starred/favorites"), {
-    cache: "no-store",
-  });
-  return handleResponse<StarredGameDTO[]>(response);
-}
+
 
 export async function generateComparisonSummary(
   request: ComparisonSummarizeRequest
@@ -506,16 +430,6 @@ export async function downloadDatabaseExport(params: DatabaseExportParams): Prom
   window.URL.revokeObjectURL(objectUrl);
 }
 
-export async function clearLabels(oldSchemaOnly: boolean = false): Promise<{ deleted: number; scope: string }> {
-  const url = oldSchemaOnly
-    ? apiUrl("/database/labels") + "?old_schema_only=true"
-    : apiUrl("/database/labels");
-  const response = await apiFetch(url, {
-    method: "DELETE",
-  });
-  return handleResponse<{ deleted: number; scope: string }>(response);
-}
-
 export async function clearEntireDatabase(): Promise<{ deleted: Record<string, number>; scope: string }> {
   const response = await apiFetch(apiUrl("/database/clear"), {
     method: "DELETE",
@@ -620,6 +534,10 @@ export function subscribeToChatStream(
   const start = () => {
     try {
       if (aborted) return;
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        callbacks.onError?.("Connection failed");
+        return;
+      }
       eventSource = new EventSource(url.toString());
 
       eventSource.addEventListener("status", (event) => {
@@ -662,7 +580,7 @@ export function subscribeToChatStream(
         }
       };
     } catch (error) {
-      // SSE is optional, don't report errors
+      callbacks.onError?.(normalizeSseStartError(error));
     }
   };
 
@@ -1013,35 +931,6 @@ export async function fetchSteamPlayerCount(
   return handleResponse<SteamPlayerCountResponse>(response);
 }
 
-export interface SteamPriceResponse {
-  app_id: number;
-  is_free: boolean;
-  price_initial: number | null;  // Original price (e.g., 29.99)
-  price_final: number | null;    // Current price after discount
-  price_initial_formatted: string | null;  // e.g., "$29.99"
-  price_final_formatted: string | null;    // e.g., "$19.99" or "Free"
-  price_discount: number;        // Discount percentage (0-100)
-  price_currency: string | null; // e.g., "USD"
-  timestamp: number;
-}
-
-/**
- * Fetch current price for a Steam game.
- * Returns live pricing data including discounts.
- */
-export async function fetchSteamPrice(
-  appId: number,
-  cc: string = "us"  // Country code for regional pricing
-): Promise<SteamPriceResponse> {
-  const url = new URL(
-    apiUrl(`/steam/price/${appId}`),
-    typeof window !== "undefined" ? window.location.origin : "http://localhost"
-  );
-  url.searchParams.set("cc", cc);
-  const response = await apiFetch(url.toString(), { cache: "no-store" });
-  return handleResponse<SteamPriceResponse>(response);
-}
-
 export interface SteamGameDetailsResponse {
   app_id: number;
   name: string;
@@ -1102,34 +991,6 @@ export async function fetchSteamAchievements(
   url.searchParams.set("limit", String(limit));
   const response = await apiFetch(url.toString(), { cache: "no-store" });
   return handleResponse<SteamAchievementsResponse>(response);
-}
-
-export interface SteamGameContext {
-  app_id: number;
-  name: string | null;
-  short_description: string | null;
-  genres: string[];
-  categories: string[];
-  header_image: string | null;
-  current_players: number | null;
-  recent_news: SteamNewsItem[];
-}
-
-/**
- * Fetch comprehensive game context including details, current players, and recent news.
- * Combines multiple Steam API calls into a single response.
- */
-export async function fetchSteamGameContext(
-  appId: number,
-  newsCount: number = 5
-): Promise<SteamGameContext> {
-  const url = new URL(
-    apiUrl(`/steam/context/${appId}`),
-    typeof window !== "undefined" ? window.location.origin : "http://localhost"
-  );
-  url.searchParams.set("news_count", String(newsCount));
-  const response = await apiFetch(url.toString(), { cache: "no-store" });
-  return handleResponse<SteamGameContext>(response);
 }
 
 // ============================================================================

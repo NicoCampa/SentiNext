@@ -83,8 +83,6 @@ def _get_engine():
     url = os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL is not set (check .env.local).")
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
     return create_engine(url)
 
 

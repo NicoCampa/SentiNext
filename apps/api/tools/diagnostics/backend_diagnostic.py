@@ -23,8 +23,6 @@ def main() -> int:
     env_vars = [
         "DATABASE_URL",
         "SENTINEXT_ALLOWED_ORIGINS",
-        "SENTINEXT_ENABLE_DESTRUCTIVE",
-        "SENTINEXT_ADMIN_TOKEN",
         "GEMINI_API_KEY",
         "XAI_API_KEY",
         "OPENAI_API_KEY",
@@ -43,35 +41,17 @@ def main() -> int:
         from apps.api.senti_next import storage
 
         storage.init_db()
-        print(f"  Using PostgreSQL: {storage.is_postgresql()}")
+        print("  Using SQLite")
         print("  Database initialized: OK")
     except Exception as exc:
         print(f"  ERROR: {exc}")
         return 1
 
-    # 3. PostgreSQL Direct Connection Test
-    print("\n[3] POSTGRESQL DIRECT CONNECTION")
+    # 3. Storage Functions Test
+    print("\n[3] STORAGE FUNCTIONS")
     print("-" * 40)
     try:
-        from sqlalchemy import create_engine, text
-
-        url = os.environ.get("DATABASE_URL", "")
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
-        engine = create_engine(url)
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-            print("  Connection: OK")
-            tables = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).fetchall()
-            print(f"  Tables: {[t[0] for t in tables]}")
-    except Exception as exc:
-        print(f"  ERROR: {exc}")
-
-    # 4. Storage Functions Test
-    print("\n[4] STORAGE FUNCTIONS")
-    print("-" * 40)
-    try:
-        result = storage.load_starred_games("test_user_123")
+        result = storage.load_starred_games()
         print(f"  load_starred_games(): OK - returned {type(result).__name__} with {len(result)} items")
     except Exception as exc:
         print(f"  load_starred_games(): ERROR - {exc}")
@@ -98,7 +78,7 @@ def main() -> int:
     print("\n[6] API ENDPOINT SIMULATION")
     print("-" * 40)
     try:
-        entries = storage.load_starred_games("test_user")
+        entries = storage.load_starred_games()
         response = []
         for entry in entries:
             response.append(
@@ -121,18 +101,16 @@ def main() -> int:
     # 7. Test Full Save/Load Cycle
     print("\n[7] SAVE/LOAD CYCLE TEST")
     print("-" * 40)
-    test_user = "diagnostic_test_user"
     test_app_id = 99999
 
     try:
         try:
-            storage.delete_starred_game(test_user, test_app_id)
+            storage.delete_starred_game(test_app_id)
             print("  Cleaned up existing test data")
         except Exception:
             pass
 
         storage.save_starred_game(
-            user_id=test_user,
             app_id=test_app_id,
             name="Test Game",
             metadata={"header_image": "test.jpg", "app_id": test_app_id},
@@ -143,7 +121,7 @@ def main() -> int:
         )
         print("  save_starred_game(): OK")
 
-        games = storage.load_starred_games(test_user)
+        games = storage.load_starred_games()
         test_game = next((g for g in games if g["app_id"] == test_app_id), None)
 
         if test_game:
@@ -164,7 +142,7 @@ def main() -> int:
         else:
             print("  load_starred_games(): ERROR - test game not found")
 
-        storage.delete_starred_game(test_user, test_app_id)
+        storage.delete_starred_game(test_app_id)
         print("  Cleanup: OK")
 
     except Exception as exc:

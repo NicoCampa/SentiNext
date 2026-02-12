@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatTaxonomyLabel } from '@/lib/taxonomyLabels';
 import { languageLabelFor } from '@/lib/languageOptions';
@@ -253,7 +252,11 @@ export function ReviewModal({
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 py-8">
+      <div
+        className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-md overflow-y-auto animate-modal-overlay"
+        onClick={onClose}
+        style={{ WebkitBackdropFilter: 'blur(12px)' }}
+      >
         {/* Toast notification */}
         {copyToast && (
           <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-top-2 fade-in">
@@ -262,17 +265,11 @@ export function ReviewModal({
             </div>
           </div>
         )}
-
-        <div
-          className="absolute inset-0"
-          onClick={onClose}
-          role="button"
-          tabIndex={-1}
-        />
-        <Card
-          variant="glass"
-          className="relative z-10 w-full max-w-3xl max-h-[85vh] overflow-auto p-6"
-        >
+        <div className="min-h-screen flex items-start sm:items-center justify-center p-2 sm:p-4">
+          <div
+            className="w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-xl sm:rounded-2xl border border-white/20 bg-slate-900 p-4 sm:p-6 shadow-2xl my-2 sm:my-8 animate-modal-content"
+            onClick={(event) => event.stopPropagation()}
+          >
         {/* Navigation header */}
         <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
@@ -505,7 +502,8 @@ export function ReviewModal({
             {t('common.close')}
           </Button>
         </div>
-        </Card>
+          </div>
+        </div>
       </div>
     </Portal>
   );

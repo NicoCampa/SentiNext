@@ -50,7 +50,7 @@ class TestSchemaInit:
         """All expected tables exist after init_sqlite_schema."""
         expected = {
             "reviews", "reviews_fts", "review_labels", "analysis_results",
-            "progress", "starred_games", "job_registry", "chat_messages",
+            "progress", "starred_games", "chat_messages",
             "llm_usage", "chat_context", "citation_feedback",
             "chat_sessions", "comparison_summaries",
         }
@@ -178,7 +178,6 @@ class TestFTS5:
 class TestDialectHelpers:
     def test_is_sqlite(self):
         assert d.is_sqlite() is True
-        assert d.is_postgresql() is False
 
     def test_cast_int(self):
         expr = d.cast_int("'42'")
@@ -238,45 +237,9 @@ class TestDialectHelpers:
 # ---------------------------------------------------------------------------
 
 class TestChatContext:
-    def test_save_and_load_context(self):
-        storage.save_chat_context(
-            session_id="test-session-1",
-            user_id="local",
-            app_ids=[730, 570],
-            last_intent="issue_report",
-            last_subcategories=["technical/performance"],
-            accumulated_facts={"key": "value"},
-            game_names={730: "Counter-Strike 2", 570: "Dota 2"},
-        )
-        ctx = storage.load_chat_context("test-session-1")
-        assert ctx is not None
-        assert ctx["app_ids"] == [730, 570]
-        assert ctx["last_subcategories"] == ["technical/performance"]
-        assert ctx["accumulated_facts"] == {"key": "value"}
-        assert ctx["game_names"] == {730: "Counter-Strike 2", 570: "Dota 2"}
-
-    def test_save_and_load_session(self):
-        storage.save_chat_session(
-            session_id="test-session-2",
-            user_id="local",
-            title="Test session",
-            app_ids=[730],
-            first_user_message="Hello",
-        )
-        session = storage.get_chat_session("test-session-2")
-        assert session is not None
-        assert session["app_ids"] == [730]
-        assert session["title"] == "Test session"
-
-    def test_list_sessions(self):
-        storage.save_chat_session(
-            session_id="test-session-3",
-            user_id="local",
-            title="Session 3",
-            app_ids=[730],
-        )
-        sessions = storage.list_chat_sessions_for_user("local")
-        assert any(s["session_id"] == "test-session-3" for s in sessions)
+    def test_load_context_missing(self):
+        ctx = storage.load_chat_context("nonexistent-session")
+        assert ctx is None
 
 
 # ---------------------------------------------------------------------------

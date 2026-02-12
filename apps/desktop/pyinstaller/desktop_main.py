@@ -25,12 +25,6 @@ def _setup_env(port: int) -> None:
     db_path = data_dir / "sentinext.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
 
-    # Disable Redis (in-memory fallback is used)
-    os.environ.pop("REDIS_URL", None)
-
-    # Disable Sentry for desktop
-    os.environ.pop("SENTRY_DSN", None)
-
     # Allow all origins for local Tauri webview
     os.environ["SENTINEXT_ALLOWED_ORIGINS"] = f"http://127.0.0.1:{port},http://localhost:{port},tauri://localhost,https://tauri.localhost"
 

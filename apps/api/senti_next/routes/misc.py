@@ -211,7 +211,7 @@ def generate_executive_summary(
                     period=period,
                     insights=insights,
                 )
-            llm_summary["generated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+            llm_summary["generated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             insights = {**insights, "llm_summary": llm_summary}
         except Exception as exc:
             logger.exception("Failed to generate report summary: %s", exc)
@@ -270,5 +270,4 @@ def generate_executive_summary(
 
     else:
         raise HTTPException(status_code=400, detail="Format must be 'pdf', 'html', or 'legacy'")
-
 

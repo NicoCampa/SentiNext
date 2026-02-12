@@ -1,29 +1,10 @@
 services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: sentinext
-      POSTGRES_USER: sentinext
-      POSTGRES_PASSWORD: sentinext
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "127.0.0.1:5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentinext"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.backend
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://sentinext:sentinext@db:5432/sentinext
+      DATABASE_URL: "sqlite:////app/data/sentinext.db"
       SENTINEXT_ALLOWED_ORIGINS: "http://localhost:3000"
     env_file:
       - path: .env.local
@@ -34,6 +15,12 @@ services:
       - appdata:/app/data
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
@@ -42,7 +29,8 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:3000"
 
@@ -56,6 +44,5 @@ services:
   #     - "11434:11434"
 
 volumes:
-  pgdata:
   appdata:
   # ollama_data:

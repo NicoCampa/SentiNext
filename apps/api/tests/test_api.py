@@ -1,7 +1,7 @@
 """Integration tests for key API endpoints.
 
 These tests use FastAPI's TestClient with mocked storage/db layers
-so they run without a real database or Redis.
+so they run without a real database.
 """
 import sys
 from pathlib import Path
@@ -13,23 +13,14 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Patch heavy dependencies before importing the app
-_db_mock = MagicMock()
-_db_mock.check_db_health.return_value = True
-_db_mock.init_postgresql_schema.return_value = None
-_db_mock.get_connection.return_value.__enter__ = MagicMock()
-_db_mock.get_connection.return_value.__exit__ = MagicMock()
-_db_mock.close_engine.return_value = None
-
 with patch.dict("os.environ", {
     "XAI_API_KEY": "test-key",
     "DATABASE_URL": "sqlite:///:memory:",
     "SENTINEXT_LOG_FILE": "/tmp/sentinext-backend.log",
 }):
-    with patch("apps.api.senti_next.db.init_postgresql_schema"):
-        with patch("apps.api.senti_next.db.check_db_health", return_value=True):
-            from fastapi.testclient import TestClient
-            from apps.api.main import app
+    with patch("apps.api.senti_next.db.check_db_health", return_value=True):
+        from fastapi.testclient import TestClient
+        from apps.api.main import app
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -121,3 +112,20 @@ class TestDestructiveEndpoints:
             resp = client.delete("/database/clear")
         assert resp.status_code == 200
         assert resp.json().get("scope") == "entire_database"
+
+
+class TestDatabaseStatsEndpoint:
+    def test_database_stats_calls_storage_without_args(self):
+        expected = {
+            "games": 2,
+            "reviews": 100,
+            "labels": 100,
+            "labels_new_schema": 90,
+            "labels_old_schema": 10,
+            "starred_games": 2,
+        }
+        with patch("apps.api.senti_next.storage.get_database_stats", return_value=expected) as mock_stats:
+            resp = client.get("/database/stats")
+        assert resp.status_code == 200
+        assert resp.json() == expected
+        mock_stats.assert_called_once_with()

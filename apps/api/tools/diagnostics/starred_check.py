@@ -14,9 +14,9 @@ from apps.api.senti_next import storage
 
 def main() -> int:
     storage.init_db()
-    print(f"Using PostgreSQL: {storage.is_postgresql()}")
+    print("Using SQLite")
 
-    result = storage.load_starred_games("test_user")
+    result = storage.load_starred_games()
     print(f"Result type: {type(result)}")
     print(f"Result length: {len(result)}")
 
@@ -38,7 +38,6 @@ def main() -> int:
 
     try:
         storage.save_starred_game(
-            user_id="test_user",
             app_id=test_payload["app_id"],
             name=test_payload["name"],
             metadata=test_payload["metadata"],
@@ -51,7 +50,7 @@ def main() -> int:
     except Exception as exc:
         print(f"Save failed: {exc}")
 
-    result = storage.load_starred_games("test_user")
+    result = storage.load_starred_games()
     print(f"After save, result length: {len(result)}")
     if result:
         print(f"First item keys: {list(result[0].keys())}")

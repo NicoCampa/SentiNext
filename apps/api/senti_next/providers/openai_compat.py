@@ -12,7 +12,8 @@ from .base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-LLM_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_LLM_TIMEOUT", "30"))
+OPENAI_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_LLM_TIMEOUT", "30"))
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("SENTINEXT_OLLAMA_TIMEOUT", "120"))
 LLM_MAX_RETRIES = int(os.getenv("SENTINEXT_LLM_MAX_RETRIES", "3"))
 
 def _default_ollama_url() -> str:
@@ -49,10 +50,12 @@ class OpenAICompatProvider(LLMProvider):
             from .config import DEFAULT_MODELS
             self._model = model_name or os.getenv("SENTINEXT_OPENAI_MODEL", DEFAULT_MODELS.get("openai", "gpt-4o-mini"))
             self._base_url = "https://api.openai.com/v1"
+            self._timeout_seconds = OPENAI_TIMEOUT_SECONDS
         else:
             from .config import DEFAULT_MODELS
             self._model = model_name or os.getenv("SENTINEXT_OLLAMA_MODEL", DEFAULT_MODELS.get("ollama", "llama3.1:8b"))
             self._base_url = os.getenv("SENTINEXT_OLLAMA_BASE_URL", _default_ollama_url())
+            self._timeout_seconds = OLLAMA_TIMEOUT_SECONDS
 
     @property
     def name(self) -> str:
@@ -74,7 +77,7 @@ class OpenAICompatProvider(LLMProvider):
         return OpenAI(
             api_key=self._get_api_key(),
             base_url=self._base_url,
-            timeout=LLM_TIMEOUT_SECONDS,
+            timeout=self._timeout_seconds,
         )
 
     def _get_async_client(self) -> Any:
@@ -83,7 +86,7 @@ class OpenAICompatProvider(LLMProvider):
         return AsyncOpenAI(
             api_key=self._get_api_key(),
             base_url=self._base_url,
-            timeout=LLM_TIMEOUT_SECONDS,
+            timeout=self._timeout_seconds,
         )
 
     # ---- core generation ----

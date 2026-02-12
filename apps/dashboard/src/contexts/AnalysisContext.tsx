@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef, useMemo } from 'react';
-import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis } from '@/lib/api';
+import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis, isSseConnectionError } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
 
@@ -399,8 +399,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
           onError: (error) => {
             // Backend analysis errors (LLM failures) come as SSE error events with a message.
             // Connection-level errors are generic ("Connection lost", "Connection failed").
-            const isConnectionError = !error || error === 'Connection lost' || error === 'Connection failed';
-            if (isConnectionError) {
+            if (isSseConnectionError(error)) {
               console.warn(`SSE connection error for ${appId}, falling back to polling:`, error);
               startPollingFallback(appId, task);
             } else {

@@ -13,7 +13,7 @@ cp .env.example .env.local
 docker compose up --build
 ```
 
-This starts PostgreSQL, the backend (port 8000), and the frontend (port 3000).
+This starts the backend (port 8000) and the frontend (port 3000).
 Open `http://localhost:3000` in your browser.
 
 ---
@@ -25,24 +25,11 @@ Open `http://localhost:3000` in your browser.
 Edit `.env.local` in the project root:
 
 ```bash
-DATABASE_URL=postgresql://sentinext:sentinext@localhost:5432/sentinext
 GEMINI_API_KEY=your_key_here
 SENTINEXT_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-### 2. Start PostgreSQL
-
-```bash
-docker run -d \
-  --name sentinext-postgres \
-  -e POSTGRES_DB=sentinext \
-  -e POSTGRES_USER=sentinext \
-  -e POSTGRES_PASSWORD=sentinext \
-  -p 5432:5432 \
-  postgres:16
-```
-
-### 3. Configure Frontend Environment
+### 2. Configure Frontend Environment
 
 Edit `apps/dashboard/.env.local`:
 
@@ -50,7 +37,7 @@ Edit `apps/dashboard/.env.local`:
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-### 4. Run Backend
+### 3. Run Backend
 
 ```bash
 ./run_backend_local.sh
@@ -58,7 +45,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 Backend will run on `http://localhost:8000`
 
-### 5. Run Frontend (in a new terminal)
+### 4. Run Frontend (in a new terminal)
 
 ```bash
 ./run_frontend_local.sh
@@ -96,9 +83,7 @@ Or configure via the Settings page in the frontend.
 ## Troubleshooting
 
 **Backend won't start:**
-- Check DATABASE_URL is correct
 - Make sure .env.local exists and variables are set
-- Check PostgreSQL is reachable: `python apps/api/tools/diagnostics/db_check.py`
 
 **Frontend can't connect:**
 - Make sure backend is running on port 8000
@@ -107,4 +92,3 @@ Or configure via the Settings page in the frontend.
 
 **Database errors:**
 - Run diagnostic: `python apps/api/tools/diagnostics/backend_diagnostic.py`
-- Check PostgreSQL connection: `python apps/api/tools/diagnostics/db_check.py`

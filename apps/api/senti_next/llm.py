@@ -650,13 +650,15 @@ def _sanitize_review_text(text: str) -> str:
     return sanitized[:MAX_REVIEW_CHARS]
 
 
-def _clean_snippet(value: Any) -> str:
+def _clean_snippet(value: Any, max_len: Optional[int] = None) -> str:
     if value is None:
         return ""
     text = str(value).replace("\n", " ").replace("\r", " ").strip()
     if not text:
         return ""
-    return textwrap.shorten(text, width=MAX_EVIDENCE_SNIPPET_CHARS, placeholder="...")
+    width = max_len if isinstance(max_len, int) and max_len > 0 else MAX_EVIDENCE_SNIPPET_CHARS
+    width = max(width, 4)
+    return textwrap.shorten(text, width=width, placeholder="...")
 
 
 def _review_word_count(text: str) -> int:
@@ -1887,13 +1889,24 @@ def ensure_review_labels(
 
     # Process reviews in parallel (one LLM call per review).
     if pending_reviews:
-        max_workers = int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "10"))
-        logger.info(f"Processing {len(pending_reviews)} reviews in parallel (max_workers={max_workers})")
+        if active_name == "ollama":
+            # Keep Ollama strictly sequential to avoid local model overload/timeouts.
+            max_workers = 1
+        else:
+            max_workers = max(1, int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "10")))
+        logger.info(
+            "Processing %s reviews in parallel (max_workers=%s, provider=%s)",
+            len(pending_reviews),
+            max_workers,
+            provider_label,
+        )
 
-        # Abort if too many consecutive failures (e.g. provider down / connection refused)
+        # If a provider goes unstable, we degrade to fallback labels
+        # so the analysis can still complete and be persisted.
         CONSECUTIVE_FAIL_LIMIT = 5
         consecutive_failures = 0
         last_failure_error: Optional[str] = None
+        fallback_model_id = _model_id(active_name or "unknown", active_model or "unknown")
 
         # Bulk write buffer
         BULK_WRITE_SIZE = 20
@@ -1903,6 +1916,75 @@ def ensure_review_labels(
             if buf and cache_enabled:
                 storage.bulk_upsert_review_labels(list(buf))
                 buf.clear()
+
+        def _record_success(item: Dict[str, Any], payload: Dict[str, Any], model_used: str) -> None:
+            nonlocal processed_count, consecutive_failures
+            review_id = str(item["review_id"])
+            review_hash = str(item["review_hash"])
+
+            payload["_label_source"] = "llm"
+            payload["_label_model"] = model_used
+
+            label_write_buffer.append({
+                "app_id": app_id,
+                "review_id": review_id,
+                "review_hash": review_hash,
+                "payload": payload,
+                "model": model_used,
+                "prompt_version": ACTIVE_PROMPT_VERSION,
+            })
+
+            results[review_id] = payload
+            processed_count += 1
+            consecutive_failures = 0
+
+            if len(label_write_buffer) >= BULK_WRITE_SIZE:
+                _flush_label_buffer(label_write_buffer)
+
+            if progress_callback is not None:
+                progress_callback(processed_count, total_reviews)
+
+        def _record_failure(
+            item: Dict[str, Any],
+            error_message: str,
+            *,
+            increment_consecutive: bool = True,
+        ) -> None:
+            nonlocal failed_count, processed_count, consecutive_failures, last_failure_error
+
+            logger.error("Review %s classification failed: %s", item.get("review_id"), error_message)
+            failed_count += 1
+            processed_count += 1
+            if increment_consecutive:
+                consecutive_failures += 1
+                last_failure_error = error_message
+
+            review_id = str(item["review_id"])
+            review_hash = str(item["review_hash"])
+            fallback_payload = _DEFAULT_LABEL.copy()
+            fallback_payload["_label_source"] = "llm_fallback"
+            fallback_payload["_label_model"] = fallback_model_id
+
+            label_write_buffer.append({
+                "app_id": app_id,
+                "review_id": review_id,
+                "review_hash": review_hash,
+                "payload": fallback_payload,
+                "model": fallback_model_id,
+                "prompt_version": ACTIVE_PROMPT_VERSION,
+            })
+            results[review_id] = fallback_payload
+
+            if len(label_write_buffer) >= BULK_WRITE_SIZE:
+                _flush_label_buffer(label_write_buffer)
+
+            if progress_callback is not None:
+                try:
+                    progress_callback(processed_count, total_reviews)
+                except InterruptedError:
+                    raise
+                except Exception:
+                    pass
 
         def _process_single(item: Dict[str, Any]) -> Tuple[Dict[str, Any], str, Dict[str, Any]]:
             payload, model_used = classify_review_single(item, game_context=game_context)
@@ -1920,71 +2002,69 @@ def ensure_review_labels(
                 future_to_item[future] = item
 
             try:
-                for future in as_completed(future_to_item, timeout=global_timeout):
-                    item = future_to_item[future]
+                for future in as_completed(list(future_to_item), timeout=global_timeout):
+                    item = future_to_item.pop(future, None)
+                    if item is None:
+                        continue
+
                     try:
                         payload, model_used, _ = future.result(timeout=120)
-                        review_id = str(item["review_id"])
-                        review_hash = str(item["review_hash"])
-
-                        payload["_label_source"] = "llm"
-                        payload["_label_model"] = model_used
-
-                        label_write_buffer.append({
-                            "app_id": app_id,
-                            "review_id": review_id,
-                            "review_hash": review_hash,
-                            "payload": payload,
-                            "model": model_used,
-                            "prompt_version": ACTIVE_PROMPT_VERSION,
-                        })
-
-                        results[review_id] = payload
-                        processed_count += 1
-                        consecutive_failures = 0  # Reset on success
-
-                        # Bulk write periodically
-                        if len(label_write_buffer) >= BULK_WRITE_SIZE:
-                            _flush_label_buffer(label_write_buffer)
-
-                        if progress_callback is not None:
-                            progress_callback(processed_count, total_reviews)
+                        _record_success(item, payload, model_used)
 
                     except InterruptedError:
-                        # Cancellation signal from progress_callback — propagate immediately
                         raise
                     except Exception as exc:
-                        logger.error(f"Review {item.get('review_id')} classification failed: {exc}")
-                        failed_count += 1
-                        processed_count += 1
-                        consecutive_failures += 1
-                        last_failure_error = str(exc)
+                        _record_failure(item, str(exc))
 
-                        # Abort early if the provider is clearly broken
                         if consecutive_failures >= CONSECUTIVE_FAIL_LIMIT:
-                            # Cancel remaining futures
-                            for f in future_to_item:
-                                if not f.done():
-                                    f.cancel()
-                            raise RuntimeError(
-                                f"LLM provider failed {CONSECUTIVE_FAIL_LIMIT} times in a row. "
-                                f"Last error: {last_failure_error}"
+                            logger.warning(
+                                "Provider %s hit %s consecutive failures. "
+                                "Using fallback labels for remaining %s reviews. Last error: %s",
+                                provider_label,
+                                CONSECUTIVE_FAIL_LIMIT,
+                                len(future_to_item),
+                                last_failure_error,
                             )
 
-                        if progress_callback is not None:
-                            try:
-                                progress_callback(processed_count, total_reviews)
-                            except InterruptedError:
-                                raise
-                            except Exception:
-                                pass  # Don't let a progress update error abort the whole batch
+                            for pending_future, pending_item in list(future_to_item.items()):
+                                future_to_item.pop(pending_future, None)
+
+                                if pending_future.done():
+                                    try:
+                                        payload, model_used, _ = pending_future.result(timeout=0)
+                                        _record_success(pending_item, payload, model_used)
+                                    except InterruptedError:
+                                        raise
+                                    except Exception as pending_exc:
+                                        _record_failure(
+                                            pending_item,
+                                            str(pending_exc),
+                                            increment_consecutive=False,
+                                        )
+                                else:
+                                    pending_future.cancel()
+                                    _record_failure(
+                                        pending_item,
+                                        "Skipped after provider degradation fallback.",
+                                        increment_consecutive=False,
+                                    )
+                            break
             except TimeoutError:
-                # Some worker threads hung — count remaining futures as failures
-                hung_count = sum(1 for f in future_to_item if not f.done())
-                logger.error(f"Classification timed out after {global_timeout}s with {hung_count} reviews still pending")
-                raise RuntimeError(
-                    f"Classification timed out after {global_timeout}s with {hung_count} reviews still pending"
+                hung_count = len(future_to_item)
+                logger.error(
+                    "Classification timed out after %ss with %s reviews still pending. "
+                    "Applying fallback labels to pending reviews.",
+                    global_timeout,
+                    hung_count,
                 )
+                for pending_future, pending_item in list(future_to_item.items()):
+                    future_to_item.pop(pending_future, None)
+                    pending_future.cancel()
+                    _record_failure(
+                        pending_item,
+                        f"Classification timed out after {global_timeout}s",
+                        increment_consecutive=False,
+                    )
         finally:
             # Don't wait for hung threads — cancel queued futures and move on
             executor.shutdown(wait=False, cancel_futures=True)

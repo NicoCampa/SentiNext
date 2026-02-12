@@ -2,12 +2,10 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FilterSidebar } from '@/components/database/FilterSidebar';
 import { FilterPills } from '@/components/database/FilterPills';
 import { ReviewModal } from '@/components/database/ReviewModal';
-import { ReviewDetailPanel } from '@/components/database/ReviewDetailPanel';
 import { ExportPreviewDialog, type ExportOptions } from '@/components/database/ExportPreviewDialog';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
 import {
@@ -89,7 +87,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
 
   // Mobile
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
 
   // Export
   const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
@@ -97,16 +94,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
   const [exportPreviewLoading, setExportPreviewLoading] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-
-  // Desktop detection
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const media = window.matchMedia('(min-width: 1024px)');
-    const update = () => setIsDesktop(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
 
   // Load reviews automatically
   useEffect(() => {
@@ -227,24 +214,11 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
       return;
     }
     setSelectedIndex((prev) => {
-      if (prev === null) return isDesktop ? 0 : null;
+      if (prev === null) return 0;
       if (prev < sortedReviews.length) return prev;
-      return isDesktop ? 0 : null;
+      return sortedReviews.length - 1;
     });
-  }, [sortedReviews, isDesktop]);
-
-  useEffect(() => {
-    if (!isDesktop) return;
-    if (selectedIndex === null) {
-      setExpandedReview(null);
-      return;
-    }
-    setExpandedReview(sortedReviews[selectedIndex] ?? null);
-  }, [selectedIndex, sortedReviews, isDesktop]);
-
-  useEffect(() => {
-    if (!isDesktop) setExpandedReview(null);
-  }, [isDesktop]);
+  }, [sortedReviews]);
 
   useEffect(() => {
     if (!deepLinkedReviewId || !sortedReviews.length) return;
@@ -264,6 +238,7 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
   // Keyboard navigation
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (expandedReview) return;
       const target = event.target as HTMLElement | null;
       if (!target) return;
       if (target.isContentEditable) return;
@@ -281,16 +256,35 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
         event.preventDefault();
         setSelectedIndex((prev) => (prev === null ? 0 : Math.max(prev - 1, 0)));
       }
+      if (event.key === 'Enter' && selectedIndex !== null) {
+        const next = sortedReviews[selectedIndex];
+        if (!next) return;
+        event.preventDefault();
+        setExpandedReview(next);
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [sortedReviews]);
+  }, [sortedReviews, selectedIndex, expandedReview]);
 
   useEffect(() => {
     if (selectedIndex === null) return;
     document.getElementById(`db-review-item-${selectedIndex}`)?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
+
+  useEffect(() => {
+    if (!expandedReview) return;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    document.body.style.overflow = 'hidden';
+    document.body.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : '';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [expandedReview]);
 
   // Search handler (text search applies on Enter)
   function handleSearch() {
@@ -694,168 +688,148 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
 
           {downloadError && <p className="text-xs text-rose-300">{downloadError}</p>}
 
-          {/* Review list + detail panel */}
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <div>
-              {loadingReviews ? (
-                <div className="space-y-2">
-                  {[...Array(4)].map((_, idx) => (
-                    <div
-                      key={idx}
-                      className="h-24 animate-pulse rounded-xl border border-white/10 bg-slate-900/40"
-                    />
-                  ))}
-                </div>
-              ) : error ? (
-                <p className="text-sm text-rose-400">{error}</p>
-              ) : sortedReviews.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-6 text-center">
-                  <p className="text-sm text-slate-400">{t('database.noReviews')}</p>
-                  {activeFilterCount > 0 ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-3"
-                      onClick={handleClearAll}
+          {/* Review list */}
+          <div>
+            {loadingReviews ? (
+              <div className="space-y-2">
+                {[...Array(4)].map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="h-24 animate-pulse rounded-xl border border-white/10 bg-slate-900/40"
+                  />
+                ))}
+              </div>
+            ) : error ? (
+              <p className="text-sm text-rose-400">{error}</p>
+            ) : sortedReviews.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-6 text-center">
+                <p className="text-sm text-slate-400">{t('database.noReviews')}</p>
+                {activeFilterCount > 0 ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    onClick={handleClearAll}
+                  >
+                    {t('common.clearFilters')}
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sortedReviews.map((review, idx) => {
+                  const isActive = idx === selectedIndex;
+                  const playtime =
+                    review.author_playtime_hours ??
+                    (review.author_playtime_forever || 0) / 60;
+                  const appLabel = review.app_name || `App ${review.app_id}`;
+                  const reviewLanguage = review.language
+                    ? languageLabelFor(review.language.toLowerCase())
+                    : null;
+                  const spotlightSubcategory =
+                    review.llm_subcategories?.[0] ??
+                    review.llm_issue_subcategories?.[0] ??
+                    review.llm_request_subcategories?.[0];
+                  return (
+                    <button
+                      key={`${review.review_id}-${idx}`}
+                      id={`db-review-item-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        openReviewAt(idx);
+                      }}
+                      className={`w-full rounded-xl border text-left transition ${
+                        isActive
+                          ? 'border-sky-400/70 bg-sky-500/15 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]'
+                          : 'border-white/10 bg-slate-900/30 hover:border-sky-500/40 hover:bg-slate-900/50'
+                      } ${compact ? 'p-3' : 'p-4'}`}
                     >
-                      {t('common.clearFilters')}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {sortedReviews.map((review, idx) => {
-                    const isActive = idx === selectedIndex;
-                    const playtime =
-                      review.author_playtime_hours ??
-                      (review.author_playtime_forever || 0) / 60;
-                    const appLabel = review.app_name || `App ${review.app_id}`;
-                    const reviewLanguage = review.language
-                      ? languageLabelFor(review.language.toLowerCase())
-                      : null;
-                    const spotlightSubcategory =
-                      review.llm_subcategories?.[0] ??
-                      review.llm_issue_subcategories?.[0] ??
-                      review.llm_request_subcategories?.[0];
-                    return (
-                      <button
-                        key={`${review.review_id}-${idx}`}
-                        id={`db-review-item-${idx}`}
-                        type="button"
-                        onClick={() => {
-                          openReviewAt(idx);
-                        }}
-                        className={`w-full rounded-xl border text-left transition ${
-                          isActive
-                            ? 'border-sky-400/70 bg-sky-500/15 shadow-[0_0_0_1px_rgba(56,189,248,0.25)]'
-                            : 'border-white/10 bg-slate-900/30 hover:border-sky-500/40 hover:bg-slate-900/50'
-                        } ${compact ? 'p-3' : 'p-4'}`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] ${
-                                review.voted_up
-                                  ? 'bg-emerald-500/15 text-emerald-300'
-                                  : 'bg-rose-500/15 text-rose-300'
-                              }`}
-                            >
-                              {review.voted_up
-                                ? t('common.recommended')
-                                : t('common.notRecommended')}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] ${
+                              review.voted_up
+                                ? 'bg-emerald-500/15 text-emerald-300'
+                                : 'bg-rose-500/15 text-rose-300'
+                            }`}
+                          >
+                            {review.voted_up
+                              ? t('common.recommended')
+                              : t('common.notRecommended')}
+                          </span>
+                          <span className="text-[11px] text-slate-300">{appLabel}</span>
+                          {review.llm_main_category && (
+                            <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] text-indigo-200">
+                              {formatTaxonomyLabel(review.llm_main_category)}
                             </span>
-                            <span className="text-[11px] text-slate-300">{appLabel}</span>
-                            {review.llm_main_category && (
-                              <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] text-indigo-200">
-                                {formatTaxonomyLabel(review.llm_main_category)}
-                              </span>
-                            )}
-                            {spotlightSubcategory && (
-                              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-200">
-                                {formatTaxonomyLabel(spotlightSubcategory)}
-                              </span>
-                            )}
-                            {hasIssue(review) && (
-                              <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] text-rose-200">
-                                {t('common.issues')}
-                              </span>
-                            )}
-                            {hasRequest(review) && (
-                              <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[11px] text-cyan-200">
-                                {t('common.requests')}
-                              </span>
-                            )}
-                          </div>
-                          <span>{formatReviewDate(review.created_at)}</span>
+                          )}
+                          {spotlightSubcategory && (
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-200">
+                              {formatTaxonomyLabel(spotlightSubcategory)}
+                            </span>
+                          )}
+                          {hasIssue(review) && (
+                            <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] text-rose-200">
+                              {t('common.issues')}
+                            </span>
+                          )}
+                          {hasRequest(review) && (
+                            <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[11px] text-cyan-200">
+                              {t('common.requests')}
+                            </span>
+                          )}
                         </div>
-                        <p
-                          className={`mt-2 line-clamp-2 text-sm text-slate-100 ${compact ? 'leading-snug' : 'leading-relaxed'}`}
-                        >
-                          {review.review}
-                        </p>
-                        <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
-                          <span>{playtime.toFixed(1)}h played</span>
-                          {review.votes_up ? <span>{review.votes_up} helpful</span> : null}
-                          {review.votes_funny ? <span>{review.votes_funny} funny</span> : null}
-                          {reviewLanguage ? <span>{reviewLanguage}</span> : null}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                        <span>{formatReviewDate(review.created_at)}</span>
+                      </div>
+                      <p
+                        className={`mt-2 line-clamp-2 text-sm text-slate-100 ${compact ? 'leading-snug' : 'leading-relaxed'}`}
+                      >
+                        {review.review}
+                      </p>
+                      <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
+                        <span>{playtime.toFixed(1)}h played</span>
+                        {review.votes_up ? <span>{review.votes_up} helpful</span> : null}
+                        {review.votes_funny ? <span>{review.votes_funny} funny</span> : null}
+                        {reviewLanguage ? <span>{reviewLanguage}</span> : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
-              {/* Pagination */}
-              {pageTotal > limit && (
-                <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-                  <span>
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setOffset(Math.max(0, offset - limit))}
-                      disabled={offset === 0 || loadingReviews}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setOffset(offset + limit)}
-                      disabled={offset + limit >= pageTotal || loadingReviews}
-                    >
-                      Next
-                    </Button>
-                  </div>
+            {/* Pagination */}
+            {pageTotal > limit && (
+              <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
+                <span>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setOffset(Math.max(0, offset - limit))}
+                    disabled={offset === 0 || loadingReviews}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setOffset(offset + limit)}
+                    disabled={offset + limit >= pageTotal || loadingReviews}
+                  >
+                    Next
+                  </Button>
                 </div>
-              )}
-            </div>
-
-            {/* Detail panel - desktop */}
-            <div className="hidden lg:block lg:sticky lg:top-6 lg:self-start">
-              {expandedReview && selectedIndex !== null ? (
-                <ReviewDetailPanel
-                  review={expandedReview}
-                  currentIndex={selectedIndex}
-                  totalCount={sortedReviews.length}
-                  onPrevious={goToPreviousReview}
-                  onNext={goToNextReview}
-                  t={t}
-                />
-              ) : (
-                <Card variant="glass" className="p-6">
-                  <p className="text-sm text-slate-400">Select a review to see details.</p>
-                </Card>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Mobile modal */}
-      {!isDesktop && expandedReview && selectedIndex !== null && (
+      {/* Review details popup */}
+      {expandedReview && selectedIndex !== null && (
         <ReviewModal
           review={expandedReview}
           currentIndex={selectedIndex}

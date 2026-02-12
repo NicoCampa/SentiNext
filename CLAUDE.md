@@ -36,7 +36,7 @@ cd apps/dashboard && npx tsc --noEmit
 ## Architecture
 
 ### Deployment Modes
-1. **Docker Compose**: One-command self-hosting with PostgreSQL, backend, and frontend
+1. **Docker Compose**: One-command self-hosting with backend and frontend
 2. **Manual**: Separate frontend (Next.js) and backend (FastAPI) services
 
 ### Backend Structure (`apps/api/`)
@@ -56,7 +56,7 @@ cd apps/dashboard && npx tsc --noEmit
   - `openai_compat.py` - OpenAI + Ollama (both use openai SDK)
   - `config.py` - Runtime provider/model configuration
 - `senti_next/llm.py` - Classification logic, taxonomy, prompts (uses providers/)
-- `senti_next/storage.py` - PostgreSQL persistence
+- `senti_next/storage.py` - SQLite persistence
 - `senti_next/steam_api.py` - Steam API wrapper
 - `senti_next/insights.py` - Dashboard metrics aggregation
 - `senti_next/chat.py` - Chat interface using review context
@@ -70,7 +70,7 @@ cd apps/dashboard && npx tsc --noEmit
 ### Data Flow
 1. User searches game via Steam API
 2. `/analyze` endpoint fetches reviews, triggers background LLM classification
-3. Labels cached in PostgreSQL with prompt version tracking
+3. Labels cached in SQLite with prompt version tracking
 4. `/analysis/{app_id}` returns insights when ready
 5. Frontend polls `/progress/{app_id}` for classification status
 
@@ -80,8 +80,6 @@ cd apps/dashboard && npx tsc --noEmit
 - `GEMINI_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY` - LLM API keys (at least one required, or use Ollama)
 - `SENTINEXT_OLLAMA_BASE_URL` - Ollama endpoint (default: http://localhost:11434/v1)
 - `SENTINEXT_LLM_PROVIDER` / `SENTINEXT_LLM_MODEL` - Override active provider/model
-- `DATABASE_URL` - PostgreSQL connection string
-
 **Frontend:**
 - `NEXT_PUBLIC_API_BASE_URL` - Backend URL (dev defaults to `http://localhost:8000`)
 
@@ -98,4 +96,4 @@ Labels include `subcategories`, `issue_subcategories`, `request_subcategories`, 
 
 ## Database
 
-PostgreSQL with tables: `reviews`, `review_labels`, `starred_games`, `analysis_results`, `progress`, `job_registry`. Full-text search uses `search_vector`.
+SQLite with tables: `reviews`, `review_labels`, `starred_games`, `analysis_results`, `progress`. Full-text search uses FTS5.

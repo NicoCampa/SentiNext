@@ -1,4 +1,4 @@
-"""Config, settings, health, and admin status endpoints."""
+"""Config, settings, and health endpoints."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _log_file_path() -> Path:
 @router.get("/health")
 def healthcheck() -> dict:
     from fastapi.responses import JSONResponse
-    ts = datetime.now(timezone.utc).isoformat() + "Z"
+    ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if not db_module.startup_complete.is_set():
         return {"status": "starting", "database": "initializing", "timestamp": ts}
     db_ok = db_module.check_db_health()
@@ -54,19 +54,13 @@ def healthcheck() -> dict:
     return {"status": "ok", "database": "connected", "timestamp": ts}
 
 
-@router.get("/config")
-def get_config() -> dict:
-    """Return public runtime configuration for the frontend."""
-    return {}
-
-
 @router.get("/settings/storage")
 def storage_paths() -> dict:
     from platformdirs import user_data_dir
     data_dir = Path(user_data_dir("SentiNext", "SentiNext"))
     log_file = _log_file_path()
     return {
-        "database": "SQLite (local)" if d.is_sqlite() else "PostgreSQL (external)",
+        "database": "SQLite",
         "data_dir": str(data_dir),
         "logs_dir": str(log_file.parent),
         "log_file": str(log_file),
@@ -195,5 +189,4 @@ def logs_tail(bytes: int = 20000) -> dict:
     except Exception as exc:
         logger.warning("Failed to read log file: %s", exc)
         return {"log_file": str(path), "tail": ""}
-
 
