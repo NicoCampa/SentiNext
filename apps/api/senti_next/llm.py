@@ -55,7 +55,6 @@ _LLM_USAGE_CONTEXT: contextvars.ContextVar[Dict[str, Any]] = contextvars.Context
 @contextmanager
 def llm_usage_context(
     *,
-    user_id: Optional[str] = None,
     operation: Optional[str] = None,
     app_id: Optional[int] = None,
     session_id: Optional[str] = None,
@@ -63,7 +62,6 @@ def llm_usage_context(
     """Attach context for LLM usage logging within the current task."""
     current = _LLM_USAGE_CONTEXT.get() or {}
     updates: Dict[str, Any] = {k: v for k, v in {
-        "user_id": user_id,
         "operation": operation,
         "app_id": app_id,
         "session_id": session_id,
@@ -101,12 +99,8 @@ def _record_llm_usage(
             return
 
         ctx = _LLM_USAGE_CONTEXT.get() or {}
-        user_id = ctx.get("user_id")
-        if not user_id:
-            return
 
         storage.log_llm_usage(
-            user_id=str(user_id),
             operation=str(ctx.get("operation") or "unknown"),
             model=_model_id(provider, model_name),
             prompt_tokens=prompt_tokens if prompt_tokens is not None else _safe_int(getattr(usage, "prompt_token_count", None)),

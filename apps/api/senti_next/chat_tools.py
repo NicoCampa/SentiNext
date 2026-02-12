@@ -599,7 +599,7 @@ def execute_tool(tool_name: str, params: Dict[str, Any], context: "AgentContext"
     Args:
         tool_name: Name of the tool to execute
         params: Parameters for the tool
-        context: Agent context with user_id, session_id, app_ids, etc.
+        context: Agent context with session_id, app_ids, etc.
 
     Returns:
         Dict with tool results, or special keys like 'final', 'needs_clarification'.
@@ -612,8 +612,8 @@ def execute_tool(tool_name: str, params: Dict[str, Any], context: "AgentContext"
     # Check cache for cacheable tools
     cache_key = None
     if tool_name in CACHEABLE_TOOLS:
-        # Build context key from user_id and app_ids
-        context_key = f"{context.user_id}:{','.join(map(str, context.app_ids))}"
+        # Build context key from app_ids
+        context_key = f"local:{','.join(map(str, context.app_ids))}"
         cache_params = dict(params)
         if tool_name in DATE_FILTER_SENSITIVE_TOOLS and "date_filter" not in cache_params:
             cache_params["_date_filter"] = getattr(context, "date_filter", "all") or "all"
@@ -746,7 +746,7 @@ def _execute_get_game_overview(params: Dict[str, Any], context: "AgentContext") 
 
     # Get overall stats from stored analysis
     try:
-        analysis = storage.load_analysis_result(context.user_id, app_id)
+        analysis = storage.load_analysis_result(app_id)
         if not analysis or not analysis.get("insights"):
             return _make_error(
                 ToolErrorCode.NO_ANALYSIS,
@@ -856,7 +856,7 @@ def _execute_search_reviews(params: Dict[str, Any], context: "AgentContext") -> 
         resolved_subcategory = None
         if subcategory:
             # Get analysis to know available subcategories
-            result = storage.load_analysis_result(context.user_id, int(app_id))
+            result = storage.load_analysis_result(int(app_id))
             analysis_subcategories = []
             if result and result.get("insights"):
                 insights = result.get("insights", {})
@@ -1005,7 +1005,7 @@ def _execute_get_subcategory_stats(params: Dict[str, Any], context: "AgentContex
 
     try:
         # Load analysis result to get subcategory insights
-        result = storage.load_analysis_result(context.user_id, int(app_id))
+        result = storage.load_analysis_result(int(app_id))
         if not result or not result.get("insights"):
             return _make_error(
                 ToolErrorCode.NO_ANALYSIS,
@@ -1212,7 +1212,7 @@ def _execute_get_top_issues(params: Dict[str, Any], context: "AgentContext") -> 
             })
 
         # Default: all-time analysis stats
-        result = storage.load_analysis_result(context.user_id, int(app_id))
+        result = storage.load_analysis_result(int(app_id))
         if not result or not result.get("insights"):
             return _make_error(
                 ToolErrorCode.NO_ANALYSIS,
@@ -1345,7 +1345,7 @@ def _execute_get_feature_requests(params: Dict[str, Any], context: "AgentContext
             })
 
         # Default: all-time analysis stats
-        result = storage.load_analysis_result(context.user_id, int(app_id))
+        result = storage.load_analysis_result(int(app_id))
         if not result or not result.get("insights"):
             return _make_error(
                 ToolErrorCode.NO_ANALYSIS,
@@ -1483,7 +1483,7 @@ def _execute_list_available_topics(params: Dict[str, Any], context: "AgentContex
             })
 
         # Default: all-time analysis stats
-        result = storage.load_analysis_result(context.user_id, int(app_id))
+        result = storage.load_analysis_result(int(app_id))
         if not result or not result.get("insights"):
             return _make_error(
                 ToolErrorCode.NO_ANALYSIS,
@@ -1637,7 +1637,7 @@ def _execute_get_top_praises(params: Dict[str, Any], context: "AgentContext") ->
             })
 
         # Default: all-time analysis stats
-        result = storage.load_analysis_result(context.user_id, int(app_id))
+        result = storage.load_analysis_result(int(app_id))
         if not result or not result.get("insights"):
             return _make_error(
                 ToolErrorCode.NO_ANALYSIS,
@@ -1749,7 +1749,7 @@ def _execute_compare_time_windows(params: Dict[str, Any], context: "AgentContext
     if subcategory:
         # Try to resolve subcategory via analysis for robustness
         try:
-            result = storage.load_analysis_result(context.user_id, int(app_id))
+            result = storage.load_analysis_result(int(app_id))
             analysis_subcategories = []
             if result and result.get("insights"):
                 insights = result.get("insights", {})
@@ -1915,8 +1915,8 @@ def _execute_compare_sentiment_trend(params: Dict[str, Any], context: "AgentCont
     weeks = max(1, min(weeks, 52))
 
     try:
-        result_1 = storage.load_analysis_result(context.user_id, int(app_id_1))
-        result_2 = storage.load_analysis_result(context.user_id, int(app_id_2))
+        result_1 = storage.load_analysis_result(int(app_id_1))
+        result_2 = storage.load_analysis_result(int(app_id_2))
 
         game_name_1 = context.game_names.get(int(app_id_1), f"Game {app_id_1}")
         game_name_2 = context.game_names.get(int(app_id_2), f"Game {app_id_2}")
@@ -2018,7 +2018,7 @@ def _execute_get_sentiment_trend(params: Dict[str, Any], context: "AgentContext"
 
     try:
         # Load analysis result for sentiment trend
-        result = storage.load_analysis_result(context.user_id, int(app_id))
+        result = storage.load_analysis_result(int(app_id))
         if not result or not result.get("insights"):
             logger.warning(f"get_sentiment_trend: No analysis for app_id={app_id}")
             return _make_error(
@@ -2089,8 +2089,8 @@ def _execute_compare_games(params: Dict[str, Any], context: "AgentContext") -> T
 
     try:
         # Load analysis results for both games
-        result_1 = storage.load_analysis_result(context.user_id, int(app_id_1))
-        result_2 = storage.load_analysis_result(context.user_id, int(app_id_2))
+        result_1 = storage.load_analysis_result(int(app_id_1))
+        result_2 = storage.load_analysis_result(int(app_id_2))
 
         game_name_1 = context.game_names.get(int(app_id_1), f"Game {app_id_1}")
         game_name_2 = context.game_names.get(int(app_id_2), f"Game {app_id_2}")

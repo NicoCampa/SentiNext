@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .. import storage
@@ -26,7 +26,6 @@ from ._shared import (
     NewsItemResponse,
     SAMPLE_LIMIT,
 )
-from ._guards import require_destructive_access
 
 logger = logging.getLogger(__name__)
 
@@ -155,8 +154,8 @@ def get_available_languages() -> dict:
 
 @router.get("/starred", response_model=List[StarredGameResponse])
 def list_starred_games() -> List[StarredGameResponse]:
-    user_id = "local"
-    entries = storage.load_starred_games(user_id)
+
+    entries = storage.load_starred_games()
     response: List[StarredGameResponse] = []
     for item in entries:
         metadata_payload = item.get("metadata") or {}
@@ -182,7 +181,7 @@ def list_starred_games() -> List[StarredGameResponse]:
 
 @router.post("/starred", status_code=204)
 def save_starred_game(payload: StarredGamePayload) -> Response:
-    user_id = "local"
+
     sample = payload.sample[:SAMPLE_LIMIT]
 
     game_details = fetch_app_details(payload.app_id)
@@ -193,7 +192,6 @@ def save_starred_game(payload: StarredGamePayload) -> Response:
         metadata_payload["header_image"] = game_details["header_image"]
 
     storage.save_starred_game(
-        user_id=user_id,
         app_id=payload.app_id,
         name=payload.name,
         metadata=metadata_payload,
@@ -207,15 +205,15 @@ def save_starred_game(payload: StarredGamePayload) -> Response:
 
 @router.delete("/starred/{app_id}", status_code=204)
 def remove_starred_game(app_id: int) -> Response:
-    user_id = "local"
-    storage.delete_starred_game(user_id, app_id)
+
+    storage.delete_starred_game(app_id)
     return Response(status_code=204)
 
 
 @router.patch("/starred/{app_id}/favorite", status_code=200)
 def toggle_favorite_status(app_id: int, payload: FavoriteStatusPayload) -> dict:
-    user_id = "local"
-    updated = storage.update_favorite_status(user_id, app_id, payload.is_favorite)
+
+    updated = storage.update_favorite_status(app_id, payload.is_favorite)
     if not updated:
         raise HTTPException(status_code=404, detail="Starred game not found")
     return {"app_id": app_id, "is_favorite": payload.is_favorite}
@@ -223,8 +221,8 @@ def toggle_favorite_status(app_id: int, payload: FavoriteStatusPayload) -> dict:
 
 @router.get("/starred/favorites", response_model=List[StarredGameResponse])
 def list_favorite_games() -> List[StarredGameResponse]:
-    user_id = "local"
-    entries = storage.load_favorite_games(user_id)
+
+    entries = storage.load_favorite_games()
     response: List[StarredGameResponse] = []
     for item in entries:
         metadata_payload = item.get("metadata") or {}
@@ -249,7 +247,7 @@ def list_favorite_games() -> List[StarredGameResponse]:
 
 
 @router.delete("/games/{app_id}", status_code=204)
-def delete_game_data(app_id: int, _: None = Depends(require_destructive_access)) -> Response:
+def delete_game_data(app_id: int) -> Response:
     storage.delete_all_game_data(app_id)
     return Response(status_code=204)
 

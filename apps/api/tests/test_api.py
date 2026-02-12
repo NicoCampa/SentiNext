@@ -114,42 +114,10 @@ class TestCORSHeaders:
         assert "content-type" in allowed_headers.lower()
 
 
-class TestRateLimiting:
-    def test_rate_limit_exempt_paths(self):
-        """Health endpoint should not be rate-limited."""
-        with patch("apps.api.senti_next.db.check_db_health", return_value=True):
-            for _ in range(100):
-                resp = client.get("/health")
-                assert resp.status_code == 200
-
-
-class TestAdminGuards:
-    def test_admin_verify_requires_token_when_configured(self):
-        with patch.dict("os.environ", {"SENTINEXT_ADMIN_TOKEN": "secret"}, clear=False):
-            missing = client.post("/admin/verify")
-            assert missing.status_code == 401
-
-            ok = client.post("/admin/verify", headers={"x-admin-token": "secret"})
-            assert ok.status_code == 200
-            assert ok.json().get("ok") is True
-
-    def test_destructive_routes_require_token_when_configured(self):
-        with patch.dict(
-            "os.environ",
-            {"SENTINEXT_ENABLE_DESTRUCTIVE": "true", "SENTINEXT_ADMIN_TOKEN": "secret"},
-            clear=False,
-        ):
-            denied = client.delete("/database/clear")
-            assert denied.status_code == 401
-
-            with patch("apps.api.senti_next.storage.clear_entire_database", return_value={"reviews": 0}):
-                allowed = client.delete("/database/clear", headers={"x-admin-token": "secret"})
-            assert allowed.status_code == 200
-            assert allowed.json().get("scope") == "entire_database"
-
-    def test_destructive_routes_blocked_when_disabled(self):
-        with patch.dict("os.environ", {"SENTINEXT_ENABLE_DESTRUCTIVE": "false"}, clear=False):
-            with patch("apps.api.senti_next.storage.clear_entire_database") as clear_mock:
-                resp = client.delete("/database/clear")
-            assert resp.status_code == 403
-            clear_mock.assert_not_called()
+class TestDestructiveEndpoints:
+    def test_database_clear_works_without_auth(self):
+        """Destructive endpoints no longer require admin tokens."""
+        with patch("apps.api.senti_next.storage.clear_entire_database", return_value={"reviews": 0}):
+            resp = client.delete("/database/clear")
+        assert resp.status_code == 200
+        assert resp.json().get("scope") == "entire_database"

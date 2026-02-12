@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from .. import storage, llm, redis_client, jobs as job_runner, db as db_module, dialect as d
+from .. import storage, llm, db as db_module, dialect as d
 from ..steam_api import fetch_app_details, fetch_news_for_app, SteamAPIError
 from ..insights import prepare_insights
 from ..analysis import recommended_share_over_time
@@ -173,7 +173,6 @@ class SummarizeNewsResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _run_analysis_job(
-    user_id: str,
     app_id: int,
     all_reviews: List[dict],
     metadata: AnalyzeMetadata,
@@ -194,22 +193,22 @@ def _run_analysis_job(
 
     if progress_active:
         try:
-            storage.reset_progress(user_id, app_id, total_reviews, phase="classifying")
+            storage.reset_progress(app_id, total_reviews, phase="classifying")
         except Exception as exc:
             logger.error("Failed to reset progress to classifying: %s", exc)
 
         def _progress_callback(processed: int, total: int) -> None:
-            if storage.is_cancelled(user_id, app_id):
+            if storage.is_cancelled(app_id):
                 raise InterruptedError("Analysis cancelled by user")
             try:
-                storage.update_progress(user_id, app_id, processed, total)
+                storage.update_progress(app_id, processed, total)
             except Exception as exc:
                 logger.warning("Progress update failed: %s", exc)
     else:
-        storage.clear_progress(user_id, app_id)
+        storage.clear_progress(app_id)
 
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="classify"):
+        with llm.llm_usage_context(app_id=app_id, operation="classify"):
             llm_labels = llm.ensure_review_labels(
                 app_id,
                 all_reviews,
@@ -221,10 +220,10 @@ def _run_analysis_job(
         df = llm.apply_review_labels(df, llm_labels)
 
         if df is None or df.empty:
-            storage.save_analysis_result(user_id, app_id, metadata.dict(), None, [], status="completed", run_id=run_id, snapshot_hash=snapshot_hash, context_hash=context_hash)
+            storage.save_analysis_result(app_id, metadata.dict(), None, [], status="completed", run_id=run_id, snapshot_hash=snapshot_hash, context_hash=context_hash)
             return
 
-        storage.update_progress_phase(user_id, app_id, "building_insights")
+        storage.update_progress_phase(app_id, "building_insights")
 
         insights = prepare_insights(df)
 
@@ -243,7 +242,7 @@ def _run_analysis_job(
         try:
             baseline = None
             try:
-                prev_result = storage.load_analysis_result(user_id, app_id)
+                prev_result = storage.load_analysis_result(app_id)
                 if prev_result:
                     prev_insights = prev_result.get("insights") or {}
                     prev_metadata = prev_result.get("metadata") or {}
@@ -262,7 +261,7 @@ def _run_analysis_job(
                         }
             except Exception:
                 pass
-            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="health_overview"):
+            with llm.llm_usage_context(app_id=app_id, operation="health_overview"):
                 health_overview = llm.generate_health_overview(
                     reviews=reviews_payload,
                     game_context=game_context,
@@ -276,7 +275,6 @@ def _run_analysis_job(
                 insights["health_overview"] = None
 
         storage.save_analysis_result(
-            user_id=user_id,
             app_id=app_id,
             metadata=metadata.dict(),
             insights=insights,
@@ -289,7 +287,6 @@ def _run_analysis_job(
     except InterruptedError as exc:
         logger.info(f"Analysis cancelled for app {app_id}: {exc}")
         storage.save_analysis_result(
-            user_id=user_id,
             app_id=app_id,
             metadata=metadata.dict(),
             insights=None,
@@ -303,7 +300,6 @@ def _run_analysis_job(
     except Exception as exc:
         logger.exception("Analysis job failed: %s", exc)
         storage.save_analysis_result(
-            user_id=user_id,
             app_id=app_id,
             metadata=metadata.dict(),
             insights=None,
@@ -316,8 +312,8 @@ def _run_analysis_job(
         )
     finally:
         if progress_active:
-            storage.update_progress(user_id, app_id, total_reviews, total_reviews)
-            storage.update_progress_phase(user_id, app_id, "classifying")
+            storage.update_progress(app_id, total_reviews, total_reviews)
+            storage.update_progress_phase(app_id, "classifying")
 
 
 # ---------------------------------------------------------------------------
@@ -329,12 +325,12 @@ def analyze(
     request: AnalyzeRequest,
     background_tasks: BackgroundTasks,
 ) -> AnalyzeResponse:
-    user_id = "local"
+
     filter_type = (request.filter or "recent").lower()
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
         filter_type = "recent"
 
-    running_app_id = storage.has_running_analysis(user_id, exclude_app_id=request.app_id)
+    running_app_id = storage.has_running_analysis(exclude_app_id=request.app_id)
     if running_app_id is not None:
         raise HTTPException(
             status_code=429,
@@ -344,9 +340,9 @@ def analyze(
             },
         )
 
-    existing_result = storage.load_analysis_result(user_id, request.app_id)
+    existing_result = storage.load_analysis_result(request.app_id)
     if existing_result and existing_result.get("status") == "running":
-        progress = storage.load_progress(user_id, request.app_id)
+        progress = storage.load_progress(request.app_id)
         if progress is not None:
             updated_ts = progress.get("updated_at", 0)
             age_seconds = (datetime.now(timezone.utc) - datetime.fromtimestamp(updated_ts, tz=timezone.utc)).total_seconds() if updated_ts else float("inf")
@@ -362,7 +358,6 @@ def analyze(
             else:
                 logger.warning(f"Clearing stale 'running' analysis for app {request.app_id} (no progress for {age_seconds:.0f}s)")
                 storage.save_analysis_result(
-                    user_id=user_id,
                     app_id=request.app_id,
                     metadata=existing_result.get("metadata", {}),
                     insights=None,
@@ -370,7 +365,7 @@ def analyze(
                     status="failed",
                     error="Analysis timed out (stale running state)",
                 )
-                storage.clear_progress(user_id, request.app_id)
+                storage.clear_progress(request.app_id)
 
     stored_reviews: List[dict] = []
     if request.persist:
@@ -392,11 +387,11 @@ def analyze(
     if should_fetch:
         def _fetch_progress_callback(fetched_count: int) -> None:
             try:
-                storage.update_fetch_progress(user_id, request.app_id, fetched_count)
+                storage.update_fetch_progress(request.app_id, fetched_count)
             except Exception as exc:
                 logger.warning("Fetch progress update failed: %s", exc)
 
-        storage.reset_progress(user_id, request.app_id, total=0, phase="fetching")
+        storage.reset_progress(request.app_id, total=0, phase="fetching")
 
         try:
             if languages_to_fetch and len(languages_to_fetch) > 1:
@@ -418,7 +413,7 @@ def analyze(
                     progress_callback=_fetch_progress_callback,
                 )
         except SteamAPIError as exc:
-            storage.clear_progress(user_id, request.app_id)
+            storage.clear_progress(request.app_id)
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         if request.persist:
@@ -486,7 +481,6 @@ def analyze(
     )
 
     storage.save_analysis_result(
-        user_id=user_id,
         app_id=request.app_id,
         metadata=metadata.dict(),
         insights=None,
@@ -496,42 +490,25 @@ def analyze(
         snapshot_hash=None,
         stale=False,
     )
-    storage.reset_progress(user_id, request.app_id, total=len(all_reviews), phase="classifying")
+    storage.reset_progress(request.app_id, total=len(all_reviews), phase="classifying")
 
     if game_context:
         logger.info(f"Fetched game context for {game_context.get('name', request.app_id)}")
 
-    if redis_client.is_redis_configured():
-        import uuid
-        job_id = str(uuid.uuid4())
-        storage.create_job_registry(job_id, user_id, request.app_id, job_type="analysis")
-        redis_client.enqueue_job(
-            job_runner.run_analysis_job,
-            user_id,
-            request.app_id,
-            all_reviews,
-            metadata.dict(),
-            game_context,
-            job_id,
-            job_timeout=3600,
-        )
-        logger.info(f"Enqueued analysis job {job_id} for app {request.app_id}")
-    else:
-        background_tasks.add_task(
-            _run_analysis_job,
-            user_id,
-            request.app_id,
-            all_reviews,
-            metadata,
-            game_context,
-        )
+    background_tasks.add_task(
+        _run_analysis_job,
+        request.app_id,
+        all_reviews,
+        metadata,
+        game_context,
+    )
 
     return AnalyzeResponse(metadata=metadata, insights=None, reviews=[], label_estimate=label_estimate)
 
 
 @router.post("/analyze/estimate", response_model=AnalyzeEstimateResponse)
 def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
-    user_id = "local"
+
     filter_type = (request.filter or "recent").lower()
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
         filter_type = "recent"
@@ -605,8 +582,8 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
 
 @router.get("/analysis/{app_id}", response_model=AnalysisStatusResponse)
 def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
-    user_id = "local"
-    result = storage.load_analysis_result(user_id, app_id)
+
+    result = storage.load_analysis_result(app_id)
     if not result:
         raise HTTPException(status_code=404, detail="No analysis result available for this app.")
 
@@ -681,7 +658,6 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
                                     reviews_payload = []
 
                                 storage.save_analysis_result(
-                                    user_id=user_id,
                                     app_id=app_id,
                                     metadata=metadata_payload,
                                     insights=insights,
@@ -695,7 +671,7 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
                                 result["insights"] = insights
                                 result["reviews"] = reviews_payload
                                 data_refreshed = True
-                                logger.info("Auto-refreshed insights for app %s (user %s) -- review pool changed", app_id, user_id)
+                                logger.info("Auto-refreshed insights for app %s -- review pool changed", app_id)
                     finally:
                         with db_module.get_connection() as conn:
                             d.advisory_unlock(conn, app_id + 2_000_000_000)
@@ -718,8 +694,8 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
 
 @router.post("/analysis/{app_id}/rebuild-insights")
 def rebuild_insights(app_id: int) -> dict:
-    user_id = "local"
-    result = storage.load_analysis_result(user_id, app_id)
+
+    result = storage.load_analysis_result(app_id)
     if not result:
         raise HTTPException(status_code=404, detail="No analysis result found for this app.")
 
@@ -750,7 +726,6 @@ def rebuild_insights(app_id: int) -> dict:
         reviews_payload = []
 
     storage.save_analysis_result(
-        user_id=user_id,
         app_id=app_id,
         metadata=metadata,
         insights=insights,
@@ -761,11 +736,10 @@ def rebuild_insights(app_id: int) -> dict:
         context_hash=result.get("context_hash"),
     )
 
-    starred_games = storage.load_starred_games(user_id)
+    starred_games = storage.load_starred_games()
     starred = next((entry for entry in starred_games if entry.get("app_id") == app_id), None)
     if starred:
         storage.save_starred_game(
-            user_id=user_id,
             app_id=app_id,
             name=starred.get("name") or str(app_id),
             metadata=starred.get("metadata") or {},
@@ -780,8 +754,8 @@ def rebuild_insights(app_id: int) -> dict:
 
 @router.post("/analysis/{app_id}/rebuild-trends")
 def rebuild_trends(app_id: int) -> dict:
-    user_id = "local"
-    result = storage.load_analysis_result(user_id, app_id)
+
+    result = storage.load_analysis_result(app_id)
     if not result:
         raise HTTPException(status_code=404, detail="No analysis result found for this app.")
 
@@ -804,7 +778,6 @@ def rebuild_trends(app_id: int) -> dict:
     insights["trend"] = trend_payload
 
     storage.save_analysis_result(
-        user_id=user_id,
         app_id=app_id,
         metadata=result.get("metadata", {}),
         insights=insights,
@@ -817,11 +790,10 @@ def rebuild_trends(app_id: int) -> dict:
         stale_reason=result.get("stale_reason"),
     )
 
-    starred_games = storage.load_starred_games(user_id)
+    starred_games = storage.load_starred_games()
     starred = next((entry for entry in starred_games if entry.get("app_id") == app_id), None)
     if starred:
         storage.save_starred_game(
-            user_id=user_id,
             app_id=app_id,
             name=starred.get("name") or str(app_id),
             metadata=starred.get("metadata") or {},
@@ -836,10 +808,10 @@ def rebuild_trends(app_id: int) -> dict:
 
 @router.post("/summarize/subcategory", response_model=SummarizeSubcategoryResponse)
 def summarize_subcategory(request: SummarizeSubcategoryRequest) -> SummarizeSubcategoryResponse:
-    user_id = "local"
+
     game_context = fetch_app_details(request.app_id)
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize"):
+        with llm.llm_usage_context(app_id=request.app_id, operation="summarize"):
             result = llm.summarize_subcategory_reviews(
                 reviews=[r.dict() for r in request.reviews],
                 subcategory=request.subcategory,
@@ -857,10 +829,10 @@ def summarize_subcategory(request: SummarizeSubcategoryRequest) -> SummarizeSubc
 
 @router.post("/summarize/widget", response_model=SummarizeWidgetResponse)
 def summarize_widget(request: SummarizeWidgetRequest) -> SummarizeWidgetResponse:
-    user_id = "local"
+
     game_context = fetch_app_details(request.app_id)
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize"):
+        with llm.llm_usage_context(app_id=request.app_id, operation="summarize"):
             result = llm.summarize_widget_reviews(
                 reviews=request.reviews,
                 widget_kind=request.widget_kind,
@@ -878,7 +850,7 @@ def summarize_widget(request: SummarizeWidgetRequest) -> SummarizeWidgetResponse
 
 @router.post("/summarize/recent-reviews", response_model=SummarizeRecentReviewsResponse)
 def summarize_recent_reviews(request: SummarizeRecentReviewsRequest) -> SummarizeRecentReviewsResponse:
-    user_id = "local"
+
     stored_reviews = storage.load_reviews(request.app_id, limit=int(request.count or 100))
     if not stored_reviews:
         raise HTTPException(status_code=404, detail="No stored reviews found for this app.")
@@ -917,7 +889,7 @@ def summarize_recent_reviews(request: SummarizeRecentReviewsRequest) -> Summariz
 
     baseline = None
     try:
-        result = storage.load_analysis_result(user_id, request.app_id) or {}
+        result = storage.load_analysis_result(request.app_id) or {}
         prev_insights = result.get("insights") or {}
         prev_metadata = result.get("metadata") or {}
         prev_date = prev_metadata.get("fetched_at") or ""
@@ -958,7 +930,7 @@ def summarize_recent_reviews(request: SummarizeRecentReviewsRequest) -> Summariz
     }
 
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="health_overview"):
+        with llm.llm_usage_context(app_id=request.app_id, operation="health_overview"):
             result = llm.generate_health_overview(
                 reviews=reviews_payload,
                 game_context=game_context,
@@ -980,7 +952,7 @@ def summarize_recent_reviews(request: SummarizeRecentReviewsRequest) -> Summariz
 
 @router.post("/summarize/news", response_model=SummarizeNewsResponse)
 def summarize_news(request: SummarizeNewsRequest) -> SummarizeNewsResponse:
-    user_id = "local"
+
     try:
         news_items = fetch_news_for_app(request.app_id, count=request.news_count, max_length=500)
     except SteamAPIError as exc:
@@ -1001,7 +973,7 @@ def summarize_news(request: SummarizeNewsRequest) -> SummarizeNewsResponse:
     recent_sentiment = None
     if request.include_sentiment:
         try:
-            result = storage.load_analysis_result(user_id, request.app_id)
+            result = storage.load_analysis_result(request.app_id)
             if result:
                 insights = result.get("insights") or {}
                 llm_insights = insights.get("llm") or {}
@@ -1031,7 +1003,7 @@ def summarize_news(request: SummarizeNewsRequest) -> SummarizeNewsResponse:
     ]
 
     try:
-        with llm.llm_usage_context(user_id=user_id, app_id=request.app_id, operation="summarize_news"):
+        with llm.llm_usage_context(app_id=request.app_id, operation="summarize_news"):
             result = llm.summarize_news_updates(
                 news_items=news_dicts,
                 game_name=game_context.get("name") if game_context else None,
@@ -1055,10 +1027,10 @@ def summarize_news(request: SummarizeNewsRequest) -> SummarizeNewsResponse:
 
 @router.get("/progress/{app_id}")
 def classification_progress(app_id: int) -> dict:
-    user_id = "local"
-    progress = storage.load_progress(user_id, app_id)
+
+    progress = storage.load_progress(app_id)
     if not progress:
-        result = storage.load_analysis_result(user_id, app_id)
+        result = storage.load_analysis_result(app_id)
         if result and result.get("status") == "running":
             return {
                 "app_id": app_id,
@@ -1093,7 +1065,7 @@ def classification_progress(app_id: int) -> dict:
     if phase == "fetching":
         active = True
     elif phase == "building_insights":
-        result = storage.load_analysis_result(user_id, app_id)
+        result = storage.load_analysis_result(app_id)
         if result and result.get("status") in ("completed", "failed"):
             active = False
         else:
@@ -1114,7 +1086,7 @@ def classification_progress(app_id: int) -> dict:
 
 @router.get("/progress/{app_id}/stream")
 async def progress_stream(app_id: int):
-    user_id = "local"
+
 
     async def event_generator():
         last_processed = -1
@@ -1124,10 +1096,10 @@ async def progress_stream(app_id: int):
 
         while True:
             try:
-                progress = storage.load_progress(user_id, app_id)
+                progress = storage.load_progress(app_id)
 
                 if not progress:
-                    result = storage.load_analysis_result(user_id, app_id)
+                    result = storage.load_analysis_result(app_id)
                     if result:
                         status = result.get("status", "unknown")
                         if status == "completed":
@@ -1174,7 +1146,7 @@ async def progress_stream(app_id: int):
                             last_processed = processed
 
                     if total > 0 and (not active or processed >= total):
-                        result = storage.load_analysis_result(user_id, app_id)
+                        result = storage.load_analysis_result(app_id)
                         if result:
                             status = result.get("status", "unknown")
                             if status == "completed":
@@ -1211,8 +1183,8 @@ async def progress_stream(app_id: int):
 
 @router.post("/progress/{app_id}/cancel")
 def cancel_analysis(app_id: int) -> dict:
-    user_id = "local"
-    cancelled = storage.cancel_progress(user_id, app_id)
+
+    cancelled = storage.cancel_progress(app_id)
     if cancelled:
-        logger.info(f"Analysis cancelled for app {app_id} by user {user_id}")
+        logger.info(f"Analysis cancelled for app {app_id}")
     return {"cancelled": cancelled, "app_id": app_id}

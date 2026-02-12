@@ -150,7 +150,7 @@ class CitationFeedbackRequest(BaseModel):
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_insights(request: ChatRequest) -> ChatResponse:
-    user_id = "local"
+
     question = (request.question or "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
@@ -161,7 +161,6 @@ def chat_insights(request: ChatRequest) -> ChatResponse:
 
     try:
         payload = chat_module.answer_chat(
-            user_id=user_id,
             app_id=request.app_id,
             question=question,
             sentiment=sentiment,
@@ -187,7 +186,7 @@ def chat_insights(request: ChatRequest) -> ChatResponse:
 
 @router.post("/chat/simple", response_model=SimpleChatResponse)
 async def simple_chat(request: SimpleChatRequest) -> SimpleChatResponse:
-    user_id = "local"
+
     message = (request.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
@@ -200,7 +199,7 @@ async def simple_chat(request: SimpleChatRequest) -> SimpleChatResponse:
         if not session_id:
             session_id = str(uuid.uuid4())
 
-        history = storage.load_chat_history(user_id, limit=20, session_id=session_id)
+        history = storage.load_chat_history(limit=20, session_id=session_id)
 
         app_ids = request.app_ids or []
         has_game_context = bool(app_ids)
@@ -211,11 +210,10 @@ async def simple_chat(request: SimpleChatRequest) -> SimpleChatResponse:
             def status_callback(status: str) -> None:
                 _emit_chat_status(session_id, status)
 
-            game_metadata = storage.load_game_metadata_for_chat(user_id, app_ids)
+            game_metadata = storage.load_game_metadata_for_chat(app_ids)
             game_names = {g["app_id"]: g["name"] for g in game_metadata}
 
             agent_context = chat_agent.AgentContext(
-                user_id=user_id,
                 session_id=session_id,
                 app_ids=app_ids,
                 date_filter=request.date_filter,
@@ -229,7 +227,6 @@ async def simple_chat(request: SimpleChatRequest) -> SimpleChatResponse:
             )
 
             with llm.llm_usage_context(
-                user_id=user_id,
                 session_id=session_id,
                 app_id=app_ids[0] if len(app_ids) == 1 else None,
                 operation="chat_agent",
@@ -351,7 +348,6 @@ Example:
 """
 
             with llm.llm_usage_context(
-                user_id=user_id,
                 session_id=session_id,
                 operation="chat_simple",
             ):
@@ -363,8 +359,8 @@ Example:
             suggested_questions = []
             tool_calls_made = 0
 
-        storage.save_chat_message(user_id, "user", message, session_id=session_id)
-        storage.save_chat_message(user_id, "assistant", response_text, session_id=session_id)
+        storage.save_chat_message("user", message, session_id=session_id)
+        storage.save_chat_message("assistant", response_text, session_id=session_id)
 
         return SimpleChatResponse(
             response=response_text,
@@ -388,9 +384,9 @@ Example:
 
 @router.get("/chat/sessions", response_model=List[ChatSession])
 def get_chat_sessions() -> List[ChatSession]:
-    user_id = "local"
+
     try:
-        sessions = storage.get_chat_sessions(user_id)
+        sessions = storage.get_chat_sessions()
         return [ChatSession(**session) for session in sessions]
     except Exception as exc:
         logger.exception("Failed to load chat sessions: %s", exc)
@@ -399,9 +395,9 @@ def get_chat_sessions() -> List[ChatSession]:
 
 @router.get("/chat/history", response_model=List[ChatMessage])
 def get_chat_history(session_id: Optional[str] = None) -> List[ChatMessage]:
-    user_id = "local"
+
     try:
-        history = storage.load_chat_history(user_id, limit=100, session_id=session_id)
+        history = storage.load_chat_history(limit=100, session_id=session_id)
         return [ChatMessage(**msg) for msg in history]
     except Exception as exc:
         logger.exception("Failed to load chat history: %s", exc)
@@ -410,9 +406,9 @@ def get_chat_history(session_id: Optional[str] = None) -> List[ChatMessage]:
 
 @router.delete("/chat/history")
 def clear_chat_history_endpoint(session_id: Optional[str] = None) -> Dict[str, Any]:
-    user_id = "local"
+
     try:
-        count = storage.clear_chat_history(user_id, session_id=session_id)
+        count = storage.clear_chat_history(session_id=session_id)
         return {"deleted": count}
     except Exception as exc:
         logger.exception("Failed to clear chat history: %s", exc)
@@ -421,10 +417,9 @@ def clear_chat_history_endpoint(session_id: Optional[str] = None) -> Dict[str, A
 
 @router.post("/chat/citation-feedback")
 def submit_citation_feedback(request: CitationFeedbackRequest) -> Dict[str, str]:
-    user_id = "local"
+
     try:
         storage.save_citation_feedback(
-            user_id=user_id,
             session_id=request.session_id,
             review_id=request.review_id,
             helpful=request.helpful,
@@ -437,8 +432,8 @@ def submit_citation_feedback(request: CitationFeedbackRequest) -> Dict[str, str]
 
 @router.get("/chat/export/{session_id}")
 def export_chat_session(session_id: str, format: str = "markdown"):
-    user_id = "local"
-    messages = storage.load_chat_history(user_id, limit=500, session_id=session_id)
+
+    messages = storage.load_chat_history(limit=500, session_id=session_id)
 
     if not messages:
         raise HTTPException(status_code=404, detail="No messages found for this session.")

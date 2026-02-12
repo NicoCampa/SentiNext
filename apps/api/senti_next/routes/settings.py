@@ -6,13 +6,12 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import storage, db as db_module, dialect as d
-from ._guards import admin_token, env_flag, require_admin_token
+from .. import db as db_module, dialect as d
 
 logger = logging.getLogger(__name__)
 
@@ -35,61 +34,6 @@ def _log_file_path() -> Path:
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
-
-class LLMUsageBreakdownItem(BaseModel):
-    operation: Optional[str] = None
-    model: Optional[str] = None
-    calls: int = 0
-    prompt_tokens: int = 0
-    response_tokens: int = 0
-    total_tokens: int = 0
-    cached_tokens: int = 0
-    tool_use_prompt_tokens: int = 0
-    thoughts_tokens: int = 0
-
-
-class LLMUsageSummaryResponse(BaseModel):
-    since: str
-    days: int
-    total_calls: int = 0
-    prompt_tokens: int = 0
-    response_tokens: int = 0
-    total_tokens: int = 0
-    cached_tokens: int = 0
-    tool_use_prompt_tokens: int = 0
-    thoughts_tokens: int = 0
-    by_operation: List[LLMUsageBreakdownItem] = Field(default_factory=list)
-    by_model: List[LLMUsageBreakdownItem] = Field(default_factory=list)
-
-
-class LLMCostBreakdown(BaseModel):
-    key: str
-    calls: int = 0
-    prompt_tokens: int = 0
-    response_tokens: int = 0
-    total_tokens: int = 0
-    cost_input_usd: float = 0.0
-    cost_output_usd: float = 0.0
-    cost_total_usd: float = 0.0
-
-
-class LLMCostSummary(BaseModel):
-    calls: int = 0
-    prompt_tokens: int = 0
-    response_tokens: int = 0
-    total_tokens: int = 0
-    cost_input_usd: float = 0.0
-    cost_output_usd: float = 0.0
-    cost_total_usd: float = 0.0
-    by_operation: List[LLMCostBreakdown] = Field(default_factory=list)
-    by_model: List[LLMCostBreakdown] = Field(default_factory=list)
-
-
-class AdminDashboardResponse(BaseModel):
-    since: str
-    days: int
-    llm: LLMCostSummary
-
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -253,108 +197,3 @@ def logs_tail(bytes: int = 20000) -> dict:
         return {"log_file": str(path), "tail": ""}
 
 
-@router.get("/auth/status")
-def auth_status(x_admin_token: Optional[str] = Header(default=None, alias="x-admin-token")) -> dict:
-    expected = admin_token()
-    token_configured = bool(expected)
-    is_admin = (not token_configured) or ((x_admin_token or "").strip() == expected)
-    return {
-        "user_id": "local",
-        "is_admin": is_admin,
-    }
-
-
-@router.post("/admin/verify")
-def admin_verify(_: None = Depends(require_admin_token)) -> dict:
-    return {"ok": True}
-
-
-@router.get("/admin/status")
-def admin_status() -> dict:
-    token_configured = bool(admin_token())
-    return {
-        "destructive_enabled": env_flag("SENTINEXT_ENABLE_DESTRUCTIVE", True),
-        "token_configured": token_configured,
-        "admin_user_ids_configured": not token_configured,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Admin dashboard & usage
-# ---------------------------------------------------------------------------
-
-@router.get("/admin/llm-usage/summary", response_model=LLMUsageSummaryResponse)
-def get_admin_llm_usage_summary(
-    days: int = 30,
-    user_id: Optional[str] = None,
-    app_id: Optional[int] = None,
-    session_id: Optional[str] = None,
-    _: None = Depends(require_admin_token),
-) -> LLMUsageSummaryResponse:
-    try:
-        summary = storage.get_llm_usage_summary(
-            days=days,
-            user_id=user_id,
-            app_id=app_id,
-            session_id=session_id,
-        )
-        return LLMUsageSummaryResponse(**summary)
-    except Exception as exc:
-        logger.exception("Failed to load LLM usage summary: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to load LLM usage summary.") from exc
-
-
-@router.get("/admin/dashboard", response_model=AdminDashboardResponse)
-def get_admin_dashboard(days: int = 30, _: None = Depends(require_admin_token)) -> AdminDashboardResponse:
-    try:
-        safe_days = max(1, min(int(days or 30), 365))
-
-        llm_usage = storage.get_llm_usage_summary(days=safe_days)
-
-        by_model_costs = []
-        for item in llm_usage.get("by_model", []) or []:
-            model_id = str(item.get("model") or "unknown")
-            prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
-            response_tokens = int(item.get("response_tokens", 0) or 0)
-            by_model_costs.append(
-                LLMCostBreakdown(
-                    key=model_id,
-                    calls=int(item.get("calls", 0) or 0),
-                    prompt_tokens=prompt_tokens,
-                    response_tokens=response_tokens,
-                    total_tokens=int(item.get("total_tokens", 0) or 0),
-                )
-            )
-
-        by_operation_costs = []
-        for item in llm_usage.get("by_operation", []) or []:
-            operation = str(item.get("operation") or "unknown")
-            prompt_tokens = int(item.get("prompt_tokens", 0) or 0)
-            response_tokens = int(item.get("response_tokens", 0) or 0)
-            by_operation_costs.append(
-                LLMCostBreakdown(
-                    key=operation,
-                    calls=int(item.get("calls", 0) or 0),
-                    prompt_tokens=prompt_tokens,
-                    response_tokens=response_tokens,
-                    total_tokens=int(item.get("total_tokens", 0) or 0),
-                )
-            )
-
-        llm_payload = LLMCostSummary(
-            calls=int(llm_usage.get("total_calls", 0) or 0),
-            prompt_tokens=int(llm_usage.get("prompt_tokens", 0) or 0),
-            response_tokens=int(llm_usage.get("response_tokens", 0) or 0),
-            total_tokens=int(llm_usage.get("total_tokens", 0) or 0),
-            by_operation=by_operation_costs,
-            by_model=by_model_costs,
-        )
-
-        return AdminDashboardResponse(
-            since=str(llm_usage.get("since") or ""),
-            days=int(llm_usage.get("days", safe_days) or safe_days),
-            llm=llm_payload,
-        )
-    except Exception as exc:
-        logger.exception("Failed to load admin dashboard: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to load admin dashboard.") from exc

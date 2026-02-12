@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -63,7 +63,7 @@ class ComparisonSummaryResponse(BaseModel):
 
 @router.post("/translate", response_model=TranslateResponse)
 def translate_text_endpoint(request: TranslateRequest) -> TranslateResponse:
-    user_id = "local"
+
     text = (request.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
@@ -73,7 +73,7 @@ def translate_text_endpoint(request: TranslateRequest) -> TranslateResponse:
         raise HTTPException(status_code=400, detail="Target language is required.")
 
     try:
-        with llm.llm_usage_context(user_id=user_id, operation="translate"):
+        with llm.llm_usage_context(operation="translate"):
             translated, model_id = llm.translate_text(text, target_language)
         return TranslateResponse(translated_text=translated, model_id=model_id)
     except Exception as exc:
@@ -83,7 +83,7 @@ def translate_text_endpoint(request: TranslateRequest) -> TranslateResponse:
 
 @router.post("/compare/summarize", response_model=ComparisonSummaryResponse)
 def compare_games_summarize(request: ComparisonSummarizeRequest) -> ComparisonSummaryResponse:
-    user_id = "local"
+
     app_ids = [g.app_id for g in request.games]
     cache_key = storage.generate_comparison_cache_key(
         app_ids, request.comparison_type, request.category, request.subcategory
@@ -95,7 +95,7 @@ def compare_games_summarize(request: ComparisonSummarizeRequest) -> ComparisonSu
 
     try:
         logger.info(f"Generating comparison for {len(app_ids)} games (type: {request.comparison_type})")
-        with llm.llm_usage_context(user_id=user_id, operation="compare"):
+        with llm.llm_usage_context(operation="compare"):
             result = llm.compare_games(
                 games_data=[g.dict() for g in request.games],
                 comparison_type=request.comparison_type,
@@ -104,7 +104,6 @@ def compare_games_summarize(request: ComparisonSummarizeRequest) -> ComparisonSu
             )
 
         storage.save_comparison_summary(
-            user_id=user_id,
             app_ids=app_ids,
             comparison_type=request.comparison_type,
             category=request.category,
@@ -129,13 +128,13 @@ def compare_games_summarize(request: ComparisonSummarizeRequest) -> ComparisonSu
 
 @router.get("/reports/available-months/{app_id}")
 def get_report_months(app_id: int):
-    user_id = "local"
+
     from ..reports import get_available_months
 
-    if not storage.user_has_game(user_id, app_id):
+    if not storage.user_has_game(app_id):
         raise HTTPException(status_code=404, detail="No analysis available for this game.")
 
-    months = get_available_months(app_id, user_id)
+    months = get_available_months(app_id)
 
     return {"months": months}
 
@@ -148,7 +147,7 @@ def generate_executive_summary(
     format: str = "pdf",
     include_llm_summary: bool = True,
 ):
-    user_id = "local"
+
     from ..reports import (
         filter_reviews_by_month,
         calculate_monthly_insights,
@@ -162,7 +161,7 @@ def generate_executive_summary(
     if not (2000 <= year <= 2100):
         raise HTTPException(status_code=400, detail="Invalid year")
 
-    if not storage.user_has_game(user_id, app_id):
+    if not storage.user_has_game(app_id):
         raise HTTPException(status_code=404, detail="Game must be analyzed first")
 
     game_context = fetch_app_details(app_id)
@@ -206,7 +205,7 @@ def generate_executive_summary(
 
     if include_llm_summary and format in {"pdf", "html"}:
         try:
-            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="report_summary"):
+            with llm.llm_usage_context(app_id=app_id, operation="report_summary"):
                 llm_summary = llm.summarize_monthly_report(
                     game_name=game_name,
                     period=period,

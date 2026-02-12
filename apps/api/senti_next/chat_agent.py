@@ -380,7 +380,6 @@ class SessionContext:
 class AgentContext:
     """Context maintained throughout an agentic conversation turn."""
 
-    user_id: str
     session_id: str
     app_ids: List[int] = field(default_factory=list)
     date_filter: str = "all"

@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -26,7 +26,6 @@ from ._shared import (
     _database_row_to_item,
     _serialize_export_value,
 )
-from ._guards import require_destructive_access
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +64,8 @@ def aggregate_feedback(
     discord_limit: int = 50,
     forum_limit: int = 30,
 ) -> List[FeedbackItem]:
-    user_id = "local"
-    if not storage.user_has_game(user_id, app_id):
+
+    if not storage.user_has_game(app_id):
         raise HTTPException(status_code=404, detail="No analysis available for this game.")
     game_context = fetch_app_details(app_id) or {}
     app_name = game_context.get("name", str(app_id))
@@ -93,8 +92,8 @@ def export_reviews(
     format: str = "csv",
     refresh: bool = False,
 ):
-    user_id = "local"
-    if not storage.user_has_game(user_id, app_id):
+
+    if not storage.user_has_game(app_id):
         raise HTTPException(status_code=404, detail="No analysis available for this game.")
     rows = storage.load_reviews(app_id, limit)
     if not rows:
@@ -106,7 +105,7 @@ def export_reviews(
     if refresh:
         try:
             game_context = fetch_app_details(app_id)
-            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
+            with llm.llm_usage_context(app_id=app_id, operation="export_refresh"):
                 llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
         except ValueError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -158,7 +157,7 @@ def database_stats() -> dict:
 
 
 @router.delete("/database/labels", status_code=200)
-def clear_labels(old_schema_only: bool = False, _: None = Depends(require_destructive_access)) -> dict:
+def clear_labels(old_schema_only: bool = False) -> dict:
     if old_schema_only:
         count = storage.clear_old_schema_labels()
         return {"deleted": count, "scope": "old_schema_labels"}
@@ -168,7 +167,7 @@ def clear_labels(old_schema_only: bool = False, _: None = Depends(require_destru
 
 
 @router.delete("/database/clear", status_code=200)
-def clear_database(_: None = Depends(require_destructive_access)) -> dict:
+def clear_database() -> dict:
     counts = storage.clear_entire_database()
     return {"deleted": counts, "scope": "entire_database"}
 
@@ -181,13 +180,13 @@ def database_games() -> List[DatabaseGameOption]:
 
 @router.get("/database/reviews/{review_id}")
 def get_database_review_by_id(review_id: str):
-    user_id = "local"
+
     review_row = storage.get_review_by_id(review_id)
     if not review_row:
         raise HTTPException(status_code=404, detail="Review not found")
 
     app_id = review_row["app_id"]
-    user_games = storage.list_database_games(user_id)
+    user_games = storage.list_database_games()
 
     games_map = {entry["app_id"]: entry.get("name") for entry in user_games}
     review_item = _database_row_to_item(review_row, games_map)

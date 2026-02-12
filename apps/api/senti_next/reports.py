@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
-def get_available_months(app_id: int, user_id: str) -> List[Dict[str, Any]]:
+def get_available_months(app_id: int) -> List[Dict[str, Any]]:
     """Get list of months with review data for a game.
 
     Returns list of dicts with keys: year, month, label, review_count

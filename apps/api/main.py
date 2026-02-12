@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import asyncio
-import collections
 import logging
 import os
-import time
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Dict
 
 # Load environment variables from .env.local (for local development)
 from dotenv import load_dotenv
@@ -20,25 +16,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .senti_next import redis_client
 from .senti_next import logging_config
 from .senti_next import db as db_module
 from .senti_next.routes import all_routers
-
-# ---------------------------------------------------------------------------
-# Sentry error monitoring (no-op if SENTRY_DSN is not set)
-# ---------------------------------------------------------------------------
-_sentry_dsn = os.getenv("SENTRY_DSN")
-if _sentry_dsn:
-    try:
-        import sentry_sdk
-        sentry_sdk.init(
-            dsn=_sentry_dsn,
-            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-            environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
-        )
-    except Exception:
-        pass  # Sentry is optional; don't block startup
 
 logger = logging.getLogger(__name__)
 
@@ -150,12 +130,6 @@ async def lifespan(application: FastAPI):
     # Shutdown — wait briefly for the init thread, then clean up.
     init_thread.join(timeout=10)
     logger.info("SentiNext API shutting down")
-    try:
-        if redis_client.is_redis_configured():
-            redis_client.get_redis().close()
-            logger.info("Redis connection closed")
-    except Exception as exc:
-        logger.warning("Error closing Redis: %s", exc)
     db_module.close_engine()
     logger.info("Database engine closed")
 
@@ -170,7 +144,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["content-type", "x-admin-token"],
+    allow_headers=["content-type"],
     expose_headers=["Content-Disposition"],
 )
 
@@ -201,94 +175,6 @@ async def startup_gate_middleware(request: Request, call_next):
             status_code=503,
             content={"detail": "Server is starting up, please wait..."},
         )
-    return await call_next(request)
-
-
-# ---------------------------------------------------------------------------
-# Rate limiting (Redis-backed with in-memory fallback)
-# ---------------------------------------------------------------------------
-
-_rate_limit_buckets: Dict[str, collections.deque] = {}
-
-_RATE_LIMITS: Dict[str, int] = {
-    "/analyze": int(os.getenv("SENTINEXT_RATE_ANALYZE", "60")),
-    "/chat": int(os.getenv("SENTINEXT_RATE_CHAT", "120")),
-    "/chat/simple": int(os.getenv("SENTINEXT_RATE_CHAT", "120")),
-}
-_DEFAULT_RATE_LIMIT = int(os.getenv("SENTINEXT_RATE_DEFAULT", "600"))
-_RATE_WINDOW_SECONDS = 60
-_RATE_EXEMPT = {"/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
-
-_TRUSTED_PROXIES: set[str] = set(
-    p.strip()
-    for p in os.getenv("SENTINEXT_TRUSTED_PROXIES", "").split(",")
-    if p.strip()
-)
-
-
-def _get_rate_key(request: Request) -> str:
-    client = request.client
-    client_ip = client.host if client else None
-    if client_ip and client_ip in _TRUSTED_PROXIES:
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return f"ip:{forwarded.split(',')[0].strip()}"
-    return f"ip:{client_ip}" if client_ip else "ip:unknown"
-
-
-async def _check_rate_limit_redis(key: str, limit: int) -> bool:
-    try:
-        r = redis_client.get_redis()
-        redis_key = f"rl:{key}"
-        count = r.incr(redis_key)
-        if count == 1:
-            r.expire(redis_key, _RATE_WINDOW_SECONDS)
-        return count <= limit
-    except Exception:
-        return await _check_rate_limit_memory(key, limit)
-
-
-_rate_limit_lock = asyncio.Lock()
-
-
-async def _check_rate_limit_memory(key: str, limit: int) -> bool:
-    async with _rate_limit_lock:
-        now = time.time()
-        bucket = _rate_limit_buckets.setdefault(key, collections.deque())
-        while bucket and bucket[0] < now - _RATE_WINDOW_SECONDS:
-            bucket.popleft()
-        if len(bucket) >= limit:
-            return False
-        bucket.append(now)
-        return True
-
-
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    path = request.url.path
-    if path in _RATE_EXEMPT or request.method == "OPTIONS":
-        return await call_next(request)
-
-    limit = _DEFAULT_RATE_LIMIT
-    for prefix, max_req in _RATE_LIMITS.items():
-        if path == prefix or path.startswith(prefix + "/"):
-            limit = max_req
-            break
-
-    key = f"{_get_rate_key(request)}:{path.split('/')[1] if '/' in path[1:] else path}"
-
-    if redis_client.is_redis_configured():
-        allowed = await _check_rate_limit_redis(key, limit)
-    else:
-        allowed = await _check_rate_limit_memory(key, limit)
-
-    if not allowed:
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded. Please try again shortly."},
-            headers={"Retry-After": "60"},
-        )
-
     return await call_next(request)
 
 

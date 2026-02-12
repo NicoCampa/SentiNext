@@ -78,7 +78,6 @@ def init_db() -> None:
 
 def log_llm_usage(
     *,
-    user_id: str,
     operation: str,
     model: Optional[str],
     prompt_tokens: Optional[int],
@@ -107,7 +106,7 @@ def log_llm_usage(
                             :app_id, :session_id, :created_at)
                 """),
                 {
-                    "user_id": user_id,
+                    "user_id": _DEFAULT_USER_ID,
                     "operation": operation,
                     "model": model,
                     "prompt_tokens": prompt_tokens,
@@ -129,7 +128,6 @@ def log_llm_usage(
 def get_llm_usage_summary(
     *,
     days: int = 30,
-    user_id: Optional[str] = None,
     app_id: Optional[int] = None,
     session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -141,13 +139,13 @@ def get_llm_usage_summary(
 
     where_clause = """
         WHERE created_at >= :since
-          AND (:user_id IS NULL OR user_id = :user_id)
+          AND user_id = :user_id
           AND (:app_id IS NULL OR app_id = :app_id)
           AND (:session_id IS NULL OR session_id = :session_id)
     """
     params = {
         "since": since,
-        "user_id": user_id,
+        "user_id": _DEFAULT_USER_ID,
         "app_id": app_id,
         "session_id": session_id,
     }
@@ -603,7 +601,7 @@ def load_review_labels(app_id: int) -> Dict[str, Dict]:
     return labels
 
 
-def reset_progress(user_id: str, app_id: int, total: int, phase: str = "classifying") -> None:
+def reset_progress(app_id: int, total: int, phase: str = "classifying") -> None:
     """Reset progress tracking for an app."""
     from . import db as db_module
 
@@ -620,11 +618,11 @@ def reset_progress(user_id: str, app_id: int, total: int, phase: str = "classify
                     fetched_count = EXCLUDED.fetched_count,
                     updated_at = EXCLUDED.updated_at
             """),
-            {"user_id": user_id, "app_id": app_id, "total": int(total), "phase": phase, "updated_at": timestamp},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id, "total": int(total), "phase": phase, "updated_at": timestamp},
         )
 
 
-def update_fetch_progress(user_id: str, app_id: int, fetched_count: int) -> None:
+def update_fetch_progress(app_id: int, fetched_count: int) -> None:
     """Update fetch progress during Steam review fetching.
 
     Uses UPSERT to create/update the progress row with fetch count.
@@ -644,7 +642,7 @@ def update_fetch_progress(user_id: str, app_id: int, fetched_count: int) -> None
                     updated_at = EXCLUDED.updated_at
             """),
             {
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
                 "app_id": app_id,
                 "fetched_count": int(fetched_count),
                 "updated_at": timestamp,
@@ -652,7 +650,7 @@ def update_fetch_progress(user_id: str, app_id: int, fetched_count: int) -> None
         )
 
 
-def update_progress(user_id: str, app_id: int, processed: int, total: Optional[int] = None) -> None:
+def update_progress(app_id: int, processed: int, total: Optional[int] = None) -> None:
     """Update progress for classification.
 
     Progress updates are monotonic - only increases are applied to prevent
@@ -683,24 +681,24 @@ def update_progress(user_id: str, app_id: int, processed: int, total: Optional[i
                 "processed": processed_int,
                 "updated_at": timestamp,
                 "total": new_total,
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
                 "app_id": app_id,
             },
         )
 
 
-def clear_progress(user_id: str, app_id: int) -> None:
+def clear_progress(app_id: int) -> None:
     """Clear progress tracking for an app."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         conn.execute(
             text("DELETE FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
-            {"user_id": user_id, "app_id": app_id},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id},
         )
 
 
-def update_progress_phase(user_id: str, app_id: int, phase: str) -> None:
+def update_progress_phase(app_id: int, phase: str) -> None:
     """Update only the phase of progress tracking.
 
     Used to signal phase transitions like 'building_insights' without changing
@@ -716,11 +714,11 @@ def update_progress_phase(user_id: str, app_id: int, phase: str) -> None:
                 SET phase = :phase, updated_at = :updated_at
                 WHERE user_id = :user_id AND app_id = :app_id
             """),
-            {"phase": phase, "updated_at": timestamp, "user_id": user_id, "app_id": app_id},
+            {"phase": phase, "updated_at": timestamp, "user_id": _DEFAULT_USER_ID, "app_id": app_id},
         )
 
 
-def cancel_progress(user_id: str, app_id: int) -> bool:
+def cancel_progress(app_id: int) -> bool:
     """Mark a progress entry as cancelled. Returns True if there was an active job to cancel."""
     from . import db as db_module
 
@@ -732,20 +730,20 @@ def cancel_progress(user_id: str, app_id: int) -> bool:
                 WHERE user_id = :user_id AND app_id = :app_id
                 RETURNING id
             """),
-            {"user_id": user_id, "app_id": app_id, "updated_at": datetime.now(timezone.utc)},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id, "updated_at": datetime.now(timezone.utc)},
         )
         row = result.fetchone()
         return row is not None
 
 
-def is_cancelled(user_id: str, app_id: int) -> bool:
+def is_cancelled(app_id: int) -> bool:
     """Check if a job has been cancelled."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         result = conn.execute(
             text("SELECT cancelled FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
-            {"user_id": user_id, "app_id": app_id},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id},
         )
         row = result.fetchone()
 
@@ -754,14 +752,14 @@ def is_cancelled(user_id: str, app_id: int) -> bool:
     return bool(row[0])
 
 
-def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
+def load_progress(app_id: int) -> Optional[Dict[str, Any]]:
     """Load progress tracking for an app."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         result = conn.execute(
             text("SELECT total, processed, updated_at, phase, fetched_count FROM progress WHERE user_id = :user_id AND app_id = :app_id"),
-            {"user_id": user_id, "app_id": app_id},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id},
         )
         row = result.fetchone()
 
@@ -778,7 +776,6 @@ def load_progress(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
 
 
 def save_starred_game(
-    user_id: str,
     app_id: int,
     name: str,
     metadata: Dict,
@@ -812,7 +809,7 @@ def save_starred_game(
                     updated_at = EXCLUDED.updated_at
             """),
             {
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
                 "app_id": app_id,
                 "name": name,
                 "metadata": payload_metadata,
@@ -825,18 +822,18 @@ def save_starred_game(
         )
 
 
-def delete_starred_game(user_id: str, app_id: int) -> None:
+def delete_starred_game(app_id: int) -> None:
     """Delete a starred game."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         conn.execute(
             text("DELETE FROM starred_games WHERE user_id = :user_id AND app_id = :app_id"),
-            {"user_id": user_id, "app_id": app_id},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id},
         )
 
 
-def update_favorite_status(user_id: str, app_id: int, is_favorite: bool) -> bool:
+def update_favorite_status(app_id: int, is_favorite: bool) -> bool:
     """Update the favorite status of a starred game. Returns True if updated, False if not found."""
     from . import db as db_module
 
@@ -847,12 +844,12 @@ def update_favorite_status(user_id: str, app_id: int, is_favorite: bool) -> bool
                 SET is_favorite = :is_favorite
                 WHERE user_id = :user_id AND app_id = :app_id
             """),
-            {"user_id": user_id, "app_id": app_id, "is_favorite": is_favorite},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id, "is_favorite": is_favorite},
         )
         return result.rowcount > 0
 
 
-def load_favorite_games(user_id: str) -> list[Dict[str, Any]]:
+def load_favorite_games() -> list[Dict[str, Any]]:
     """Load all favorite games for a user."""
     from . import db as db_module
 
@@ -864,7 +861,7 @@ def load_favorite_games(user_id: str) -> list[Dict[str, Any]]:
                 WHERE user_id = :user_id AND is_favorite = TRUE
                 ORDER BY updated_at DESC
             """),
-            {"user_id": user_id},
+            {"user_id": _DEFAULT_USER_ID},
         )
         rows = result.fetchall()
 
@@ -899,85 +896,37 @@ def delete_all_game_data(app_id: int) -> None:
         conn.execute(text("DELETE FROM analysis_results WHERE app_id = :app_id"), {"app_id": app_id})
 
 
-def get_database_stats(user_id: Optional[str] = None) -> Dict[str, Any]:
+def get_database_stats() -> Dict[str, Any]:
     """Get database statistics: counts of games, reviews, labels."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
-        if not user_id:
-            result = conn.execute(text("""
-                SELECT COUNT(DISTINCT app_id) FROM (
-                    SELECT app_id FROM reviews
-                    UNION
-                    SELECT app_id FROM starred_games
-                ) AS combined
-            """))
-            games_count = result.fetchone()[0]
+        result = conn.execute(text("""
+            SELECT COUNT(DISTINCT app_id) FROM (
+                SELECT app_id FROM reviews
+                UNION
+                SELECT app_id FROM starred_games
+            ) AS combined
+        """))
+        games_count = result.fetchone()[0]
 
-            result = conn.execute(text("SELECT COUNT(*) FROM reviews"))
-            reviews_count = result.fetchone()[0]
+        result = conn.execute(text("SELECT COUNT(*) FROM reviews"))
+        reviews_count = result.fetchone()[0]
 
-            result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
-            labels_count = result.fetchone()[0]
+        result = conn.execute(text("SELECT COUNT(*) FROM review_labels"))
+        labels_count = result.fetchone()[0]
 
-            main_cat_expr = d.json_extract("payload", "main_category")
-            result = conn.execute(text(f"""
-                SELECT COUNT(*) FROM review_labels
-                WHERE {main_cat_expr} IS NOT NULL
-            """))
-            new_schema_count = result.fetchone()[0]
+        main_cat_expr = d.json_extract("payload", "main_category")
+        result = conn.execute(text(f"""
+            SELECT COUNT(*) FROM review_labels
+            WHERE {main_cat_expr} IS NOT NULL
+        """))
+        new_schema_count = result.fetchone()[0]
 
-            old_schema_count = labels_count - new_schema_count
+        old_schema_count = labels_count - new_schema_count
 
-            result = conn.execute(text("SELECT COUNT(*) FROM starred_games"))
-            starred_count = result.fetchone()[0]
-        else:
-            result = conn.execute(
-                text("SELECT app_id FROM starred_games WHERE user_id = :user_id"),
-                {"user_id": user_id},
-            )
-            app_rows = result.fetchall()
-            app_ids = [int(row[0]) for row in app_rows]
-
-            if not app_ids:
-                return {
-                    "games": 0,
-                    "reviews": 0,
-                    "labels": 0,
-                    "labels_new_schema": 0,
-                    "labels_old_schema": 0,
-                    "starred_games": 0,
-                }
-
-            arr_sql_r, params_r = d.any_array("app_ids", app_ids, {})
-            result = conn.execute(
-                text(f"SELECT COUNT(*) FROM reviews WHERE app_id {arr_sql_r}"),
-                params_r,
-            )
-            reviews_count = result.fetchone()[0]
-
-            arr_sql_l, params_l = d.any_array("app_ids", app_ids, {})
-            result = conn.execute(
-                text(f"SELECT COUNT(*) FROM review_labels WHERE app_id {arr_sql_l}"),
-                params_l,
-            )
-            labels_count = result.fetchone()[0]
-
-            main_cat_expr = d.json_extract("payload", "main_category")
-            arr_sql_n, params_n = d.any_array("app_ids", app_ids, {})
-            result = conn.execute(
-                text(f"""
-                    SELECT COUNT(*) FROM review_labels
-                    WHERE app_id {arr_sql_n}
-                      AND {main_cat_expr} IS NOT NULL
-                """),
-                params_n,
-            )
-            new_schema_count = result.fetchone()[0]
-
-            old_schema_count = labels_count - new_schema_count
-            starred_count = len(app_ids)
-            games_count = starred_count
+        result = conn.execute(text("SELECT COUNT(*) FROM starred_games"))
+        starred_count = result.fetchone()[0]
 
         return {
             "games": int(games_count),
@@ -1049,7 +998,7 @@ def clear_entire_database() -> Dict[str, int]:
         }
 
 
-def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
+def load_starred_games() -> list[Dict[str, Any]]:
     """Load all starred games for a user."""
     from . import db as db_module
 
@@ -1061,7 +1010,7 @@ def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
                 WHERE user_id = :user_id
                 ORDER BY updated_at DESC
             """),
-            {"user_id": user_id},
+            {"user_id": _DEFAULT_USER_ID},
         )
         rows = result.fetchall()
 
@@ -1084,40 +1033,40 @@ def load_starred_games(user_id: str) -> list[Dict[str, Any]]:
     return results
 
 
-def load_user_app_ids(user_id: str) -> List[int]:
+def load_user_app_ids() -> List[int]:
     """Load all app IDs for a user's starred games."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         result = conn.execute(
             text("SELECT app_id FROM starred_games WHERE user_id = :user_id"),
-            {"user_id": user_id},
+            {"user_id": _DEFAULT_USER_ID},
         )
         rows = result.fetchall()
     return [int(row[0]) for row in rows if row[0] is not None]
 
 
-def count_starred_games(user_id: str) -> int:
+def count_starred_games() -> int:
     """Count how many games a user has analyzed/starred."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         result = conn.execute(
             text("SELECT COUNT(*) FROM starred_games WHERE user_id = :user_id"),
-            {"user_id": user_id},
+            {"user_id": _DEFAULT_USER_ID},
         )
         row = result.fetchone()
     return int(row[0]) if row else 0
 
 
-def user_has_game(user_id: str, app_id: int) -> bool:
+def user_has_game(app_id: int) -> bool:
     """Check if a user has starred a game."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         result = conn.execute(
             text("SELECT 1 FROM starred_games WHERE user_id = :user_id AND app_id = :app_id LIMIT 1"),
-            {"user_id": user_id, "app_id": int(app_id)},
+            {"user_id": _DEFAULT_USER_ID, "app_id": int(app_id)},
         )
         row = result.fetchone()
     return row is not None
@@ -1192,14 +1141,14 @@ def get_top_games_by_review_count(
     return [{"app_id": int(row[0]), "count": int(row[1])} for row in rows]
 
 
-def list_database_games(user_id: str) -> List[Dict[str, Any]]:
+def list_database_games() -> List[Dict[str, Any]]:
     """List games for a specific user."""
     from . import db as db_module
 
     with db_module.get_connection() as conn:
         result = conn.execute(
             text("SELECT app_id, name FROM starred_games WHERE user_id = :user_id ORDER BY app_id"),
-            {"user_id": user_id},
+            {"user_id": _DEFAULT_USER_ID},
         )
         starred_rows = result.fetchall()
 
@@ -1346,7 +1295,6 @@ def load_database_reviews(
 
 
 def save_analysis_result(
-    user_id: str,
     app_id: int,
     metadata: Optional[Dict],
     insights: Optional[Dict],
@@ -1387,7 +1335,7 @@ def save_analysis_result(
                 updated_at = EXCLUDED.updated_at
             """),
             {
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
                 "app_id": app_id,
                 "metadata": payload_metadata,
                 "insights": payload_insights,
@@ -1404,7 +1352,7 @@ def save_analysis_result(
         )
 
 
-def has_running_analysis(user_id: str, exclude_app_id: Optional[int] = None) -> Optional[int]:
+def has_running_analysis(exclude_app_id: Optional[int] = None) -> Optional[int]:
     """Check if the user has any analysis currently running.
 
     Returns the app_id of the running analysis, or None if none is running.
@@ -1420,7 +1368,7 @@ def has_running_analysis(user_id: str, exclude_app_id: Optional[int] = None) -> 
                     WHERE user_id = :user_id AND status = 'running' AND app_id != :exclude_app_id
                     LIMIT 1
                 """),
-                {"user_id": user_id, "exclude_app_id": exclude_app_id},
+                {"user_id": _DEFAULT_USER_ID, "exclude_app_id": exclude_app_id},
             ).fetchone()
         else:
             row = conn.execute(
@@ -1429,13 +1377,13 @@ def has_running_analysis(user_id: str, exclude_app_id: Optional[int] = None) -> 
                     WHERE user_id = :user_id AND status = 'running'
                     LIMIT 1
                 """),
-                {"user_id": user_id},
+                {"user_id": _DEFAULT_USER_ID},
             ).fetchone()
 
     return int(row[0]) if row else None
 
 
-def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
+def load_analysis_result(app_id: int) -> Optional[Dict[str, Any]]:
     from . import db as db_module
     with db_module.get_connection() as conn:
         row = conn.execute(
@@ -1444,7 +1392,7 @@ def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
             FROM analysis_results
             WHERE user_id = :user_id AND app_id = :app_id
             """),
-            {"user_id": user_id, "app_id": app_id},
+            {"user_id": _DEFAULT_USER_ID, "app_id": app_id},
         ).mappings().fetchone()
 
     if row is None:
@@ -1469,7 +1417,6 @@ def load_analysis_result(user_id: str, app_id: int) -> Optional[Dict[str, Any]]:
 
 def create_job_registry(
     job_id: str,
-    user_id: str,
     app_id: int,
     job_type: str = "analysis",
     metadata: Optional[Dict] = None,
@@ -1493,7 +1440,7 @@ def create_job_registry(
             """),
             {
                 "job_id": job_id,
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
                 "app_id": app_id,
                 "job_type": job_type,
                 "created_at": created_at_val,
@@ -1608,10 +1555,10 @@ def cleanup_old_jobs(age_days: int = 7) -> int:
 
 # Chat Message Functions
 
-def save_chat_message(user_id: str, role: str, content: str, session_id: str = None) -> None:
+def save_chat_message(role: str, content: str, session_id: str = None) -> None:
     """Save a chat message to the database."""
     from . import db as db_module
-    logger.debug(f"Saving chat message: user_id={user_id}, session_id={session_id}, role={role}, content_length={len(content)}")
+    logger.debug(f"Saving chat message: user_id={_DEFAULT_USER_ID}, session_id={session_id}, role={role}, content_length={len(content)}")
     with db_module.get_connection() as conn:
         conn.execute(
             text("""
@@ -1619,19 +1566,19 @@ def save_chat_message(user_id: str, role: str, content: str, session_id: str = N
             VALUES (:user_id, :session_id, :role, :content)
             """),
             {
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
                 "session_id": session_id,
                 "role": role,
                 "content": content,
             },
         )
-    logger.debug(f"Successfully saved chat message for user_id={user_id}, session_id={session_id}")
+    logger.debug(f"Successfully saved chat message for user_id={_DEFAULT_USER_ID}, session_id={session_id}")
 
 
-def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> List[Dict[str, Any]]:
+def load_chat_history(limit: int = 50, session_id: str = None) -> List[Dict[str, Any]]:
     """Load chat history for a user, optionally filtered by session."""
     from . import db as db_module
-    logger.debug(f"Loading chat history for user_id={user_id}, session_id={session_id}, limit={limit}")
+    logger.debug(f"Loading chat history for user_id={_DEFAULT_USER_ID}, session_id={session_id}, limit={limit}")
     with db_module.get_connection() as conn:
         if session_id:
             rows = conn.execute(
@@ -1642,7 +1589,7 @@ def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> 
                 ORDER BY created_at DESC
                 LIMIT :limit
                 """),
-                {"user_id": user_id, "session_id": session_id, "limit": limit},
+                {"user_id": _DEFAULT_USER_ID, "session_id": session_id, "limit": limit},
             ).mappings().fetchall()
         else:
             # Load latest session or all messages if no sessions
@@ -1660,7 +1607,7 @@ def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> 
                 ORDER BY created_at DESC
                 LIMIT :limit
                 """),
-                {"user_id": user_id, "limit": limit},
+                {"user_id": _DEFAULT_USER_ID, "limit": limit},
             ).mappings().fetchall()
 
     # Reverse to get chronological order (oldest first)
@@ -1672,11 +1619,11 @@ def load_chat_history(user_id: str, limit: int = 50, session_id: str = None) -> 
             "timestamp": _format_ts(row["created_at"]),
             "session_id": row.get("session_id"),
         })
-    logger.debug(f"Loaded {len(messages)} messages for user_id={user_id}, session_id={session_id}")
+    logger.debug(f"Loaded {len(messages)} messages for user_id={_DEFAULT_USER_ID}, session_id={session_id}")
     return messages
 
 
-def get_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
+def get_chat_sessions() -> List[Dict[str, Any]]:
     """Get all chat sessions for a user."""
     from . import db as db_module
     with db_module.get_connection() as conn:
@@ -1699,7 +1646,7 @@ def get_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
             GROUP BY cm.session_id
             ORDER BY last_message_at DESC
             """),
-            {"user_id": user_id},
+            {"user_id": _DEFAULT_USER_ID},
         ).mappings().fetchall()
 
     sessions = []
@@ -1714,7 +1661,7 @@ def get_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
     return sessions
 
 
-def clear_chat_history(user_id: str, session_id: str = None) -> int:
+def clear_chat_history(session_id: str = None) -> int:
     """Clear chat history for a user. If session_id provided, only clears that session."""
     from . import db as db_module
     with db_module.get_connection() as conn:
@@ -1724,7 +1671,7 @@ def clear_chat_history(user_id: str, session_id: str = None) -> int:
                 DELETE FROM chat_messages
                 WHERE user_id = :user_id AND session_id = :session_id
                 """),
-                {"user_id": user_id, "session_id": session_id},
+                {"user_id": _DEFAULT_USER_ID, "session_id": session_id},
             )
         else:
             cursor = conn.execute(
@@ -1732,7 +1679,7 @@ def clear_chat_history(user_id: str, session_id: str = None) -> int:
                 DELETE FROM chat_messages
                 WHERE user_id = :user_id
                 """),
-                {"user_id": user_id},
+                {"user_id": _DEFAULT_USER_ID},
             )
         count = cursor.rowcount
     return count
@@ -2083,11 +2030,10 @@ def get_subcategory_label_counts_range(
     ]
 
 
-def load_game_metadata_for_chat(user_id: str, app_ids: List[int]) -> List[Dict[str, Any]]:
+def load_game_metadata_for_chat(app_ids: List[int]) -> List[Dict[str, Any]]:
     """Load game metadata for chat context.
 
     Args:
-        user_id: The user ID
         app_ids: List of app IDs (max 2 recommended)
 
     Returns:
@@ -2099,7 +2045,7 @@ def load_game_metadata_for_chat(user_id: str, app_ids: List[int]) -> List[Dict[s
     from . import db as db_module
 
     ids_list = [int(aid) for aid in app_ids]
-    params: Dict[str, Any] = {"user_id": user_id}
+    params: Dict[str, Any] = {"user_id": _DEFAULT_USER_ID}
     arr_sql, params = d.any_array("app_ids", ids_list, params)
 
     with db_module.get_connection() as conn:
@@ -2864,7 +2810,6 @@ def load_session_context(session_id: str) -> Dict[str, Any]:
 # Citation Feedback Functions
 
 def save_citation_feedback(
-    user_id: str,
     session_id: str,
     review_id: str,
     helpful: bool,
@@ -2872,7 +2817,6 @@ def save_citation_feedback(
     """Save user feedback on a citation.
 
     Args:
-        user_id: User providing feedback
         session_id: Chat session where citation appeared
         review_id: ID of the review being rated
         helpful: True if user found citation helpful, False otherwise
@@ -2886,7 +2830,7 @@ def save_citation_feedback(
                 VALUES (:user_id, :session_id, :review_id, :helpful)
             """),
             {
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
                 "session_id": session_id,
                 "review_id": review_id,
                 "helpful": helpful,
@@ -2930,7 +2874,6 @@ def get_citation_feedback_stats(review_id: str) -> Dict[str, int]:
 
 
 def get_user_citation_feedback(
-    user_id: str,
     session_id: str,
 ) -> Dict[str, bool]:
     """Get all citation feedback from a user in a session.
@@ -2947,7 +2890,7 @@ def get_user_citation_feedback(
                 FROM citation_feedback
                 WHERE user_id = :user_id AND session_id = :session_id
             """),
-            {"user_id": user_id, "session_id": session_id},
+            {"user_id": _DEFAULT_USER_ID, "session_id": session_id},
         )
         rows = result.fetchall()
 
@@ -3165,7 +3108,6 @@ def generate_comparison_cache_key(
 
 
 def save_comparison_summary(
-    user_id: str,
     app_ids: List[int],
     comparison_type: str,
     category: Optional[str],
@@ -3176,7 +3118,6 @@ def save_comparison_summary(
     """Save comparison summary to cache.
 
     Args:
-        user_id: User ID who generated the comparison
         app_ids: List of Steam app IDs being compared
         comparison_type: "overview" | "category" | "subcategory"
         category: Main category for category/subcategory comparisons
@@ -3215,7 +3156,7 @@ def save_comparison_summary(
                 "subcategory": subcategory,
                 "summary_data": json.dumps(summary_data),
                 "expires_at": expires_at,
-                "user_id": user_id,
+                "user_id": _DEFAULT_USER_ID,
             },
         )
 

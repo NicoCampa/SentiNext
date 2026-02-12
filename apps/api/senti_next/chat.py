@@ -357,7 +357,6 @@ def _collect_evidence(
 
 def build_chat_context(
     *,
-    user_id: str,
     app_id: int,
     question: str,
     sentiment: str,
@@ -368,7 +367,7 @@ def build_chat_context(
     max_reviews: int,
     max_snippets: int,
 ) -> Dict[str, Any]:
-    result = storage.load_analysis_result(user_id, app_id)
+    result = storage.load_analysis_result(app_id)
     if not result or not result.get("insights"):
         raise ValueError("No analysis insights available for this game.")
 
@@ -563,7 +562,6 @@ def build_chat_prompt(context: Dict[str, Any]) -> str:
 
 def answer_chat(
     *,
-    user_id: str,
     app_id: int,
     question: str,
     sentiment: str,
@@ -575,7 +573,6 @@ def answer_chat(
     max_snippets: int,
 ) -> Dict[str, Any]:
     context = build_chat_context(
-        user_id=user_id,
         app_id=app_id,
         question=question,
         sentiment=sentiment,
@@ -588,7 +585,7 @@ def answer_chat(
     )
 
     prompt = build_chat_prompt(context)
-    with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="chat_insights"):
+    with llm.llm_usage_context(app_id=app_id, operation="chat_insights"):
         raw, model_id = llm.run_chat_completion(prompt)
 
     try:
@@ -1132,7 +1129,6 @@ def build_game_aware_prompt(
 
 def answer_game_aware_chat(
     *,
-    user_id: str,
     app_ids: List[int],
     message: str,
     date_filter: str = "all",
@@ -1154,7 +1150,6 @@ def answer_game_aware_chat(
     - FEATURE_REQUESTS: What players want
 
     Args:
-        user_id: User ID for accessing starred games
         app_ids: List of app IDs to include in context (max 2)
         message: User's question
         date_filter: Date filter for reviews ("30d", "90d", "365d", "all")
@@ -1205,7 +1200,7 @@ def answer_game_aware_chat(
     if status_callback:
         status_callback("Retrieving game info...")
 
-    games = storage.load_game_metadata_for_chat(user_id, app_ids)
+    games = storage.load_game_metadata_for_chat(app_ids)
     if not games:
         # Try fetching from Steam API directly
         games = []
@@ -1243,7 +1238,7 @@ def answer_game_aware_chat(
             status_callback("Loading analysis insights...")
 
         for app_id in app_ids:
-            result = storage.load_analysis_result(user_id, app_id)
+            result = storage.load_analysis_result(app_id)
             if result and result.get("insights"):
                 insights = result.get("insights") or {}
                 full_insights[app_id] = insights
@@ -1383,7 +1378,6 @@ def answer_game_aware_chat(
     for attempt in range(max_retries):
         try:
             with llm.llm_usage_context(
-                user_id=user_id,
                 app_id=app_ids[0] if len(app_ids) == 1 else None,
                 operation="chat_insights",
             ):
