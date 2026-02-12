@@ -1116,6 +1116,24 @@ export async function updateLlmSettings(provider: string, model: string): Promis
 }
 
 // ============================================================================
+// Max Workers (parallel LLM requests)
+// ============================================================================
+
+export async function getMaxWorkers(): Promise<{ max_workers: number }> {
+  const response = await apiFetch(apiUrl("/settings/max-workers"), { cache: "no-store" });
+  return handleResponse<{ max_workers: number }>(response);
+}
+
+export async function updateMaxWorkers(maxWorkers: number): Promise<{ max_workers: number }> {
+  const response = await apiFetch(apiUrl("/settings/max-workers"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ max_workers: maxWorkers }),
+  });
+  return handleResponse<{ max_workers: number }>(response);
+}
+
+// ============================================================================
 // API Key Management
 // ============================================================================
 

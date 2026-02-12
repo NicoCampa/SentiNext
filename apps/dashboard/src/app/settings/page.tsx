@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, getProviders, getLlmSettings, updateLlmSettings, getApiKeyStatus, updateApiKey, testLlmConnection } from "@/lib/api";
+import { fetchLogTail, getProviders, getLlmSettings, updateLlmSettings, getApiKeyStatus, updateApiKey, testLlmConnection, getMaxWorkers, updateMaxWorkers } from "@/lib/api";
 import type { LlmProvider } from "@/lib/api";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -40,6 +40,11 @@ export default function SettingsPage() {
   const [llmTesting, setLlmTesting] = useState(false);
   const [llmTestResult, setLlmTestResult] = useState<{ status: "ok" | "error"; message: string } | null>(null);
 
+  // Max workers state
+  const [maxWorkers, setMaxWorkers] = useState(10);
+  const [maxWorkersInput, setMaxWorkersInput] = useState("10");
+  const [maxWorkersSaving, setMaxWorkersSaving] = useState(false);
+
   // API key state
   const [apiKeyStatus, setApiKeyStatus] = useState<Record<string, boolean>>({});
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
@@ -51,10 +56,11 @@ export default function SettingsPage() {
     setLlmLoading(true);
     setLlmError(null);
     try {
-      const [providersRes, settingsRes, keyStatus] = await Promise.all([
+      const [providersRes, settingsRes, keyStatus, workersRes] = await Promise.all([
         getProviders(),
         getLlmSettings(),
         getApiKeyStatus(),
+        getMaxWorkers(),
       ]);
       setProviders(providersRes.providers);
       setCurrentProvider(settingsRes.provider);
@@ -62,6 +68,8 @@ export default function SettingsPage() {
       setSelectedProvider(settingsRes.provider);
       setModelInput(settingsRes.model);
       setApiKeyStatus(keyStatus.keys);
+      setMaxWorkers(workersRes.max_workers);
+      setMaxWorkersInput(String(workersRes.max_workers));
     } catch (err) {
       console.error("Failed to load settings", err);
       setLlmError("Failed to load settings. Is the backend running?");
@@ -121,6 +129,20 @@ export default function SettingsPage() {
       setLlmTesting(false);
     }
   }, [selectedProvider, currentProvider, modelInput, currentModel]);
+
+  const handleSaveMaxWorkers = useCallback(async () => {
+    const val = Math.max(1, Math.min(50, parseInt(maxWorkersInput, 10) || 10));
+    setMaxWorkersSaving(true);
+    try {
+      const result = await updateMaxWorkers(val);
+      setMaxWorkers(result.max_workers);
+      setMaxWorkersInput(String(result.max_workers));
+    } catch (err) {
+      console.error("Failed to save max workers", err);
+    } finally {
+      setMaxWorkersSaving(false);
+    }
+  }, [maxWorkersInput]);
 
   const handleSaveApiKey = useCallback(async (provider: string) => {
     const key = apiKeyInputs[provider] || "";
@@ -443,6 +465,41 @@ export default function SettingsPage() {
               )}
             </Card>
           </div>
+
+          {/* Performance */}
+          <Card variant="glass" className="p-5">
+            <div className="mb-4">
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Performance</p>
+              <p className="mt-1.5 text-sm text-slate-400">Control how many reviews are classified in parallel</p>
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-slate-500">
+                  Parallel requests
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={maxWorkersInput}
+                  onChange={(e) => setMaxWorkersInput(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-slate-950/50 p-2.5 font-mono text-sm text-slate-200 focus:border-sky-500 focus:outline-none transition-colors"
+                />
+              </div>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleSaveMaxWorkers}
+                disabled={maxWorkersSaving || parseInt(maxWorkersInput, 10) === maxWorkers}
+                className="text-xs"
+              >
+                {maxWorkersSaving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+            <p className="mt-2 text-[10px] text-slate-500">
+              Higher values speed up classification but use more API quota. Ollama always uses 1.
+            </p>
+          </Card>
 
           {/* Diagnostics */}
           <Card variant="glass" className="p-5">

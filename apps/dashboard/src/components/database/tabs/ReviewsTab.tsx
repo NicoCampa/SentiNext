@@ -6,14 +6,8 @@ import { Button } from '@/components/ui/button';
 import { FilterSidebar } from '@/components/database/FilterSidebar';
 import { FilterPills } from '@/components/database/FilterPills';
 import { ReviewModal } from '@/components/database/ReviewModal';
-import { ExportPreviewDialog, type ExportOptions } from '@/components/database/ExportPreviewDialog';
 import { useUiPreferences } from '@/contexts/UiPreferencesContext';
-import {
-  fetchDatabaseReviews,
-  fetchDatabaseExportCount,
-  downloadDatabaseExport,
-  type DatabaseExportCount,
-} from '@/lib/api';
+import { fetchDatabaseReviews } from '@/lib/api';
 import { formatTaxonomyLabel, MAIN_CATEGORY_LABELS, titleize } from '@/lib/taxonomyLabels';
 import { languageLabelFor } from '@/lib/languageOptions';
 import type { DatabaseReviewsResponse, DatabaseReviewItem, DatabaseGameOption } from '@/types';
@@ -50,10 +44,12 @@ function reviewTimestamp(value?: string | null): number {
 
 interface ReviewsTabProps {
   games: DatabaseGameOption[];
+  onDeleteGame: (appId: number) => Promise<void>;
+  onClearDatabase: () => Promise<void>;
   t: (key: string) => string;
 }
 
-export function ReviewsTab({ games, t }: ReviewsTabProps) {
+export function ReviewsTab({ games, onDeleteGame, onClearDatabase, t }: ReviewsTabProps) {
   const searchParams = useSearchParams();
   const deepLinkedReviewId = searchParams.get('review');
   const { density } = useUiPreferences();
@@ -87,13 +83,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
 
   // Mobile
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Export
-  const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
-  const [exportPreviewData, setExportPreviewData] = useState<DatabaseExportCount | null>(null);
-  const [exportPreviewLoading, setExportPreviewLoading] = useState(false);
-  const [downloadBusy, setDownloadBusy] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // Load reviews automatically
   useEffect(() => {
@@ -414,54 +403,9 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
     games,
   ]);
 
-  // Export
-  async function handleExportPreview() {
-    setDownloadError(null);
-    setExportPreviewOpen(true);
-    setExportPreviewLoading(true);
-    setExportPreviewData(null);
-    try {
-      const data = await fetchDatabaseExportCount({
-        app_id: selectedAppId,
-        language: languageFilter === 'all' ? null : languageFilter,
-        query: activeQuery || null,
-      });
-      setExportPreviewData(data);
-    } catch (err) {
-      setDownloadError((err as Error).message || 'Failed to load export preview.');
-    } finally {
-      setExportPreviewLoading(false);
-    }
-  }
-
-  async function handleDownload(format: 'csv' | 'jsonl', options: ExportOptions) {
-    setDownloadBusy(true);
-    setDownloadError(null);
-    setExportPreviewOpen(false);
-    try {
-      await downloadDatabaseExport({
-        format,
-        app_id: selectedAppId,
-        language: languageFilter === 'all' ? null : languageFilter,
-        query: activeQuery || null,
-        max_rows: options.maxRows,
-      });
-    } catch (err) {
-      setDownloadError((err as Error).message || 'Download failed.');
-    } finally {
-      setDownloadBusy(false);
-    }
-  }
 
   const totalPages = Math.max(1, Math.ceil(pageTotal / limit));
   const currentPage = Math.floor(offset / limit) + 1;
-  const loadedStart = pageTotal === 0 ? 0 : offset + 1;
-  const loadedEnd = Math.min(pageTotal, offset + pageItems.length);
-  const selectedGameLabel =
-    selectedAppId === null
-      ? t('database.allGames')
-      : games.find((game) => game.app_id === selectedAppId)?.name || `App ${selectedAppId}`;
-
   function openReviewAt(index: number) {
     const next = sortedReviews[index];
     if (!next) return;
@@ -481,15 +425,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
 
   return (
     <>
-      <ExportPreviewDialog
-        isOpen={exportPreviewOpen}
-        onClose={() => setExportPreviewOpen(false)}
-        onExport={handleDownload}
-        previewData={exportPreviewData}
-        loading={exportPreviewLoading}
-        exporting={downloadBusy}
-      />
-
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         {/* Filter sidebar */}
         <div className="lg:sticky lg:top-6 lg:self-start">
@@ -521,6 +456,8 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
             subcategoryOptions={subcategoryOptions}
             onClearAll={handleClearAll}
             activeFilterCount={activeFilterCount}
+            onDeleteGame={() => selectedAppId !== null ? onDeleteGame(selectedAppId) : Promise.resolve()}
+            onClearDatabase={onClearDatabase}
             t={t}
           />
         </div>
@@ -551,10 +488,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
                       ? 'Loading reviews...'
                       : `${sortedReviews.length.toLocaleString()} visible of ${pageTotal.toLocaleString()}`}
                   </p>
-                  <p className="text-[11px] text-slate-500">
-                    Navigate faster with <span className="text-slate-400">J/K</span> or arrow
-                    keys.
-                  </p>
                 </div>
               </div>
 
@@ -584,14 +517,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
                   <option value={500}>500 rows</option>
                 </select>
 
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleExportPreview}
-                  disabled={downloadBusy}
-                >
-                  {t('database.export')}
-                </Button>
               </div>
             </div>
 
@@ -648,34 +573,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Visible now</p>
-              <p className="mt-1 text-sm font-medium text-slate-200">
-                {sortedReviews.length.toLocaleString()} reviews
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Loaded window</p>
-              <p className="mt-1 text-sm font-medium text-slate-200">
-                {loadedStart.toLocaleString()}-{loadedEnd.toLocaleString()} of{' '}
-                {pageTotal.toLocaleString()}
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Scope</p>
-              <p className="mt-1 line-clamp-1 text-sm font-medium text-slate-200">
-                {selectedGameLabel}
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Active filters</p>
-              <p className="mt-1 text-sm font-medium text-slate-200">
-                {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'}
-              </p>
-            </div>
-          </div>
-
           {/* Active filter pills */}
           {filterPills.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
@@ -686,7 +583,6 @@ export function ReviewsTab({ games, t }: ReviewsTabProps) {
             </div>
           )}
 
-          {downloadError && <p className="text-xs text-rose-300">{downloadError}</p>}
 
           {/* Review list */}
           <div>

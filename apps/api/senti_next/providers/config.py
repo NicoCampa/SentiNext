@@ -13,7 +13,7 @@ SUGGESTED_MODELS: dict[str, list[str]] = {
     "gemini": ["gemini-flash-lite-latest", "gemini-flash-latest"],
     "xai": ["grok-4-1-fast-non-reasoning", "grok-4-1-fast-reasoning"],
     "openai": ["gpt-5-mini", "gpt-5-nano"],
-    "ollama": ["llama3.1:8b", "qwen2.5:7b", "gemma2:9b"],
+    "ollama": ["gemma3:27b-cloud", "gpt-oss:120b-cloud", "gpt-oss:20b-cloud"],
 }
 
 # Default model per provider (first suggested model)
@@ -188,6 +188,27 @@ def set_active_provider(provider: str, model: str) -> None:
     cfg["model"] = model
     _save_config(cfg)
     logger.info("Active LLM provider set to %s/%s", provider, model)
+
+
+def get_max_workers() -> int:
+    """Return the configured max parallel LLM workers.
+
+    Priority: config file > env var > default (10).
+    """
+    cfg = _load_config()
+    val = cfg.get("max_workers")
+    if val is not None:
+        return max(1, min(int(val), 50))
+    return max(1, int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "10")))
+
+
+def set_max_workers(n: int) -> None:
+    """Persist the max parallel LLM workers setting."""
+    n = max(1, min(n, 50))
+    cfg = _load_config()
+    cfg["max_workers"] = n
+    _save_config(cfg)
+    logger.info("Max parallel workers set to %s", n)
 
 
 # Load stored keys into environment on module import

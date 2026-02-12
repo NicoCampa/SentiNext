@@ -25,6 +25,8 @@ interface FilterSidebarProps {
   subcategoryOptions: { value: string; label: string; main?: string }[];
   onClearAll: () => void;
   activeFilterCount: number;
+  onDeleteGame: () => void;
+  onClearDatabase: () => void;
   t: (key: string) => string;
 }
 
@@ -50,9 +52,13 @@ export function FilterSidebar({
   subcategoryOptions,
   onClearAll,
   activeFilterCount,
+  onDeleteGame,
+  onClearDatabase,
   t,
 }: FilterSidebarProps) {
   const [categoriesOpen, setCategoriesOpen] = useState(true);
+  const [dataOpen, setDataOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'game' | 'all' | null>(null);
 
   return (
     <>
@@ -65,7 +71,7 @@ export function FilterSidebar({
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-[280px] transform border-r border-white/10 bg-slate-900/95 backdrop-blur-xl transition-transform duration-300 ease-in-out lg:inset-auto lg:z-0 lg:h-auto lg:w-full lg:translate-x-0 lg:rounded-2xl lg:border lg:border-white/10 lg:bg-slate-900/65 ${
+        className={`fixed inset-y-0 left-0 z-50 w-[280px] transform border-r border-white/10 bg-slate-900/95 backdrop-blur-xl transition-transform duration-300 ease-in-out lg:static lg:z-0 lg:h-auto lg:w-full lg:translate-x-0 lg:rounded-2xl lg:border lg:border-white/10 lg:bg-slate-900/65 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -214,6 +220,88 @@ export function FilterSidebar({
                           </option>
                         ))}
                     </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Data management - collapsible */}
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setDataOpen(!dataOpen)}
+                className="flex w-full items-center justify-between text-xs text-slate-400 hover:text-slate-300"
+              >
+                <span>Data</span>
+                <svg
+                  className={`h-3.5 w-3.5 transition-transform ${dataOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {dataOpen && (
+                <div className="space-y-2 pt-1">
+                  {selectedAppId !== null && (
+                    <div>
+                      {confirmAction === 'game' ? (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="flex-1 border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
+                            onClick={() => { onDeleteGame(); setConfirmAction(null); }}
+                          >
+                            Confirm
+                          </Button>
+                          <Button variant="secondary" size="sm" className="flex-1" onClick={() => setConfirmAction(null)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-full text-rose-300 hover:bg-rose-500/10"
+                          onClick={() => setConfirmAction('game')}
+                        >
+                          Delete selected game
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    {confirmAction === 'all' ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
+                          onClick={() => { onClearDatabase(); setConfirmAction(null); }}
+                        >
+                          Confirm
+                        </Button>
+                        <Button variant="secondary" size="sm" className="flex-1" onClick={() => setConfirmAction(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="w-full text-rose-300 hover:bg-rose-500/10"
+                        onClick={() => setConfirmAction('all')}
+                      >
+                        Clear entire database
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

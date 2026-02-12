@@ -139,6 +139,27 @@ def update_llm_settings(body: LLMSettingsUpdate) -> LLMSettingsResponse:
     )
 
 
+class MaxWorkersResponse(BaseModel):
+    max_workers: int
+
+
+class MaxWorkersUpdate(BaseModel):
+    max_workers: int = Field(..., ge=1, le=50, description="Number of parallel LLM requests (1-50)")
+
+
+@router.get("/settings/max-workers", response_model=MaxWorkersResponse)
+def get_max_workers_setting() -> MaxWorkersResponse:
+    from ..providers.config import get_max_workers
+    return MaxWorkersResponse(max_workers=get_max_workers())
+
+
+@router.put("/settings/max-workers", response_model=MaxWorkersResponse)
+def update_max_workers_setting(body: MaxWorkersUpdate) -> MaxWorkersResponse:
+    from ..providers.config import set_max_workers, get_max_workers
+    set_max_workers(body.max_workers)
+    return MaxWorkersResponse(max_workers=get_max_workers())
+
+
 class LLMTestResponse(BaseModel):
     status: str  # "ok" or "error"
     message: str

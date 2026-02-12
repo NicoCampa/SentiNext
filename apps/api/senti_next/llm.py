@@ -1893,7 +1893,8 @@ def ensure_review_labels(
             # Keep Ollama strictly sequential to avoid local model overload/timeouts.
             max_workers = 1
         else:
-            max_workers = max(1, int(os.getenv("SENTINEXT_MAX_PARALLEL_BATCHES", "10")))
+            from .providers.config import get_max_workers
+            max_workers = get_max_workers()
         logger.info(
             "Processing %s reviews in parallel (max_workers=%s, provider=%s)",
             len(pending_reviews),
