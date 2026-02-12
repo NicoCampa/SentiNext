@@ -610,6 +610,14 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
     if not result:
         raise HTTPException(status_code=404, detail="No analysis result available for this app.")
 
+    # If the previous run failed due to a config issue (no LLM provider),
+    # clear the failed status so the user isn't stuck seeing a stale error.
+    # They can simply re-analyze after fixing their settings.
+    if result.get("status") == "failed":
+        error_msg = (result.get("error") or "").lower()
+        if "no llm provider" in error_msg or "not configured" in error_msg or "no api key" in error_msg:
+            raise HTTPException(status_code=404, detail="Previous analysis failed due to missing LLM configuration. Please configure a provider in Settings and re-analyze.")
+
     metadata_payload = result.get("metadata")
     if metadata_payload and not metadata_payload.get("header_image"):
         details = fetch_app_details(app_id)

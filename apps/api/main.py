@@ -211,11 +211,11 @@ async def startup_gate_middleware(request: Request, call_next):
 _rate_limit_buckets: Dict[str, collections.deque] = {}
 
 _RATE_LIMITS: Dict[str, int] = {
-    "/analyze": int(os.getenv("SENTINEXT_RATE_ANALYZE", "20")),
-    "/chat": int(os.getenv("SENTINEXT_RATE_CHAT", "60")),
-    "/chat/simple": int(os.getenv("SENTINEXT_RATE_CHAT", "60")),
+    "/analyze": int(os.getenv("SENTINEXT_RATE_ANALYZE", "60")),
+    "/chat": int(os.getenv("SENTINEXT_RATE_CHAT", "120")),
+    "/chat/simple": int(os.getenv("SENTINEXT_RATE_CHAT", "120")),
 }
-_DEFAULT_RATE_LIMIT = int(os.getenv("SENTINEXT_RATE_DEFAULT", "120"))
+_DEFAULT_RATE_LIMIT = int(os.getenv("SENTINEXT_RATE_DEFAULT", "600"))
 _RATE_WINDOW_SECONDS = 60
 _RATE_EXEMPT = {"/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"}
 
