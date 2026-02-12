@@ -33,6 +33,12 @@ with patch.dict("os.environ", {
 
 client = TestClient(app, raise_server_exceptions=False)
 
+# Mark startup as complete so the startup gate middleware doesn't block
+# test requests with 503.  In production this is set by the background
+# init thread inside the lifespan; in tests we skip that entirely.
+from apps.api.senti_next import db as _db_mod
+_db_mod.startup_complete.set()
+
 
 class TestHealthEndpoint:
     def test_health_returns_ok(self):
