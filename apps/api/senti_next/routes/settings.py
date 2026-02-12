@@ -98,13 +98,16 @@ class AdminDashboardResponse(BaseModel):
 @router.get("/health")
 def healthcheck() -> dict:
     from fastapi.responses import JSONResponse
+    ts = datetime.now(timezone.utc).isoformat() + "Z"
+    if not db_module.startup_complete.is_set():
+        return {"status": "starting", "database": "initializing", "timestamp": ts}
     db_ok = db_module.check_db_health()
     if not db_ok:
         return JSONResponse(
             status_code=503,
-            content={"status": "unhealthy", "database": "unreachable", "timestamp": datetime.now(timezone.utc).isoformat() + "Z"},
+            content={"status": "unhealthy", "database": "unreachable", "timestamp": ts},
         )
-    return {"status": "ok", "database": "connected", "timestamp": datetime.now(timezone.utc).isoformat() + "Z"}
+    return {"status": "ok", "database": "connected", "timestamp": ts}
 
 
 @router.get("/config")

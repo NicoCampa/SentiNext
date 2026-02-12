@@ -59,11 +59,6 @@ def _validate_startup_env() -> None:
 
 _validate_startup_env()
 
-db_module.init_db()
-
-# Configure structured logging (JSON or text based on SENTINEXT_LOG_FORMAT)
-logging_config.configure_logging()
-
 APP_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -135,10 +130,25 @@ _configure_file_logging()
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    # Startup
-    logger.info("SentiNext API starting up")
+    # Startup — run DB init in a background thread so the server can
+    # bind the port immediately and respond to /health while still loading.
+    import threading
+
+    def _background_init():
+        try:
+            db_module.init_db()
+            logging_config.configure_logging()
+        except Exception:
+            logger.exception("Background startup init failed")
+        finally:
+            db_module.startup_complete.set()
+
+    init_thread = threading.Thread(target=_background_init, daemon=True)
+    init_thread.start()
+    logger.info("SentiNext API starting up (DB init in background)")
     yield
-    # Shutdown
+    # Shutdown — wait briefly for the init thread, then clean up.
+    init_thread.join(timeout=10)
     logger.info("SentiNext API shutting down")
     try:
         if redis_client.is_redis_configured():
@@ -175,6 +185,23 @@ async def _global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal server error."},
     )
+
+
+# ---------------------------------------------------------------------------
+# Startup gate — return 503 for non-health endpoints while DB init runs
+# ---------------------------------------------------------------------------
+
+_STARTUP_EXEMPT = {"/health", "/docs", "/openapi.json"}
+
+
+@app.middleware("http")
+async def startup_gate_middleware(request: Request, call_next):
+    if not db_module.startup_complete.is_set() and request.url.path not in _STARTUP_EXEMPT:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Server is starting up, please wait..."},
+        )
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator, Optional
@@ -12,6 +13,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.pool import QueuePool, StaticPool
 
 logger = logging.getLogger(__name__)
+
+# Signals when init_db() and logging setup have completed.
+# Checked by the health endpoint and startup gate middleware.
+startup_complete = threading.Event()
 
 _engine: Optional[Engine] = None
 

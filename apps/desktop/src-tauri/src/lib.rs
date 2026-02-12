@@ -85,7 +85,7 @@ pub fn run() {
                     // Inject the API base URL and run health check
                     let handle_clone = handle.clone();
                     tauri::async_runtime::spawn(async move {
-                        match wait_for_backend(port, Duration::from_secs(30)).await {
+                        match wait_for_backend(port, Duration::from_secs(120)).await {
                             Ok(()) => {
                                 let js = format!(
                                     "window.__SENTINEXT_API_BASE__ = 'http://127.0.0.1:{}';",
