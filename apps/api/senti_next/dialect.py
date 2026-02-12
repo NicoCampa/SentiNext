@@ -9,6 +9,8 @@ import hashlib
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from sqlalchemy import text
+
 
 def _get_db_url() -> str:
     """Get the database URL from environment (cached)."""
@@ -325,6 +327,20 @@ def on_conflict_partial_index(condition: str) -> str:
     SQLite:     WHERE condition (supported in SQLite 3.15+)
     """
     return f"WHERE {condition}"
+
+
+def try_advisory_lock(conn, lock_id: int) -> bool:
+    """Try to acquire an advisory lock. No-op on SQLite (always returns True)."""
+    if is_sqlite():
+        return True
+    return bool(conn.execute(text("SELECT pg_try_advisory_lock(:lock_id)"), {"lock_id": lock_id}).scalar())
+
+
+def advisory_unlock(conn, lock_id: int) -> None:
+    """Release an advisory lock. No-op on SQLite."""
+    if is_sqlite():
+        return
+    conn.execute(text("SELECT pg_advisory_unlock(:lock_id)"), {"lock_id": lock_id})
 
 
 def serialize_array(values: Optional[list]) -> Any:

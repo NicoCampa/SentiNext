@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import storage, db as db_module
+from .. import storage, db as db_module, dialect as d
 from ._guards import admin_token, env_flag, require_admin_token
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ def storage_paths() -> dict:
     data_dir = Path(user_data_dir("SentiNext", "SentiNext"))
     log_file = _log_file_path()
     return {
-        "database": "PostgreSQL (external)",
+        "database": "SQLite (local)" if d.is_sqlite() else "PostgreSQL (external)",
         "data_dir": str(data_dir),
         "logs_dir": str(log_file.parent),
         "log_file": str(log_file),

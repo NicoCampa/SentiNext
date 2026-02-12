@@ -13,9 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import text
-
-from .. import storage, llm, redis_client, jobs as job_runner, db as db_module
+from .. import storage, llm, redis_client, jobs as job_runner, db as db_module, dialect as d
 from ..steam_api import fetch_app_details, fetch_news_for_app, SteamAPIError
 from ..insights import prepare_insights
 from ..analysis import recommended_share_over_time
@@ -455,17 +453,10 @@ def analyze(
     except Exception as exc:
         logger.warning("Failed to estimate cached labels for app %s: %s", request.app_id, exc)
 
-    from .. import db as db_mod
-    with db_mod.get_connection() as conn:
-        lock_acquired = conn.execute(
-            text("SELECT pg_try_advisory_lock(:lock_id)"),
-            {"lock_id": request.app_id + 1_000_000_000},
-        ).scalar()
+    with db_module.get_connection() as conn:
+        lock_acquired = d.try_advisory_lock(conn, request.app_id + 1_000_000_000)
         if lock_acquired:
-            conn.execute(
-                text("SELECT pg_advisory_unlock(:lock_id)"),
-                {"lock_id": request.app_id + 1_000_000_000},
-            )
+            d.advisory_unlock(conn, request.app_id + 1_000_000_000)
     if not lock_acquired:
         return AnalyzeResponse(
             metadata=AnalyzeMetadata(
@@ -652,12 +643,8 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
         try:
             current_fingerprint = storage.get_reviews_fingerprint(app_id)
             if current_fingerprint and current_fingerprint != stored_fingerprint:
-                from .. import db as db_mod
-                with db_mod.get_connection() as conn:
-                    lock_acquired = conn.execute(
-                        text("SELECT pg_try_advisory_lock(:lock_id)"),
-                        {"lock_id": app_id + 2_000_000_000},
-                    ).scalar()
+                with db_module.get_connection() as conn:
+                    lock_acquired = d.try_advisory_lock(conn, app_id + 2_000_000_000)
                 if not lock_acquired:
                     logger.info("Auto-refresh skipped for app %s -- another rebuild in progress", app_id)
                 else:
@@ -702,11 +689,8 @@ def get_analysis_result(app_id: int) -> AnalysisStatusResponse:
                                 data_refreshed = True
                                 logger.info("Auto-refreshed insights for app %s (user %s) -- review pool changed", app_id, user_id)
                     finally:
-                        with db_mod.get_connection() as conn:
-                            conn.execute(
-                                text("SELECT pg_advisory_unlock(:lock_id)"),
-                                {"lock_id": app_id + 2_000_000_000},
-                            )
+                        with db_module.get_connection() as conn:
+                            d.advisory_unlock(conn, app_id + 2_000_000_000)
         except Exception:
             logger.warning("Auto-refresh failed for app %s, serving cached data", app_id)
 
