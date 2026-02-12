@@ -1,5 +1,9 @@
 # SentiNext
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="SentiNext demo" width="800" />
+</p>
+
 **Open-source Steam review intelligence for game teams.**
 
 SentiNext turns large volumes of Steam reviews into a clear, prioritized view of what players want you to fix next. It is self-hosted, evidence-driven, and built for teams that need decisions they can defend.
