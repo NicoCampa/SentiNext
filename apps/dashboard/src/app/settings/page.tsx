@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/PageTransition";
-import { fetchLogTail, getProviders, getLlmSettings, updateLlmSettings, getApiKeyStatus, updateApiKey } from "@/lib/api";
+import { fetchLogTail, getProviders, getLlmSettings, updateLlmSettings, getApiKeyStatus, updateApiKey, testLlmConnection } from "@/lib/api";
 import type { LlmProvider } from "@/lib/api";
 import { useBackendHealth } from "@/hooks/useBackendHealth";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -37,6 +37,8 @@ export default function SettingsPage() {
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmError, setLlmError] = useState<string | null>(null);
   const [llmSuccess, setLlmSuccess] = useState(false);
+  const [llmTesting, setLlmTesting] = useState(false);
+  const [llmTestResult, setLlmTestResult] = useState<{ status: "ok" | "error"; message: string } | null>(null);
 
   // API key state
   const [apiKeyStatus, setApiKeyStatus] = useState<Record<string, boolean>>({});
@@ -99,6 +101,26 @@ export default function SettingsPage() {
       setLlmSaving(false);
     }
   }, [selectedProvider, modelInput]);
+
+  const handleTestLlm = useCallback(async () => {
+    const providerToTest = selectedProvider || currentProvider;
+    const modelToTest = modelInput || currentModel;
+    if (!providerToTest || !modelToTest) return;
+    setLlmTesting(true);
+    setLlmTestResult(null);
+    setLlmError(null);
+    try {
+      const result = await testLlmConnection(providerToTest, modelToTest);
+      setLlmTestResult({ status: result.status, message: result.message });
+      if (result.status === "ok") {
+        setTimeout(() => setLlmTestResult(null), 8000);
+      }
+    } catch (err) {
+      setLlmTestResult({ status: "error", message: err instanceof Error ? err.message : "Test failed." });
+    } finally {
+      setLlmTesting(false);
+    }
+  }, [selectedProvider, currentProvider, modelInput, currentModel]);
 
   const handleSaveApiKey = useCallback(async (provider: string) => {
     const key = apiKeyInputs[provider] || "";
@@ -382,16 +404,41 @@ export default function SettingsPage() {
                       <span className="text-xs text-emerald-300">Settings saved successfully</span>
                     </div>
                   )}
+                  {llmTestResult && (
+                    <div className={`flex items-center gap-2 rounded-lg border p-2 ${
+                      llmTestResult.status === "ok"
+                        ? "border-emerald-500/30 bg-emerald-500/10"
+                        : "border-rose-500/30 bg-rose-500/10"
+                    }`}>
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        llmTestResult.status === "ok" ? "bg-emerald-400" : "bg-rose-400"
+                      }`} />
+                      <span className={`text-xs ${
+                        llmTestResult.status === "ok" ? "text-emerald-300" : "text-rose-400"
+                      }`}>{llmTestResult.message}</span>
+                    </div>
+                  )}
 
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={handleSaveLlm}
-                    disabled={llmSaving || !selectedProvider || !modelInput || !hasChanges}
-                    className="text-xs"
-                  >
-                    {llmSaving ? 'Saving...' : 'Save LLM Settings'}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={handleSaveLlm}
+                      disabled={llmSaving || !selectedProvider || !modelInput || !hasChanges}
+                      className="text-xs"
+                    >
+                      {llmSaving ? 'Saving...' : 'Save LLM Settings'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleTestLlm}
+                      disabled={llmTesting || !selectedProvider || !modelInput}
+                      className="text-xs"
+                    >
+                      {llmTesting ? 'Testing...' : 'Test Connection'}
+                    </Button>
+                  </div>
                 </div>
               )}
             </Card>

@@ -354,6 +354,26 @@ def analyze(
     if filter_type not in {"recent", "updated", "all", "recent_created", "best"}:
         filter_type = "recent"
 
+    # Pre-flight: verify LLM provider is configured and has an API key
+    from ..providers import get_active_provider
+    from ..providers.config import _provider_has_key
+    provider_name, _ = get_active_provider()
+    if not provider_name:
+        raise HTTPException(
+            status_code=400,
+            detail="No LLM provider configured. Please set one in Settings before analyzing.",
+        )
+    if not _provider_has_key(provider_name):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider '{provider_name}' is configured but has no API key. Add one in Settings or set the appropriate environment variable.",
+        )
+
+    # Clean up any analyses stuck in 'running' state for > 5 minutes
+    cleared = storage.clear_stale_running_analyses(max_age_seconds=300)
+    if cleared:
+        logger.info("Cleared stale running analyses for app_ids: %s", cleared)
+
     running_app_id = storage.has_running_analysis(exclude_app_id=request.app_id)
     if running_app_id is not None:
         raise HTTPException(

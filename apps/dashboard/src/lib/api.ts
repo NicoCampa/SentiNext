@@ -57,9 +57,6 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
-  if (response.status === 429) {
-    throw new Error("You're making requests too quickly. Please wait a moment and try again.");
-  }
   if (!response.ok) {
     let detail: string | undefined;
     try {
@@ -70,6 +67,9 @@ async function handleResponse<T>(response: Response): Promise<T> {
       try {
         detail = await response.text();
       } catch { /* ignore */ }
+    }
+    if (response.status === 429) {
+      throw new Error(detail || "You're making requests too quickly. Please wait a moment and try again.");
     }
     throw new Error(detail || `Request failed with status ${response.status}`);
   }
@@ -1084,6 +1084,22 @@ export async function getProviders(): Promise<LlmProvidersResponse> {
 export async function getLlmSettings(): Promise<LlmSettings> {
   const response = await apiFetch(apiUrl("/settings/llm"), { cache: "no-store" });
   return handleResponse<LlmSettings>(response);
+}
+
+export interface LlmTestResult {
+  status: "ok" | "error";
+  message: string;
+  model_id: string;
+  response_time_ms: number;
+}
+
+export async function testLlmConnection(provider: string, model: string): Promise<LlmTestResult> {
+  const response = await apiFetch(apiUrl("/settings/llm/test"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, model }),
+  });
+  return handleResponse<LlmTestResult>(response);
 }
 
 export async function updateLlmSettings(provider: string, model: string): Promise<LlmSettings> {

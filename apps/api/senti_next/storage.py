@@ -1229,6 +1229,46 @@ def save_analysis_result(
         )
 
 
+def clear_stale_running_analyses(max_age_seconds: int = 300) -> List[int]:
+    """Find any analyses stuck in 'running' state with stale progress and mark them failed.
+
+    Returns list of app_ids that were cleared.
+    """
+    from . import db as db_module
+
+    cleared: List[int] = []
+    with db_module.get_connection() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT app_id FROM analysis_results
+                WHERE user_id = :user_id AND status = 'running'
+            """),
+            {"user_id": _DEFAULT_USER_ID},
+        ).fetchall()
+
+    for row in rows:
+        aid = int(row[0])
+        progress = load_progress(aid)
+        updated_ts = (progress or {}).get("updated_at", 0)
+        if updated_ts:
+            age = (datetime.now(timezone.utc) - datetime.fromtimestamp(updated_ts, tz=timezone.utc)).total_seconds()
+        else:
+            age = float("inf")
+        if age >= max_age_seconds:
+            save_analysis_result(
+                app_id=aid,
+                metadata=None,
+                insights=None,
+                reviews=[],
+                status="failed",
+                error="Analysis timed out (stale running state cleared automatically)",
+            )
+            clear_progress(aid)
+            cleared.append(aid)
+
+    return cleared
+
+
 def has_running_analysis(exclude_app_id: Optional[int] = None) -> Optional[int]:
     """Check if the user has any analysis currently running.
 

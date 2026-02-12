@@ -139,6 +139,55 @@ def update_llm_settings(body: LLMSettingsUpdate) -> LLMSettingsResponse:
     )
 
 
+class LLMTestResponse(BaseModel):
+    status: str  # "ok" or "error"
+    message: str
+    model_id: str = ""
+    response_time_ms: int = 0
+
+
+@router.post("/settings/llm/test", response_model=LLMTestResponse)
+def test_llm_connection(body: LLMSettingsUpdate) -> LLMTestResponse:
+    """Send a single test prompt to verify the LLM provider works."""
+    import time
+    from ..providers import get_provider, SUGGESTED_MODELS
+    from ..providers.config import _provider_has_key
+
+    valid_providers = set(SUGGESTED_MODELS.keys())
+    if body.provider not in valid_providers:
+        raise HTTPException(status_code=400, detail=f"Invalid provider '{body.provider}'.")
+
+    if body.provider != "ollama" and not _provider_has_key(body.provider):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider '{body.provider}' has no API key configured.",
+        )
+
+    model_id = f"{body.provider}:{body.model}"
+    try:
+        provider = get_provider(name=body.provider, model=body.model)
+        start = time.monotonic()
+        result = provider.generate(
+            prompt="Reply with exactly: OK",
+            system="You are a test assistant. Reply with exactly the word OK and nothing else.",
+            temperature=0.0,
+        )
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return LLMTestResponse(
+            status="ok",
+            message=f"Connection successful ({elapsed_ms}ms). Model responded: {result.strip()[:80]}",
+            model_id=model_id,
+            response_time_ms=elapsed_ms,
+        )
+    except Exception as exc:
+        logger.warning("LLM test failed for %s: %s", model_id, exc)
+        return LLMTestResponse(
+            status="error",
+            message=str(exc)[:300],
+            model_id=model_id,
+        )
+
+
 class ApiKeyUpdate(BaseModel):
     provider: str = Field(..., description="Provider name: gemini, xai, openai")
     api_key: str = Field(..., description="API key value (empty string to remove)")
