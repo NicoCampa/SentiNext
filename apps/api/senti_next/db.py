@@ -10,7 +10,7 @@ from typing import Generator, Optional
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +61,14 @@ def get_engine() -> Engine:
 
     url = get_database_url()
 
+    # In-memory SQLite needs StaticPool so all connections share the same DB.
+    # File-based SQLite uses NullPool for safe multi-thread concurrency.
+    is_memory = url in ("sqlite://", "sqlite:///:memory:")
+    pool_class = StaticPool if is_memory else NullPool
+
     _engine = create_engine(
         url,
-        poolclass=NullPool,
+        poolclass=pool_class,
         connect_args={"check_same_thread": False},
         echo=os.getenv("SENTINEXT_DB_ECHO", "").lower() in ("1", "true"),
     )
