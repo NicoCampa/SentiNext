@@ -77,6 +77,8 @@ export default function SettingsPage() {
     const provider = providers.find(p => p.name === providerName);
     if (provider && provider.suggested_models.length > 0) {
       setModelInput(provider.suggested_models[0]);
+    } else {
+      setModelInput("");
     }
   }, [providers]);
 
@@ -103,6 +105,7 @@ export default function SettingsPage() {
     setApiKeySaving(provider);
     setApiKeyError(null);
     setApiKeySuccess(null);
+    setLlmSaving(true); // Block LLM save while key save is in flight
     try {
       const result = await updateApiKey(provider, key);
       setApiKeyStatus(result.keys);
@@ -116,6 +119,7 @@ export default function SettingsPage() {
       setApiKeyError(err instanceof Error ? err.message : `Failed to save API key for ${provider}.`);
     } finally {
       setApiKeySaving(null);
+      setLlmSaving(false);
     }
   }, [apiKeyInputs]);
 
@@ -326,7 +330,7 @@ export default function SettingsPage() {
                     >
                       <option value="" disabled>Select a provider...</option>
                       {providers.map((p) => (
-                        <option key={p.name} value={p.name} disabled={!p.available}>
+                        <option key={p.name} value={p.name} disabled={!p.available && p.name !== selectedProvider}>
                           {p.name}{!p.available ? ' (no API key)' : ''}
                         </option>
                       ))}

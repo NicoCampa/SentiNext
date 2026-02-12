@@ -45,10 +45,12 @@ def _load_config() -> dict[str, Any]:
 
 
 def _save_config(cfg: dict[str, Any]) -> None:
-    """Persist config to disk."""
+    """Persist config to disk (atomic write via temp file + rename)."""
     try:
         _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        _CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        tmp = _CONFIG_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        tmp.replace(_CONFIG_FILE)
     except Exception as exc:
         logger.warning("Failed to save LLM config: %s", exc)
 
@@ -68,10 +70,12 @@ def _load_stored_keys() -> dict[str, str]:
 
 
 def _save_stored_keys(keys: dict[str, str]) -> None:
-    """Persist API keys to disk."""
+    """Persist API keys to disk (atomic write via temp file + rename)."""
     try:
         _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        _API_KEYS_FILE.write_text(json.dumps(keys, indent=2), encoding="utf-8")
+        tmp = _API_KEYS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(keys, indent=2), encoding="utf-8")
+        tmp.replace(_API_KEYS_FILE)
     except Exception as exc:
         logger.warning("Failed to save API keys: %s", exc)
 
@@ -87,10 +91,9 @@ def load_stored_api_keys() -> None:
         key_value = stored.get(provider, "").strip()
         if not key_value:
             continue
-        # Set the primary env var for this provider (first in list)
-        primary_var = env_vars[0]
-        if not os.getenv(primary_var):
-            os.environ[primary_var] = key_value
+        # Set the primary env var only if no env var for this provider is already set
+        if not any(os.getenv(v) for v in env_vars):
+            os.environ[env_vars[0]] = key_value
 
 
 def save_api_key(provider: str, api_key: str) -> None:
@@ -124,11 +127,11 @@ def get_api_key_status() -> dict[str, bool]:
 def _provider_has_key(provider: str) -> bool:
     """Check if a provider's API key is configured (env vars or stored keys)."""
     if provider == "gemini":
-        return bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+        return bool(os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip())
     if provider == "xai":
-        return bool(os.getenv("XAI_API_KEY"))
+        return bool(os.getenv("XAI_API_KEY", "").strip())
     if provider == "openai":
-        return bool(os.getenv("OPENAI_API_KEY"))
+        return bool(os.getenv("OPENAI_API_KEY", "").strip())
     if provider == "ollama":
         return True
     return False
@@ -157,25 +160,22 @@ def get_active_provider() -> tuple[str, str]:
     """Return (provider_name, model_name) for the currently active provider.
 
     Priority:
-    1. Explicit config in llm_config.json
+    1. Explicit config in llm_config.json (always returned if saved)
     2. Environment variables (SENTINEXT_LLM_PROVIDER / SENTINEXT_LLM_MODEL)
     3. No default — returns ("", "") so the user must choose via settings
     """
-    # Check persisted config
+    # Check persisted config — return saved selection regardless of API key state.
+    # Callers that need a *usable* provider should check _provider_has_key() separately.
     cfg = _load_config()
     if cfg.get("provider") and cfg.get("model"):
-        provider = cfg["provider"]
-        model = cfg["model"]
-        if _provider_has_key(provider):
-            return provider, model
+        return cfg["provider"], cfg["model"]
 
     # Check environment variables
     env_provider = os.getenv("SENTINEXT_LLM_PROVIDER", "").strip().lower()
     env_model = os.getenv("SENTINEXT_LLM_MODEL", "").strip()
     if env_provider and env_provider in SUGGESTED_MODELS:
         model = env_model or DEFAULT_MODELS.get(env_provider, "")
-        if _provider_has_key(env_provider):
-            return env_provider, model
+        return env_provider, model
 
     # No auto-detection — user must configure via settings or env vars
     return "", ""

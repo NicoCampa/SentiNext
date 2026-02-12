@@ -104,9 +104,15 @@ def export_reviews(
         )
 
     if refresh:
-        game_context = fetch_app_details(app_id)
-        with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
-            llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
+        try:
+            game_context = fetch_app_details(app_id)
+            with llm.llm_usage_context(user_id=user_id, app_id=app_id, operation="export_refresh"):
+                llm_labels = llm.ensure_review_labels(app_id, rows, game_context=game_context)
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Label refresh failed for app %s: %s", app_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to refresh review labels.") from exc
     else:
         cached_labels = storage.load_review_labels(app_id)
         if not cached_labels:

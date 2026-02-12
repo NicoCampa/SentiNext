@@ -10,7 +10,6 @@ const COSMETIC_MESSAGES = [
   '> LOADING NEURAL CORE...',
 ];
 
-const TIMEOUT_MS = 30_000;
 const POLL_MS = 1_000;
 
 function sleep(ms: number): Promise<void> {
@@ -52,24 +51,24 @@ export default function RootPage() {
       if (!active) return;
       push('> CONNECTING TO BACKEND...');
 
-      // Phase 2: poll backend health
+      // Phase 2: poll backend health (no timeout — wait until it starts)
       const startedAt = Date.now();
-      const deadline = startedAt + TIMEOUT_MS;
-      while (active && Date.now() < deadline) {
-        // Check for Tauri sidecar boot error
+      while (active) {
+        // Check for Tauri sidecar boot error (fatal — process couldn't spawn)
         if (typeof window !== 'undefined' && window.__SENTINEXT_BACKEND_BOOT_ERROR__) {
           if (active) setError(window.__SENTINEXT_BACKEND_BOOT_ERROR__);
           return;
         }
 
+        // Asymptotic progress: climbs toward 95% but never reaches it
+        const elapsed = Date.now() - startedAt;
+        if (active) setBootProgress(Math.min(95, Math.round(95 * (1 - Math.exp(-elapsed / 15_000)))));
+
         // Wait for a real API base URL (avoids tauri://localhost/api fetch failures)
         if (!hasResolvedApiBase()) {
-          if (active) setBootProgress(Math.min(95, Math.round(((Date.now() - startedAt) / TIMEOUT_MS) * 100)));
           await sleep(POLL_MS);
           continue;
         }
-
-        if (active) setBootProgress(Math.min(95, Math.round(((Date.now() - startedAt) / TIMEOUT_MS) * 100)));
 
         try {
           await fetchHealth();
@@ -86,10 +85,6 @@ export default function RootPage() {
         } catch {
           await sleep(POLL_MS);
         }
-      }
-
-      if (active) {
-        setError('Backend failed to start within 30 seconds. Check your backend logs.');
       }
     }
 

@@ -46,6 +46,14 @@ def get_provider(name: str | None = None, model: str | None = None) -> LLMProvid
         if model is None:
             model = default_model
 
+    # Verify API key is available before attempting to create a provider
+    from .config import _provider_has_key
+    if not _provider_has_key(name):
+        raise ValueError(
+            f"Provider '{name}' is configured but has no API key. "
+            f"Add one in Settings or set the appropriate environment variable."
+        )
+
     cache_key = f"{name}:{model or 'default'}"
     if cache_key in _provider_cache:
         return _provider_cache[cache_key]
@@ -92,7 +100,7 @@ def get_active_config() -> dict[str, Any]:
     return {
         "provider": name,
         "model": model,
-        "model_id": f"{name}:{model}",
+        "model_id": f"{name}:{model}" if name else "",
     }
 
 

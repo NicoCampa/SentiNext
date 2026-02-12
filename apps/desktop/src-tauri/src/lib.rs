@@ -14,23 +14,15 @@ fn find_free_port() -> u16 {
         .port()
 }
 
-/// Health-check the backend by polling GET /health.
-async fn wait_for_backend(port: u16, timeout: Duration) -> Result<(), String> {
+/// Health-check the backend by polling GET /health until it responds.
+async fn wait_for_backend(port: u16) {
     let url = format!("http://127.0.0.1:{}/health", port);
     let client = reqwest::Client::new();
-    let start = std::time::Instant::now();
     let interval = Duration::from_millis(500);
 
     loop {
-        if start.elapsed() > timeout {
-            return Err(format!(
-                "Backend did not start within {}s",
-                timeout.as_secs()
-            ));
-        }
-
         match client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => return Ok(()),
+            Ok(resp) if resp.status().is_success() => return,
             _ => {}
         }
 
@@ -85,20 +77,13 @@ pub fn run() {
                     // Inject the API base URL and run health check
                     let handle_clone = handle.clone();
                     tauri::async_runtime::spawn(async move {
-                        match wait_for_backend(port, Duration::from_secs(120)).await {
-                            Ok(()) => {
-                                let js = format!(
-                                    "window.__SENTINEXT_API_BASE__ = 'http://127.0.0.1:{}';",
-                                    port
-                                );
-                                if let Some(window) = handle_clone.get_webview_window("main") {
-                                    let _ = window.eval(&js);
-                                }
-                            }
-                            Err(err) => {
-                                eprintln!("Backend boot failed: {err}");
-                                inject_boot_error(&handle_clone, &err);
-                            }
+                        wait_for_backend(port).await;
+                        let js = format!(
+                            "window.__SENTINEXT_API_BASE__ = 'http://127.0.0.1:{}';",
+                            port
+                        );
+                        if let Some(window) = handle_clone.get_webview_window("main") {
+                            let _ = window.eval(&js);
                         }
                     });
                 }

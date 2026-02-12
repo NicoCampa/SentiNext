@@ -45,6 +45,8 @@ apps/api/.venv/
 
 # App data
 data/
+llm_config.json
+api_keys.json
 data/*.db
 data/*.sqlite
 data/reports/

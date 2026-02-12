@@ -840,6 +840,8 @@ def summarize_subcategory(request: SummarizeSubcategoryRequest) -> SummarizeSubc
                 summary_context=request.summary_context,
             )
         return SummarizeSubcategoryResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate summary.") from exc
@@ -859,6 +861,8 @@ def summarize_widget(request: SummarizeWidgetRequest) -> SummarizeWidgetResponse
                 game_context=game_context,
             )
         return SummarizeWidgetResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Widget summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate widget summary.") from exc
@@ -959,6 +963,8 @@ def summarize_recent_reviews(request: SummarizeRecentReviewsRequest) -> Summariz
             start_date=start_date,
             end_date=end_date,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Recent reviews summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate recent reviews summary.") from exc
@@ -1028,6 +1034,8 @@ def summarize_news(request: SummarizeNewsRequest) -> SummarizeNewsResponse:
             **result,
             news_count=len(news_items),
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("News summarize failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to generate news summary.") from exc

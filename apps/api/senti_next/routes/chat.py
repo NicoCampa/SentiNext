@@ -173,7 +173,11 @@ def chat_insights(request: ChatRequest) -> ChatResponse:
             max_snippets=request.max_snippets,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        msg = str(exc)
+        # LLM provider configuration errors → 503; everything else → 400
+        if "provider" in msg.lower() and ("configured" in msg.lower() or "api key" in msg.lower()):
+            raise HTTPException(status_code=503, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
     except Exception as exc:
         logger.exception("Chat failed: %s", exc)
         raise HTTPException(status_code=500, detail="Chat request failed.") from exc

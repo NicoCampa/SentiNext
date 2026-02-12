@@ -34,6 +34,9 @@ def _setup_env(port: int) -> None:
     # Allow all origins for local Tauri webview
     os.environ["SENTINEXT_ALLOWED_ORIGINS"] = f"http://127.0.0.1:{port},http://localhost:{port},tauri://localhost,https://tauri.localhost"
 
+    # Use the same data dir for LLM config and API keys
+    os.environ.setdefault("SENTINEXT_DATA_DIR", str(data_dir))
+
     # Set log file location
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
