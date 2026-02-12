@@ -41,7 +41,7 @@ function getApiBase(): string {
   return "/api";
 }
 
-function apiUrl(pathname: string): string {
+export function apiUrl(pathname: string): string {
   const base = getApiBase();
   if (!pathname.startsWith("/")) {
     throw new Error(`API path must start with '/': ${pathname}`);
@@ -72,6 +72,9 @@ async function handleResponse<T>(response: Response): Promise<T> {
       throw new Error(detail || "You're making requests too quickly. Please wait a moment and try again.");
     }
     throw new Error(detail || `Request failed with status ${response.status}`);
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return (await response.json()) as T;
 }
@@ -943,6 +946,8 @@ export interface SteamGameDetailsResponse {
   is_free: boolean;
   price_initial: number | null;
   price_final: number | null;
+  price_initial_formatted: string | null;
+  price_final_formatted: string | null;
   price_discount: number;
   price_currency: string | null;
   timestamp: number;

@@ -1,4 +1,4 @@
-"""Review classification helpers (Google Gemini)."""
+"""Review classification helpers."""
 from __future__ import annotations
 
 import asyncio
@@ -31,9 +31,8 @@ from . import storage
 
 logger = logging.getLogger(__name__)
 
-# LLM Provider configuration
+# Legacy model IDs kept for cache backward-compatibility (accepting old labels)
 GEMINI_MODEL = os.getenv("SENTINEXT_GEMINI_MODEL", "gemini-flash-lite-latest")
-GEMINI_MODEL_CHEAP = os.getenv("SENTINEXT_GEMINI_MODEL_CHEAP", "gemini-flash-lite-latest")
 
 # xAI (Grok) configuration for review classification
 XAI_API_KEY = os.getenv("XAI_API_KEY", "")
@@ -1178,49 +1177,8 @@ def _strip_schema_enums(schema: dict) -> dict:
     return result
 
 
-def _run_gemini(
-    prompt: str,
-    model: str,
-    *,
-    response_schema: Optional[type] = None,
-    response_json_schema: Optional[dict] = None,
-) -> str:
-    """Run Gemini API call via providers package.
-
-    When response_schema is set (a Pydantic BaseModel subclass), enables structured
-    output. Alternatively, pass response_json_schema directly as a dict.
-    """
-    _maybe_load_dotenv()
-    try:
-        from .providers.gemini import GeminiProvider
-        provider = GeminiProvider(model_name=model)
-
-        json_schema = response_json_schema
-        if json_schema is None and response_schema is not None:
-            json_schema = response_schema.model_json_schema()
-
-        return provider._call_gemini(prompt, model, response_json_schema=json_schema)
-    except RuntimeError as e:
-        raise LLMError(str(e), LLMErrorType.UNKNOWN, retryable=False) from e
-
-
 def _model_id(provider: str, model: str) -> str:
     return f"{provider}:{model}"
-
-
-def _run_xai(prompt: str, model: str, *, parse_model: Optional[type] = None) -> str:
-    """Run xAI (Grok) API call via providers package.
-
-    When parse_model is set, uses chat.parse() for structured output (Pydantic schema
-    enforced by the API). Otherwise falls back to chat.sample() with json_object format.
-    """
-    _maybe_load_dotenv()
-    try:
-        from .providers.xai import XAIProvider
-        provider = XAIProvider(model_name=model)
-        return provider._call_xai(prompt, model, parse_model=parse_model)
-    except RuntimeError as e:
-        raise LLMError(str(e), LLMErrorType.UNKNOWN, retryable=False) from e
 
 
 @dataclass
@@ -1260,140 +1218,8 @@ async def call_llm_with_tools(
             tool_calls=result.get("tool_calls", []),
             model=result.get("model", provider.model_id()),
         )
-    except NotImplementedError:
-        # Provider doesn't support tool calling, fall back to Gemini
-        logger.info("Active provider doesn't support tool calling, falling back to Gemini")
-        from .providers.gemini import GeminiProvider
-        gemini = GeminiProvider(model_name=model or GEMINI_MODEL)
-        result = await gemini.generate_with_tools(messages, tools)
-        return LLMResponse(
-            content=result.get("content"),
-            tool_calls=result.get("tool_calls", []),
-            model=result.get("model", gemini.model_id()),
-        )
     except RuntimeError as e:
         raise LLMError(str(e), LLMErrorType.UNKNOWN, retryable=False) from e
-
-
-def _convert_messages_to_gemini(messages: List[Dict[str, Any]]) -> List[Any]:
-    """Convert chat messages to Gemini content format.
-
-    Args:
-        messages: List of message dicts with 'role' and 'content'.
-
-    Returns:
-        List of Gemini Content objects.
-    """
-    from google.genai import types
-
-    gemini_contents = []
-    system_instruction = None
-
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-
-        if role == "system":
-            # Gemini handles system as a separate instruction, prepend to first user message
-            system_instruction = content
-            continue
-
-        elif role == "user":
-            # Prepend system instruction to first user message if present
-            if system_instruction:
-                content = f"{system_instruction}\n\n{content}"
-                system_instruction = None
-            gemini_contents.append(
-                types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=content)],
-                )
-            )
-
-        elif role == "assistant":
-            # Check if this is a tool call response
-            tool_calls = msg.get("tool_calls")
-            if tool_calls:
-                parts = []
-                for tc in tool_calls:
-                    parts.append(
-                        types.Part.from_function_call(
-                            name=tc.get("name", ""),
-                            args=tc.get("parameters", {}),
-                        )
-                    )
-                gemini_contents.append(
-                    types.Content(role="model", parts=parts)
-                )
-            elif content:
-                gemini_contents.append(
-                    types.Content(
-                        role="model",
-                        parts=[types.Part.from_text(text=content)],
-                    )
-                )
-
-        elif role == "tool":
-            # Tool results - parse JSON content and create function response parts
-            try:
-                tool_results = json.loads(content) if isinstance(content, str) else content
-                if isinstance(tool_results, list):
-                    parts = []
-                    for result in tool_results:
-                        tool_name = result.get("tool", "unknown")
-                        tool_result = result.get("result", {})
-                        parts.append(
-                            types.Part.from_function_response(
-                                name=tool_name,
-                                response=tool_result,
-                            )
-                        )
-                    gemini_contents.append(
-                        types.Content(role="user", parts=parts)
-                    )
-            except (json.JSONDecodeError, TypeError):
-                # If can't parse as JSON, just add as text
-                gemini_contents.append(
-                    types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text=str(content))],
-                    )
-                )
-
-    return gemini_contents
-
-
-def _extract_status_code(error: Exception) -> Optional[int]:
-    """Extract HTTP status code from a Gemini ClientError."""
-    status_code = getattr(error, "status_code", None)
-    if status_code is None:
-        status_code = getattr(error, "status", None)
-    if status_code is None:
-        status_code = getattr(error, "code", None)
-    if status_code is None:
-        match = re.search(r"code[\"']?\s*:\s*(\d{3})", str(error))
-        if match:
-            try:
-                status_code = int(match.group(1))
-            except ValueError:
-                pass
-    return status_code
-
-
-def _extract_retry_delay(error: Exception, default: float = 20) -> float:
-    """Extract retry delay from a Gemini error message."""
-    try:
-        raw_message = getattr(error, "message", None)
-        if raw_message is not None:
-            raw_text = str(raw_message)
-        else:
-            raw_text = str(error)
-        match = re.search(r"retry in ([\d.]+)s", raw_text, flags=re.IGNORECASE)
-        if match:
-            return float(match.group(1)) + 1
-    except Exception:
-        pass
-    return default
 
 
 def _run_llm(
@@ -1449,9 +1275,7 @@ LANGUAGE_NAMES = {
 
 
 def translate_text(text: str, target_language: str) -> tuple[str, str]:
-    """Translate text to the target language using the LLM.
-
-    Uses GEMINI_MODEL_CHEAP for cost efficiency since translation is a simpler task.
+    """Translate text to the target language using the active LLM provider.
 
     Args:
         text: The text to translate
@@ -1620,13 +1444,20 @@ def _build_batch_prompt(
     )
 
 
+def _active_model_id() -> str:
+    """Return model_id string for the currently active provider, or '' if none."""
+    from .providers.config import get_active_provider
+    name, model = get_active_provider()
+    return _model_id(name, model) if name and model else ""
+
+
 def classify_reviews_batch(
     items: Sequence[Mapping[str, Any]],
     *,
     game_context: Optional[Dict[str, Any]] = None,
 ) -> tuple[Dict[str, Dict[str, Any]], str]:
     if not items:
-        return {}, _model_id("google", GEMINI_MODEL)
+        return {}, _active_model_id()
 
     expected_ids = [str(item.get("review_id") or "") for item in items]
     if any(not rid for rid in expected_ids):
@@ -1663,7 +1494,7 @@ def classify_reviews_batch(
 def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Optional[Dict[str, Any]] = None) -> tuple[Dict[str, Dict[str, Any]], str]:
     """Classify reviews in a batch with fallback to single-review processing on failure."""
     if not items:
-        return {}, _model_id("google", GEMINI_MODEL)
+        return {}, _active_model_id()
 
     try:
         return classify_reviews_batch(items, game_context=game_context)
@@ -1673,11 +1504,11 @@ def classify_reviews(items: Sequence[Mapping[str, Any]], *, game_context: Option
             # Already single review, use default label
             review_id = str(items[0].get("review_id") or "unknown")
             logger.error(f"Single review classification failed for {review_id}: {batch_error}")
-            return {review_id: _DEFAULT_LABEL.copy()}, _model_id("google", GEMINI_MODEL)
+            return {review_id: _DEFAULT_LABEL.copy()}, _active_model_id()
 
         logger.warning(f"Batch of {len(items)} failed: {batch_error}. Retrying individually...")
         results: Dict[str, Dict[str, Any]] = {}
-        model_used = _model_id("google", GEMINI_MODEL)
+        model_used = _active_model_id()
 
         for item in items:
             review_id = str(item.get("review_id") or "unknown")

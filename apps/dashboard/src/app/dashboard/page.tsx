@@ -2268,13 +2268,13 @@ function AnalysisResults({
                       <span className="text-emerald-400">Free</span>
                     ) : gameDetails?.price_final ? (
                       <span className="inline-flex items-center gap-1">
-                        {gameDetails.price_discount > 0 && gameDetails.price_initial && (
+                        {gameDetails.price_discount > 0 && gameDetails.price_initial_formatted && (
                           <>
-                            <span className="line-through">${gameDetails.price_initial.toFixed(2)}</span>
+                            <span className="line-through">{gameDetails.price_initial_formatted}</span>
                             <span className="text-[10px] px-1 rounded bg-emerald-500/20 text-emerald-400">-{gameDetails.price_discount}%</span>
                           </>
                         )}
-                        <span>${gameDetails.price_final.toFixed(2)}</span>
+                        <span>{gameDetails.price_final_formatted ?? `$${gameDetails.price_final.toFixed(2)}`}</span>
                       </span>
                     ) : null}
                   </>

@@ -10,7 +10,7 @@ from typing import Generator, Optional
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def get_engine() -> Engine:
 
     _engine = create_engine(
         url,
-        poolclass=StaticPool,
+        poolclass=NullPool,
         connect_args={"check_same_thread": False},
         echo=os.getenv("SENTINEXT_DB_ECHO", "").lower() in ("1", "true"),
     )

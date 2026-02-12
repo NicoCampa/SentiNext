@@ -12,6 +12,7 @@ import { PageTransition } from "@/components/PageTransition";
 import { SteamImage } from "@/components/SteamImage";
 import {
   apiFetch,
+  apiUrl,
   sendEnhancedChat,
   subscribeToChatStream,
   submitCitationFeedback,
@@ -102,11 +103,6 @@ const SUGGESTED_PROMPTS = [
 const COMPARE_SUGGESTED_PROMPTS = [
   "Compare the two games on recommendation rate and top issues.",
 ];
-
-function apiUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
-  return `${base}${path}`;
-}
 
 type Message = {
   role: "user" | "assistant";
@@ -214,10 +210,12 @@ export default function ChatPage() {
 
   // Load chat sessions on mount (start with a fresh chat view)
   useEffect(() => {
+    const controller = new AbortController();
     async function loadSessions() {
       try {
-        // Load all sessions
-        const sessionsResponse = await apiFetch(apiUrl("/chat/sessions"));
+        const sessionsResponse = await apiFetch(apiUrl("/chat/sessions"), {
+          signal: controller.signal,
+        });
         if (sessionsResponse.ok) {
           const sessionsList = await sessionsResponse.json();
           setSessions(sessionsList);
@@ -225,15 +223,22 @@ export default function ChatPage() {
           console.error("Failed to load chat sessions, status:", sessionsResponse.status);
         }
       } catch (error) {
-        console.error("Failed to load chat sessions:", error);
+        if ((error as Error).name !== "AbortError") {
+          console.error("Failed to load chat sessions:", error);
+        }
       } finally {
         setLoadingHistory(false);
       }
     }
-    // Ensure the chat view starts fresh by default.
     setCurrentSessionId(null);
     setMessages([]);
     loadSessions();
+    // Timeout: stop waiting after 8 seconds
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
 
   async function handleSend() {
@@ -441,13 +446,19 @@ export default function ChatPage() {
 
   async function reloadSessions() {
     try {
-      const sessionsResponse = await apiFetch(apiUrl("/chat/sessions"));
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 8000);
+      const sessionsResponse = await apiFetch(apiUrl("/chat/sessions"), {
+        signal: controller.signal,
+      });
       if (sessionsResponse.ok) {
         const sessionsList = await sessionsResponse.json();
         setSessions(sessionsList);
       }
     } catch (error) {
-      console.error("Failed to reload sessions:", error);
+      if ((error as Error).name !== "AbortError") {
+        console.error("Failed to reload sessions:", error);
+      }
     }
   }
 

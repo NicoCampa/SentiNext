@@ -99,13 +99,125 @@ class XAIProvider(LLMProvider):
         system: str | None = None,
         temperature: float = 0.0,
     ) -> dict:
-        """xAI does not currently support tool calling.
+        """xAI tool calling via OpenAI-compatible API."""
+        import json as _json
+        from openai import AsyncOpenAI
 
-        When tool-calling is required, the caller should fall back to the first
-        available provider that supports it (Gemini or OpenAI).  The provider
-        resolution logic lives in the route/chat layer, not here.
-        """
-        raise NotImplementedError("xAI provider does not support tool calling yet.")
+        client = AsyncOpenAI(
+            api_key=self._get_api_key(),
+            base_url="https://api.x.ai/v1",
+        )
+
+        # Build messages
+        api_messages: List[Dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "tool":
+                try:
+                    tool_results = _json.loads(content) if isinstance(content, str) else content
+                    if isinstance(tool_results, list):
+                        for result in tool_results:
+                            api_messages.append({
+                                "role": "tool",
+                                "tool_call_id": result.get("tool_call_id", result.get("tool", "unknown")),
+                                "content": _json.dumps(result.get("result", {})),
+                            })
+                    else:
+                        api_messages.append({"role": "tool", "tool_call_id": "unknown", "content": str(content)})
+                except (_json.JSONDecodeError, TypeError):
+                    api_messages.append({"role": "tool", "tool_call_id": "unknown", "content": str(content)})
+            elif role == "assistant":
+                tool_calls = msg.get("tool_calls")
+                if tool_calls:
+                    api_messages.append({
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": tc.get("id", tc.get("name", "call")),
+                                "type": "function",
+                                "function": {
+                                    "name": tc.get("name", ""),
+                                    "arguments": _json.dumps(tc.get("parameters", {})),
+                                },
+                            }
+                            for tc in tool_calls
+                        ],
+                    })
+                else:
+                    api_messages.append({"role": role, "content": content})
+            else:
+                api_messages.append({"role": role, "content": content})
+
+        # Convert tools to OpenAI format
+        openai_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {}),
+                },
+            }
+            for tool in tools
+        ]
+
+        import asyncio
+        attempt = 0
+        while attempt < LLM_MAX_RETRIES:
+            attempt += 1
+            try:
+                response = await client.chat.completions.create(
+                    model=self._model,
+                    messages=api_messages,
+                    tools=openai_tools if openai_tools else None,
+                    temperature=temperature,
+                )
+
+                choice = response.choices[0]
+                content = choice.message.content
+                tool_calls_out: List[Dict[str, Any]] = []
+
+                if choice.message.tool_calls:
+                    for tc in choice.message.tool_calls:
+                        tool_calls_out.append({
+                            "name": tc.function.name,
+                            "parameters": _json.loads(tc.function.arguments) if tc.function.arguments else {},
+                        })
+
+                # Record usage
+                if response.usage:
+                    try:
+                        from ..llm import _record_llm_usage, _safe_int
+                        _record_llm_usage(
+                            None,
+                            self._model,
+                            provider="xai",
+                            prompt_tokens=_safe_int(response.usage.prompt_tokens),
+                            response_tokens=_safe_int(response.usage.completion_tokens),
+                            total_tokens=_safe_int(response.usage.total_tokens),
+                        )
+                    except Exception:
+                        pass
+
+                return {"content": content, "tool_calls": tool_calls_out, "model": self.model_id()}
+
+            except Exception as e:
+                error_str = str(e).lower()
+                is_transient = any(
+                    tok in error_str
+                    for tok in ("timeout", "429", "rate", "temporar", "unavailable", "503", "502", "500", "connection")
+                )
+                logger.warning("xAI tool-calling error: %s (attempt %d/%d)", e, attempt, LLM_MAX_RETRIES)
+
+                if not is_transient or attempt >= LLM_MAX_RETRIES:
+                    raise RuntimeError(f"xAI tool-calling error: {e}") from e
+
+                delay = _calculate_retry_delay(attempt, "server_error")
+                await asyncio.sleep(delay)
+
+        raise RuntimeError(f"xAI tool-calling failed after {LLM_MAX_RETRIES} attempts")
 
     # ---- internal call with retry logic ----
 

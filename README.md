@@ -79,4 +79,4 @@ SentiNext uses the currently active provider/model and performs one structured c
 
 ## License
 
-Apache License 2.0. See `LICENSE`.
+AGPL-3.0. See `LICENSE`.

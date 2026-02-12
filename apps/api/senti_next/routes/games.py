@@ -78,6 +78,8 @@ class GameDetailsResponse(BaseModel):
     is_free: bool = False
     price_initial: Optional[float] = None
     price_final: Optional[float] = None
+    price_initial_formatted: Optional[str] = None
+    price_final_formatted: Optional[str] = None
     price_discount: int = 0
     price_currency: Optional[str] = None
     timestamp: int
@@ -353,6 +355,8 @@ def get_steam_details(app_id: int):
             is_free=is_free,
             price_initial=details.get("price_initial"),
             price_final=details.get("price_final") if not is_free else None,
+            price_initial_formatted=details.get("price_initial_formatted"),
+            price_final_formatted="Free" if is_free else details.get("price_final_formatted"),
             price_discount=details.get("price_discount", 0),
             price_currency=details.get("price_currency"),
             timestamp=int(datetime.now(timezone.utc).timestamp()),
