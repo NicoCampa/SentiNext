@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from .. import db as db_module, dialect as d
 
-APP_VERSION = "0.6.4"
+APP_VERSION = "0.7.0"
 
 logger = logging.getLogger(__name__)
 

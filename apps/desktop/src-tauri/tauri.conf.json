@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicoCampa/SentiNext/refs/heads/main/apps/desktop/src-tauri/tauri.conf.json",
   "productName": "SentiNext",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "identifier": "com.sentinext.desktop",
   "build": {
     "frontendDist": "../../dashboard/out",
