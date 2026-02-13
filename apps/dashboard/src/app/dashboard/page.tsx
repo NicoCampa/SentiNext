@@ -499,25 +499,69 @@ function DashboardContent() {
       });
       setAnalysis({ metadata: game.metadata, insights: game.insights, reviews: game.sample ?? [] });
       selectGameById(appId);
+      return;
     }
-    if (!gamesLoading && !game) {
-      // Check if there's a completed analysis task as fallback (e.g. just finished analyzing)
-      const task = getTask(appId);
-      if (task?.status === 'completed' && task.result) {
-        setSelectedGame({
-          appid: appId,
-          name: task.game.name,
-          price: null,
-          url: `https://store.steampowered.com/app/${appId}`,
-          image_url: task.game.image_url ?? null,
-        });
-        setAnalysis(task.result);
-        selectGameById(appId);
-      } else {
+    if (gamesLoading) return;
+
+    // Check if there's a completed in-memory analysis task as fallback.
+    const task = getTask(appId);
+    if (task?.status === 'completed' && task.result) {
+      setSelectedGame({
+        appid: appId,
+        name: task.game.name,
+        price: null,
+        url: `https://store.steampowered.com/app/${appId}`,
+        image_url: task.game.image_url ?? null,
+      });
+      setAnalysis(task.result);
+      selectGameById(appId);
+      return;
+    }
+
+    // Final fallback: load directly from persisted analysis_results so dashboard
+    // can still open even when starred cache is missing or stale.
+    let cancelled = false;
+    const restoreFromSavedAnalysis = async () => {
+      try {
+        const result = await fetchAnalysisResult(appId);
+        if (cancelled) return;
+        if (result.status === "completed" && result.metadata && result.insights) {
+          const fallbackName = game?.name || task?.game?.name || `App ${appId}`;
+          const fallbackImage =
+            result.metadata.header_image
+            || game?.metadata?.header_image
+            || task?.game?.image_url
+            || null;
+          setError(null);
+          setSelectedGame({
+            appid: appId,
+            name: fallbackName,
+            price: null,
+            url: `https://store.steampowered.com/app/${appId}`,
+            image_url: fallbackImage,
+          });
+          setAnalysis({
+            metadata: result.metadata,
+            insights: result.insights,
+            reviews: result.reviews ?? [],
+          });
+          selectGameById(appId);
+          refreshGames().catch(() => null);
+          return;
+        }
+      } catch {
+        // Ignore and show the not-found UI message below.
+      }
+      if (!cancelled) {
         setError("Saved analysis not found for this game.");
       }
-    }
-  }, [gameParam, games, gamesLoading, selectGameById, getTask]);
+    };
+
+    void restoreFromSavedAnalysis();
+    return () => {
+      cancelled = true;
+    };
+  }, [gameParam, games, gamesLoading, selectGameById, getTask, refreshGames]);
 
   useEffect(() => {
     if (!selectedStarredGame) return;
@@ -597,28 +641,15 @@ function DashboardContent() {
   async function handleAnalyze(game: SearchResult, reviewCount: number) {
     setPendingAnalyzeGame(null);
     setError(null);
-    const existingGame = games.find((entry) => entry.app_id === game.appid);
     setTemporaryGame(game);
 
     try {
-      const lastFetchedAt = existingGame?.metadata?.fetched_at;
-      const lastFetchDate = lastFetchedAt ? new Date(lastFetchedAt) : null;
-      const hasValidFetchDate = lastFetchDate instanceof Date && !Number.isNaN(lastFetchDate.getTime());
-      const daysSinceLastRun = hasValidFetchDate
-        ? Math.max(
-            Math.ceil((Date.now() - lastFetchDate.getTime()) / (1000 * 60 * 60 * 24)),
-            1,
-          )
-        : undefined;
-      const shouldRefresh = Boolean(existingGame && hasValidFetchDate);
-
       await startAnalysis(game, {
-        refresh: shouldRefresh,
+        refresh: true,
         review_count: reviewCount,
         language: "all", // Always analyze all languages
         languages: undefined,
         filter: fetchFilter,
-        refresh_days: shouldRefresh ? daysSinceLastRun : undefined,
       });
     } catch (err) {
       const msg = (err as Error).message || "Failed to start analysis";
@@ -983,18 +1014,13 @@ function DashboardContent() {
             updateSuccess={updateSuccess}
             error={error}
             onUpdate={async () => {
-              if (!selectedGame || !analysis?.metadata?.fetched_at) return;
+              if (!selectedGame) return;
 
               // Clear previous messages
               setError(null);
               setUpdateSuccess(null);
 
-              // Calculate days since last analysis
-              const lastFetchDate = new Date(analysis.metadata.fetched_at);
-              const now = new Date();
-              const daysSinceLastRun = Math.ceil((now.getTime() - lastFetchDate.getTime()) / (1000 * 60 * 60 * 24));
-
-              // Trigger analysis with only new reviews since last run
+              // Trigger a fresh analysis against the latest available reviews.
               try {
                 await startAnalysis(selectedGame, {
                   refresh: true,
@@ -1002,7 +1028,6 @@ function DashboardContent() {
                   language: "all",
                   languages: undefined,
                   filter: fetchFilter,
-                  refresh_days: daysSinceLastRun,
                 });
                 // Don't show "You are up to date" here — the analysis runs
                 // in the background. The completion effect will update the

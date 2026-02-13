@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from .. import db as db_module, dialect as d
 
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.7.1"
 
 logger = logging.getLogger(__name__)
 
@@ -261,4 +261,3 @@ def logs_tail(bytes: int = 20000) -> dict:
     except Exception as exc:
         logger.warning("Failed to read log file: %s", exc)
         return {"log_file": str(path), "tail": ""}
-

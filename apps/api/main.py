@@ -120,7 +120,7 @@ async def lifespan(application: FastAPI):
             logging_config.configure_logging()
             # Sync completed analyses to starred games so they appear on Home
             try:
-                from senti_next import storage
+                from .senti_next import storage
                 synced = storage.sync_analysis_to_starred()
                 if synced > 0:
                     storage.resolve_starred_game_names()

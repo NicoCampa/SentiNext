@@ -32,6 +32,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _safe_fetch_app_details(app_id: int) -> Dict[str, Any]:
+    try:
+        return fetch_app_details(app_id) or {}
+    except Exception as exc:
+        logger.warning("Failed to fetch Steam app details for app %s: %s", app_id, exc)
+        return {}
+
+
+def _coerce_metadata(app_id: int, metadata_payload: Dict[str, Any], sample: List[dict]) -> AnalyzeMetadata:
+    try:
+        return AnalyzeMetadata(**metadata_payload)
+    except Exception:
+        fallback = storage.load_analysis_result(app_id) or {}
+        fallback_metadata = fallback.get("metadata") or {}
+        if fallback_metadata:
+            try:
+                return AnalyzeMetadata(**fallback_metadata)
+            except Exception:
+                pass
+
+        logger.warning("Invalid metadata for starred app %s; using synthesized defaults", app_id)
+        synthesized = {
+            "app_id": app_id,
+            "requested": int(metadata_payload.get("requested") or 0),
+            "retrieved": int(metadata_payload.get("retrieved") or len(sample or [])),
+            "language": str(metadata_payload.get("language") or "all"),
+            "fetched_at": str(
+                metadata_payload.get("fetched_at")
+                or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            ),
+            "header_image": metadata_payload.get("header_image"),
+        }
+        return AnalyzeMetadata(**synthesized)
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -156,16 +191,24 @@ def get_available_languages() -> dict:
 
 @router.get("/starred", response_model=List[StarredGameResponse])
 def list_starred_games() -> List[StarredGameResponse]:
+    # Keep starred/home in sync with completed analyses even if startup sync failed.
+    try:
+        synced = storage.sync_analysis_to_starred()
+        if synced > 0:
+            storage.resolve_starred_game_names()
+    except Exception:
+        logger.warning("Failed to sync analysis_results to starred_games during /starred load", exc_info=True)
 
     entries = storage.load_starred_games()
     response: List[StarredGameResponse] = []
     for item in entries:
+        sample = item.get("sample", [])
         metadata_payload = item.get("metadata") or {}
         if metadata_payload and not metadata_payload.get("header_image"):
-            details = fetch_app_details(item["app_id"])
+            details = _safe_fetch_app_details(item["app_id"])
             if details and details.get("header_image"):
                 metadata_payload["header_image"] = details["header_image"]
-        metadata = AnalyzeMetadata(**metadata_payload)
+        metadata = _coerce_metadata(item["app_id"], metadata_payload, sample)
         updated_at = datetime.fromtimestamp(item["updated_at"], tz=timezone.utc).isoformat().replace("+00:00", "Z")
         response.append(
             StarredGameResponse(
@@ -173,7 +216,7 @@ def list_starred_games() -> List[StarredGameResponse]:
                 name=item["name"],
                 metadata=metadata,
                 insights=item.get("insights"),
-                sample=item.get("sample", []),
+                sample=sample,
                 genres=item.get("genres", []),
                 categories=item.get("categories", []),
                 updated_at=updated_at,
@@ -188,7 +231,7 @@ def save_starred_game(payload: StarredGamePayload) -> Response:
 
     sample = payload.sample[:SAMPLE_LIMIT]
 
-    game_details = fetch_app_details(payload.app_id)
+    game_details = _safe_fetch_app_details(payload.app_id)
     genres = game_details.get("genres", []) if game_details else []
     categories = game_details.get("categories", []) if game_details else []
     metadata_payload = payload.metadata.dict()
@@ -229,12 +272,13 @@ def list_favorite_games() -> List[StarredGameResponse]:
     entries = storage.load_favorite_games()
     response: List[StarredGameResponse] = []
     for item in entries:
+        sample = item.get("sample", [])
         metadata_payload = item.get("metadata") or {}
         if metadata_payload and not metadata_payload.get("header_image"):
-            details = fetch_app_details(item["app_id"])
+            details = _safe_fetch_app_details(item["app_id"])
             if details and details.get("header_image"):
                 metadata_payload["header_image"] = details["header_image"]
-        metadata = AnalyzeMetadata(**metadata_payload)
+        metadata = _coerce_metadata(item["app_id"], metadata_payload, sample)
         updated_at = datetime.fromtimestamp(item["updated_at"], tz=timezone.utc).isoformat().replace("+00:00", "Z")
         response.append(
             StarredGameResponse(
@@ -242,7 +286,7 @@ def list_favorite_games() -> List[StarredGameResponse]:
                 name=item["name"],
                 metadata=metadata,
                 insights=item.get("insights"),
-                sample=item.get("sample", []),
+                sample=sample,
                 genres=item.get("genres", []),
                 categories=item.get("categories", []),
                 updated_at=updated_at,

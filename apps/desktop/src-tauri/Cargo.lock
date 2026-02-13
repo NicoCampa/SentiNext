@@ -3076,7 +3076,7 @@ dependencies = [
 
 [[package]]
 name = "sentinext-desktop"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde",

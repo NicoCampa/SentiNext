@@ -170,7 +170,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const language = options.language ?? "all";
     const languages = options.languages;
     const filter = options.filter ?? "recent";
-    const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
+    const refreshDays = refresh ? options.refresh_days : undefined;
     const dayRange = options.day_range ?? undefined;
 
     try {
@@ -467,7 +467,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     const language = options.language ?? "all";
     const languages = options.languages;
     const filter = options.filter ?? "recent";
-    const refreshDays = refresh ? (options.refresh_days ?? 30) : undefined;
+    const refreshDays = refresh ? options.refresh_days : undefined;
     const dayRange = options.day_range ?? undefined;
 
     // Check if already analyzing/queued OR if an API call is already in-flight

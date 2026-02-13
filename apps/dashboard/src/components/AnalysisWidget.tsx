@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import { SteamImage } from './SteamImage';
 import clsx from 'clsx';
@@ -212,14 +213,14 @@ export function AnalysisWidget() {
                   {task.status === 'completed' && (
                     <div className="flex items-center gap-2 text-xs text-emerald-400">
                       <span>Analysis complete</span>
-                      <a
-                              href={`/dashboard?game=${appId}`}
-                              className="ml-auto text-sky-400 hover:text-sky-300 hover:underline"
-                            >
-                              View
-                            </a>
-                          </div>
-                        )}
+                      <Link
+                        href={`/dashboard?game=${appId}`}
+                        className="ml-auto text-sky-400 hover:text-sky-300 hover:underline"
+                      >
+                        View
+                      </Link>
+                    </div>
+                  )}
 
                         {task.status === 'error' && (
                           <div className="mt-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-400">

@@ -420,55 +420,45 @@ def analyze(
 
     languages_to_fetch = request.languages or ([request.language] if request.language and request.language != "all" else None)
 
-    language_filtered_reviews = stored_reviews
-    if languages_to_fetch:
-        language_filtered_reviews = [
-            r for r in stored_reviews
-            if r.get("language") in languages_to_fetch
-        ]
-
-    has_enough_cached = request.review_count > 0 and len(language_filtered_reviews) >= request.review_count
-    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
-
     fetched_reviews: List[dict] = []
-    if should_fetch:
-        def _fetch_progress_callback(fetched_count: int) -> None:
-            try:
-                storage.update_fetch_progress(request.app_id, fetched_count)
-            except Exception as exc:
-                logger.warning("Fetch progress update failed: %s", exc)
-
-        storage.reset_progress(request.app_id, total=0, phase="fetching")
-
+    def _fetch_progress_callback(fetched_count: int) -> None:
         try:
-            if languages_to_fetch and len(languages_to_fetch) > 1:
-                fetched_reviews = fetch_reviews_multi_language(
-                    request.app_id,
-                    count=request.review_count,
-                    languages=languages_to_fetch,
-                    filter_type=filter_type,
-                    day_range=request.refresh_days or request.day_range,
-                    progress_callback=_fetch_progress_callback,
-                )
-            else:
-                fetched_reviews = fetch_reviews(
-                    request.app_id,
-                    count=request.review_count,
-                    language=languages_to_fetch[0] if languages_to_fetch else "all",
-                    filter_type=filter_type,
-                    day_range=request.refresh_days or request.day_range,
-                    progress_callback=_fetch_progress_callback,
-                )
-        except SteamAPIError as exc:
-            storage.clear_progress(request.app_id)
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            storage.update_fetch_progress(request.app_id, fetched_count)
+        except Exception as exc:
+            logger.warning("Fetch progress update failed: %s", exc)
 
-        if request.persist:
-            storage.upsert_reviews(request.app_id, fetched_reviews)
-            storage.enforce_review_limit(request.app_id)
-            stored_reviews = storage.load_reviews(request.app_id)
+    # Always fetch latest Steam reviews for every analysis run.
+    storage.reset_progress(request.app_id, total=0, phase="fetching")
+
+    try:
+        if languages_to_fetch and len(languages_to_fetch) > 1:
+            fetched_reviews = fetch_reviews_multi_language(
+                request.app_id,
+                count=request.review_count,
+                languages=languages_to_fetch,
+                filter_type=filter_type,
+                day_range=request.refresh_days or request.day_range,
+                progress_callback=_fetch_progress_callback,
+            )
         else:
-            stored_reviews = fetched_reviews
+            fetched_reviews = fetch_reviews(
+                request.app_id,
+                count=request.review_count,
+                language=languages_to_fetch[0] if languages_to_fetch else "all",
+                filter_type=filter_type,
+                day_range=request.refresh_days or request.day_range,
+                progress_callback=_fetch_progress_callback,
+            )
+    except SteamAPIError as exc:
+        storage.clear_progress(request.app_id)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    if request.persist:
+        storage.upsert_reviews(request.app_id, fetched_reviews)
+        storage.enforce_review_limit(request.app_id)
+        stored_reviews = storage.load_reviews(request.app_id)
+    else:
+        stored_reviews = fetched_reviews
 
     if stored_reviews:
         all_reviews = stored_reviews
@@ -566,39 +556,28 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
 
     languages_to_fetch = request.languages or ([request.language] if request.language and request.language != "all" else None)
 
-    language_filtered_reviews = stored_reviews
-    if languages_to_fetch:
-        language_filtered_reviews = [
-            r for r in stored_reviews
-            if r.get("language") in languages_to_fetch
-        ]
-
-    has_enough_cached = request.review_count > 0 and len(language_filtered_reviews) >= request.review_count
-    should_fetch = not stored_reviews or request.refresh or not request.persist or not has_enough_cached
-
     fetched_reviews: List[dict] = []
-    if should_fetch:
-        try:
-            if languages_to_fetch and len(languages_to_fetch) > 1:
-                fetched_reviews = fetch_reviews_multi_language(
-                    request.app_id,
-                    count=request.review_count,
-                    languages=languages_to_fetch,
-                    filter_type=filter_type,
-                    day_range=request.refresh_days or request.day_range,
-                )
-            else:
-                fetched_reviews = fetch_reviews(
-                    request.app_id,
-                    count=request.review_count,
-                    language=languages_to_fetch[0] if languages_to_fetch else "all",
-                    filter_type=filter_type,
-                    day_range=request.refresh_days or request.day_range,
-                )
-        except SteamAPIError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    try:
+        if languages_to_fetch and len(languages_to_fetch) > 1:
+            fetched_reviews = fetch_reviews_multi_language(
+                request.app_id,
+                count=request.review_count,
+                languages=languages_to_fetch,
+                filter_type=filter_type,
+                day_range=request.refresh_days or request.day_range,
+            )
+        else:
+            fetched_reviews = fetch_reviews(
+                request.app_id,
+                count=request.review_count,
+                language=languages_to_fetch[0] if languages_to_fetch else "all",
+                filter_type=filter_type,
+                day_range=request.refresh_days or request.day_range,
+            )
+    except SteamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    all_reviews = stored_reviews if stored_reviews else fetched_reviews
+    all_reviews = fetched_reviews if fetched_reviews else stored_reviews
     if request.review_count > 0 and len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
@@ -610,7 +589,7 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
 
     return AnalyzeEstimateResponse(
         app_id=request.app_id,
-        will_fetch=bool(should_fetch),
+        will_fetch=True,
         will_persist=bool(request.persist),
         review_count_requested=int(request.review_count or 0),
         reviews_considered=len(all_reviews),
