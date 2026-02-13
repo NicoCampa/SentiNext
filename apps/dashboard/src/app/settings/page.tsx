@@ -256,6 +256,13 @@ export default function SettingsPage() {
                   </span>
                 </div>
 
+                {health.state === "online" && health.version && (
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs uppercase tracking-wider text-slate-400">Version</span>
+                    <span className="text-xs font-mono text-slate-300">v{health.version}</span>
+                  </div>
+                )}
+
                 {currentProvider && (
                   <div className="flex items-center gap-2.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />

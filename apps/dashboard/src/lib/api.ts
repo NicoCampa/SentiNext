@@ -260,9 +260,9 @@ export async function fetchAnalysisResult(appId: number): Promise<AnalysisResult
   return handleResponse<AnalysisResultResponse>(response);
 }
 
-export async function fetchHealth(): Promise<{ status: string; timestamp: string }> {
+export async function fetchHealth(): Promise<{ status: string; timestamp: string; version?: string }> {
   const response = await apiFetch(apiUrl("/health"), { cache: "no-store" });
-  return handleResponse<{ status: string; timestamp: string }>(response);
+  return handleResponse<{ status: string; timestamp: string; version?: string }>(response);
 }
 
 export async function fetchLogTail(bytes: number = 20000): Promise<LogTailResponse> {

@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 
 from .. import db as db_module, dialect as d
 
+APP_VERSION = "0.6.4"
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -51,7 +53,7 @@ def healthcheck() -> dict:
             status_code=503,
             content={"status": "unhealthy", "database": "unreachable", "timestamp": ts},
         )
-    return {"status": "ok", "database": "connected", "timestamp": ts}
+    return {"status": "ok", "database": "connected", "timestamp": ts, "version": APP_VERSION}
 
 
 @router.get("/settings/storage")
