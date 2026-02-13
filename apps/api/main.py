@@ -118,6 +118,14 @@ async def lifespan(application: FastAPI):
         try:
             db_module.init_db()
             logging_config.configure_logging()
+            # Sync completed analyses to starred games so they appear on Home
+            try:
+                from senti_next import storage
+                synced = storage.sync_analysis_to_starred()
+                if synced > 0:
+                    storage.resolve_starred_game_names()
+            except Exception:
+                logger.warning("Failed to sync analysis results to starred games", exc_info=True)
         except Exception:
             logger.exception("Background startup init failed")
         finally:

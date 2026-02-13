@@ -971,6 +971,122 @@ def list_database_games_all() -> List[Dict[str, Any]]:
     return [{"app_id": app_id, "name": name_map.get(app_id)} for app_id in all_ids]
 
 
+def sync_analysis_to_starred() -> int:
+    """Copy completed analysis_results into starred_games where missing.
+
+    This ensures games that were previously analyzed (and have cached
+    reviews/labels) appear on the Home page without re-analysis.
+    Called once at startup.  Returns the number of games synced.
+    """
+    from . import db as db_module
+
+    with db_module.get_connection() as conn:
+        # Find completed analysis_results not yet in starred_games
+        rows = conn.execute(
+            text("""
+                SELECT ar.app_id, ar.metadata, ar.insights, ar.reviews, ar.updated_at
+                FROM analysis_results ar
+                LEFT JOIN starred_games sg
+                    ON sg.user_id = :user_id AND sg.app_id = ar.app_id
+                WHERE ar.user_id = :user_id
+                  AND ar.status = 'completed'
+                  AND ar.insights IS NOT NULL
+                  AND sg.app_id IS NULL
+            """),
+            {"user_id": _DEFAULT_USER_ID},
+        ).fetchall()
+
+        if not rows:
+            return 0
+
+        count = 0
+        for row in rows:
+            app_id = int(row[0])
+            metadata = _parse_json_field(row[1], {})
+            insights = _parse_json_field(row[2], None)
+            reviews = _parse_json_field(row[3], [])
+            updated_at = row[4]
+
+            # Use app_id as placeholder name — will be resolved via Steam API
+            name = str(app_id)
+
+            # Limit sample size
+            sample = reviews[:1000] if reviews else []
+
+            conn.execute(
+                text("""
+                    INSERT INTO starred_games
+                        (user_id, app_id, name, metadata, insights, sample, genres, categories, updated_at)
+                    VALUES
+                        (:user_id, :app_id, :name, :metadata, :insights, :sample, :genres, :categories, :updated_at)
+                    ON CONFLICT(user_id, app_id) DO NOTHING
+                """),
+                {
+                    "user_id": _DEFAULT_USER_ID,
+                    "app_id": app_id,
+                    "name": name,
+                    "metadata": json.dumps(metadata),
+                    "insights": json.dumps(insights),
+                    "sample": json.dumps(sample),
+                    "genres": json.dumps([]),
+                    "categories": json.dumps([]),
+                    "updated_at": updated_at,
+                },
+            )
+            count += 1
+
+    if count > 0:
+        logger.info("Synced %d completed analysis results to starred games", count)
+
+    return count
+
+
+def resolve_starred_game_names() -> int:
+    """Resolve placeholder names (numeric app_id strings) in starred_games via Steam API.
+
+    Returns the number of names resolved.
+    """
+    from . import db as db_module
+    from . import steam_api
+
+    with db_module.get_connection() as conn:
+        # Find starred games whose name is just a numeric app_id placeholder
+        rows = conn.execute(
+            text("""
+                SELECT app_id, name FROM starred_games
+                WHERE user_id = :user_id
+            """),
+            {"user_id": _DEFAULT_USER_ID},
+        ).fetchall()
+
+    to_resolve = [(int(r[0]), r[1]) for r in rows if r[1] and r[1].isdigit()]
+    if not to_resolve:
+        return 0
+
+    resolved = 0
+    from . import db as db_module
+    for app_id, _ in to_resolve:
+        try:
+            details = steam_api.fetch_app_details(app_id)
+            if details and details.get("name"):
+                with db_module.get_connection() as conn:
+                    conn.execute(
+                        text("""
+                            UPDATE starred_games SET name = :name
+                            WHERE user_id = :user_id AND app_id = :app_id
+                        """),
+                        {"name": details["name"], "user_id": _DEFAULT_USER_ID, "app_id": app_id},
+                    )
+                resolved += 1
+        except Exception as exc:
+            logger.debug("Failed to resolve name for app %d: %s", app_id, exc)
+
+    if resolved > 0:
+        logger.info("Resolved %d starred game names via Steam API", resolved)
+
+    return resolved
+
+
 def get_top_games_by_review_count(
     limit: int = 5,
     language: Optional[str] = None,
