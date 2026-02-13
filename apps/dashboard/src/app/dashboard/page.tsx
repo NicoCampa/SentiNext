@@ -489,6 +489,7 @@ function DashboardContent() {
 
     const game = games.find((entry) => entry.app_id === appId);
     if (game && game.insights) {
+      setError(null);
       setSelectedGame({
         appid: game.app_id,
         name: game.name,
@@ -500,9 +501,23 @@ function DashboardContent() {
       selectGameById(appId);
     }
     if (!gamesLoading && !game) {
-      setError("Saved analysis not found for this game.");
+      // Check if there's a completed analysis task as fallback (e.g. just finished analyzing)
+      const task = getTask(appId);
+      if (task?.status === 'completed' && task.result) {
+        setSelectedGame({
+          appid: appId,
+          name: task.game.name,
+          price: null,
+          url: `https://store.steampowered.com/app/${appId}`,
+          image_url: task.game.image_url ?? null,
+        });
+        setAnalysis(task.result);
+        selectGameById(appId);
+      } else {
+        setError("Saved analysis not found for this game.");
+      }
     }
-  }, [gameParam, games, gamesLoading, selectGameById]);
+  }, [gameParam, games, gamesLoading, selectGameById, getTask]);
 
   useEffect(() => {
     if (!selectedStarredGame) return;

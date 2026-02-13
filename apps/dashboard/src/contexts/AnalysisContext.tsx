@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, ReactNode, useEffect,
 import { analyzeGame, fetchAnalysisResult, fetchProgress, saveStarredGame, subscribeToProgress, cancelAnalysis, isSseConnectionError } from '@/lib/api';
 import { loadDefaultAnalysisReviewCount, saveDefaultAnalysisReviewCount } from '@/lib/analysisDefaults';
 import { SearchResult, AnalyzeResponse, ProgressStatus } from '@/types';
+import { useStarredGames } from '@/contexts/StarredGamesContext';
 
 interface ProgressWithEstimate extends ProgressStatus {
   remainingSeconds?: number | null;
@@ -53,6 +54,9 @@ interface ProgressStats {
 }
 
 export function AnalysisProvider({ children }: { children: ReactNode }) {
+  const { addGame } = useStarredGames();
+  const addGameRef = useRef(addGame);
+  addGameRef.current = addGame;
   const [tasks, setTasks] = useState<Map<number, AnalysisTask>>(new Map());
   const progressStatsRef = useRef<Map<number, ProgressStats>>(new Map());
   const queueRef = useRef<QueuedEntry[]>([]);
@@ -257,6 +261,18 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
             } catch (err) {
               console.error('Failed to persist analysis result', err);
             }
+            // Sync in-memory starred games cache so the dashboard can find the game immediately
+            addGameRef.current({
+              app_id: appId,
+              name: currentTask.game.name,
+              metadata: analysis.metadata,
+              insights: analysis.insights,
+              sample: analysis.reviews,
+              genres: [],
+              categories: [],
+              updated_at: new Date().toISOString(),
+              is_favorite: false,
+            });
           }
           setTasks((prev) => {
             const newTasks = new Map(prev);
