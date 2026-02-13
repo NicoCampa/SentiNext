@@ -55,8 +55,6 @@ REVIEW_EXPORT_COLUMNS = [
 # ---------------------------------------------------------------------------
 
 class AnalyzeMetadata(BaseModel):
-    model_config = {"extra": "allow"}
-
     app_id: int
     requested: int
     retrieved: int
@@ -64,6 +62,7 @@ class AnalyzeMetadata(BaseModel):
     languages: Optional[List[str]] = None
     fetched_at: str
     header_image: Optional[str] = None
+    review_fingerprint: Optional[str] = None
     price_initial: Optional[float] = None
     price_final: Optional[Union[float, str]] = None
     price_initial_formatted: Optional[str] = None

@@ -297,6 +297,9 @@ def _run_analysis_job(
             if insights is not None:
                 insights["health_overview"] = None
 
+        # Store review fingerprint so auto-refresh can detect changes
+        metadata.review_fingerprint = storage.get_reviews_fingerprint(app_id)
+
         storage.save_analysis_result(
             app_id=app_id,
             metadata=metadata.dict(),
