@@ -55,6 +55,8 @@ REVIEW_EXPORT_COLUMNS = [
 # ---------------------------------------------------------------------------
 
 class AnalyzeMetadata(BaseModel):
+    model_config = {"extra": "allow"}
+
     app_id: int
     requested: int
     retrieved: int
