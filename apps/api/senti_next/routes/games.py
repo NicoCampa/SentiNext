@@ -174,6 +174,8 @@ def list_starred_games() -> List[StarredGameResponse]:
                 metadata=metadata,
                 insights=item.get("insights"),
                 sample=item.get("sample", []),
+                genres=item.get("genres", []),
+                categories=item.get("categories", []),
                 updated_at=updated_at,
                 is_favorite=item.get("is_favorite", False),
             )
@@ -241,6 +243,8 @@ def list_favorite_games() -> List[StarredGameResponse]:
                 metadata=metadata,
                 insights=item.get("insights"),
                 sample=item.get("sample", []),
+                genres=item.get("genres", []),
+                categories=item.get("categories", []),
                 updated_at=updated_at,
                 is_favorite=True,
             )

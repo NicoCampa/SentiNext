@@ -86,6 +86,8 @@ class StarredGameResponse(BaseModel):
     metadata: AnalyzeMetadata
     insights: Optional[dict]
     sample: List[dict]
+    genres: List[str] = Field(default_factory=list)
+    categories: List[str] = Field(default_factory=list)
     updated_at: str
     is_favorite: bool = False
 

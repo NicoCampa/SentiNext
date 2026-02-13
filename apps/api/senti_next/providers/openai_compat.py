@@ -109,16 +109,11 @@ class OpenAICompatProvider(LLMProvider):
             "temperature": temperature,
         }
 
-        if response_schema and self._provider_type == "openai":
+        if response_schema:
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": "response", "strict": True, "schema": response_schema},
             }
-        elif response_schema:
-            # Ollama: use JSON mode with schema in the prompt
-            kwargs["response_format"] = {"type": "json_object"}
-            schema_str = json.dumps(response_schema, indent=2)
-            messages[-1]["content"] += f"\n\nRespond with JSON matching this schema:\n{schema_str}"
 
         return self._call_with_retry(kwargs)
 
