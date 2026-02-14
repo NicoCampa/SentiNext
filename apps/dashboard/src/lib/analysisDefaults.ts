@@ -1,12 +1,11 @@
 'use client';
 
-export const REVIEW_COUNT_OPTIONS = [1000, 0] as const; // 0 = all reviews
+export const REVIEW_COUNT_OPTIONS = [1000, 2000] as const;
 export type ReviewCountOption = (typeof REVIEW_COUNT_OPTIONS)[number];
 
 export const DEFAULT_ANALYSIS_REVIEW_COUNT = 1000;
 
 export function formatReviewCount(count: number): string {
-  if (count === 0) return 'All';
   return count.toLocaleString();
 }
 

@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from .. import db as db_module, dialect as d
 
-APP_VERSION = "0.7.1"
+APP_VERSION = "0.8.1"
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,10 @@ def healthcheck() -> dict:
     from fastapi.responses import JSONResponse
     ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if not db_module.startup_complete.is_set():
-        return {"status": "starting", "database": "initializing", "timestamp": ts}
+        return JSONResponse(
+            status_code=503,
+            content={"status": "starting", "database": "initializing", "timestamp": ts},
+        )
     db_ok = db_module.check_db_health()
     if not db_ok:
         return JSONResponse(

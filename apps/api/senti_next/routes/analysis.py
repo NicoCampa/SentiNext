@@ -40,7 +40,7 @@ router = APIRouter()
 
 class AnalyzeRequest(BaseModel):
     app_id: int = Field(..., gt=0)
-    review_count: int = Field(FETCH_LIMIT, ge=0)  # 0 = fetch all available reviews
+    review_count: int = Field(FETCH_LIMIT, ge=1, le=2000)
     language: str = Field("all", min_length=2, max_length=32)
     languages: Optional[List[str]] = Field(None, description="List of language codes for multi-language analysis")
     filter: str = Field("recent")
@@ -465,7 +465,7 @@ def analyze(
     else:
         all_reviews = fetched_reviews
 
-    if request.review_count > 0 and len(all_reviews) > request.review_count:
+    if len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
     all_reviews.sort(key=lambda r: (r.get("language", "english"), -(r.get("timestamp_created") or 0)))
@@ -578,7 +578,7 @@ def analyze_estimate(request: AnalyzeRequest) -> AnalyzeEstimateResponse:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     all_reviews = fetched_reviews if fetched_reviews else stored_reviews
-    if request.review_count > 0 and len(all_reviews) > request.review_count:
+    if len(all_reviews) > request.review_count:
         all_reviews = all_reviews[: request.review_count]
 
     cached_labels = storage.load_review_labels(request.app_id)

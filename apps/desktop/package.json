@@ -1,6 +1,6 @@
 {
   "name": "sentinext-desktop",
-  "version": "0.7.1",
+  "version": "0.8.1",
   "private": true,
   "scripts": {
     "build:frontend": "cd ../dashboard && npm run build:desktop",

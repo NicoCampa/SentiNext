@@ -612,8 +612,6 @@ function DashboardContent() {
   useEffect(() => {
     if (currentTask?.status === "completed" && currentTask.result) {
       setAnalysis(currentTask.result);
-      setUpdateSuccess("You are up to date");
-      setTimeout(() => setUpdateSuccess(null), 3000);
       refreshGames().catch(() => null);
       if (selectedGame) {
         selectGameById(selectedGame.appid);
@@ -671,8 +669,12 @@ function DashboardContent() {
   useEffect(() => {
     if (viewParam === "home") {
       handleReset();
+      // Re-fetch starred games now that the backend is confirmed ready.
+      // The initial provider fetch may have failed during app startup
+      // (before the boot page finished its health check).
+      refreshGames();
     }
-  }, [handleReset, viewParam]);
+  }, [handleReset, viewParam, refreshGames]);
 
   const loadingStarred = Boolean(gameParam && gamesLoading && !analysis);
   const recentAnalyses = games;
@@ -820,11 +822,11 @@ function DashboardContent() {
                                       1,000
                                     </Button>
                                     <Button
-                                      onClick={() => handleAnalyze(game, 0)}
+                                      onClick={() => handleAnalyze(game, 2000)}
                                       variant={isAlreadyAnalyzed ? "update" : "primary"}
                                       size="sm"
                                     >
-                                      All
+                                      2,000
                                     </Button>
                                   </div>
                                 ) : (

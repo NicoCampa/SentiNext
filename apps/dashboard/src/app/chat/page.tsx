@@ -492,9 +492,9 @@ export default function ChatPage() {
         }
       `}</style>
       <PageTransition>
-        <div className="w-full h-[calc(100vh-5rem)] sm:h-[calc(100vh-2rem)] flex flex-col gap-2 sm:gap-4 px-2 py-3 sm:px-4 sm:py-6 lg:px-6">
+        <div className="w-full h-[calc(100vh-5rem)] sm:h-[calc(100vh-2rem)] flex flex-col gap-2 sm:gap-4 px-2 py-3 sm:px-4 sm:py-6">
           {/* Header */}
-          <div className="mb-2 sm:mb-6 flex items-center justify-between">
+          <div className="mb-1 sm:mb-2 flex items-center justify-between">
             <div className="min-w-0 flex-1">
               <h1 className="text-lg sm:text-xl font-bold">
                 <span className="text-white">
@@ -507,7 +507,8 @@ export default function ChatPage() {
                   : t('chat.subtitle')}
               </p>
             </div>
-            <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+            {/* Mobile-only buttons (sidebar is hidden on mobile) */}
+            <div className="flex gap-1 sm:gap-2 flex-shrink-0 lg:hidden">
               {currentSessionId && messages.length > 0 && (
                 <Button
                   variant="secondary"
@@ -539,6 +540,31 @@ export default function ChatPage() {
           {/* Left Sidebar: Chat History - hidden on mobile, shown on desktop */}
           <Card variant="glass" className="hidden lg:flex w-72 flex-shrink-0 p-4 overflow-hidden flex-col transition-colors duration-200">
             <div className="flex-1 flex flex-col gap-4 animate-slide-up-soft">
+            {/* Sidebar action buttons */}
+            <div className="flex gap-2">
+              {currentSessionId && messages.length > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={handleExportChat}
+                  className="flex-1 text-xs px-3 py-2"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                onClick={handleNewConversation}
+                className={`${currentSessionId && messages.length > 0 ? 'flex-1' : 'w-full'} text-xs px-3 py-2`}
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                {t('chat.newChat')}
+              </Button>
+            </div>
             {/* Chat History */}
             <div className="flex-1 flex flex-col min-h-0">
               <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
@@ -695,23 +721,7 @@ export default function ChatPage() {
                                     imageUrl={game.metadata.header_image}
                                   />
                                   {isSelected && (
-                                    <div className="absolute inset-0 bg-sky-500/20 flex items-center justify-center">
-                                      <div className="bg-sky-500 text-white rounded-full p-1.5 sm:p-2">
-                                        <svg
-                                          className="w-4 h-4 sm:w-6 sm:h-6"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={3}
-                                            d="M5 13l4 4L19 7"
-                                          />
-                                        </svg>
-                                      </div>
-                                    </div>
+                                    <div className="absolute inset-0 bg-sky-500/20" />
                                   )}
                                 </div>
                                 <div className="p-2 sm:p-3 bg-slate-900/90">

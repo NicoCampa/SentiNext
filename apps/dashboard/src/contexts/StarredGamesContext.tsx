@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { fetchStarredGames as apiFetchStarredGames } from '@/lib/api';
 import type { StarredGameDTO } from '@/types';
 
@@ -23,9 +23,15 @@ export function StarredGamesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
+  const gamesRef = useRef(games);
+  gamesRef.current = games;
 
   const refresh = useCallback(async () => {
-    setLoading(true);
+    // Only show loading spinner on initial fetch (no data yet).
+    // Subsequent refreshes keep existing data visible while fetching.
+    if (gamesRef.current.length === 0) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const data = await apiFetchStarredGames();

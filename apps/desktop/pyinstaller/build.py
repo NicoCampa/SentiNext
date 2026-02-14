@@ -2,7 +2,12 @@
 """Build the SentiNext backend sidecar binary using PyInstaller.
 
 Usage:
-    python build.py [--target-triple TARGET]
+    python build.py [--target-triple TARGET] [--no-venv]
+
+A clean virtual environment is created (in pyinstaller/.venv/) and only the
+packages listed in requirements-desktop.txt are installed.  This prevents the
+host conda/system env from leaking large unused packages (tensorflow, torch,
+etc.) into the binary.
 
 The output is copied to src-tauri/binaries/ with Tauri's naming convention:
     sentinext-backend-{target_triple}[.exe]
@@ -16,6 +21,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import venv
 from pathlib import Path
 
 
@@ -42,9 +48,32 @@ def detect_target_triple() -> str:
         return f"{arch}-unknown-{system}"
 
 
+def ensure_venv(script_dir: Path) -> Path:
+    """Create a clean venv and install desktop requirements. Returns the venv python path."""
+    venv_dir = script_dir / ".venv"
+    requirements = script_dir / "requirements-desktop.txt"
+
+    is_windows = sys.platform == "win32"
+    venv_python = venv_dir / ("Scripts" if is_windows else "bin") / ("python.exe" if is_windows else "python")
+
+    if not venv_python.is_file():
+        print(f"Creating clean build venv at {venv_dir} ...")
+        venv.create(str(venv_dir), with_pip=True, clear=True)
+
+    # Always sync requirements (fast no-op when already satisfied)
+    print("Installing desktop requirements ...")
+    subprocess.run(
+        [str(venv_python), "-m", "pip", "install", "-q", "-r", str(requirements)],
+        check=True,
+    )
+
+    return venv_python
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build SentiNext sidecar")
     parser.add_argument("--target-triple", default=None, help="Override target triple")
+    parser.add_argument("--no-venv", action="store_true", help="Skip venv, use current Python (not recommended)")
     args = parser.parse_args()
 
     target_triple = args.target_triple or detect_target_triple()
@@ -58,12 +87,20 @@ def main() -> None:
     dist_dir = script_dir / "dist"
     build_dir = script_dir / "build"
 
+    # Determine which python to use
+    if args.no_venv:
+        python = sys.executable
+        print("Using current Python (--no-venv)")
+    else:
+        python = str(ensure_venv(script_dir))
+
     print(f"Building for target: {target_triple}")
+    print(f"Python: {python}")
     print(f"Spec file: {spec_file}")
 
     # Run PyInstaller
     cmd = [
-        sys.executable, "-m", "PyInstaller",
+        python, "-m", "PyInstaller",
         "--distpath", str(dist_dir),
         "--workpath", str(build_dir),
         "--noconfirm",
