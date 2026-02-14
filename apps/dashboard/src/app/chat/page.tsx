@@ -638,7 +638,7 @@ export default function ChatPage() {
                 {copyToast}
               </div>
             )}
-            <div className="flex h-full flex-col px-3 sm:px-6 pb-4 sm:pb-6 pt-3 sm:pt-4 animate-slide-up-soft animation-delay-100">
+            <div className="flex h-full flex-col px-3 sm:px-6 pb-2 sm:pb-3 pt-3 sm:pt-4 animate-slide-up-soft animation-delay-100">
               {/* Messages */}
               <div className="flex-1 overflow-y-auto mb-4 pr-2 scrollbar-hide">
                 <div className="min-h-full space-y-4">
@@ -1052,7 +1052,7 @@ export default function ChatPage() {
                 )}
               </Button>
             </div>
-            <p className="text-[10px] sm:text-xs text-slate-600 mt-2">
+            <p className="text-[10px] sm:text-xs text-slate-600 mt-1">
               {!chatLocked ? (
                 <>Press Enter to search reviews and get insights</>
               ) : (
